@@ -73,20 +73,41 @@ with st.sidebar:
     st.markdown(f"<h3 style='text-align:center;'>{user_info['nome']}</h3>", unsafe_allow_html=True)
     
     with st.expander("👤 Meu Perfil"):
+        # Seção de Foto
         up_f = st.file_uploader("Trocar Foto", type=['jpg', 'png'])
-        if st.button("Salvar Foto"):
+        
+        # NOVA SEÇÃO: Alterar Senha
+        st.divider()
+        st.write("**Alterar Senha**")
+        nova_senha_user = st.text_input("Nova Senha", type="password", key="pwd_user")
+        confirma_senha_user = st.text_input("Confirmar Senha", type="password", key="pwd_conf")
+        
+        if st.button("Salvar Perfil"):
+            atualizacoes = {}
+            # Lógica da Foto
             if up_f:
-                db.salvar_usuario(user_id, {'foto': processar_foto(up_f)})
-                st.success("Foto atualizada!"); st.rerun()
+                atualizacoes['foto'] = processar_foto(up_f)
+            
+            # Lógica da Senha
+            if nova_senha_user:
+                if nova_senha_user == confirma_senha_user:
+                    atualizacoes['senha'] = nova_senha_user
+                else:
+                    st.error("As senhas não coincidem.")
+                    st.stop()
+            
+            if atualizacoes:
+                db.salvar_usuario(user_id, atualizacoes)
+                st.success("Dados atualizados!"); st.rerun()
 
     st.divider()
     if st.button("🚪 Sair", use_container_width=True):
         st.session_state.autenticado = False
         st.rerun()
 
-# --- NAVEGAÇÃO ---
+# --- NAVEGAÇÃO AJUSTADA ---
 modulos_permitidos = user_info.get('modulos', [])
-# Mapa corrigido conforme erro da imagem 1 e removendo a aba "Cartas" vazia
+# Mapa corrigido e sem a aba "Cartas" vazia
 mapa_modulos = {
     "🏗️ Manutenção": "manutencao", 
     "🎯 Processos": "processos", 
@@ -99,7 +120,7 @@ for nome, mid in mapa_modulos.items():
     if is_adm or mid in modulos_permitidos: 
         abas_visiveis.append(nome)
 
-# TRAVA SEGURA: Apenas ADM (is_adm) vê a Central de Comando
+# TRAVA: Apenas ADM vê a Central de Comando
 if is_adm: 
     abas_visiveis.append("⚙️ Central de Comando")
 
@@ -196,6 +217,9 @@ for i, nome_aba in enumerate(abas_visiveis):
                         erole = st.selectbox("Alçada", ["OPERACIONAL", "SUPERVISÃO", "GERENTE", "ADM"], index=["OPERACIONAL", "SUPERVISÃO", "GERENTE", "ADM"].index(einfo.get('role', 'OPERACIONAL')))
                         edept = st.selectbox("Depto", departamentos, index=departamentos.index(einfo['depto']) if einfo['depto'] in departamentos else 0)
                         
+                        # NOVO: Resetar Senha pelo ADM
+                        esenha = st.text_input("Resetar Senha (deixe em branco para não alterar)", type="password")
+                        
                         st.write("**Acessos:**")
                         c1, c2, c3, c4 = st.columns(4)
                         m1 = c1.checkbox("Manutenção", "manutencao" in einfo.get('modulos', []))
@@ -209,5 +233,10 @@ for i, nome_aba in enumerate(abas_visiveis):
                             if m2: mods.append("processos")
                             if m3: mods.append("rh")
                             if m4: mods.append("operacao")
-                            db.salvar_usuario(eid, {"nome": enome, "role": erole, "depto": edept, "modulos": mods})
-                            st.success("Atualizado!"); st.rerun()
+                            
+                            dados_update = {"nome": enome, "role": erole, "depto": edept, "modulos": mods}
+                            if esenha: # Só atualiza a senha se o ADM preencher o campo
+                                dados_update["senha"] = esenha
+                                
+                            db.salvar_usuario(eid, dados_update)
+                            st.success("Usuário atualizado com sucesso!"); st.rerun()
