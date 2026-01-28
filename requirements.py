@@ -1,0 +1,9 @@
+streamlit
+pandas
+st-gsheets-connection
+plotly
+python-docx
+xlsxwriter
+openpyxl
+firebase-admin
+google-cloud-firestore
