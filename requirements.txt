@@ -1,5 +1,7 @@
 streamlit
 pandas
-python-docx
-firebase-admin
+plotly
+xlsxwriter
 openpyxl
+firebase-admin
+python-docx
