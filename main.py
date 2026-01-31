@@ -4,6 +4,17 @@ import pandas as pd
 import base64
 from datetime import datetime
 
+# =========================================================
+# 0. DICIONÁRIO MESTRE DE MÓDULOS (ADICIONE NOVOS AQUI)
+# =========================================================
+MAPA_MODULOS_MESTRE = {
+    "🏗️ Manutenção": "manutencao",
+    "🎯 Processos": "processos",
+    "📄 RH Docs": "rh",
+    "📊 Operação": "operacao"
+    # "🎧 Atendimento CX": "cx" <-- Exemplo de como adicionar novos futuramente
+}
+
 # 1. CONFIGURAÇÃO DA PÁGINA
 st.set_page_config(page_title="Hub King Star | Master", layout="wide", page_icon="👑")
 
@@ -73,10 +84,7 @@ with st.sidebar:
     st.markdown(f"<h3 style='text-align:center;'>{user_info['nome']}</h3>", unsafe_allow_html=True)
     
     with st.expander("👤 Meu Perfil"):
-        # Seção de Foto
         up_f = st.file_uploader("Trocar Foto", type=['jpg', 'png'])
-        
-        # NOVA SEÇÃO: Alterar Senha
         st.divider()
         st.write("**Alterar Senha**")
         nova_senha_user = st.text_input("Nova Senha", type="password", key="pwd_user")
@@ -84,11 +92,8 @@ with st.sidebar:
         
         if st.button("Salvar Perfil"):
             atualizacoes = {}
-            # Lógica da Foto
             if up_f:
                 atualizacoes['foto'] = processar_foto(up_f)
-            
-            # Lógica da Senha
             if nova_senha_user:
                 if nova_senha_user == confirma_senha_user:
                     atualizacoes['senha'] = nova_senha_user
@@ -107,20 +112,12 @@ with st.sidebar:
 
 # --- NAVEGAÇÃO AJUSTADA ---
 modulos_permitidos = user_info.get('modulos', [])
-# Mapa corrigido e sem a aba "Cartas" vazia
-mapa_modulos = {
-    "🏗️ Manutenção": "manutencao", 
-    "🎯 Processos": "processos", 
-    "📄 RH Docs": "rh", 
-    "📊 Operação": "operacao"
-}
 
 abas_visiveis = ["🏠 Home"]
-for nome, mid in mapa_modulos.items():
+for nome, mid in MAPA_MODULOS_MESTRE.items():
     if is_adm or mid in modulos_permitidos: 
         abas_visiveis.append(nome)
 
-# TRAVA: Apenas ADM vê a Central de Comando
 if is_adm: 
     abas_visiveis.append("⚙️ Central de Comando")
 
@@ -161,8 +158,8 @@ for i, nome_aba in enumerate(abas_visiveis):
             mod_cartas.exibir(user_role=user_role)
             
         elif "Operação" in nome_aba:
-            import mod_operacao  # Importa o arquivo novo que criamos
-            mod_operacao.exibir_estoque() # Chama a função que gerencia o Firebase
+            import mod_operacao 
+            mod_operacao.exibir_estoque() 
         
         elif "Central de Comando" in nome_aba and is_adm:
             st.title("⚙️ Painel de Governança")
@@ -203,11 +200,16 @@ for i, nome_aba in enumerate(abas_visiveis):
                                 col_f, col_t, col_b = st.columns([1, 4, 2])
                                 f_u = info.get('foto') or "https://cdn-icons-png.flaticon.com/512/149/149071.png"
                                 col_f.markdown(f'<img src="{f_u}" style="width:45px; height:45px; border-radius:50%; object-fit:cover;">', unsafe_allow_html=True)
+                                
+                                # Mostra módulos ativos no resumo
+                                mods_u = info.get('modulos', [])
                                 col_t.write(f"**{info['nome']}** ({info.get('role')})")
+                                col_t.caption(f"Acessos: {', '.join(mods_u) if mods_u else 'Nenhum'}")
                                 
                                 c_ed, c_de = col_b.columns(2)
                                 if c_ed.button("✏️", key=f"e_{uid}"):
                                     st.session_state.edit_id = uid
+                                    st.rerun()
                                 if c_de.button("🗑️", key=f"d_{uid}"):
                                     db.deletar_usuario(uid); st.rerun()
 
@@ -215,32 +217,35 @@ for i, nome_aba in enumerate(abas_visiveis):
                     eid = st.session_state.edit_id
                     einfo = usuarios[eid]
                     st.divider()
-                    st.subheader(f"Editando: {einfo['nome']}")
+                    st.subheader(f"Editando Acessos: {einfo['nome']}")
                     with st.container(border=True):
-                        enome = st.text_input("Nome", einfo['nome'])
-                        erole = st.selectbox("Alçada", ["OPERACIONAL", "SUPERVISÃO", "GERENTE", "ADM"], index=["OPERACIONAL", "SUPERVISÃO", "GERENTE", "ADM"].index(einfo.get('role', 'OPERACIONAL')))
-                        edept = st.selectbox("Depto", departamentos, index=departamentos.index(einfo['depto']) if einfo['depto'] in departamentos else 0)
+                        c_edit1, c_edit2 = st.columns(2)
+                        enome = c_edit1.text_input("Nome", einfo['nome'])
+                        erole = c_edit1.selectbox("Alçada", ["OPERACIONAL", "SUPERVISÃO", "GERENTE", "ADM"], index=["OPERACIONAL", "SUPERVISÃO", "GERENTE", "ADM"].index(einfo.get('role', 'OPERACIONAL')))
+                        edept = c_edit2.selectbox("Depto", departamentos, index=departamentos.index(einfo['depto']) if einfo['depto'] in departamentos else 0)
+                        esenha = c_edit2.text_input("Resetar Senha (em branco para não alterar)", type="password")
                         
-                        # NOVO: Resetar Senha pelo ADM
-                        esenha = st.text_input("Resetar Senha (deixe em branco para não alterar)", type="password")
+                        st.write("**Módulos de Função Liberados:**")
+                        acessos_atuais = einfo.get('modulos', [])
                         
-                        st.write("**Acessos:**")
-                        c1, c2, c3, c4 = st.columns(4)
-                        m1 = c1.checkbox("Manutenção", "manutencao" in einfo.get('modulos', []))
-                        m2 = c2.checkbox("Processos", "processos" in einfo.get('modulos', []))
-                        m3 = c3.checkbox("RH Docs", "rh" in einfo.get('modulos', []))
-                        m4 = c4.checkbox("Operação", "operacao" in einfo.get('modulos', []))
+                        # Checkboxes dinâmicos baseados no MAPA_MODULOS_MESTRE
+                        cols_chk = st.columns(3)
+                        novos_mods = []
+                        for idx_m, (nome_exibicao, id_interno) in enumerate(MAPA_MODULOS_MESTRE.items()):
+                            if cols_chk[idx_m % 3].checkbox(nome_exibicao, value=(id_interno in acessos_atuais), key=f"chk_{id_interno}_{eid}"):
+                                novos_mods.append(id_interno)
 
-                        if st.button("Salvar Alterações"):
-                            mods = []
-                            if m1: mods.append("manutencao")
-                            if m2: mods.append("processos")
-                            if m3: mods.append("rh")
-                            if m4: mods.append("operacao")
-                            
-                            dados_update = {"nome": enome, "role": erole, "depto": edept, "modulos": mods}
-                            if esenha: # Só atualiza a senha se o ADM preencher o campo
+                        if st.button("Salvar Alterações de Acesso", type="primary"):
+                            dados_update = {
+                                "nome": enome, 
+                                "role": erole, 
+                                "depto": edept, 
+                                "modulos": novos_mods
+                            }
+                            if esenha:
                                 dados_update["senha"] = esenha
                                 
                             db.salvar_usuario(eid, dados_update)
-                            st.success("Usuário atualizado com sucesso!"); st.rerun()
+                            st.success("Dados salvos com sucesso!")
+                            del st.session_state.edit_id
+                            st.rerun()
