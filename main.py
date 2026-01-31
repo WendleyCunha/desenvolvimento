@@ -160,6 +160,10 @@ for i, nome_aba in enumerate(abas_visiveis):
             import mod_cartas
             mod_cartas.exibir(user_role=user_role)
             
+        elif "Operação" in nome_aba:
+            import mod_operacao  # Importa o arquivo novo que criamos
+            mod_operacao.exibir_estoque() # Chama a função que gerencia o Firebase
+        
         elif "Central de Comando" in nome_aba and is_adm:
             st.title("⚙️ Painel de Governança")
             menu = st.segmented_control("Menu:", ["👥 Usuários", "➕ Novo", "🏢 Deptos"], default="👥 Usuários")
