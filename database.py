@@ -6,14 +6,24 @@ import json
 # --- CONFIGURAÇÃO INICIAL ---
 
 def inicializar_db():
-    """Inicializa a conexão com o Firestore utilizando as secrets do Streamlit."""
+    """Inicializa a conexão com o Firestore de forma dinâmica usando st.secrets."""
     if "db" not in st.session_state:
         try:
+            # 1. Carrega o dicionário da secret 'textkey'
             key_dict = json.loads(st.secrets["textkey"])
+            
+            # 2. Cria as credenciais
             creds = service_account.Credentials.from_service_account_info(key_dict)
-            st.session_state.db = firestore.Client(credentials=creds, project="bancowendley")
+            
+            # 3. EXTRAÇÃO DINÂMICA: O código lê o 'project_id' de dentro do próprio JSON.
+            # Isso permite usar o mesmo código para 'bancowendley' ou 'wendleydesenvolvimento'.
+            project_id = key_dict.get("project_id")
+            
+            # 4. Inicializa o cliente Firestore sem 'hardcoded' strings
+            st.session_state.db = firestore.Client(credentials=creds, project=project_id)
+            
         except Exception as e:
-            st.error(f"Erro no Firebase: {e}")
+            st.error(f"Erro crítico ao conectar no Firebase: {e}")
             return None
     return st.session_state.db
 
@@ -23,16 +33,19 @@ def carregar_usuarios_firebase():
     db = inicializar_db()
     if not db: return {}
     try:
+        # Busca todos os documentos da coleção 'usuarios'
         users_ref = db.collection("usuarios").stream()
         return {doc.id: doc.to_dict() for doc in users_ref}
-    except: 
+    except Exception as e:
+        st.error(f"Erro ao carregar usuários: {e}")
         return {}
 
 def salvar_usuario(login, dados):
     db = inicializar_db()
     if db:
-        # lower().strip() garante que o ID do documento seja padronizado
-        db.collection("usuarios").document(login.lower().strip()).set(dados, merge=True)
+        # Normaliza o login para minúsculas e remove espaços
+        login_limpo = login.lower().strip()
+        db.collection("usuarios").document(login_limpo).set(dados, merge=True)
 
 def deletar_usuario(login):
     db = inicializar_db()
@@ -43,24 +56,24 @@ def deletar_usuario(login):
 
 def carregar_departamentos():
     db = inicializar_db()
-    if not db: return ["GERAL", "TI", "RH", "OPERAÇÃO"]
+    padrao = ["GERAL", "TI", "RH", "OPERAÇÃO"]
+    if not db: return padrao
     try:
         doc = db.collection("config").document("departamentos").get()
         if doc.exists:
-            return doc.to_dict().get("lista", ["GERAL", "TI", "RH", "OPERAÇÃO"])
-        return ["GERAL", "TI", "RH", "OPERAÇÃO"]
+            return doc.to_dict().get("lista", padrao)
+        return padrao
     except:
-        return ["GERAL", "TI", "RH", "OPERAÇÃO"]
+        return padrao
 
 def salvar_departamentos(lista):
     db = inicializar_db()
     if db:
         db.collection("config").document("departamentos").set({"lista": lista})
 
-# --- GESTÃO DE PROJETOS E PROCESSOS (PQI / LEMBRETES) ---
+# --- GESTÃO DE PROJETOS E PROCESSOS ---
 
 def carregar_projetos():
-    """Carrega a lista de projetos do Firestore para o módulo de processos."""
     db = inicializar_db()
     if not db: return []
     try:
@@ -73,16 +86,14 @@ def carregar_projetos():
         return []
 
 def salvar_projetos(lista_projetos):
-    """Salva a lista completa de projetos no Firestore para persistência."""
     db = inicializar_db()
     if db:
         try:
             db.collection("config").document("projetos_pqi").set({"dados": lista_projetos})
         except Exception as e:
-            st.error(f"Erro crítico ao salvar no banco: {e}")
+            st.error(f"Erro ao salvar projetos: {e}")
 
 def reset_total_projetos():
-    """Limpa todos os projetos do banco de dados (Cuidado!)."""
     db = inicializar_db()
     if db:
         db.collection("config").document("projetos_pqi").set({"dados": []})
