@@ -213,8 +213,9 @@ elif "RH Docs" in escolha:
     import mod_cartas
     mod_cartas.exibir(user_role=user_role)
 elif "Operação" in escolha:
-    import mod_operacao 
-    mod_operacao.exibir_estoque() 
+    import mod_operacao
+    # Chamamos a nova função que gerencia as sub-abas
+    mod_operacao.exibir_operacao_completa()
 elif "Central de Comando" in escolha:
     exibir_central()
 
