@@ -4,13 +4,14 @@ import plotly.express as px
 import plotly.graph_objects as go
 from database import inicializar_db
 from datetime import datetime
+import io
 
 # --- CONFIGURAÇÃO E DADOS ---
 def aplicar_estilo_premium():
     st.markdown("""
         <style>
         .main-card { background: white; padding: 25px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); border-top: 5px solid #002366; margin-bottom: 20px; }
-        .metric-box { background: #f8fafc; padding: 15px; border-radius: 12px; border: 1px solid #e2e8f0; text-align: center; }
+        .metric-box { background: #f8fafc; padding: 15px; border-radius: 12px; border: 1px solid #e2e8f0; text-align: center; height: 100%; }
         .search-box { background: #f1f5f9; padding: 20px; border-radius: 15px; border-left: 5px solid #002366; margin-bottom: 20px; }
         .search-box-rec { background: #f0fdf4; padding: 20px; border-radius: 15px; border-left: 5px solid #16a34a; margin-bottom: 20px; }
         </style>
@@ -25,7 +26,14 @@ def salvar_dados_op(dados):
     fire = inicializar_db()
     fire.collection("config").document("operacao_v2").set(dados)
 
-# --- [NOVA] FUNÇÃO DE TRATATIVA DE RECEBIMENTO ---
+# --- FUNÇÃO AUXILIAR PARA EXCEL ---
+def to_excel(df):
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Relatorio')
+    return output.getvalue()
+
+# --- TRATATIVA DE RECEBIMENTO ---
 def renderizar_tratativa_recebimento(item, index, df_completo, db_data, key_suffix=""):
     st.markdown(f"#### {item['DESCRICAO']}")
     st.caption(f"Cód: {item['CODIGO']} | **Esperado na Encomenda: {item['QTD_SOLICITADA']}**")
@@ -57,7 +65,7 @@ def renderizar_tratativa_recebimento(item, index, df_completo, db_data, key_suff
             del st.session_state[f"show_rec_p_{index}_{key_suffix}"]
             salvar_dados_op(db_data); st.rerun()
 
-# --- TRATATIVA DE COMPRA (MANTIDA) ---
+# --- TRATATIVA DE COMPRA ---
 def renderizar_tratativa_compra(item, index, df_completo, db_data, key_suffix=""):
     st.markdown(f"#### {item['DESCRICAO']}")
     st.caption(f"Cód: {item['CODIGO']} | Lista: {item['QUANTIDADE']}")
@@ -85,23 +93,42 @@ def renderizar_tratativa_compra(item, index, df_completo, db_data, key_suffix=""
             df_completo.at[index, 'SALDO_FISICO'] = saldo; db_data["analises"] = df_completo.to_dict(orient='records')
             del st.session_state[f"show_p_{index}_{key_suffix}"]; salvar_dados_op(db_data); st.rerun()
 
-# --- DASHBOARD ---
+# --- DASHBOARD ATUALIZADO ---
 def renderizar_dashboard(df):
     if df.empty: return
+    
+    # Cálculos solicitados
+    total_itens_lista = len(df)
+    itens_processados = len(df[df['STATUS_COMPRA'] != "Pendente"])
+    itens_encomendados = len(df[df['QTD_SOLICITADA'] > 0])
+    
+    perc_processado = (itens_processados / total_itens_lista * 100) if total_itens_lista > 0 else 0
+    perc_encomendado = (itens_encomendados / total_itens_lista * 100) if total_itens_lista > 0 else 0
+
+    st.subheader("📊 Eficiência de Compras")
+    d1, d2, d3 = st.columns(3)
+    d1.markdown(f"<div class='metric-box'><small>TOTAL NA LISTA</small><h3>{total_itens_lista} itens</h3></div>", unsafe_allow_html=True)
+    d2.markdown(f"<div class='metric-box'><small>SUBIU P/ COMPRA (PROCESSADO)</small><h3>{itens_processados} ({perc_processado:.1f}%)</h3></div>", unsafe_allow_html=True)
+    d3.markdown(f"<div class='metric-box'><small>EFETIVAMENTE ENCOMENDADO</small><h3 style='color:#002366;'>{itens_encomendados} ({perc_encomendado:.1f}%)</h3></div>", unsafe_allow_html=True)
+    
+    st.divider()
+
     m1, m2, m3, m4 = st.columns(4)
-    total_lista = df['QUANTIDADE'].sum()
-    total_encomendado = df['QTD_SOLICITADA'].sum()
-    total_recebido = df['QTD_RECEBIDA'].sum()
+    total_qtd_lista = df['QUANTIDADE'].sum()
+    total_qtd_encomendada = df['QTD_SOLICITADA'].sum()
+    total_qtd_recebida = df['QTD_RECEBIDA'].sum()
     total_estoque = df['SALDO_FISICO'].sum()
-    m1.markdown(f"<div class='metric-box'><small>EM LISTA</small><h3>{total_lista}</h3></div>", unsafe_allow_html=True)
-    m2.markdown(f"<div class='metric-box'><small>SALDO FÍSICO</small><h3>{total_estoque}</h3></div>", unsafe_allow_html=True)
-    m3.markdown(f"<div class='metric-box'><small>ENCOMENDADO</small><h3 style='color:#002366;'>{total_encomendado}</h3></div>", unsafe_allow_html=True)
-    m4.markdown(f"<div class='metric-box'><small>RECEBIDO</small><h3 style='color:#16a34a;'>{total_recebido}</h3></div>", unsafe_allow_html=True)
+    
+    m1.markdown(f"<div class='metric-box'><small>QTD TOTAL LISTA</small><h3>{total_qtd_lista}</h3></div>", unsafe_allow_html=True)
+    m2.markdown(f"<div class='metric-box'><small>SALDO ESTOQUE</small><h3>{total_estoque}</h3></div>", unsafe_allow_html=True)
+    m3.markdown(f"<div class='metric-box'><small>QTD ENCOMENDADA</small><h3 style='color:#002366;'>{total_qtd_encomendada}</h3></div>", unsafe_allow_html=True)
+    m4.markdown(f"<div class='metric-box'><small>QTD RECEBIDA</small><h3 style='color:#16a34a;'>{total_qtd_recebida}</h3></div>", unsafe_allow_html=True)
+    
     fig = go.Figure()
     fig.add_trace(go.Bar(x=df['CODIGO'][:15], y=df['QUANTIDADE'][:15], name='Lista', marker_color='#cbd5e1'))
     fig.add_trace(go.Bar(x=df['CODIGO'][:15], y=df['QTD_SOLICITADA'][:15], name='Encomendado', marker_color='#002366'))
     fig.add_trace(go.Bar(x=df['CODIGO'][:15], y=df['QTD_RECEBIDA'][:15], name='Recebido', marker_color='#16a34a'))
-    fig.update_layout(barmode='group', title="Confronto Operacional", height=400)
+    fig.update_layout(barmode='group', title="Confronto Operacional (Top 15 Itens)", height=400)
     st.plotly_chart(fig, use_container_width=True)
 
 # --- EXIBIÇÃO PRINCIPAL ---
@@ -120,17 +147,25 @@ def exibir_operacao_completa(user_role):
                 df_up['SALDO_FISICO'] = 0; df_up['QTD_RECEBIDA'] = 0; df_up['STATUS_RECEB'] = "Aguardando"
                 db_data["analises"] = df_up.to_dict(orient='records'); salvar_dados_op(db_data); st.rerun()
             return
+        
         df_c = pd.DataFrame(db_data["analises"])
+        
+        # Botão de Exportar Compra
+        c_exp1, c_exp2 = st.columns([8, 2])
+        c_exp2.download_button("📥 Exportar Compras", data=to_excel(df_c), file_name=f"conferencia_compras_{datetime.now().strftime('%d_%m_%H%M')}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
         st.markdown('<div class="search-box">', unsafe_allow_html=True)
         q = st.text_input("🔍 Localizar Item na Compra (Cód/Desc):").upper()
         if q:
-            it_b = df_c[df_c['CODIGO'].str.contains(q) | df_c['DESCRICAO'].str.contains(q)]
+            it_b = df_c[df_c['CODIGO'].astype(str).str.contains(q) | df_c['DESCRICAO'].astype(str).str.contains(q)]
             for i, r in it_b.iterrows():
                 with st.container(border=True): renderizar_tratativa_compra(r, i, df_c, db_data, "busca_c")
         st.markdown('</div>', unsafe_allow_html=True)
+        
         idx_s = db_data.get("idx_solic", 0)
         while idx_s < len(df_c) and df_c.iloc[idx_s]['STATUS_COMPRA'] != "Pendente": idx_s += 1
         db_data["idx_solic"] = idx_s
+        
         if idx_s < len(df_c):
             st.subheader(f"🚀 Esteira Compra ({idx_s + 1}/{len(df_c)})")
             with st.container():
@@ -138,16 +173,18 @@ def exibir_operacao_completa(user_role):
                 renderizar_tratativa_compra(df_c.iloc[idx_s], idx_s, df_c, db_data, "esteira_c")
                 st.markdown("</div>", unsafe_allow_html=True)
 
-    # --- ABA 2: RECEBIMENTO (COM BUSCA IDÊNTICA) ---
+    # --- ABA 2: RECEBIMENTO ---
     with tab2:
         df_r = pd.DataFrame(db_data["analises"])
         
-        # 1. BUSCA IDENTICA NO RECEBIMENTO
+        # Botão de Exportar Recebimento
+        r_exp1, r_exp2 = st.columns([8, 2])
+        r_exp2.download_button("📥 Exportar Recebimento", data=to_excel(df_r), file_name=f"conferencia_recebimento_{datetime.now().strftime('%d_%m_%H%M')}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
         st.markdown('<div class="search-box-rec">', unsafe_allow_html=True)
         q_rec = st.text_input("🔍 Localizar Item no Recebimento (Cód/Desc):").upper()
         if q_rec:
-            # Filtra apenas itens que foram ENCOMENDADOS (Qtd_Solicitada > 0)
-            it_b_rec = df_r[(df_r['QTD_SOLICITADA'] > 0) & (df_r['CODIGO'].str.contains(q_rec) | df_r['DESCRICAO'].str.contains(q_rec))]
+            it_b_rec = df_r[(df_r['QTD_SOLICITADA'] > 0) & (df_r['CODIGO'].astype(str).str.contains(q_rec) | df_r['DESCRICAO'].astype(str).str.contains(q_rec))]
             if it_b_rec.empty:
                 st.warning("Nenhum item encomendado encontrado com esse termo.")
             for i, r in it_b_rec.iterrows():
@@ -155,11 +192,9 @@ def exibir_operacao_completa(user_role):
                     renderizar_tratativa_recebimento(r, i, df_r, db_data, "busca_r")
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # 2. ESTEIRA DE RECEBIMENTO
         pendentes_rec = df_r[(df_r['QTD_SOLICITADA'] > 0) & (df_r['STATUS_RECEB'] == "Aguardando")].reset_index()
         if not pendentes_rec.empty:
             idx_r = db_data.get("idx_receb", 0)
-            # Ajuste caso o índice se perca após uma busca
             if idx_r >= len(pendentes_rec): idx_r = 0 
             
             st.subheader(f"📥 Esteira Recebimento ({idx_r + 1}/{len(pendentes_rec)})")
@@ -175,5 +210,6 @@ def exibir_operacao_completa(user_role):
     # --- ABA 3: DASHBOARD ---
     with tab3:
         renderizar_dashboard(pd.DataFrame(db_data["analises"]))
+        st.divider()
         if st.button("🗑️ RESETAR SISTEMA (Novo Lote)"):
             salvar_dados_op({"analises": [], "idx_solic": 0, "idx_receb": 0}); st.rerun()
