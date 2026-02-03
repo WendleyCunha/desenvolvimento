@@ -204,9 +204,13 @@ elif "RH Docs" in escolha:
     import mod_cartas
     mod_cartas.exibir(user_role=user_role)
 elif "Operação" in escolha:
-    import mod_operacao
-    # Passamos o user_role para o módulo de operação
-    mod_operacao.exibir_operacao_completa(user_role=user_role)
+    # Para testar o novo arquivo mod_operacao2.py sem apagar o original:
+    try:
+        import mod_operacao2 
+        mod_operacao2.exibir_operacao_completa(user_role=user_role)
+    except ImportError:
+        import mod_operacao
+        mod_operacao.exibir_operacao_completa(user_role=user_role)
 elif "Central de Comando" in escolha:
     exibir_central()
 
