@@ -3,7 +3,7 @@ import database as db
 import pandas as pd
 import base64
 from datetime import datetime
-from streamlit_option_menu import option_menu  # Certifique-se de instalar: pip install streamlit-option-menu
+from streamlit_option_menu import option_menu
 
 # =========================================================
 # 0. CONFIGURAÇÕES E MAPAS
@@ -17,7 +17,6 @@ MAPA_MODULOS_MESTRE = {
     "📊 Operação": "operacao"
 }
 
-# Mapeamento de ícones para o menu (Bootstrap Icons)
 ICON_MAP = {
     "🏠 Home": "house",
     "🏗️ Manutenção": "tools",
@@ -89,15 +88,13 @@ is_adm = user_role == "ADM"
 modulos_permitidos = user_info.get('modulos', [])
 
 # =========================================================
-# 3. SIDEBAR E NAVEGAÇÃO (O UPGRADE)
+# 3. SIDEBAR E NAVEGAÇÃO
 # =========================================================
 with st.sidebar:
-    # Perfil do Usuário
     foto_atual = user_info.get('foto') or "https://cdn-icons-png.flaticon.com/512/149/149071.png"
     st.markdown(f'<img src="{foto_atual}" class="profile-pic">', unsafe_allow_html=True)
     st.markdown(f"<p style='text-align:center; font-weight:bold; margin-bottom:20px;'>{user_info['nome']}</p>", unsafe_allow_html=True)
     
-    # Montagem dinâmica do Menu
     menu_options = ["🏠 Home"]
     for nome, mid in MAPA_MODULOS_MESTRE.items():
         if is_adm or mid in modulos_permitidos:
@@ -106,9 +103,8 @@ with st.sidebar:
     if is_adm:
         menu_options.append("⚙️ Central de Comando")
 
-    # Componente de Menu Profissional
     escolha = option_menu(
-        None, # Título do menu
+        None, 
         menu_options,
         icons=[ICON_MAP.get(opt, "circle") for opt in menu_options],
         menu_icon="cast", 
@@ -121,9 +117,6 @@ with st.sidebar:
         }
     )
 
-    st.spacer = st.markdown("<br>" * 5, unsafe_allow_html=True)
-    
-    # Expander de Perfil (Mantido igual)
     with st.expander("👤 Meu Perfil"):
         up_f = st.file_uploader("Trocar Foto", type=['jpg', 'png'])
         nova_senha_user = st.text_input("Nova Senha", type="password")
@@ -142,9 +135,8 @@ with st.sidebar:
         st.rerun()
 
 # =========================================================
-# 4. ROTEAMENTO DE CONTEÚDO (CONTEÚDO DAS ABAS AGORA AQUI)
+# 4. FUNÇÕES DE ROTEAMENTO
 # =========================================================
-
 def exibir_home():
     st.title(f"Olá, {user_info['nome']}! 👋")
     st.subheader("📌 Lembretes de Processos (PQI)")
@@ -163,8 +155,7 @@ def exibir_home():
 def exibir_central():
     st.title("⚙️ Painel de Governança")
     menu = st.segmented_control("Menu:", ["👥 Usuários", "➕ Novo", "🏢 Deptos"], default="👥 Usuários")
-    # ... (Todo o seu código original da Central de Comando entra aqui) ...
-    # Para brevidade, mantive a lógica de abas de departamento que você já tinha:
+    
     if menu == "➕ Novo":
         with st.form("f_novo"):
             c1, c2 = st.columns(2)
@@ -203,7 +194,7 @@ def exibir_central():
                         if c_ed.button("✏️", key=f"e_{uid}"): st.session_state.edit_id = uid; st.rerun()
                         if c_de.button("🗑️", key=f"d_{uid}"): db.deletar_usuario(uid); st.rerun()
 
-# Lógica de Renderização Principal
+# Roteamento Principal
 if escolha == "🏠 Home":
     exibir_home()
 elif "Processos" in escolha:
@@ -214,12 +205,12 @@ elif "RH Docs" in escolha:
     mod_cartas.exibir(user_role=user_role)
 elif "Operação" in escolha:
     import mod_operacao
-    # Chamamos a nova função que gerencia as sub-abas
-    mod_operacao.exibir_operacao_completa()
+    # AJUSTE: Passamos o user_role para manter a integridade das permissões
+    mod_operacao.exibir_operacao_completa(user_role=user_role)
 elif "Central de Comando" in escolha:
     exibir_central()
 
-# Lógica de Edição (Mantida fora das funções para facilitar o rerun)
+# Lógica de Edição (Central de Comando)
 if "edit_id" in st.session_state and escolha == "⚙️ Central de Comando":
     eid = st.session_state.edit_id
     einfo = usuarios[eid]
@@ -230,9 +221,9 @@ if "edit_id" in st.session_state and escolha == "⚙️ Central de Comando":
         enome = c_edit1.text_input("Nome", einfo['nome'])
         erole = c_edit1.selectbox("Alçada", ["OPERACIONAL", "SUPERVISÃO", "GERENTE", "ADM"], index=["OPERACIONAL", "SUPERVISÃO", "GERENTE", "ADM"].index(einfo.get('role', 'OPERACIONAL')))
         edept = c_edit2.selectbox("Depto", departamentos, index=departamentos.index(einfo['depto']) if einfo['depto'] in departamentos else 0)
-        esenha = c_edit2.text_input("Resetar Senha (vazio para não alterar)", type="password")
+        esenha = c_edit2.text_input("Resetar Senha", type="password")
         
-        st.write("**Módulos de Função Liberados:**")
+        st.write("**Módulos Liberados:**")
         acessos_atuais = einfo.get('modulos', [])
         cols_chk = st.columns(3)
         novos_mods = []
@@ -240,7 +231,7 @@ if "edit_id" in st.session_state and escolha == "⚙️ Central de Comando":
             if cols_chk[idx_m % 3].checkbox(nome_exibicao, value=(id_interno in acessos_atuais), key=f"chk_{id_interno}_{eid}"):
                 novos_mods.append(id_interno)
 
-        if st.button("Salvar Alterações de Acesso", type="primary"):
+        if st.button("Salvar Alterações"):
             dados_update = {"nome": enome, "role": erole, "depto": edept, "modulos": novos_mods}
             if esenha: dados_update["senha"] = esenha
             db.salvar_usuario(eid, dados_update)
