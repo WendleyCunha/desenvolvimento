@@ -135,7 +135,7 @@ with st.sidebar:
         st.rerun()
 
 # =========================================================
-# 4. FUNÇÕES DE ROTEAMENTO
+# 4. ROTEAMENTO DE CONTEÚDO
 # =========================================================
 def exibir_home():
     st.title(f"Olá, {user_info['nome']}! 👋")
@@ -194,7 +194,7 @@ def exibir_central():
                         if c_ed.button("✏️", key=f"e_{uid}"): st.session_state.edit_id = uid; st.rerun()
                         if c_de.button("🗑️", key=f"d_{uid}"): db.deletar_usuario(uid); st.rerun()
 
-# Roteamento Principal
+# --- LÓGICA DE EXECUÇÃO ---
 if escolha == "🏠 Home":
     exibir_home()
 elif "Processos" in escolha:
@@ -205,12 +205,12 @@ elif "RH Docs" in escolha:
     mod_cartas.exibir(user_role=user_role)
 elif "Operação" in escolha:
     import mod_operacao
-    # AJUSTE: Passamos o user_role para manter a integridade das permissões
+    # Passamos o user_role para o módulo de operação
     mod_operacao.exibir_operacao_completa(user_role=user_role)
 elif "Central de Comando" in escolha:
     exibir_central()
 
-# Lógica de Edição (Central de Comando)
+# Lógica de Edição (Edit_id)
 if "edit_id" in st.session_state and escolha == "⚙️ Central de Comando":
     eid = st.session_state.edit_id
     einfo = usuarios[eid]
@@ -223,7 +223,7 @@ if "edit_id" in st.session_state and escolha == "⚙️ Central de Comando":
         edept = c_edit2.selectbox("Depto", departamentos, index=departamentos.index(einfo['depto']) if einfo['depto'] in departamentos else 0)
         esenha = c_edit2.text_input("Resetar Senha", type="password")
         
-        st.write("**Módulos Liberados:**")
+        st.write("**Módulos de Função Liberados:**")
         acessos_atuais = einfo.get('modulos', [])
         cols_chk = st.columns(3)
         novos_mods = []
@@ -231,7 +231,7 @@ if "edit_id" in st.session_state and escolha == "⚙️ Central de Comando":
             if cols_chk[idx_m % 3].checkbox(nome_exibicao, value=(id_interno in acessos_atuais), key=f"chk_{id_interno}_{eid}"):
                 novos_mods.append(id_interno)
 
-        if st.button("Salvar Alterações"):
+        if st.button("Salvar Alterações de Acesso", type="primary"):
             dados_update = {"nome": enome, "role": erole, "depto": edept, "modulos": novos_mods}
             if esenha: dados_update["senha"] = esenha
             db.salvar_usuario(eid, dados_update)
