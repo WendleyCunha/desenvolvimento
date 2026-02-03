@@ -33,6 +33,7 @@ def to_excel(df):
 # =========================================================
 def renderizar_tratativa_compra(item, index, df_completo, db_data, mes_ref, key_suffix=""):
     st.markdown(f"#### {item['DESCRICAO']}")
+    # Uso de .get() para evitar KeyError caso a coluna TIPO não exista em registros antigos
     tipo = "🆕 NOVO" if item.get('TIPO') == 'NOVO_DIRETORIA' else "📦 LISTA"
     st.caption(f"{tipo} | Cód: {item['CODIGO']} | Qtd: {item['QUANTIDADE']}")
     
@@ -76,7 +77,6 @@ def renderizar_tratativa_recebimento(item, index, df_completo, db_data, mes_ref,
         df_completo.at[index, 'QTD_RECEBIDA'] = item['QTD_SOLICITADA']
         db_data["analises"] = df_completo.to_dict(orient='records')
         salvar_dados_op(db_data, mes_ref); st.rerun()
-    # (Lógica resumida para brevidade, mas integrada ao mes_ref)
 
 # =========================================================
 # 3. DASHBOARDS
@@ -136,11 +136,19 @@ def exibir_operacao_completa(user_role):
                         renderizar_tratativa_compra(r, i, df_c, db_data, mes_selecionado, "busca")
             
             idx_s = db_data.get("idx_solic", 0)
+            # Avança o índice se o item já foi processado
+            while idx_s < len(df_c) and df_c.iloc[idx_s]['STATUS_COMPRA'] != "Pendente":
+                idx_s += 1
+            
+            db_data["idx_solic"] = idx_s
+            
             if idx_s < len(df_c):
                 st.subheader(f"🚀 Esteira de Compra ({idx_s + 1}/{len(df_c)})")
                 with st.markdown("<div class='main-card'>", unsafe_allow_html=True):
                     renderizar_tratativa_compra(df_c.iloc[idx_s], idx_s, df_c, db_data, mes_selecionado, "esteira")
                     st.markdown("</div>", unsafe_allow_html=True)
+            else:
+                st.success("✅ Todos os itens deste mês foram processados!")
 
     with tab_novo:
         st.subheader("➕ Novo Item para Projeção")
@@ -150,11 +158,14 @@ def exibir_operacao_completa(user_role):
             n_desc = c2.text_input("Descrição").upper()
             n_qtd = c3.number_input("Qtd", min_value=1)
             if st.form_submit_button("Adicionar Item"):
-                novo = {"CODIGO": n_cod, "DESCRICAO": n_desc, "QUANTIDADE": n_qtd, "TIPO": "NOVO_DIRETORIA", 
-                        "STATUS_COMPRA": "Pendente", "STATUS_RECEB": "Pendente", "QTD_SOLICITADA": 0, "SALDO_FISICO": 0, "QTD_RECEBIDA": 0}
-                db_data["analises"].append(novo)
-                salvar_dados_op(db_data, mes_selecionado)
-                st.success("Item adicionado!"); st.rerun()
+                if n_cod and n_desc:
+                    novo = {"CODIGO": n_cod, "DESCRICAO": n_desc, "QUANTIDADE": n_qtd, "TIPO": "NOVO_DIRETORIA", 
+                            "STATUS_COMPRA": "Pendente", "STATUS_RECEB": "Pendente", "QTD_SOLICITADA": 0, "SALDO_FISICO": 0, "QTD_RECEBIDA": 0}
+                    db_data["analises"].append(novo)
+                    salvar_dados_op(db_data, mes_selecionado)
+                    st.success("Item adicionado!"); st.rerun()
+                else:
+                    st.error("Preencha Código e Descrição.")
 
     with tab_config:
         st.subheader("⚙️ Configurações de Dados")
@@ -165,9 +176,13 @@ def exibir_operacao_completa(user_role):
                 df_up = pd.read_excel(up)
                 for col in ['STATUS_COMPRA', 'QTD_SOLICITADA', 'SALDO_FISICO', 'QTD_RECEBIDA', 'STATUS_RECEB']:
                     df_up[col] = "Pendente" if "STATUS" in col else 0
+                # Adiciona a coluna TIPO por padrão na importação para evitar KeyError
+                df_up['TIPO'] = 'LISTA_ESTOQUE'
                 db_data["analises"] = df_up.to_dict(orient='records')
+                db_data["idx_solic"] = 0
+                db_data["idx_receb"] = 0
                 salvar_dados_op(db_data, mes_selecionado)
-                st.success("Importado!"); st.rerun()
+                st.success("Importado com sucesso!"); st.rerun()
         with c_res:
             if st.button("🗑️ RESETAR ESTE MÊS"):
                 salvar_dados_op({"analises": [], "idx_solic": 0, "idx_receb": 0}, mes_selecionado)
@@ -175,8 +190,13 @@ def exibir_operacao_completa(user_role):
 
     with tab_dash:
         df_dash = pd.DataFrame(db_data.get("analises", []))
-        renderizar_dashboards(df_dash)
-        novos = df_dash[df_dash.get('TIPO') == 'NOVO_DIRETORIA']
-        if not novos.empty:
-            with st.expander("📋 Itens Novos para Diretoria"):
-                st.table(novos[['CODIGO', 'DESCRICAO', 'QUANTIDADE']])
+        if not df_dash.empty:
+            renderizar_dashboards(df_dash)
+            # Filtro seguro para evitar KeyError caso a coluna TIPO falte em dados legados
+            if 'TIPO' in df_dash.columns:
+                novos = df_dash[df_dash['TIPO'] == 'NOVO_DIRETORIA']
+                if not novos.empty:
+                    with st.expander("📋 Itens Novos para Diretoria"):
+                        st.table(novos[['CODIGO', 'DESCRICAO', 'QUANTIDADE']])
+        else:
+            st.info("Aguardando dados para exibir o Dashboard.")
