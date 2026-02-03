@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 from database import inicializar_db  
 
-# --- FUNÇÕES DE DADOS (MANTIDAS) ---
+# --- FUNÇÕES DE DADOS ---
 def carregar_estoque_firebase():
     db = inicializar_db()
     if not db: return {"analises": [], "idx_atual": 0}
@@ -19,7 +19,7 @@ def salvar_estoque_firebase(dados):
     if db:
         db.collection("config").document("operacao_armazem").set(dados)
 
-# --- ABA 1: ANALISE DE COMPRAS (Seu código original) ---
+# --- ABA 1: ANALISE DE COMPRAS ---
 def aba_analise_compras():
     db_data = carregar_estoque_firebase()
     
@@ -77,7 +77,7 @@ def aba_analise_compras():
 
     with t_dash:
         k1, k2, k3 = st.columns(3)
-        analisados = len(df[df['ANALISADO'] == True])
+        analisados = len(df[df['ANALISADO'] == True]) if 'ANALISADO' in df.columns else 0
         k1.markdown(f'<div class="metric-card"><h4>Total</h4><h2>{len(df)}</h2></div>', unsafe_allow_html=True)
         k2.markdown(f'<div class="metric-card"><h4>Analisados</h4><h2>{analisados}</h2></div>', unsafe_allow_html=True)
         k3.markdown(f'<div class="metric-card"><h4>Pendentes</h4><h2>{len(df) - analisados}</h2></div>', unsafe_allow_html=True)
@@ -88,11 +88,10 @@ def aba_analise_compras():
     with t_rel:
         st.dataframe(df[['CODIGO', 'DESCRICAO', 'SOLICITADO', 'STATUS', 'QTD_COMPRADA']], use_container_width=True)
 
-# --- FUNÇÃO PRINCIPAL QUE O MAIN.PY CHAMA ---
-def exibir_operacao_completa():
+# --- FUNÇÃO PRINCIPAL ---
+def exibir_operacao_completa(user_role):
     st.title("📊 Gestão Operacional")
     
-    # Criamos as sub-abas aqui
     sub_aba = st.segmented_control(
         "Selecione a área:", 
         ["🛒 Analise Compras", "🎧 Atendimento", "🎫 Chamados", "💬 Chat Interno"],
@@ -106,7 +105,6 @@ def exibir_operacao_completa():
     
     elif sub_aba == "🎧 Atendimento":
         st.info("Área de Atendimento em desenvolvimento...")
-        # Aqui você pode chamar outra função futuramente
         
     elif sub_aba == "🎫 Chamados":
         st.info("Gestão de Chamados em desenvolvimento...")
