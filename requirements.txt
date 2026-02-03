@@ -6,3 +6,4 @@ openpyxl
 firebase-admin
 python-docx
 streamlit-option-menu
+fpdf2
