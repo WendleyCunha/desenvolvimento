@@ -95,41 +95,72 @@ def renderizar_tratativa_compra(item, index, df_completo, db_data, key_suffix=""
 
 # --- DASHBOARD ATUALIZADO ---
 def renderizar_dashboard(df):
-    if df.empty: return
+    if df.empty: 
+        st.warning("Nenhum dado disponível para análise.")
+        return
     
-    # Cálculos solicitados
-    total_itens_lista = len(df)
-    itens_processados = len(df[df['STATUS_COMPRA'] != "Pendente"])
-    itens_encomendados = len(df[df['QTD_SOLICITADA'] > 0])
-    
-    perc_processado = (itens_processados / total_itens_lista * 100) if total_itens_lista > 0 else 0
-    perc_encomendado = (itens_encomendados / total_itens_lista * 100) if total_itens_lista > 0 else 0
+    # 1. Integridade: Itens Processados (Conferência 100%)
+    total_itens = len(df)
+    itens_conferidos = len(df[df['STATUS_COMPRA'] != "Pendente"])
+    perc_conferencia = (itens_conferidos / total_itens * 100)
 
-    st.subheader("📊 Eficiência de Compras")
-    d1, d2, d3 = st.columns(3)
-    d1.markdown(f"<div class='metric-box'><small>TOTAL NA LISTA</small><h3>{total_itens_lista} itens</h3></div>", unsafe_allow_html=True)
-    d2.markdown(f"<div class='metric-box'><small>SUBIU P/ COMPRA (PROCESSADO)</small><h3>{itens_processados} ({perc_processado:.1f}%)</h3></div>", unsafe_allow_html=True)
-    d3.markdown(f"<div class='metric-box'><small>EFETIVAMENTE ENCOMENDADO</small><h3 style='color:#002366;'>{itens_encomendados} ({perc_encomendado:.1f}%)</h3></div>", unsafe_allow_html=True)
+    # 2. Conversão: Compra Efetuada vs Parcial vs Não Comprado
+    # Consideramos "Compra Efetuada" como Status Total ou Parcial
+    compras_efetuadas = len(df[df['STATUS_COMPRA'].isin(['Total', 'Parcial'])])
+    perc_compra_efetiva = (compras_efetuadas / total_itens * 100)
     
+    # 3. Análise de Estoque (Faz sentido não ter comprado?)
+    # Itens "Zerados" na compra, mas que possuem Saldo Físico > 0
+    nao_comprado_com_estoque = len(df[(df['STATUS_COMPRA'] == 'Zerado') & (df['SALDO_FISICO'] > 0)])
+
+    st.subheader("📊 Relatório de Performance de Compras")
+    
+    # KPIs Principais
+    k1, k2, k3 = st.columns(3)
+    k1.markdown(f"<div class='metric-box'><small>CONFERÊNCIA (LOGÍSTICA)</small><h3>{itens_conferidos}/{total_itens} ({perc_conferencia:.1f}%)</h3></div>", unsafe_allow_html=True)
+    k2.markdown(f"<div class='metric-box'><small>COMPRAS EFETUADAS</small><h3 style='color:#002366;'>{compras_efetuadas} Itens ({perc_compra_efetiva:.1f}%)</h3></div>", unsafe_allow_html=True)
+    k3.markdown(f"<div class='metric-box'><small>ZERADOS COM ESTOQUE</small><h3 style='color:#16a34a;'>{nao_comprado_com_estoque} Itens</h3><small>Não requer compra</small></div>", unsafe_allow_html=True)
+
     st.divider()
 
-    m1, m2, m3, m4 = st.columns(4)
-    total_qtd_lista = df['QUANTIDADE'].sum()
-    total_qtd_encomendada = df['QTD_SOLICITADA'].sum()
-    total_qtd_recebida = df['QTD_RECEBIDA'].sum()
-    total_estoque = df['SALDO_FISICO'].sum()
-    
-    m1.markdown(f"<div class='metric-box'><small>QTD TOTAL LISTA</small><h3>{total_qtd_lista}</h3></div>", unsafe_allow_html=True)
-    m2.markdown(f"<div class='metric-box'><small>SALDO ESTOQUE</small><h3>{total_estoque}</h3></div>", unsafe_allow_html=True)
-    m3.markdown(f"<div class='metric-box'><small>QTD ENCOMENDADA</small><h3 style='color:#002366;'>{total_qtd_encomendada}</h3></div>", unsafe_allow_html=True)
-    m4.markdown(f"<div class='metric-box'><small>QTD RECEBIDA</small><h3 style='color:#16a34a;'>{total_qtd_recebida}</h3></div>", unsafe_allow_html=True)
-    
-    fig = go.Figure()
-    fig.add_trace(go.Bar(x=df['CODIGO'][:15], y=df['QUANTIDADE'][:15], name='Lista', marker_color='#cbd5e1'))
-    fig.add_trace(go.Bar(x=df['CODIGO'][:15], y=df['QTD_SOLICITADA'][:15], name='Encomendado', marker_color='#002366'))
-    fig.add_trace(go.Bar(x=df['CODIGO'][:15], y=df['QTD_RECEBIDA'][:15], name='Recebido', marker_color='#16a34a'))
-    fig.update_layout(barmode='group', title="Confronto Operacional (Top 15 Itens)", height=400)
-    st.plotly_chart(fig, use_container_width=True)
+    # Gráficos
+    col_graph1, col_graph2 = st.columns([1, 1])
+
+    with col_graph1:
+        # Gráfico de Pizza - Status de Compra
+        status_counts = df['STATUS_COMPRA'].value_counts().reset_index()
+        status_counts.columns = ['Status', 'Quantidade']
+        
+        fig_pizza = px.pie(
+            status_counts, 
+            values='Quantidade', 
+            names='Status',
+            # Adicione o parâmetro abaixo:
+            color='Status', 
+            title="Distribuição de Status de Compra",
+            color_discrete_map={'Total': '#002366', 'Parcial': '#3b82f6', 'Zerado': '#ef4444', 'Pendente': '#cbd5e1'},
+            hole=0.4
+        )
+        fig_pizza.update_traces(textinfo='percent+label')
+        st.plotly_chart(fig_pizza, use_container_width=True)
+
+    with col_graph2:
+        # Comparativo de Volumes (Apenas Qtd Lista e Encomendada)
+        total_qtd_lista = df['QUANTIDADE'].sum()
+        total_qtd_encomendada = df['QTD_SOLICITADA'].sum()
+        
+        fig_vol = go.Figure(data=[
+            go.Bar(name='Qtd Total Lista', x=['Volume'], y=[total_qtd_lista], marker_color='#cbd5e1'),
+            go.Bar(name='Qtd Encomendada', x=['Volume'], y=[total_qtd_encomendada], marker_color='#002366')
+        ])
+        fig_vol.update_layout(title="Volume Total de Peças", barmode='group', height=400)
+        st.plotly_chart(fig_vol, use_container_width=True)
+
+    # Tabela de Justificativa (Dica do item 6)
+    if nao_comprado_com_estoque > 0:
+        with st.expander("🔍 Ver itens não comprados que possuem estoque"):
+            df_estoque = df[(df['STATUS_COMPRA'] == 'Zerado') & (df['SALDO_FISICO'] > 0)]
+            st.dataframe(df_estoque[['CODIGO', 'DESCRICAO', 'QUANTIDADE', 'SALDO_FISICO']], use_container_width=True)
 
 # --- EXIBIÇÃO PRINCIPAL ---
 def exibir_operacao_completa(user_role):
