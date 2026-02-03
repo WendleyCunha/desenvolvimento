@@ -32,7 +32,7 @@ def to_excel(df):
         df.to_excel(writer, index=False, sheet_name='Relatorio')
     return output.getvalue()
 
-# --- TRATATIVAS (COMPRA E RECEBIMENTO) ---
+# --- TRATATIVAS ---
 def renderizar_tratativa_recebimento(item, index, df_completo, db_data, key_suffix=""):
     st.markdown(f"#### {item['DESCRICAO']}")
     st.caption(f"Cód: {item['CODIGO']} | **Esperado: {item['QTD_SOLICITADA']}**")
@@ -73,76 +73,93 @@ def renderizar_tratativa_compra(item, index, df_completo, db_data, key_suffix=""
             df_completo.at[index, 'SALDO_FISICO'] = saldo; db_data["analises"] = df_completo.to_dict(orient='records')
             del st.session_state[f"show_p_{index}_{key_suffix}"]; salvar_dados_op(db_data); st.rerun()
 
-# --- DASHBOARD ROBUSTO ---
-def renderizar_dashboard(df):
+# --- DASHBOARDS ---
+def renderizar_dashboard_compras(df):
     if df.empty: return
-    
-    # 1. Cálculos de Base
     total_itens = len(df)
     df_proc = df[df['STATUS_COMPRA'] != "Pendente"]
     itens_conferidos = len(df_proc)
     compras_ok = len(df_proc[df_proc['STATUS_COMPRA'].isin(['Total', 'Parcial'])])
     
-    # Itens Não Efetuados (Com e Sem Estoque)
+    perc_conf = (itens_conferidos / total_itens * 100) if total_itens > 0 else 0
+    perc_ok = (compras_ok / itens_conferidos * 100) if itens_conferidos > 0 else 0
+    
     df_nao_efetuada = df_proc[df_proc['STATUS_COMPRA'] == "Não Efetuada"]
     nao_efet_com_estoque = df_nao_efetuada[df_nao_efetuada['SALDO_FISICO'] > 0]
     nao_efet_sem_estoque = df_nao_efetuada[df_nao_efetuada['SALDO_FISICO'] == 0]
+    
+    perc_est = (len(nao_efet_com_estoque) / itens_conferidos * 100) if itens_conferidos > 0 else 0
+    perc_rup = (len(nao_efet_sem_estoque) / itens_conferidos * 100) if itens_conferidos > 0 else 0
 
-    st.subheader("📊 Performance e Ruptura de Estoque")
+    st.subheader("📊 Performance de Compras")
     k1, k2, k3, k4 = st.columns(4)
-    k1.markdown(f"<div class='metric-box'><small>CONFERÊNCIA</small><h3>{itens_conferidos}/{total_itens}</h3></div>", unsafe_allow_html=True)
-    k2.markdown(f"<div class='metric-box'><small>COMPRAS EFETIVAS</small><h3 style='color:#002366;'>{compras_ok}</h3></div>", unsafe_allow_html=True)
-    k3.markdown(f"<div class='metric-box'><small>NÃO EFET. (C/ ESTOQUE)</small><h3 style='color:#16a34a;'>{len(nao_efet_com_estoque)}</h3></div>", unsafe_allow_html=True)
-    k4.markdown(f"<div class='metric-box'><small>NÃO EFET. (SEM ESTOQUE)</small><h3 style='color:#ef4444;'>{len(nao_efet_sem_estoque)}</h3></div>", unsafe_allow_html=True)
-
-    st.divider()
+    k1.markdown(f"<div class='metric-box'><small>CONFERÊNCIA</small><h3>{itens_conferidos}</h3><p>{perc_conf:.1f}% da lista</p></div>", unsafe_allow_html=True)
+    k2.markdown(f"<div class='metric-box'><small>COMPRAS EFETIVAS</small><h3 style='color:#002366;'>{compras_ok}</h3><p>{perc_ok:.1f}% do proc.</p></div>", unsafe_allow_html=True)
+    k3.markdown(f"<div class='metric-box'><small>ESTRATÉGICO (C/ EST.)</small><h3 style='color:#16a34a;'>{len(nao_efet_com_estoque)}</h3><p>{perc_est:.1f}% do proc.</p></div>", unsafe_allow_html=True)
+    k4.markdown(f"<div class='metric-box'><small>RUPTURA (S/ EST.)</small><h3 style='color:#ef4444;'>{len(nao_efet_sem_estoque)}</h3><p>{perc_rup:.1f}% do proc.</p></div>", unsafe_allow_html=True)
 
     c1, c2 = st.columns(2)
     with c1:
-        # Pizza de Status (Agora com nome corrigido)
         st_counts = df['STATUS_COMPRA'].value_counts().reset_index()
         st_counts.columns = ['Status', 'Qtd']
         fig_p = px.pie(st_counts, values='Qtd', names='Status', title="Decisões de Compra", 
                        color='Status', color_discrete_map={'Total': '#002366', 'Parcial': '#3b82f6', 'Não Efetuada': '#ef4444', 'Pendente': '#cbd5e1'}, hole=0.4)
         st.plotly_chart(fig_p, use_container_width=True)
-
     with c2:
-        # Gráfico de Ruptura
         fig_rup = go.Figure(data=[
-            go.Bar(name='Com Estoque (Estratégico)', x=['Não Efetuadas'], y=[len(nao_efet_com_estoque)], marker_color='#16a34a'),
-            go.Bar(name='Sem Estoque (Ruptura)', x=['Não Efetuadas'], y=[len(nao_efet_sem_estoque)], marker_color='#ef4444')
+            go.Bar(name='Com Estoque', x=['Não Efetuadas'], y=[len(nao_efet_com_estoque)], marker_color='#16a34a'),
+            go.Bar(name='Sem Estoque', x=['Não Efetuadas'], y=[len(nao_efet_sem_estoque)], marker_color='#ef4444')
         ])
         fig_rup.update_layout(title="Motivo das Não Encomendas", barmode='group', height=400)
         st.plotly_chart(fig_rup, use_container_width=True)
 
-    # --- FLAGS DETALHADAS ---
-    st.markdown("### 🔍 Detalhamento Estratégico")
-    
-    col_flag1, col_flag2 = st.columns(2)
-    
-    with col_flag1:
+    st.markdown("### 🔍 Detalhamento e Exportação")
+    col_f1, col_f2 = st.columns(2)
+    with col_f1:
         with st.expander("🟢 Não Efetuadas - COM ESTOQUE (Estratégico)"):
             if not nao_efet_com_estoque.empty:
-                # Mini Dash Interno
-                qtd_poupada = nao_efet_com_estoque['QUANTIDADE'].sum()
-                st.info(f"Evitamos a compra de **{qtd_poupada} unidades** pois já temos saldo.")
+                st.download_button("📥 Baixar Excel Estratégico", data=to_excel(nao_efet_com_estoque), file_name="estrategico.xlsx", key="dl_est")
                 st.dataframe(nao_efet_com_estoque[['DESCRICAO', 'QUANTIDADE', 'SALDO_FISICO']], use_container_width=True)
-            else: st.write("Nenhum item nesta categoria.")
-
-    with col_flag2:
-        with st.expander("🔴 Não Efetuadas - SEM ESTOQUE (Alerta de Ruptura)"):
+    with col_f2:
+        with st.expander("🔴 Não Efetuadas - SEM ESTOQUE (Ruptura)"):
             if not nao_efet_sem_estoque.empty:
-                # Mini Dash Interno
-                qtd_perdida = nao_efet_sem_estoque['QUANTIDADE'].sum()
-                st.error(f"Ruptura detectada: **{qtd_perdida} unidades** deixaram de ser compradas sem estoque disponível.")
+                st.download_button("📥 Baixar Excel Ruptura", data=to_excel(nao_efet_sem_estoque), file_name="ruptura.xlsx", key="dl_rup")
                 st.dataframe(nao_efet_sem_estoque[['DESCRICAO', 'QUANTIDADE']], use_container_width=True)
-            else: st.write("Nenhum item nesta categoria.")
+
+def renderizar_dashboard_recebimento(df):
+    if df.empty: return
+    encomendados = df[df['QTD_SOLICITADA'] > 0]
+    total_enc = len(encomendados)
+    if total_enc == 0:
+        st.warning("Aguardando encomendas para gerar dashboard de recebimento.")
+        return
+    
+    df_rec = encomendados[encomendados['STATUS_RECEB'] != "Pendente"]
+    itens_rec = len(df_rec)
+    
+    rec_total = len(df_rec[df_rec['STATUS_RECEB'] == "Recebido Total"])
+    rec_parcial = len(df_rec[df_rec['STATUS_RECEB'] == "Recebido Parcial"])
+    faltou = len(df_rec[df_rec['STATUS_RECEB'] == "Faltou"])
+    
+    perc_rec = (itens_rec / total_enc * 100)
+    
+    st.subheader("📊 Performance de Recebimento")
+    r1, r2, r3, r4 = st.columns(4)
+    r1.markdown(f"<div class='metric-box'><small>ITENS CONFERIDOS</small><h3>{itens_rec}/{total_enc}</h3><p>{perc_rec:.1f}% do total</p></div>", unsafe_allow_html=True)
+    r2.markdown(f"<div class='metric-box'><small>RECEBIDO TOTAL</small><h3 style='color:#16a34a;'>{rec_total}</h3></div>", unsafe_allow_html=True)
+    r3.markdown(f"<div class='metric-box'><small>RECEBIDO PARCIAL</small><h3 style='color:#facc15;'>{rec_parcial}</h3></div>", unsafe_allow_html=True)
+    r4.markdown(f"<div class='metric-box'><small>FALTOU/ERRO</small><h3 style='color:#ef4444;'>{faltou}</h3></div>", unsafe_allow_html=True)
+
+    fig_r = px.bar(df_rec, x='CODIGO', y=['QTD_SOLICITADA', 'QTD_RECEBIDA'], 
+                   title="Confronto: Solicitado vs Recebido", barmode='group',
+                   color_discrete_sequence=['#002366', '#16a34a'])
+    st.plotly_chart(fig_r, use_container_width=True)
 
 # --- EXIBIÇÃO PRINCIPAL ---
 def exibir_operacao_completa(user_role):
     aplicar_estilo_premium()
     db_data = carregar_dados_op()
-    tab1, tab2, tab3 = st.tabs(["🛒 COMPRAS", "📥 RECEBIMENTO", "📊 DASHBOARD"])
+    tab1, tab2, tab3, tab4 = st.tabs(["🛒 COMPRAS", "📥 RECEBIMENTO", "📊 DASHBOARD COMPRAS", "📈 DASHBOARD RECEBIMENTO"])
 
     with tab1:
         if not db_data.get("analises"):
@@ -155,9 +172,6 @@ def exibir_operacao_completa(user_role):
             return
         
         df_c = pd.DataFrame(db_data["analises"])
-        c_exp1, c_exp2 = st.columns([8, 2])
-        c_exp2.download_button("📥 Exportar Compras", data=to_excel(df_c), file_name="compras.xlsx")
-
         st.markdown('<div class="search-box">', unsafe_allow_html=True)
         q = st.text_input("🔍 Localizar Item:").upper()
         if q:
@@ -170,7 +184,7 @@ def exibir_operacao_completa(user_role):
         while idx_s < len(df_c) and df_c.iloc[idx_s]['STATUS_COMPRA'] != "Pendente": idx_s += 1
         db_data["idx_solic"] = idx_s
         if idx_s < len(df_c):
-            st.subheader(f"🚀 Esteira ({idx_s + 1}/{len(df_c)})")
+            st.subheader(f"🚀 Esteira de Compra ({idx_s + 1}/{len(df_c)})")
             with st.container():
                 st.markdown("<div class='main-card'>", unsafe_allow_html=True)
                 renderizar_tratativa_compra(df_c.iloc[idx_s], idx_s, df_c, db_data, "esteira_c")
@@ -178,15 +192,34 @@ def exibir_operacao_completa(user_role):
 
     with tab2:
         df_r = pd.DataFrame(db_data["analises"])
-        st.markdown('<div class="search-box-rec">', unsafe_allow_html=True)
-        q_rec = st.text_input("🔍 Localizar no Recebimento:").upper()
-        if q_rec:
-            it_b_rec = df_r[(df_r['QTD_SOLICITADA'] > 0) & (df_r['CODIGO'].astype(str).str.contains(q_rec) | df_r['DESCRICAO'].astype(str).str.contains(q_rec))]
-            for i, r in it_b_rec.iterrows():
-                with st.container(border=True): renderizar_tratativa_recebimento(r, i, df_r, db_data, "busca_r")
-        st.markdown('</div>', unsafe_allow_html=True)
+        # Filtra apenas itens que foram comprados (Total ou Parcial) e ainda não foram recebidos
+        pendentes_rec = df_r[(df_r['QTD_SOLICITADA'] > 0) & (df_r['STATUS_RECEB'] == "Pendente")].reset_index()
+        
+        if not pendentes_rec.empty:
+            st.markdown('<div class="search-box-rec">', unsafe_allow_html=True)
+            q_rec = st.text_input("🔍 Localizar no Recebimento:").upper()
+            if q_rec:
+                it_b_rec = pendentes_rec[pendentes_rec['CODIGO'].astype(str).str.contains(q_rec) | pendentes_rec['DESCRICAO'].astype(str).str.contains(q_rec)]
+                for _, r in it_b_rec.iterrows():
+                    with st.container(border=True): renderizar_tratativa_recebimento(r, r['index'], df_r, db_data, "busca_r")
+            st.markdown('</div>', unsafe_allow_html=True)
+
+            idx_r = db_data.get("idx_receb", 0)
+            if idx_r >= len(pendentes_rec): idx_r = 0
+            
+            st.subheader(f"📥 Esteira de Recebimento ({idx_r + 1}/{len(pendentes_rec)})")
+            item_r = pendentes_rec.iloc[idx_r]
+            with st.container():
+                st.markdown("<div class='main-card' style='border-top-color:#16a34a;'>", unsafe_allow_html=True)
+                renderizar_tratativa_recebimento(item_r, item_r['index'], df_r, db_data, "esteira_r")
+                st.markdown("</div>", unsafe_allow_html=True)
+        else:
+            st.success("✅ Nenhum item pendente de recebimento no momento.")
 
     with tab3:
-        renderizar_dashboard(pd.DataFrame(db_data["analises"]))
+        renderizar_dashboard_compras(pd.DataFrame(db_data["analises"]))
+
+    with tab4:
+        renderizar_dashboard_recebimento(pd.DataFrame(db_data["analises"]))
         if st.button("🗑️ RESETAR SISTEMA"):
             salvar_dados_op({"analises": [], "idx_solic": 0, "idx_receb": 0}); st.rerun()
