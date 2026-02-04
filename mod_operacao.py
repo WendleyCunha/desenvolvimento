@@ -274,6 +274,28 @@ def exibir_operacao_completa(user_role):
 
     with tab3:
         renderizar_dashboard_compras(df_atual)
+        
+        # O st.divider e o st.download_button devem estar alinhados com o renderizar_dashboard
+        st.divider()
+        nome_arquivo_c = f"conferencia_COMPRAS_{mes_ref}.xlsx"
+        st.download_button(
+            label="📥 Baixar Relatório de Compras (Excel)",
+            data=to_excel(df_atual),
+            file_name=nome_arquivo_c,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="dl_compra_geral"
+        )
 
     with tab4:
         renderizar_dashboard_recebimento(df_atual)
+        
+        # Mesma coisa aqui: alinhe o download_button com o início do bloco
+        st.divider()
+        nome_arquivo_r = f"conferencia_RECEBIMENTO_{mes_ref}.xlsx"
+        st.download_button(
+            label="📥 Baixar Relatório de Recebimento (Excel)",
+            data=to_excel(df_atual),
+            file_name=nome_arquivo_r,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="dl_receb_geral"
+        )
