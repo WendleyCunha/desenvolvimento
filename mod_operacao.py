@@ -208,7 +208,7 @@ def exibir_operacao_completa(user_role):
             st.subheader("📝 Planilha PREENCHIDA")
             st.caption("Suba dados que já foram analisados.")
             up_pre = st.file_uploader("Upload Base Analisada", type="xlsx", key="up_pre")
-            if up_pre:
+                if up_pre:
                 df_pre = pd.read_excel(up_pre)
                 if 'ORIGEM' not in df_pre.columns: df_pre['ORIGEM'] = "Planilha"
                 if st.button("📥 Importar Análise Pronta"):
