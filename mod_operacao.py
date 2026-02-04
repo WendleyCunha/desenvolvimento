@@ -158,13 +158,27 @@ def renderizar_dashboard_recebimento(df):
 def exibir_operacao_completa(user_role):
     aplicar_estilo_premium()
     
-    # 3 - Alternar entre meses e anos na Sidebar
+    # --- GESTÃO DE PERÍODO AUTÔNOMA (Substituindo o código antigo) ---
     st.sidebar.title("📅 Seleção de Período")
-    meses_lista = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
+    
+    meses_lista = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", 
+                   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
+    
+    # Esta linha faz o sistema descobrir o ano atual sozinho
+    ano_hoje = datetime.now().year
+    
+    # Cria a lista dinâmica: Ano Passado, Ano Atual, +2 Anos Futuros
+    anos_dinamicos = list(range(ano_hoje - 1, ano_hoje + 3))
+    
     mes_sel = st.sidebar.selectbox("Mês de Trabalho", meses_lista, index=datetime.now().month - 1)
-    ano_sel = st.sidebar.selectbox("Ano de Trabalho", [2024, 2025, 2026], index=1)
+    
+    # O index=1 faz o seletor sempre focar no Ano Atual da lista (o segundo item)
+    ano_sel = st.sidebar.selectbox("Ano de Trabalho", anos_dinamicos, index=1)
+    
+    # Monta a referência para buscar no banco de dados
     mes_ref = f"{mes_sel}_{ano_sel}"
     
+    # Carrega os dados específicos deste mês/ano selecionado
     db_data = carregar_dados_op(mes_ref)
     
     tab1, tab2, tab3, tab4, tab5 = st.tabs(["🛒 COMPRAS", "📥 RECEBIMENTO", "📊 DASHBOARD COMPRAS", "📈 DASHBOARD RECEBIMENTO", "⚙️ CONFIGURAÇÕES"])
