@@ -19,7 +19,6 @@ def aplicar_estilo_premium():
 
 def carregar_dados_op(mes_ref):
     fire = inicializar_db()
-    # Identificador único por Mês/Ano no Firebase
     doc = fire.collection("operacoes_mensais").document(mes_ref).get()
     return doc.to_dict() if doc.exists else {"analises": [], "idx_solic": 0, "idx_receb": 0}
 
@@ -74,7 +73,7 @@ def renderizar_tratativa_compra(item, index, df_completo, db_data, mes_ref, key_
             df_completo.at[index, 'SALDO_FISICO'] = saldo; db_data["analises"] = df_completo.to_dict(orient='records')
             del st.session_state[f"show_p_{index}_{key_suffix}"]; salvar_dados_op(db_data, mes_ref); st.rerun()
 
-# --- DASHBOARDS ORIGINAIS RESTAURADOS ---
+# --- DASHBOARDS ---
 def renderizar_dashboard_compras(df):
     if df.empty: return
     total_itens = len(df)
@@ -114,19 +113,6 @@ def renderizar_dashboard_compras(df):
         fig_rup.update_layout(title="Motivo das Não Encomendas", barmode='group', height=400)
         st.plotly_chart(fig_rup, use_container_width=True)
 
-    st.markdown("### 🔍 Detalhamento e Exportação")
-    col_f1, col_f2 = st.columns(2)
-    with col_f1:
-        with st.expander("🟢 Não Efetuadas - COM ESTOQUE (Estratégico)"):
-            if not nao_efet_com_estoque.empty:
-                st.download_button("📥 Baixar Excel Estratégico", data=to_excel(nao_efet_com_estoque), file_name="estrategico.xlsx", key="dl_est")
-                st.dataframe(nao_efet_com_estoque[['DESCRICAO', 'QUANTIDADE', 'SALDO_FISICO']], use_container_width=True)
-    with col_f2:
-        with st.expander("🔴 Não Efetuadas - SEM ESTOQUE (Ruptura)"):
-            if not nao_efet_sem_estoque.empty:
-                st.download_button("📥 Baixar Excel Ruptura", data=to_excel(nao_efet_sem_estoque), file_name="ruptura.xlsx", key="dl_rup")
-                st.dataframe(nao_efet_sem_estoque[['DESCRICAO', 'QUANTIDADE']], use_container_width=True)
-
 def renderizar_dashboard_recebimento(df):
     if df.empty: return
     encomendados = df[df['QTD_SOLICITADA'] > 0]
@@ -158,46 +144,32 @@ def renderizar_dashboard_recebimento(df):
 def exibir_operacao_completa(user_role):
     aplicar_estilo_premium()
     
-    # --- GESTÃO DE PERÍODO AUTÔNOMA (Substituindo o código antigo) ---
     st.sidebar.title("📅 Seleção de Período")
-    
     meses_lista = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", 
                    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
-    
-    # Esta linha faz o sistema descobrir o ano atual sozinho
     ano_hoje = datetime.now().year
-    
-    # Cria a lista dinâmica: Ano Passado, Ano Atual, +2 Anos Futuros
     anos_dinamicos = list(range(ano_hoje - 1, ano_hoje + 3))
     
     mes_sel = st.sidebar.selectbox("Mês de Trabalho", meses_lista, index=datetime.now().month - 1)
-    
-    # O index=1 faz o seletor sempre focar no Ano Atual da lista (o segundo item)
     ano_sel = st.sidebar.selectbox("Ano de Trabalho", anos_dinamicos, index=1)
-    
-    # Monta a referência para buscar no banco de dados
     mes_ref = f"{mes_sel}_{ano_sel}"
     
-    # Carrega os dados específicos deste mês/ano selecionado
     db_data = carregar_dados_op(mes_ref)
     
     tab1, tab2, tab3, tab4, tab5 = st.tabs(["🛒 COMPRAS", "📥 RECEBIMENTO", "📊 DASHBOARD COMPRAS", "📈 DASHBOARD RECEBIMENTO", "⚙️ CONFIGURAÇÕES"])
 
-   with tab5:
+    with tab5:
         st.header(f"⚙️ Configuração: {mes_sel}/{ano_sel}")
-        
-        # --- 1. SEÇÃO DE UPLOADS ---
         col_up1, col_up2 = st.columns(2)
         
         with col_up1:
             st.subheader("📄 Planilha NOVA")
-            st.caption("Inicie um mês do zero (Base Crua).")
             up_nova = st.file_uploader("Upload Base Crua", type="xlsx", key="up_nova")
             if up_nova:
                 df_nova = pd.read_excel(up_nova)
                 for col in ['STATUS_COMPRA', 'QTD_SOLICITADA', 'SALDO_FISICO', 'QTD_RECEBIDA', 'STATUS_RECEB']:
                     df_nova[col] = "Pendente" if "STATUS" in col else 0
-                df_nova['ORIGEM'] = "Planilha" # Identifica itens planejados
+                df_nova['ORIGEM'] = "Planilha"
                 if st.button("🚀 Iniciar Mês com esta Base"):
                     db_data = {"analises": df_nova.to_dict(orient='records'), "idx_solic": 0, "idx_receb": 0}
                     salvar_dados_op(db_data, mes_ref)
@@ -206,10 +178,12 @@ def exibir_operacao_completa(user_role):
 
         with col_up2:
             st.subheader("📝 Planilha PREENCHIDA")
-            st.caption("Suba dados que já foram analisados.")
             up_pre = st.file_uploader("Upload Base Analisada", type="xlsx", key="up_pre")
-                if up_pre:
+            if up_pre:
                 df_pre = pd.read_excel(up_pre)
+                cols_necessarias = ['STATUS_COMPRA', 'QTD_SOLICITADA', 'SALDO_FISICO', 'STATUS_RECEB', 'QTD_RECEBIDA']
+                for c in cols_necessarias:
+                    if c not in df_pre.columns: df_pre[c] = 0
                 if 'ORIGEM' not in df_pre.columns: df_pre['ORIGEM'] = "Planilha"
                 if st.button("📥 Importar Análise Pronta"):
                     db_data = {"analises": df_pre.to_dict(orient='records'), "idx_solic": 0, "idx_receb": 0}
@@ -217,82 +191,27 @@ def exibir_operacao_completa(user_role):
                     st.success("Dados importados!")
                     st.rerun()
 
-        # --- 2. SEÇÃO DE CADASTRO MANUAL (A NOVIDADE) ---
         st.divider()
         st.subheader("🆕 Cadastrar Item Fora da Lista")
-        st.info("Utilize esta função para itens que não vieram na planilha, mas precisam entrar na esteira de compras.")
-        
         with st.form("novo_produto_manual", clear_on_submit=True):
             c_man1, c_man2 = st.columns(2)
             novo_cod = c_man1.text_input("Código do Produto (SKU):").upper()
             nova_desc = c_man2.text_input("Descrição do Item:")
-            
             c_man3, c_man4, c_man5 = st.columns(3)
             novo_forn = c_man3.text_input("Fornecedor:")
             novo_grupo = c_man4.selectbox("Grupo:", ["COLCHAO", "BOX", "TRAVESSEIRO", "PROTETOR", "OUTROS"])
-            nova_qtd_orig = c_man5.number_input("Qtd Necessária (Lista):", min_value=1, value=1)
+            nova_qtd_orig = c_man5.number_input("Qtd Necessária:", min_value=1, value=1)
             
-            if st.form_submit_button("➕ Adicionar à Esteira de Compras"):
+            if st.form_submit_button("➕ Adicionar à Esteira"):
                 if novo_cod and nova_desc:
-                    # Montamos o dicionário com a marcação "Manual"
                     novo_item = {
-                        "CODIGO": novo_cod,
-                        "DESCRICAO": nova_desc,
-                        "FORNECEDOR": novo_forn,
-                        "GRUPO": novo_grupo,
-                        "QUANTIDADE": nova_qtd_orig,
-                        "STATUS_COMPRA": "Pendente",
-                        "STATUS_RECEB": "Pendente",
-                        "QTD_SOLICITADA": 0,
-                        "QTD_RECEBIDA": 0,
-                        "SALDO_FISICO": 0,
-                        "ORIGEM": "Manual" # <-- Tag de identificação de falha
+                        "CODIGO": novo_cod, "DESCRICAO": nova_desc, "FORNECEDOR": novo_forn, "GRUPO": novo_grupo,
+                        "QUANTIDADE": nova_qtd_orig, "STATUS_COMPRA": "Pendente", "STATUS_RECEB": "Pendente",
+                        "QTD_SOLICITADA": 0, "QTD_RECEBIDA": 0, "SALDO_FISICO": 0, "ORIGEM": "Manual"
                     }
-                    
-                    # Adiciona à lista atual e salva no Firebase do mês selecionado
                     db_data["analises"].append(novo_item)
                     salvar_dados_op(db_data, mes_ref)
-                    st.success(f"Item {novo_cod} adicionado com sucesso!")
-                    st.rerun()
-                else:
-                    st.error("Campos Código e Descrição são obrigatórios!")
-
-        # --- 3. RESET ---
-        st.divider()
-        if st.button("🗑️ RESETAR ESTE MÊS"):
-            salvar_dados_op({"analises": [], "idx_solic": 0, "idx_receb": 0}, mes_ref)
-            st.rerun()
-        
-        # 2 - Duas opções de Upload
-        with col_up1:
-            st.subheader("📄 Planilha NOVA")
-            st.caption("Use para iniciar um mês do zero (Crua).")
-            up_nova = st.file_uploader("Upload Base Crua", type="xlsx", key="up_nova")
-            if up_nova:
-                df_nova = pd.read_excel(up_nova)
-                for col in ['STATUS_COMPRA', 'QTD_SOLICITADA', 'SALDO_FISICO', 'QTD_RECEBIDA', 'STATUS_RECEB']:
-                    df_nova[col] = "Pendente" if "STATUS" in col else 0
-                if st.button("🚀 Iniciar Mês com esta Base"):
-                    db_data = {"analises": df_nova.to_dict(orient='records'), "idx_solic": 0, "idx_receb": 0}
-                    salvar_dados_op(db_data, mes_ref)
-                    st.success("Mês iniciado!")
-                    st.rerun()
-
-        with col_up2:
-            st.subheader("📝 Planilha PREENCHIDA")
-            st.caption("Use para subir dados já analisados fora do sistema.")
-            up_pre = st.file_uploader("Upload Base Analisada", type="xlsx", key="up_pre")
-            if up_pre:
-                df_pre = pd.read_excel(up_pre)
-                # Verifica colunas mínimas para não quebrar o dash
-                cols_necessarias = ['STATUS_COMPRA', 'QTD_SOLICITADA', 'SALDO_FISICO', 'STATUS_RECEB', 'QTD_RECEBIDA']
-                for c in cols_necessarias:
-                    if c not in df_pre.columns: df_pre[c] = 0
-                
-                if st.button("📥 Importar Análise Pronta"):
-                    db_data = {"analises": df_pre.to_dict(orient='records'), "idx_solic": 0, "idx_receb": 0}
-                    salvar_dados_op(db_data, mes_ref)
-                    st.success("Dados importados! Dashboards atualizados.")
+                    st.success(f"Item {novo_cod} adicionado!")
                     st.rerun()
 
         st.divider()
@@ -301,7 +220,7 @@ def exibir_operacao_completa(user_role):
             st.rerun()
 
     if not db_data.get("analises"):
-        st.warning(f"⚠️ Sem dados para {mes_sel}/{ano_sel}. Vá na aba CONFIGURAÇÕES e suba uma planilha.")
+        st.warning(f"⚠️ Sem dados para {mes_sel}/{ano_sel}. Vá na aba CONFIGURAÇÕES.")
         return
 
     df_atual = pd.DataFrame(db_data["analises"])
@@ -349,38 +268,20 @@ def exibir_operacao_completa(user_role):
 
     with tab3:
         renderizar_dashboard_compras(df_atual)
-        
-        # --- AUDITORIA DE ITENS MANUAIS (Identificação de Falhas) ---
-        # Verificamos se a coluna ORIGEM existe e se tem itens "Manual"
         if 'ORIGEM' in df_atual.columns:
             manuais = df_atual[df_atual['ORIGEM'] == 'Manual']
             if not manuais.empty:
                 st.divider()
-                st.warning(f"🚩 **ALERTA DE PLANEJAMENTO:** Foram encontrados {len(manuais)} itens inseridos manualmente.")
-                with st.expander("🔍 Ver detalhes dos itens fora da planilha"):
+                st.warning(f"🚩 **ALERTA DE PLANEJAMENTO:** {len(manuais)} itens inseridos manualmente.")
+                with st.expander("🔍 Ver detalhes"):
                     st.table(manuais[['CODIGO', 'DESCRICAO', 'QUANTIDADE']])
         
-        # --- BOTÃO DE DOWNLOAD ---
         st.divider()
         nome_arquivo_c = f"conferencia_COMPRAS_{mes_ref}.xlsx"
-        st.download_button(
-            label="📥 Baixar Relatório de Compras (Excel)",
-            data=to_excel(df_atual),
-            file_name=nome_arquivo_c,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            key="dl_compra_geral"
-        )
+        st.download_button(label="📥 Baixar Relatório de Compras", data=to_excel(df_atual), file_name=nome_arquivo_c, key="dl_compra_geral")
 
     with tab4:
         renderizar_dashboard_recebimento(df_atual)
-        
-        # Mesma coisa aqui: alinhe o download_button com o início do bloco
         st.divider()
         nome_arquivo_r = f"conferencia_RECEBIMENTO_{mes_ref}.xlsx"
-        st.download_button(
-            label="📥 Baixar Relatório de Recebimento (Excel)",
-            data=to_excel(df_atual),
-            file_name=nome_arquivo_r,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            key="dl_receb_geral"
-        )
+        st.download_button(label="📥 Baixar Relatório de Recebimento", data=to_excel(df_atual), file_name=nome_arquivo_r, key="dl_receb_geral")
