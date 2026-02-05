@@ -251,10 +251,22 @@ def exibir_operacao_completa(user_role=None):
                     # ... (mantém métricas de r1, r2, r3, r4)
                     st.plotly_chart(px.bar(df_rec, x='CODIGO', y=['QTD_SOLICITADA', 'QTD_RECEBIDA'], barmode='group'), use_container_width=True)
 
-    # --- ABA 2: DASH OPERAÇÃO ---
+    # --- ABA 2: DASH OPERAÇÃO (COM GRÁFICO DE TEMPERATURA) ---
     with tab_modulo_picos:
         st.markdown(f"<div class='header-analise'>DASH OPERAÇÃO (PICOS) - {mes_sel.upper()}</div>", unsafe_allow_html=True)
-        renderizar_picos_operacional(db_data.get("picos", []))
+        
+        # Recupera os dados de picos do banco
+        dados_picos = db_data.get("picos", [])
+        
+        if not dados_picos:
+            st.info("📊 Sem dados de picos para este mês. Importe a base no menu CONFIGURAÇÕES.")
+        else:
+            # Transformamos em DataFrame para garantir que a função de picos tenha o que processar
+            df_picos = pd.DataFrame(dados_picos)
+            
+            # Chamada da função que desenha o gráfico de temperatura
+            # Certifique-se que sua função renderizar_picos_operacional aceite o DataFrame
+            renderizar_picos_operacional(df_picos)
 
     # --- ABA 3: CONFIGURAÇÕES (CADASTRO MANUAL + UPLOAD) ---
     with tab_modulo_config:
