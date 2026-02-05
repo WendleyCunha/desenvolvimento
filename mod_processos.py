@@ -1,8 +1,9 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, date
+from datetime import datetime, timedelta
 import os
 import io
+import zipfile
 import database as db
 
 # --- DIRETÓRIO DE ANEXOS ---
@@ -21,7 +22,7 @@ ROADMAP = [
 MOTIVOS_PADRAO = ["Reunião", "Pedido de Posicionamento", "Elaboração de Documentos", "Anotação Interna (Sem Dash)"]
 
 def exibir(user_role="OPERACIONAL"):
-    # 1. ESTILO CSS ORIGINAL
+    # 1. ESTILO CSS
     st.markdown("""
     <style>
         .metric-card { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 1px solid #ececec; text-align: center; }
@@ -35,12 +36,9 @@ def exibir(user_role="OPERACIONAL"):
     </style>
     """, unsafe_allow_html=True)
 
-    # 2. CARREGAMENTO DE DADOS COM TRATAMENTO DE ERRO
+    # 2. CARREGAMENTO DE DADOS
     if 'db_pqi' not in st.session_state:
-        try:
-            st.session_state.db_pqi = db.carregar_projetos()
-        except:
-            st.session_state.db_pqi = []
+        st.session_state.db_pqi = db.carregar_projetos()
 
     # --- FILTROS NO TOPO ---
     c_t1, c_t2, c_t3 = st.columns([1, 2, 1])
@@ -50,17 +48,13 @@ def exibir(user_role="OPERACIONAL"):
     
     projs_f = [p for p in st.session_state.db_pqi if p.get('status', 'Ativo') == status_map[status_filtro]]
     
-    projeto = None
     with c_t2:
         if projs_f:
             escolha = st.selectbox("Selecione o Projeto PQI:", [p['titulo'] for p in projs_f])
-            # Busca segura do projeto
-            for p in st.session_state.db_pqi:
-                if p['titulo'] == escolha:
-                    projeto = p
-                    break
+            projeto = next(p for p in st.session_state.db_pqi if p['titulo'] == escolha)
         else:
             st.warning("Nenhum projeto neste status.")
+            projeto = None
 
     with c_t3:
         if user_role in ["ADM", "GERENTE"]:
@@ -73,8 +67,7 @@ def exibir(user_role="OPERACIONAL"):
                     "analise_mercado": "", "custo_atual": 0.0, "custo_estimado": 0.0
                 }
                 st.session_state.db_pqi.append(novo)
-                db.salvar_projetos(st.session_state.db_pqi)
-                st.rerun()
+                db.salvar_projetos(st.session_state.db_pqi); st.rerun()
 
     if projeto:
         # 3. RÉGUA DE NAVEGAÇÃO
@@ -91,7 +84,7 @@ def exibir(user_role="OPERACIONAL"):
             with cols_r[i]:
                 st.markdown(f'<div class="{cl}">{txt}</div><div class="label-regua">{etapa["nome"]}</div>', unsafe_allow_html=True)
 
-        # 4. TABS
+        # 4. TABS (Com Upgrade de Mercado e ROI)
         tab_ex, tab_dos, tab_kpi, tab_merc, tab_cfg = st.tabs([
             "🚀 Execução", "📂 Dossiê", "📊 KPIs", "🔍 Mercado & ROI", "⚙️ Gestão"
         ])
@@ -112,8 +105,7 @@ def exibir(user_role="OPERACIONAL"):
                                     st.download_button("📥 Baixar Anexo", f, key=f"dl_{projeto['titulo']}_{idx}")
                             if st.button("🗑️ Excluir", key=f"del_nota_{idx}_{n['data']}"):
                                 projeto['notas'].remove(n)
-                                db.salvar_projetos(st.session_state.db_pqi)
-                                st.rerun()
+                                db.salvar_projetos(st.session_state.db_pqi); st.rerun()
 
                 st.divider()
                 with st.popover("➕ Adicionar Novo Registro"):
@@ -133,8 +125,7 @@ def exibir(user_role="OPERACIONAL"):
                             "visivel_dash": sel_mot != "Anotação Interna (Sem Dash)"
                         }
                         projeto.setdefault('notas', []).append(nova_nota)
-                        db.salvar_projetos(st.session_state.db_pqi)
-                        st.rerun()
+                        db.salvar_projetos(st.session_state.db_pqi); st.rerun()
 
             with c2:
                 st.markdown("#### 🕹️ Fluxo")
@@ -142,32 +133,35 @@ def exibir(user_role="OPERACIONAL"):
                     if projeto['fase'] < 8 and st.button("▶️ AVANÇAR", use_container_width=True, type="primary"):
                         projeto['fase'] += 1
                         projeto['historico'][str(projeto['fase'])] = datetime.now().strftime("%d/%m/%Y")
-                        db.salvar_projetos(st.session_state.db_pqi)
-                        st.rerun()
+                        db.salvar_projetos(st.session_state.db_pqi); st.rerun()
                     if projeto['fase'] > 1 and st.button("⏪ RECUAR", use_container_width=True):
                         projeto['fase'] -= 1
-                        db.salvar_projetos(st.session_state.db_pqi)
-                        st.rerun()
+                        db.salvar_projetos(st.session_state.db_pqi); st.rerun()
 
         with tab_merc:
             st.subheader("🔍 Inteligência de Mercado e Business Case")
             col_m1, col_m2 = st.columns(2)
+            
             with col_m1:
                 st.markdown("### 💰 Estimativa de ROI")
                 c_atual = st.number_input("Custo Mensal Atual (R$)", value=float(projeto.get('custo_atual', 0)))
                 c_estimado = st.number_input("Custo da Solução Sugerida (R$)", value=float(projeto.get('custo_estimado', 0)))
                 projeto['custo_atual'] = c_atual
                 projeto['custo_estimado'] = c_estimado
+                
                 economia = c_atual - c_estimado
                 if economia > 0:
                     st.markdown(f"""<div class="roi-box"><b>Potencial de Economia:</b> R$ {economia:,.2f} / mês</div>""", unsafe_allow_html=True)
+            
             with col_m2:
                 st.markdown("### 🏢 Benchmarking")
-                analise = st.text_area("Análise de Fornecedores", value=projeto.get('analise_mercado', ""), height=200)
+                st.info("Utilize este espaço para comparar os fornecedores que consultamos na Web.")
+                analise = st.text_area("Análise de Fornecedores (Cole aqui os insights da IA)", 
+                                     value=projeto.get('analise_mercado', ""), height=200)
                 projeto['analise_mercado'] = analise
+
             if st.button("💾 Salvar Estudo de Mercado"):
-                db.salvar_projetos(st.session_state.db_pqi)
-                st.success("Estudo salvo!")
+                db.salvar_projetos(st.session_state.db_pqi); st.success("Estudo salvo!")
 
         with tab_dos:
             st.subheader("📜 Histórico de Esforço")
@@ -192,12 +186,7 @@ def exibir(user_role="OPERACIONAL"):
             if user_role in ["ADM", "GERENTE"]:
                 projeto['titulo'] = st.text_input("Nome do Projeto", projeto['titulo'])
                 projeto['status'] = st.selectbox("Status", ["Ativo", "Concluído", "Pausado"], 
-                                                 index=["Ativo", "Concluído", "Pausado"].index(projeto.get('status', 'Ativo')))
-                if st.button("💾 Salvar Alterações"):
-                    db.salvar_projetos(st.session_state.db_pqi)
-                    st.rerun()
-                st.divider()
-                if st.button("🗑️ EXCLUIR PROJETO", type="secondary"):
+                                               index=["Ativo", "Concluído", "Pausado"].index(projeto['status']))
+                if st.button("🗑️ EXCLUIR PROJETO"):
                     st.session_state.db_pqi.remove(projeto)
-                    db.salvar_projetos(st.session_state.db_pqi)
-                    st.rerun()
+                    db.salvar_projetos(st.session_state.db_pqi); st.rerun()
