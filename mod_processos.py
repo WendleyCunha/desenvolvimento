@@ -1,15 +1,17 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 import io
+import zipfile
 import database as db
 
-# --- CONFIGURAÇÕES ---
+# --- DIRETÓRIO DE ANEXOS ---
 UPLOAD_DIR = "anexos_pqi"
 if not os.path.exists(UPLOAD_DIR):
     os.makedirs(UPLOAD_DIR)
 
+# --- CONFIGURAÇÕES DO ROADMAP ---
 ROADMAP = [
     {"id": 1, "nome": "Triagem & GUT"}, {"id": 2, "nome": "Escopo & Charter"},
     {"id": 3, "nome": "Autorização Sponsor"}, {"id": 4, "nome": "Coleta & Impedimentos"},
@@ -20,112 +22,223 @@ ROADMAP = [
 MOTIVOS_PADRAO = ["Reunião", "Pedido de Posicionamento", "Elaboração de Documentos", "Anotação Interna (Sem Dash)"]
 
 def exibir(user_role="OPERACIONAL"):
-    # 1. ESTILO CSS PREMIUM
+    # 1. ESTILO CSS
     st.markdown("""
     <style>
-        .header-card { background-color: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px; border-left: 5px solid #002366; }
-        .metric-card { background-color: #ffffff; padding: 15px; border-radius: 10px; border: 1px solid #e0e0e0; text-align: center; }
+        .metric-card { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 1px solid #ececec; text-align: center; }
         .metric-value { font-size: 24px; font-weight: 800; color: #002366; }
-        .metric-label { font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase; }
-        .ponto-regua { width: 38px; height: 38px; border-radius: 50%; background: #e2e8f0; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #64748b; margin: 0 auto; border: 2px solid #cbd5e1; }
+        .metric-label { font-size: 12px; color: #64748b; font-weight: 600; text-transform: uppercase; }
+        .ponto-regua { width: 35px; height: 35px; border-radius: 50%; background: #e2e8f0; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #64748b; margin: 0 auto; border: 2px solid #cbd5e1; }
         .ponto-check { background: #10b981; color: white; border-color: #10b981; }
-        .ponto-atual { background: #002366; color: white; border-color: #002366; box-shadow: 0 0 12px rgba(0, 35, 102, 0.3); }
-        .label-regua { font-size: 10px; text-align: center; font-weight: 700; margin-top: 5px; color: #475569; min-height: 30px; }
+        .ponto-atual { background: #002366; color: white; border-color: #002366; box-shadow: 0 0 10px rgba(0, 35, 102, 0.4); }
+        .label-regua { font-size: 10px; text-align: center; font-weight: bold; margin-top: 5px; color: #475569; height: 30px; }
     </style>
     """, unsafe_allow_html=True)
 
+    # 2. CARREGAMENTO DE DADOS
     if 'db_pqi' not in st.session_state:
         st.session_state.db_pqi = db.carregar_projetos()
 
-    # --- DEFINIÇÃO DE ABAS MESTRAS ---
-    abas_principais = ["📊 DASHBOARD GERAL", "🚀 GESTÃO DE PROJETOS", "📜 DOSSIÊS"]
-    if user_role in ["ADM", "GERENTE"]:
-        abas_principais.append("⚙️ CONFIGURAÇÕES")
+    # --- FILTROS NO TOPO ---
+    c_t1, c_t2, c_t3 = st.columns([1, 2, 1])
     
-    tab_dash, tab_gestao, tab_dossie, *tab_config = st.tabs(abas_principais)
+    with c_t1:
+        status_filtro = st.radio("Filtro:", ["🚀 Ativos", "✅ Concluídos", "⏸️ Pausados"], horizontal=True)
+        status_map = {"🚀 Ativos": "Ativo", "✅ Concluídos": "Concluído", "⏸️ Pausados": "Pausado"}
+    
+    projs_f = [p for p in st.session_state.db_pqi if p.get('status', 'Ativo') == status_map[status_filtro]]
+    
+    with c_t2:
+        if projs_f:
+            escolha = st.selectbox("Selecione o Projeto PQI:", [p['titulo'] for p in projs_f])
+            projeto = next(p for p in st.session_state.db_pqi if p['titulo'] == escolha)
+        else:
+            st.warning("Nenhum projeto neste status.")
+            projeto = None
 
-    # --- ABA 1: DASHBOARD PREMIUM (VISÃO DE ESFORÇO) ---
-    with tab_dash:
-        st.subheader("📊 Painel de Controle de Esforço PQI")
-        projs = st.session_state.db_pqi
-        if projs:
-            c1, c2, c3, c4 = st.columns(4)
-            total_acoes = sum(len(p.get('notas', [])) for p in projs)
-            with c1: st.markdown(f'<div class="metric-card"><div class="metric-label">Projetos</div><div class="metric-value">{len(projs)}</div></div>', unsafe_allow_html=True)
-            with c2: st.markdown(f'<div class="metric-card"><div class="metric-label">Ações Totais</div><div class="metric-value">{total_acoes}</div></div>', unsafe_allow_html=True)
+    with c_t3:
+        if user_role in ["ADM", "GERENTE"]:
+            if st.button("➕ NOVO PROJETO", use_container_width=True, type="primary"):
+                novo = {
+                    "titulo": f"Novo Processo {len(st.session_state.db_pqi)+1}", 
+                    "fase": 1, "status": "Ativo", "notas": [], 
+                    "historico": {"1": datetime.now().strftime("%d/%m/%Y")}, 
+                    "lembretes": [], "pastas_virtuais": {}, "motivos_custom": []
+                }
+                st.session_state.db_pqi.append(novo)
+                db.salvar_projetos(st.session_state.db_pqi)
+                st.rerun()
+
+    if projeto:
+        # 3. RÉGUA DE NAVEGAÇÃO
+        st.write("")
+        cols_r = st.columns(8)
+        for i, etapa in enumerate(ROADMAP):
+            n = i + 1
+            cl = "ponto-regua"
+            txt = str(n)
+            if n < projeto['fase']: 
+                cl += " ponto-check"; txt = "✔"
+            elif n == projeto['fase']: 
+                cl += " ponto-atual"
             
-            # Gráfico de Esforço por Projeto
-            st.write("---")
-            df_esforco = pd.DataFrame([{"Projeto": p['titulo'], "Ações": len(p.get('notas', []))} for p in projs])
-            st.bar_chart(df_esforco.set_index("Projeto"))
+            with cols_r[i]:
+                st.markdown(f'<div class="{cl}">{txt}</div><div class="label-regua">{etapa["nome"]}</div>', unsafe_allow_html=True)
 
-    # --- ABA 2: GESTÃO (COM RÉGUA E FILTROS) ---
-    with tab_gestao:
-        with st.container():
-            st.markdown('<div class="header-card">', unsafe_allow_html=True)
-            col_f1, col_f2, col_f3 = st.columns([1, 2, 1])
-            with col_f1:
-                status_sel = st.selectbox("Filtrar Status", ["Ativo", "Concluído", "Pausado"])
-            projs_f = [p for p in st.session_state.db_pqi if p.get('status', 'Ativo') == status_sel]
-            with col_f2:
-                if projs_f:
-                    escolha = st.selectbox("Projeto:", [p['titulo'] for p in projs_f])
-                    projeto = next(p for p in st.session_state.db_pqi if p['titulo'] == escolha)
-                else: projeto = None
-            with col_f3:
-                if user_role in ["ADM", "GERENTE"]:
-                    if st.button("➕ NOVO PROJETO", use_container_width=True):
-                        novo = {"titulo": f"Novo {len(projs)+1}", "fase": 1, "status": "Ativo", "notas": [], "historico": {"1": datetime.now().strftime("%d/%m/%Y")}, "lembretes": [], "pastas_virtuais": {}, "motivos_custom": []}
-                        st.session_state.db_pqi.append(novo); db.salvar_projetos(st.session_state.db_pqi); st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
+        # 4. TABS
+        tab_ex, tab_dos, tab_kpi, tab_cfg = st.tabs(["🚀 Execução", "📂 Dossiê / Arquivos", "📊 Painel de Esforço", "⚙️ Gestão"])
 
-        if projeto:
-            # RÉGUA MANTIDA
-            cols_r = st.columns(8)
-            for i, etapa in enumerate(ROADMAP):
-                n, cl, txt = i + 1, "ponto-regua", str(i+1)
-                if n < projeto['fase']: cl += " ponto-check"; txt = "✔"
-                elif n == projeto['fase']: cl += " ponto-atual"
-                with cols_r[i]: st.markdown(f'<div class="{cl}">{txt}</div><div class="label-regua">{etapa["nome"]}</div>', unsafe_allow_html=True)
-            
-            # Execução e Lembretes
-            c_exec1, c_exec2 = st.columns([2, 1])
-            with c_exec1:
+        with tab_ex:
+            c1, c2 = st.columns([2, 1])
+            with c1:
                 st.subheader(f"📍 Fase {projeto['fase']}: {ROADMAP[projeto['fase']-1]['nome']}")
-                # Aqui entra sua lógica de adicionar notas (idêntica ao original)
-                with st.expander("📝 Adicionar Registro de Esforço"):
-                    sel_mot = st.selectbox("Assunto", MOTIVOS_PADRAO + projeto.get('motivos_custom', []))
-                    desc = st.text_area("Descrição")
-                    if st.button("Salvar Registro"):
-                        projeto['notas'].append({"motivo": sel_mot, "texto": desc, "data": datetime.now().strftime("%d/%m/%Y"), "fase_origem": projeto['fase']})
+                notas_fase = [n for n in projeto.get('notas', []) if n.get('fase_origem') == projeto['fase']]
+                
+                if not notas_fase:
+                    st.info("Sem registros nesta etapa.")
+                else:
+                    for idx, n in enumerate(notas_fase):
+                        with st.expander(f"📝 {n['motivo']} - {n.get('setor', 'GERAL')} ({n['data']})"):
+                            st.write(n['texto'])
+                            if n.get('arquivo_local') and os.path.exists(n['arquivo_local']):
+                                with open(n['arquivo_local'], "rb") as f:
+                                    st.download_button("📥 Baixar Anexo", f, key=f"dl_{projeto['titulo']}_{idx}")
+                            if st.button("🗑️ Excluir", key=f"del_nota_{idx}_{n['data']}"):
+                                projeto['notas'].remove(n)
+                                db.salvar_projetos(st.session_state.db_pqi); st.rerun()
+
+                st.divider()
+                with st.popover("➕ Adicionar Novo Registro"):
+                    # Lista de motivos dinâmica
+                    opcoes_assunto = MOTIVOS_PADRAO + projeto.get('motivos_custom', [])
+                    sel_mot = st.selectbox("Assunto", opcoes_assunto)
+                    setor = st.text_input("Setor/Responsável").upper()
+                    desc = st.text_area("O que foi feito?")
+                    arq = st.file_uploader("Anexar Documento")
+                    
+                    usa_lemb = st.checkbox("⏰ Agendar Lembrete?")
+                    d_l, h_l = None, None
+                    if usa_lemb:
+                        col_l1, col_l2 = st.columns(2)
+                        d_l = col_l1.date_input("Data")
+                        h_l = col_l2.time_input("Hora")
+
+                    if st.button("Gravar no Banco de Dados"):
+                        caminho_anexo = None
+                        if arq:
+                            caminho_anexo = os.path.join(UPLOAD_DIR, f"{datetime.now().timestamp()}_{arq.name}")
+                            with open(caminho_anexo, "wb") as f: f.write(arq.getbuffer())
+                        
+                        txt_lembrete = datetime.combine(d_l, h_l).strftime("%d/%m/%Y %H:%M") if usa_lemb else ""
+
+                        nova_nota = {
+                            "motivo": sel_mot, "setor": setor, "texto": desc,
+                            "data": datetime.now().strftime("%d/%m/%Y"),
+                            "fase_origem": projeto['fase'], "arquivo_local": caminho_anexo,
+                            "visivel_dash": sel_mot != "Anotação Interna (Sem Dash)",
+                            "lembrete_agendado": txt_lembrete
+                        }
+                        projeto.setdefault('notas', []).append(nova_nota)
+                        if usa_lemb:
+                            projeto.setdefault('lembretes', []).append({"data_hora": txt_lembrete, "texto": f"{projeto['titulo']}: {sel_mot}"})
+                        
                         db.salvar_projetos(st.session_state.db_pqi); st.rerun()
-            with c_exec2:
-                st.markdown("#### ⚙️ Controle")
+
+            with c2:
+                st.markdown("#### 🕹️ Fluxo de Trabalho")
                 if user_role in ["ADM", "GERENTE", "SUPERVISÃO"]:
-                    if projeto['fase'] < 8 and st.button("▶️ AVANÇAR ETAPA", use_container_width=True, type="primary"):
-                        projeto['fase'] += 1; db.salvar_projetos(st.session_state.db_pqi); st.rerun()
-                    if projeto['fase'] > 1 and st.button("⏪ RECUAR", use_container_width=True):
-                        projeto['fase'] -= 1; db.salvar_projetos(st.session_state.db_pqi); st.rerun()
+                    if projeto['fase'] < 8:
+                        if st.button("▶️ AVANÇAR ETAPA", use_container_width=True, type="primary"):
+                            projeto['fase'] += 1
+                            projeto['historico'][str(projeto['fase'])] = datetime.now().strftime("%d/%m/%Y")
+                            db.salvar_projetos(st.session_state.db_pqi); st.rerun()
+                    if projeto['fase'] > 1:
+                        if st.button("⏪ RECUAR ETAPA", use_container_width=True):
+                            projeto['fase'] -= 1
+                            db.salvar_projetos(st.session_state.db_pqi); st.rerun()
 
-    # --- ABA 3: DOSSIÊ (HISTÓRICO E EXPORTAÇÃO) ---
-    with tab_dossie:
-        st.subheader("📜 Dossiê Completo de Esforço")
-        if 'projeto' in locals() and projeto:
-            df_dossie = pd.DataFrame(projeto.get('notas', []))
-            if not df_dossie.empty:
-                st.dataframe(df_dossie, use_container_width=True)
-                # Lógica de Exportação Excel
-                output = io.BytesIO()
-                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                    df_dossie.to_excel(writer, index=False)
-                st.download_button("📥 Exportar Excel", output.getvalue(), f"Dossie_{projeto['titulo']}.xlsx")
-            else: st.info("Sem registros para este projeto.")
+        with tab_dos:
+            sub1, sub2 = st.tabs(["📁 Pastas Organizadoras", "📜 Histórico Completo (Dossiê)"])
+            with sub1:
+                with st.popover("➕ Criar Pasta"):
+                    np = st.text_input("Nome da Pasta")
+                    if st.button("Confirmar"):
+                        projeto.setdefault('pastas_virtuais', {})[np] = []
+                        db.salvar_projetos(st.session_state.db_pqi); st.rerun()
+                
+                for p_nome, arqs in projeto.get('pastas_virtuais', {}).items():
+                    with st.expander(f"📁 {p_nome}"):
+                        for a in arqs: st.write(f"📄 {a['nome']} ({a['data']})")
+                        up = st.file_uploader("Subir para esta pasta", key=f"up_{p_nome}")
+                        if up: pass 
 
-    # --- ABA 4: CONFIGURAÇÕES (APENAS ALÇADA ADM/GERENTE) ---
-    if user_role in ["ADM", "GERENTE"] and tab_config:
-        with tab_config[0]:
-            st.subheader("⚙️ Gestão Administrativa")
-            if 'projeto' in locals() and projeto:
-                projeto['titulo'] = st.text_input("Renomear Projeto", projeto['titulo'])
-                if st.button("🗑️ DELETAR PROJETO DEFINITIVAMENTE", type="secondary"):
-                    st.session_state.db_pqi.remove(projeto); db.salvar_projetos(st.session_state.db_pqi); st.rerun()
+            with sub2:
+                st.subheader("📜 Dossiê de Esforço do Projeto")
+                todas_notas = projeto.get('notas', [])
+                if todas_notas:
+                    df_dossie = pd.DataFrame(todas_notas)
+                    output = io.BytesIO()
+                    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                        df_dossie.to_excel(writer, index=False)
+                    st.download_button("📥 EXPORTAR DOSSIÊ (EXCEL)", output.getvalue(), f"Dossie_{projeto['titulo']}.xlsx", type="primary")
+                    st.dataframe(df_dossie, use_container_width=True)
+
+        with tab_kpi:
+            st.subheader("📊 Métricas e Distribuição de Esforço")
+            df = pd.DataFrame(projeto.get('notas', []))
+            
+            if not df.empty:
+                c1, c2, c3 = st.columns(3)
+                with c1: st.markdown(f'<div class="metric-card"><div class="metric-label">Total de Ações</div><div class="metric-value">{len(df)}</div></div>', unsafe_allow_html=True)
+                with c2: st.markdown(f'<div class="metric-card"><div class="metric-label">Etapa Atual</div><div class="metric-value">{projeto["fase"]}/8</div></div>', unsafe_allow_html=True)
+                with c3:
+                    top = df['motivo'].mode()[0] if not df.empty else "-"
+                    st.markdown(f'<div class="metric-card"><div class="metric-label">Foco Principal</div><div class="metric-value" style="font-size:16px">{top}</div></div>', unsafe_allow_html=True)
+                
+                st.write("---")
+                
+                col_g1, col_g2 = st.columns(2)
+                with col_g1:
+                    st.markdown("**📈 Volume por Assunto (Barras)**")
+                    st.bar_chart(df['motivo'].value_counts())
+                
+                with col_g2:
+                    st.markdown("**🍕 Distribuição de Esforço (Pizza)**")
+                    # Gráfico de Pizza nativo via Streamlit (utilizando dataframe processado)
+                    pizza_data = df['motivo'].value_counts().reset_index()
+                    st.write("Percentual de cada atividade no projeto:")
+                    st.dataframe(pizza_data.rename(columns={'count': 'Qtd', 'motivo': 'Assunto'}), use_container_width=True)
+
+                st.markdown("**📋 Ranking Detalhado de Assuntos**")
+                ranking = df.groupby('motivo').size().sort_values(ascending=False).reset_index(name='Total de Registros')
+                st.table(ranking)
+            else:
+                st.info("Inicie os registros para visualizar os gráficos de esforço.")
+
+        with tab_cfg:
+            if user_role in ["ADM", "GERENTE"]:
+                st.subheader("⚙️ Configurações do Projeto")
+                projeto['titulo'] = st.text_input("Nome do Projeto", projeto['titulo'])
+                projeto['status'] = st.selectbox("Status", ["Ativo", "Concluído", "Pausado"], 
+                                                index=["Ativo", "Concluído", "Pausado"].index(projeto['status']))
+                
+                st.write("---")
+                st.subheader("➕ Gerenciar Assuntos")
+                novo_assunto = st.text_input("Adicionar novo assunto à lista:")
+                if st.button("Adicionar Assunto"):
+                    if novo_assunto and novo_assunto not in projeto.get('motivos_custom', []):
+                        projeto.setdefault('motivos_custom', []).append(novo_assunto)
+                        db.salvar_projetos(st.session_state.db_pqi); st.success("Assunto adicionado!"); st.rerun()
+                
+                if projeto.get('motivos_custom'):
+                    st.write("Assuntos personalizados atuais:")
+                    for m in projeto['motivos_custom']:
+                        st.caption(f"- {m}")
+                
+                st.write("---")
+                if st.button("💾 Salvar Tudo"):
+                    db.salvar_projetos(st.session_state.db_pqi); st.success("Salvo!"); st.rerun()
+                
+                if st.button("🗑️ EXCLUIR PROJETO DEFINITIVAMENTE"):
+                    st.session_state.db_pqi.remove(projeto)
+                    db.salvar_projetos(st.session_state.db_pqi); st.rerun()
