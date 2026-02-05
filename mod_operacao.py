@@ -120,11 +120,12 @@ def renderizar_dashboards_compras_completo(df):
         fig_rup.update_layout(title="Motivo das Não Encomendas", barmode='group', height=400); st.plotly_chart(fig_rup, use_container_width=True)
 
 # =========================================================
-# 4. DASHBOARD DE PICOS (OPERACIONAL)
+# 4. DASHBOARD DE PICOS (OPERACIONAL) - VERSÃO RESTAURADA
 # =========================================================
 def renderizar_picos_operacional(db_picos):
     if not db_picos:
         st.info("💡 Sem dados de picos. Importe a planilha do Zendesk na aba CONFIGURAÇÕES."); return
+    
     df = normalizar_picos(pd.DataFrame(db_picos))
     df['TICKETS'] = pd.to_numeric(df['TICKETS'], errors='coerce').fillna(0)
     
@@ -139,14 +140,30 @@ def renderizar_picos_operacional(db_picos):
     df_f = df[df['DATA'].isin(dias_selecionados)]
     ordem_dias = ['Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado', 'Domingo']
 
+    # --- NOVO: GRÁFICO DE TEMPERATURA (HEATMAP) ---
+    st.markdown("#### 🔥 Mapa de Calor (Temperatura de Chamados)")
+    # Criamos a matriz de calor cruzando Dia da Semana vs Hora
+    fig_heat = px.density_heatmap(
+        df_f, 
+        x="HORA", 
+        y="DIA_SEMANA", 
+        z="TICKETS", 
+        category_orders={"DIA_SEMANA": ordem_dias},
+        color_continuous_scale='Viridis', # Estilo "Temperatura"
+        text_auto=True,
+        labels={'HORA': 'Hora do Dia', 'DIA_SEMANA': 'Dia da Semana', 'TICKETS': 'Volume'}
+    )
+    st.plotly_chart(fig_heat, use_container_width=True)
+
+    # --- GRÁFICOS DE BARRAS (QUE JÁ ESTAVAM LÁ) ---
     col1, col2 = st.columns(2)
     with col1:
         df_h = df_f.groupby('HORA')['TICKETS'].sum().reset_index()
-        fig_h = px.bar(df_h, x='HORA', y='TICKETS', title="Volume por Hora", text_auto=True, color_discrete_sequence=[PALETA[0]])
+        fig_h = px.bar(df_h, x='HORA', y='TICKETS', title="Volume Total por Hora", text_auto=True, color_discrete_sequence=[PALETA[0]])
         fig_h.update_traces(textposition='outside'); st.plotly_chart(fig_h, use_container_width=True)
     with col2:
         df_d = df_f.groupby('DIA_SEMANA')['TICKETS'].sum().reindex(ordem_dias).reset_index().dropna()
-        fig_d = px.bar(df_d, x='DIA_SEMANA', y='TICKETS', title="Volume por Dia da Semana", text_auto=True, color_discrete_sequence=[PALETA[1]])
+        fig_d = px.bar(df_d, x='DIA_SEMANA', y='TICKETS', title="Volume Total por Dia", text_auto=True, color_discrete_sequence=[PALETA[1]])
         fig_d.update_traces(textposition='outside'); st.plotly_chart(fig_d, use_container_width=True)
 
 # =========================================================
