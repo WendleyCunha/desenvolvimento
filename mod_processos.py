@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, date
 import os
 import io
 import database as db
@@ -21,9 +21,12 @@ ROADMAP = [
 MOTIVOS_PADRAO = ["Reunião", "Pedido de Posicionamento", "Elaboração de Documentos", "Anotação Interna (Sem Dash)"]
 
 def exibir(user_role="OPERACIONAL"):
-    # 1. ESTILO CSS
+    # 1. ESTILO CSS ORIGINAL
     st.markdown("""
     <style>
+        .metric-card { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 1px solid #ececec; text-align: center; }
+        .metric-value { font-size: 24px; font-weight: 800; color: #002366; }
+        .metric-label { font-size: 12px; color: #64748b; font-weight: 600; text-transform: uppercase; }
         .ponto-regua { width: 35px; height: 35px; border-radius: 50%; background: #e2e8f0; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #64748b; margin: 0 auto; border: 2px solid #cbd5e1; }
         .ponto-check { background: #10b981; color: white; border-color: #10b981; }
         .ponto-atual { background: #002366; color: white; border-color: #002366; box-shadow: 0 0 10px rgba(0, 35, 102, 0.4); }
@@ -32,9 +35,12 @@ def exibir(user_role="OPERACIONAL"):
     </style>
     """, unsafe_allow_html=True)
 
-    # 2. CARREGAMENTO SEGURO
+    # 2. CARREGAMENTO DE DADOS COM TRATAMENTO DE ERRO
     if 'db_pqi' not in st.session_state:
-        st.session_state.db_pqi = db.carregar_projetos()
+        try:
+            st.session_state.db_pqi = db.carregar_projetos()
+        except:
+            st.session_state.db_pqi = []
 
     # --- FILTROS NO TOPO ---
     c_t1, c_t2, c_t3 = st.columns([1, 2, 1])
@@ -48,8 +54,11 @@ def exibir(user_role="OPERACIONAL"):
     with c_t2:
         if projs_f:
             escolha = st.selectbox("Selecione o Projeto PQI:", [p['titulo'] for p in projs_f])
-            # Localização robusta do projeto por referência
-            projeto = next((p for p in st.session_state.db_pqi if p['titulo'] == escolha), None)
+            # Busca segura do projeto
+            for p in st.session_state.db_pqi:
+                if p['titulo'] == escolha:
+                    projeto = p
+                    break
         else:
             st.warning("Nenhum projeto neste status.")
 
@@ -64,7 +73,7 @@ def exibir(user_role="OPERACIONAL"):
                     "analise_mercado": "", "custo_atual": 0.0, "custo_estimado": 0.0
                 }
                 st.session_state.db_pqi.append(novo)
-                db.salvar_projetos(list(st.session_state.db_pqi)) # Força cópia da lista
+                db.salvar_projetos(st.session_state.db_pqi)
                 st.rerun()
 
     if projeto:
@@ -75,8 +84,10 @@ def exibir(user_role="OPERACIONAL"):
             n = i + 1
             cl = "ponto-regua"
             txt = str(n)
-            if n < projeto['fase']: cl += " ponto-check"; txt = "✔"
-            elif n == projeto['fase']: cl += " ponto-atual"
+            if n < projeto['fase']: 
+                cl += " ponto-check"; txt = "✔"
+            elif n == projeto['fase']: 
+                cl += " ponto-atual"
             with cols_r[i]:
                 st.markdown(f'<div class="{cl}">{txt}</div><div class="label-regua">{etapa["nome"]}</div>', unsafe_allow_html=True)
 
@@ -96,9 +107,12 @@ def exibir(user_role="OPERACIONAL"):
                     for idx, n in enumerate(notas_fase):
                         with st.expander(f"📝 {n['motivo']} - {n.get('setor', 'GERAL')} ({n['data']})"):
                             st.write(n['texto'])
-                            if st.button("🗑️ Excluir", key=f"del_nota_{idx}"):
+                            if n.get('arquivo_local') and os.path.exists(n['arquivo_local']):
+                                with open(n['arquivo_local'], "rb") as f:
+                                    st.download_button("📥 Baixar Anexo", f, key=f"dl_{projeto['titulo']}_{idx}")
+                            if st.button("🗑️ Excluir", key=f"del_nota_{idx}_{n['data']}"):
                                 projeto['notas'].remove(n)
-                                db.salvar_projetos(list(st.session_state.db_pqi))
+                                db.salvar_projetos(st.session_state.db_pqi)
                                 st.rerun()
 
                 st.divider()
@@ -106,60 +120,84 @@ def exibir(user_role="OPERACIONAL"):
                     sel_mot = st.selectbox("Assunto", MOTIVOS_PADRAO + projeto.get('motivos_custom', []))
                     setor = st.text_input("Setor/Responsável").upper()
                     desc = st.text_area("O que foi feito?")
-                    if st.button("Gravar no Banco"):
+                    arq = st.file_uploader("Anexar Documento")
+                    if st.button("Gravar no Banco de Dados"):
+                        caminho_anexo = None
+                        if arq:
+                            caminho_anexo = os.path.join(UPLOAD_DIR, f"{datetime.now().timestamp()}_{arq.name}")
+                            with open(caminho_anexo, "wb") as f: f.write(arq.getbuffer())
                         nova_nota = {
                             "motivo": sel_mot, "setor": setor, "texto": desc,
                             "data": datetime.now().strftime("%d/%m/%Y"),
-                            "fase_origem": projeto['fase']
+                            "fase_origem": projeto['fase'], "arquivo_local": caminho_anexo,
+                            "visivel_dash": sel_mot != "Anotação Interna (Sem Dash)"
                         }
                         projeto.setdefault('notas', []).append(nova_nota)
-                        db.salvar_projetos(list(st.session_state.db_pqi))
+                        db.salvar_projetos(st.session_state.db_pqi)
                         st.rerun()
 
             with c2:
                 st.markdown("#### 🕹️ Fluxo")
                 if user_role in ["ADM", "GERENTE"]:
-                    c_b1, c_b2 = st.columns(2)
-                    if projeto['fase'] < 8:
-                        if c_b1.button("▶️ AVANÇAR", type="primary"):
-                            projeto['fase'] += 1
-                            projeto['historico'][str(projeto['fase'])] = datetime.now().strftime("%d/%m/%Y")
-                            db.salvar_projetos(list(st.session_state.db_pqi))
-                            st.rerun()
-                    if projeto['fase'] > 1:
-                        if c_b2.button("⏪ RECUAR"):
-                            projeto['fase'] -= 1
-                            db.salvar_projetos(list(st.session_state.db_pqi))
-                            st.rerun()
+                    if projeto['fase'] < 8 and st.button("▶️ AVANÇAR", use_container_width=True, type="primary"):
+                        projeto['fase'] += 1
+                        projeto['historico'][str(projeto['fase'])] = datetime.now().strftime("%d/%m/%Y")
+                        db.salvar_projetos(st.session_state.db_pqi)
+                        st.rerun()
+                    if projeto['fase'] > 1 and st.button("⏪ RECUAR", use_container_width=True):
+                        projeto['fase'] -= 1
+                        db.salvar_projetos(st.session_state.db_pqi)
+                        st.rerun()
 
         with tab_merc:
-            st.subheader("🔍 Inteligência de Mercado e ROI")
-            c_m1, c_m2 = st.columns(2)
-            projeto['custo_atual'] = c_m1.number_input("Custo Mensal Atual (R$)", value=float(projeto.get('custo_atual', 0)))
-            projeto['custo_estimado'] = c_m1.number_input("Custo Sugerido (R$)", value=float(projeto.get('custo_estimado', 0)))
-            analise = c_m2.text_area("Análise de Mercado", value=projeto.get('analise_mercado', ""), height=150)
-            projeto['analise_mercado'] = analise
-            
-            if st.button("💾 Salvar Estudo"):
-                db.salvar_projetos(list(st.session_state.db_pqi))
-                st.success("Salvo!")
+            st.subheader("🔍 Inteligência de Mercado e Business Case")
+            col_m1, col_m2 = st.columns(2)
+            with col_m1:
+                st.markdown("### 💰 Estimativa de ROI")
+                c_atual = st.number_input("Custo Mensal Atual (R$)", value=float(projeto.get('custo_atual', 0)))
+                c_estimado = st.number_input("Custo da Solução Sugerida (R$)", value=float(projeto.get('custo_estimado', 0)))
+                projeto['custo_atual'] = c_atual
+                projeto['custo_estimado'] = c_estimado
+                economia = c_atual - c_estimado
+                if economia > 0:
+                    st.markdown(f"""<div class="roi-box"><b>Potencial de Economia:</b> R$ {economia:,.2f} / mês</div>""", unsafe_allow_html=True)
+            with col_m2:
+                st.markdown("### 🏢 Benchmarking")
+                analise = st.text_area("Análise de Fornecedores", value=projeto.get('analise_mercado', ""), height=200)
+                projeto['analise_mercado'] = analise
+            if st.button("💾 Salvar Estudo de Mercado"):
+                db.salvar_projetos(st.session_state.db_pqi)
+                st.success("Estudo salvo!")
 
         with tab_dos:
-            st.subheader("📜 Histórico")
-            df = pd.DataFrame(projeto.get('notas', []))
-            if not df.empty:
-                st.dataframe(df, use_container_width=True)
+            st.subheader("📜 Histórico de Esforço")
+            df_dossie = pd.DataFrame(projeto.get('notas', []))
+            if not df_dossie.empty:
+                st.dataframe(df_dossie, use_container_width=True)
                 output = io.BytesIO()
                 with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                    df.to_excel(writer, index=False)
+                    df_dossie.to_excel(writer, index=False)
                 st.download_button("📥 Baixar Excel", output.getvalue(), f"Dossie_{projeto['titulo']}.xlsx")
+
+        with tab_kpi:
+            st.subheader("📊 Métricas")
+            df = pd.DataFrame(projeto.get('notas', []))
+            if not df.empty:
+                c1, c2 = st.columns(2)
+                c1.metric("Ações Registradas", len(df))
+                c2.metric("Fase Atual", f"{projeto['fase']}/8")
+                st.bar_chart(df['motivo'].value_counts())
 
         with tab_cfg:
             if user_role in ["ADM", "GERENTE"]:
                 projeto['titulo'] = st.text_input("Nome do Projeto", projeto['titulo'])
                 projeto['status'] = st.selectbox("Status", ["Ativo", "Concluído", "Pausado"], 
                                                  index=["Ativo", "Concluído", "Pausado"].index(projeto.get('status', 'Ativo')))
+                if st.button("💾 Salvar Alterações"):
+                    db.salvar_projetos(st.session_state.db_pqi)
+                    st.rerun()
+                st.divider()
                 if st.button("🗑️ EXCLUIR PROJETO", type="secondary"):
                     st.session_state.db_pqi.remove(projeto)
-                    db.salvar_projetos(list(st.session_state.db_pqi))
+                    db.salvar_projetos(st.session_state.db_pqi)
                     st.rerun()
