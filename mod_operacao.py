@@ -251,22 +251,19 @@ def exibir_operacao_completa(user_role=None):
                     # ... (mantém métricas de r1, r2, r3, r4)
                     st.plotly_chart(px.bar(df_rec, x='CODIGO', y=['QTD_SOLICITADA', 'QTD_RECEBIDA'], barmode='group'), use_container_width=True)
 
-    # --- ABA 2: DASH OPERAÇÃO (COM GRÁFICO DE TEMPERATURA) ---
+    # --- ABA 2: DASH OPERAÇÃO (PICOS) ---
     with tab_modulo_picos:
         st.markdown(f"<div class='header-analise'>DASH OPERAÇÃO (PICOS) - {mes_sel.upper()}</div>", unsafe_allow_html=True)
         
-        # Recupera os dados de picos do banco
+        # 1. Pegamos a lista bruta do banco (formato compatível com sua função)
         dados_picos = db_data.get("picos", [])
         
-        if not dados_picos:
-            st.info("📊 Sem dados de picos para este mês. Importe a base no menu CONFIGURAÇÕES.")
+        # 2. Verificamos se há dados. Se houver, enviamos a LISTA para a função
+        if dados_picos:
+            # Enviamos como lista para não dar o erro de "ambiguous dataframe"
+            renderizar_picos_operacional(dados_picos)
         else:
-            # Transformamos em DataFrame para garantir que a função de picos tenha o que processar
-            df_picos = pd.DataFrame(dados_picos)
-            
-            # Chamada da função que desenha o gráfico de temperatura
-            # Certifique-se que sua função renderizar_picos_operacional aceite o DataFrame
-            renderizar_picos_operacional(df_picos)
+            st.info("📊 Sem dados de picos para este mês. Importe a base no menu CONFIGURAÇÕES.")
 
     # --- ABA 3: CONFIGURAÇÕES (CADASTRO MANUAL + UPLOAD) ---
     with tab_modulo_config:
