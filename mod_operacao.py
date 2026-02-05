@@ -140,19 +140,26 @@ def renderizar_picos_operacional(db_picos):
     df_f = df[df['DATA'].isin(dias_selecionados)]
     ordem_dias = ['Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado', 'Domingo']
 
-    # --- NOVO: GRÁFICO DE TEMPERATURA (HEATMAP) ---
+# --- NOVO: GRÁFICO DE TEMPERATURA (HEATMAP) ---
     st.markdown("#### 🔥 Mapa de Calor (Temperatura de Chamados)")
-    # Criamos a matriz de calor cruzando Dia da Semana vs Hora
+    
+    # Escala personalizada: Azul (suave) -> Amarelo -> Laranja -> Vermelho (crítico)
+    cores_suaves = ["#ADD8E6", "#FFFFE0", "#FFD700", "#FF8C00", "#FF4500"]
+
     fig_heat = px.density_heatmap(
         df_f, 
         x="HORA", 
         y="DIA_SEMANA", 
         z="TICKETS", 
         category_orders={"DIA_SEMANA": ordem_dias},
-        color_continuous_scale='Viridis', # Estilo "Temperatura"
+        color_continuous_scale=cores_suaves, 
         text_auto=True,
         labels={'HORA': 'Hora do Dia', 'DIA_SEMANA': 'Dia da Semana', 'TICKETS': 'Volume'}
     )
+    
+    # Ajuste opcional: remove a barra de cores lateral para ficar mais limpo, já que tem o texto auto
+    fig_heat.update_layout(coloraxis_showscale=True) 
+    
     st.plotly_chart(fig_heat, use_container_width=True)
 
     # --- GRÁFICOS DE BARRAS (QUE JÁ ESTAVAM LÁ) ---
