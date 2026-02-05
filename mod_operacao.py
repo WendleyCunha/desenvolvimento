@@ -102,26 +102,63 @@ def renderizar_dashboards_compras_completo(df):
         fig_p = px.pie(st_counts, values='count', names='STATUS_COMPRA', title="Decisões de Compra", hole=0.4)
         st.plotly_chart(fig_p, use_container_width=True)
 
+# =========================================================
+# 4. DASHBOARD DE PICOS E DIMENSIONAMENTO (COMPLETO)
+# =========================================================
+
 def renderizar_picos_operacional(db_picos):
     if not db_picos:
-        st.info("💡 Sem dados de picos."); return
+        st.info("💡 Sem dados de picos. Importe a planilha do Zendesk na aba CONFIGURAÇÕES."); return
+    
     df = normalizar_picos(pd.DataFrame(db_picos))
     df['TICKETS'] = pd.to_numeric(df['TICKETS'], errors='coerce').fillna(0)
     
     st.markdown("### 📅 Filtro de Dias")
     dias_disponiveis = sorted(df['DATA'].unique())
-    dias_selecionados = st.multiselect("Selecione os dias:", dias_disponiveis, default=dias_disponiveis)
+    
+    # Controle de seleção total
+    if "todos_sel" not in st.session_state: st.session_state.todos_sel = True
+    c_btn, c_sel = st.columns([1, 4])
+    if c_btn.button("Marcar/Desmarcar Todos"): 
+        st.session_state.todos_sel = not st.session_state.todos_sel
+        st.rerun()
+        
+    dias_selecionados = c_sel.multiselect("Selecione os dias:", dias_disponiveis, 
+                                          default=dias_disponiveis if st.session_state.todos_sel else [])
     
     if not dias_selecionados: return
     df_f = df[df['DATA'].isin(dias_selecionados)]
-    
+    ordem_dias = ['Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado', 'Domingo']
+
+    # --- 1. GRÁFICO DE TEMPERATURA (HEATMAP) ---
     st.markdown("#### 🔥 Mapa de Calor (Temperatura de Chamados)")
-    fig_heat = px.density_heatmap(df_f, x="HORA", y="DIA_SEMANA", z="TICKETS", text_auto=True, color_continuous_scale="Viridis")
+    cores_suaves = ["#ADD8E6", "#FFFFE0", "#FFD700", "#FF8C00", "#FF4500"]
+
+    fig_heat = px.density_heatmap(
+        df_f, 
+        x="HORA", 
+        y="DIA_SEMANA", 
+        z="TICKETS", 
+        category_orders={"DIA_SEMANA": ordem_dias},
+        color_continuous_scale=cores_suaves, 
+        text_auto=True,
+        labels={'HORA': 'Hora do Dia', 'DIA_SEMANA': 'Dia da Semana', 'TICKETS': 'Volume'}
+    )
     st.plotly_chart(fig_heat, use_container_width=True)
 
-# =========================================================
-# 4. NOVO: MÓDULO DE DIMENSIONAMENTO E ABS
-# =========================================================
+    # --- 2 e 3. GRÁFICOS DE BARRAS ---
+    col1, col2 = st.columns(2)
+    with col1:
+        df_h = df_f.groupby('HORA')['TICKETS'].sum().reset_index()
+        fig_h = px.bar(df_h, x='HORA', y='TICKETS', title="Volume Total por Hora", text_auto=True, color_discrete_sequence=[PALETA[0]])
+        fig_h.update_traces(textposition='outside')
+        st.plotly_chart(fig_h, use_container_width=True)
+    with col2:
+        df_d = df_f.groupby('DIA_SEMANA')['TICKETS'].sum().reindex(ordem_dias).reset_index().dropna()
+        fig_d = px.bar(df_d, x='DIA_SEMANA', y='TICKETS', title="Volume Total por Dia", text_auto=True, color_discrete_sequence=[PALETA[1]])
+        fig_d.update_traces(textposition='outside')
+        st.plotly_chart(fig_d, use_container_width=True)
+
 def renderizar_dimensionamento_abs(db_data, mes_ref):
     st.subheader("📏 Planejamento de Capacidade e ABS")
     t1, t2, t3 = st.tabs(["👥 Dimensionamento", "☕ Sugestão de Pausas", "🤒 Registro de ABS"])
@@ -133,6 +170,7 @@ def renderizar_dimensionamento_abs(db_data, mes_ref):
             df_p = normalizar_picos(pd.DataFrame(db_data["picos"]))
             produtividade = st.number_input("Tickets por Atendente/Hora:", min_value=1, value=4)
             df_dim = df_p.groupby('HORA')['TICKETS'].mean().reset_index()
+            # np.ceil garante que 1.1 atendentes vire 2
             df_dim['Atendentes Necessários'] = (df_dim['TICKETS'] / produtividade).apply(lambda x: int(np.ceil(x)))
             
             fig_dim = px.line(df_dim, x='HORA', y='Atendentes Necessários', text='Atendentes Necessários', title="Média de Staff Necessário por Hora", markers=True)
@@ -151,17 +189,27 @@ def renderizar_dimensionamento_abs(db_data, mes_ref):
 
     with t3:
         if "absenteismo" not in db_data: db_data["absenteismo"] = []
-        with st.form("form_abs"):
+        with st.form("form_abs", clear_on_submit=True):
             c1, c2, c3 = st.columns([2, 2, 1])
             dt = c1.date_input("Data")
             nome = c2.text_input("Colaborador")
-            tp = c3.selectbox("Tipo", ["Falta", "Atraso", "Atestado"])
-            if st.form_submit_button("Registrar"):
-                db_data["absenteismo"].append({"DATA": dt.strftime("%d/%m/%Y"), "COLABORADOR": nome, "TIPO": tp})
-                salvar_dados_op(db_data, mes_ref); st.success("Registrado!"); st.rerun()
+            tp = c3.selectbox("Tipo", ["Falta", "Atraso", "Saída Antecipada", "Atestado"])
+            obs = st.text_input("Observação")
+            if st.form_submit_button("Registrar Ocorrência"):
+                db_data["absenteismo"].append({
+                    "DATA": dt.strftime("%d/%m/%Y"), 
+                    "COLABORADOR": nome, 
+                    "TIPO": tp,
+                    "OBS": obs
+                })
+                salvar_dados_op(db_data, mes_ref)
+                st.success("Registrado!")
+                st.rerun()
+        
         if db_data["absenteismo"]:
+            st.write("#### Histórico")
             st.dataframe(pd.DataFrame(db_data["absenteismo"]), use_container_width=True)
-
+            
 # =========================================================
 # 5. FUNÇÃO PRINCIPAL UNIFICADA
 # =========================================================
