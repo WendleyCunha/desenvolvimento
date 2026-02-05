@@ -223,22 +223,22 @@ def exibir_operacao_completa(user_role=None):
     db_data = carregar_dados_op(mes_ref)
     df_atual = pd.DataFrame(db_data["analises"]) if db_data.get("analises") else pd.DataFrame()
 
-    # --- ABAS INTEGRADAS ---
-    tab_compras, tab_picos, tab_dim, tab_config = st.tabs([
-        "🛒 COMPRAS", "📊 DASH OPERAÇÃO", "📏 DIMENSIONAMENTO & ABS", "⚙️ CONFIGURAÇÕES"
+    # --- ABAS INTEGRADAS (AGORA UNIFICADAS) ---
+    tab_compras, tab_stats, tab_config = st.tabs([
+        "🛒 COMPRAS", "📊 ESTATÍSTICAS OPERAÇÃO", "⚙️ CONFIGURAÇÕES"
     ])
 
     with tab_compras:
         st.markdown(f"<div class='header-analise'>SISTEMA DE COMPRAS - {mes_sel.upper()}</div>", unsafe_allow_html=True)
         t_c1, t_c2, t_c3 = st.tabs(["🛒 COMPRAS", "📥 RECEBIMENTO", "📊 DASHBOARD"])
+        
         with t_c1:
             if df_atual.empty: st.warning("Sem dados.")
             else:
-                q = st.text_input("🔍 Localizar:").upper()
-                if q:
-                    it_b = df_atual[df_atual['CODIGO'].astype(str).str.contains(q) | df_atual['DESCRICAO'].astype(str).str.contains(q)]
-                    for i, r in it_b.iterrows():
-                        with st.container(border=True): renderizar_tratativa_compra(r, i, df_atual, db_data, mes_ref, "bq_c")
+                q = st.text_input("🔍 Localizar Item:").upper()
+                it_b = df_atual[df_atual['CODIGO'].astype(str).str.contains(q) | df_atual['DESCRICAO'].astype(str).str.contains(q)] if q else df_atual
+                for i, r in it_b.iterrows():
+                    with st.container(border=True): renderizar_tratativa_compra(r, i, df_atual, db_data, mes_ref, "bq_c")
 
         with t_c2:
             pend_rec = df_atual[(df_atual['QTD_SOLICITADA'] > 0) & (df_atual['STATUS_RECEB'] == "Pendente")].reset_index() if not df_atual.empty else pd.DataFrame()
@@ -248,23 +248,51 @@ def exibir_operacao_completa(user_role=None):
 
         with t_c3: renderizar_dashboards_compras_completo(df_atual)
 
-    with tab_picos:
-        renderizar_picos_operacional(db_data.get("picos", []))
+    with tab_stats:
+        st.markdown(f"### 📈 Gestão da Operação - {mes_sel}")
+        # Sub-abas para organizar Picos, Dimensionamento e ABS em um só lugar
+        sub_picos, sub_dim, sub_abs = st.tabs(["🔥 Picos de Demanda", "📏 Dimensionamento & Pausas", "🤒 Registro de ABS"])
+        
+        with sub_picos:
+            renderizar_picos_operacional(db_data.get("picos", []))
+            
+        with sub_dim:
+            if not db_data.get("picos"):
+                st.info("Importe a base de picos nas Configurações para calcular o staff.")
+            else:
+                df_p = normalizar_picos(pd.DataFrame(db_data["picos"]))
+                produtividade = st.number_input("Meta de Tickets por Atendente/Hora:", min_value=1, value=4)
+                df_dim = df_p.groupby('HORA')['TICKETS'].mean().reset_index()
+                df_dim['Atendentes Necessários'] = (df_dim['TICKETS'] / produtividade).apply(lambda x: int(np.ceil(x)))
+                
+                fig_dim = px.line(df_dim, x='HORA', y='Atendentes Necessários', text='Atendentes Necessários', 
+                                 title="Média de Staff Necessário por Hora", markers=True)
+                st.plotly_chart(fig_dim, use_container_width=True)
+                
+                st.write("#### ☕ Janelas Recomendadas para Pausas")
+                melhores_horas = df_dim.sort_values('TICKETS').head(4)['HORA'].tolist()
+                cols = st.columns(len(melhores_horas))
+                for i, hora in enumerate(melhores_horas):
+                    cols[i].success(f"🕒 {hora}:00")
 
-    with tab_dim:
-        renderizar_dimensionamento_abs(db_data, mes_ref)
+        with sub_abs:
+            renderizar_dimensionamento_abs(db_data, mes_ref)
 
     with tab_config:
-        st.subheader("⚙️ Importação")
-        up_c = st.file_uploader("Base Compras", type="xlsx")
-        if up_c and st.button("Salvar Compras"):
-            df_n = pd.read_excel(up_c)
-            for c in ['STATUS_COMPRA', 'QTD_SOLICITADA', 'SALDO_FISICO', 'QTD_RECEBIDA', 'STATUS_RECEB']: df_n[c] = "Pendente" if "STATUS" in c else 0
-            db_data["analises"] = df_n.to_dict(orient='records'); salvar_dados_op(db_data, mes_ref); st.rerun()
-            
-        up_p = st.file_uploader("Base Picos", type="xlsx")
-        if up_p and st.button("Salvar Picos"):
-            db_data["picos"] = pd.read_excel(up_p).to_dict(orient='records'); salvar_dados_op(db_data, mes_ref); st.rerun()
+        st.subheader("⚙️ Importação de Dados")
+        c_up1, c_up2 = st.columns(2)
+        with c_up1:
+            up_c = st.file_uploader("Base Compras (Excel)", type="xlsx")
+            if up_c and st.button("Salvar Compras"):
+                df_n = pd.read_excel(up_c)
+                for c in ['STATUS_COMPRA', 'QTD_SOLICITADA', 'SALDO_FISICO', 'QTD_RECEBIDA', 'STATUS_RECEB']: 
+                    df_n[c] = "Pendente" if "STATUS" in c else 0
+                db_data["analises"] = df_n.to_dict(orient='records'); salvar_dados_op(db_data, mes_ref); st.rerun()
+        
+        with c_up2:
+            up_p = st.file_uploader("Base Picos (Zendesk)", type="xlsx")
+            if up_p and st.button("Salvar Picos"):
+                db_data["picos"] = pd.read_excel(up_p).to_dict(orient='records'); salvar_dados_op(db_data, mes_ref); st.rerun()
 
 if __name__ == "__main__":
     exibir_operacao_completa()
