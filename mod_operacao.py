@@ -46,54 +46,92 @@ def normalizar_cabecalhos_picos(df):
     return df
 
 # =========================================================
-# 2. DASHBOARD OPERACIONAL (REFINADO)
+# 2. DASHBOARD OPERACIONAL (COM CALENDÁRIO E MARCAR TODOS)
 # =========================================================
 def renderizar_picos_operacional(db_picos):
     if not db_picos:
-        st.info("💡 Sem dados de picos para este período.")
+        st.info("💡 Sem dados de picos para este período. Vá em CONFIGURAÇÕES e importe a base do Zendesk.")
         return
     
+    # Normalização e preparação dos dados
     df = normalizar_cabecalhos_picos(pd.DataFrame(db_picos))
     df['TICKETS'] = pd.to_numeric(df['TICKETS'], errors='coerce').fillna(0)
     
     st.subheader("🔥 Inteligência de Canais & Picos")
 
-    # --- FILTROS DE DIA (ITEM 2) ---
-    dias_disponiveis = sorted(df['DATA'].unique())
-    dias_selecionados = st.multiselect("📅 Filtrar por Dias Específicos:", dias_disponiveis, default=dias_disponiveis)
+    # --- SISTEMA DE SELEÇÃO DE DIAS (CALENDÁRIO + MARCAR TODOS) ---
+    dias_disponiveis = sorted(df['DATA'].unique(), key=lambda x: datetime.strptime(x, '%d/%m/%Y'))
     
+    st.markdown("### 📅 Filtro de Dias")
+    c_btn1, c_btn2 = st.columns([1, 4])
+    
+    # Lógica do Botão Marcar/Desmarcar Todos
+    if "todos_selecionados" not in st.session_state:
+        st.session_state.todos_selecionados = True
+
+    if c_btn1.button("✅ Marcar Todos" if not st.session_state.todos_selecionados else "🔲 Desmarcar Todos"):
+        st.session_state.todos_selecionados = not st.session_state.todos_selecionados
+        st.rerun()
+
+    default_dias = dias_disponiveis if st.session_state.todos_selecionados else []
+    
+    dias_selecionados = st.multiselect(
+        "Selecione os dias para análise detalhada:",
+        options=dias_disponiveis,
+        default=default_dias,
+        help="Remova ou adicione dias para ver o comportamento da operação em datas específicas."
+    )
+    
+    if not dias_selecionados:
+        st.warning("Selecione pelo menos um dia no calendário acima para visualizar os gráficos.")
+        return
+
     df_filtrado = df[df['DATA'].isin(dias_selecionados)]
 
-    # --- ORDENAÇÃO DIA DA SEMANA (ITEM 3) ---
+    # --- ORDENAÇÃO DIA DA SEMANA ---
     ordem_dias = ['Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado', 'Domingo']
 
+    # --- GRÁFICOS COM DADOS VISÍVEIS ---
     col1, col2 = st.columns(2)
     
     with col1:
-        # Picos por Hora com Dados Visíveis (ITEM 4)
+        # Picos por Hora
         df_h = df_filtrado.groupby('HORA')['TICKETS'].sum().reset_index()
-        fig_h = px.bar(df_h, x='HORA', y='TICKETS', title="Volume por Hora", 
+        fig_h = px.bar(df_h, x='HORA', y='TICKETS', title="Volume por Hora (Total Acumulado)", 
                        text_auto='.0f', color_discrete_sequence=[PALETA_CORES[0]])
-        fig_h.update_traces(textposition='outside')
+        fig_h.update_traces(textposition='outside', textfont_size=12)
+        fig_h.update_layout(yaxis={'visible': False}, height=400) # Remove eixo Y para limpar visual, já que o dado está na barra
         st.plotly_chart(fig_h, use_container_width=True)
 
     with col2:
-        # Picos por Dia da Semana Ordenados (ITEM 3 e 4)
+        # Picos por Dia da Semana
         df_d = df_filtrado.groupby('DIA_SEMANA')['TICKETS'].sum().reindex(ordem_dias).reset_index().dropna()
         fig_d = px.bar(df_d, x='DIA_SEMANA', y='TICKETS', title="Volume por Dia da Semana",
                        text_auto='.0f', color_discrete_sequence=[PALETA_CORES[1]])
-        fig_d.update_traces(textposition='outside')
+        fig_d.update_traces(textposition='outside', textfont_size=14)
+        fig_d.update_layout(yaxis={'visible': False}, height=400)
         st.plotly_chart(fig_d, use_container_width=True)
 
-    # Mapa de Calor
+    # --- MAPA DE CALOR ---
+    st.markdown("### 🌡️ Densidade de Atendimento (Dia vs Hora)")
     pivot = df_filtrado.pivot_table(index='HORA', columns='DIA_SEMANA', values='TICKETS', aggfunc='sum').fillna(0)
-    # Reordenar colunas do pivot
     colunas_pivot = [d for d in ordem_dias if d in pivot.columns]
     pivot = pivot[colunas_pivot]
     
-    fig_heat = px.imshow(pivot, text_auto=True, title="Mapa de Calor (Densidade de Atendimento)", 
-                         color_continuous_scale='Reds', aspect="auto")
+    fig_heat = px.imshow(pivot, text_auto=True, color_continuous_scale='Reds', aspect="auto")
+    fig_heat.update_layout(xaxis_title="Dia da Semana", yaxis_title="Hora do Dia")
     st.plotly_chart(fig_heat, use_container_width=True)
+
+    # Resumo Estatístico em Cards
+    st.markdown("---")
+    m1, m2, m3 = st.columns(3)
+    total_tickets = df_filtrado['TICKETS'].sum()
+    media_diaria = total_tickets / len(dias_selecionados) if dias_selecionados else 0
+    pico_hora = df_h.loc[df_h['TICKETS'].idxmax(), 'HORA'] if not df_h.empty else 0
+    
+    m1.markdown(f"<div class='metric-box'><small>TOTAL DE TICKETS</small><h3>{int(total_tickets)}</h3></div>", unsafe_allow_html=True)
+    m2.markdown(f"<div class='metric-box'><small>MÉDIA POR DIA</small><h3>{media_diaria:.1f}</h3></div>", unsafe_allow_html=True)
+    m3.markdown(f"<div class='metric-box'><small>HORÁRIO DE PICO</small><h3>{pico_hora}h</h3></div>", unsafe_allow_html=True)
 
 # =========================================================
 # 3. MÓDULO DE COMPRAS (MANTIDO ÍNTEGRO)
