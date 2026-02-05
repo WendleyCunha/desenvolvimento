@@ -1,10 +1,15 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, date
+from datetime import datetime
 import os
 import io
-import database as db
 import plotly.express as px
+import database as db
+
+# --- DIRETÓRIO DE ANEXOS ---
+UPLOAD_DIR = "anexos_pqi"
+if not os.path.exists(UPLOAD_DIR):
+    os.makedirs(UPLOAD_DIR)
 
 # --- CONFIGURAÇÕES DO ROADMAP ---
 ROADMAP = [
@@ -16,55 +21,108 @@ ROADMAP = [
 
 MOTIVOS_PADRAO = ["Reunião", "Pedido de Posicionamento", "Elaboração de Documentos", "Anotação Interna (Sem Dash)"]
 
+# --- FUNÇÃO DO DASHBOARD PARA O CEO (BI) ---
+def dashboard_executivo(projetos):
+    if not projetos:
+        st.info("Aguardando dados para gerar indicadores...")
+        return
+
+    st.markdown("### 📊 Business Intelligence - Melhoria Contínua")
+    
+    c1, c2, c3, c4 = st.columns(4)
+    with c1: st.metric("Projetos Totais", len(projetos))
+    with c2: st.metric("Em Execução 🚀", len([p for p in projetos if p.get('status') == 'Ativo']))
+    with c3: st.metric("Concluídos ✅", len([p for p in projetos if p.get('status') == 'Concluído']))
+    with c4: st.metric("Fase Piloto 🛠️", len([p for p in projetos if p.get('fase') == 5]))
+
+    col_g1, col_g2 = st.columns(2)
+
+    with col_g1:
+        st.markdown("#### 📅 Cronograma de Evolução")
+        dados_gantt = []
+        for p in projetos:
+            # Pega a data da fase 1 ou a data atual se não existir
+            inicio_str = p.get('historico', {}).get('1', datetime.now().strftime("%d/%m/%Y"))
+            try:
+                data_ini = datetime.strptime(inicio_str, "%d/%m/%Y")
+            except:
+                data_ini = datetime.now()
+            
+            dados_gantt.append(dict(Projeto=p['titulo'], Início=data_ini, Hoje=datetime.now(), Fase=f"Etapa {p['fase']}"))
+        
+        if dados_gantt:
+            df_gantt = pd.DataFrame(dados_gantt)
+            fig_gantt = px.timeline(df_gantt, x_start="Início", x_end="Hoje", y="Projeto", color="Fase")
+            fig_gantt.update_yaxes(autorange="reversed")
+            fig_gantt.update_layout(height=300, margin=dict(t=0, b=0, l=0, r=0))
+            st.plotly_chart(fig_gantt, use_container_width=True)
+
+    with col_g2:
+        st.markdown("#### 🔥 Gargalos por Setor")
+        setores_dados = []
+        for p in projetos:
+            for n in p.get('notas', []):
+                if n.get('setor'):
+                    setores_dados.append({"Setor": n['setor']})
+        
+        if setores_dados:
+            df_setores = pd.DataFrame(setores_dados)
+            heatmap_data = df_setores.groupby("Setor").size().reset_index(name='Interações')
+            fig_heat = px.bar(heatmap_data, y="Setor", x="Interações", orientation='h', color="Interações", color_continuous_scale='Reds')
+            fig_heat.update_layout(height=300, margin=dict(t=0, b=0, l=0, r=0), showlegend=False)
+            st.plotly_chart(fig_heat, use_container_width=True)
+
 def exibir(user_role="OPERACIONAL"):
-    # 1. ESTILO CSS PREMIUM
+    # 1. ESTILO CSS
     st.markdown("""
     <style>
-        .main-pqi { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
-        .ponto-regua { width: 40px; height: 40px; border-radius: 50%; background: #f1f5f9; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #94a3b8; margin: 0 auto; border: 2px solid #e2e8f0; transition: 0.3s; }
+        .ponto-regua { width: 35px; height: 35px; border-radius: 50%; background: #e2e8f0; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #64748b; margin: 0 auto; border: 2px solid #cbd5e1; }
         .ponto-check { background: #10b981; color: white; border-color: #10b981; }
-        .ponto-atual { background: #002366; color: white; border-color: #002366; box-shadow: 0 0 15px rgba(0, 35, 102, 0.3); transform: scale(1.1); }
-        .label-regua { font-size: 11px; text-align: center; font-weight: 700; margin-top: 8px; color: #1e293b; line-height: 1.2; height: 40px; }
-        .card-lembrete { padding: 10px; border-radius: 8px; margin-bottom: 8px; border-left: 5px solid #ccc; background: #f8fafc; }
-        .roi-box { background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border: 1px solid #bbf7d0; padding: 20px; border-radius: 12px; color: #166534; text-align: center; }
+        .ponto-atual { background: #002366; color: white; border-color: #002366; box-shadow: 0 0 10px rgba(0, 35, 102, 0.4); }
+        .label-regua { font-size: 10px; text-align: center; font-weight: bold; margin-top: 5px; color: #475569; height: 30px; }
+        .roi-box { background-color: #f0fdf4; border: 1px solid #bbf7d0; padding: 15px; border-radius: 10px; color: #166534; font-weight: bold; }
     </style>
     """, unsafe_allow_html=True)
 
-    # 2. CARREGAMENTO
     if 'db_pqi' not in st.session_state:
         st.session_state.db_pqi = db.carregar_projetos()
 
-    # --- CABEÇALHO E FILTROS ---
-    c_f1, c_f2, c_f3 = st.columns([1.2, 2, 1])
-    with c_f1:
-        status_sel = st.segmented_control("Status:", ["🚀 Ativos", "✅ Concluídos", "⏸️ Pausados"], default="🚀 Ativos")
-        st_map = {"🚀 Ativos": "Ativo", "✅ Concluídos": "Concluído", "⏸️ Pausados": "Pausado"}
-    
-    projs_f = [p for p in st.session_state.db_pqi if p.get('status', 'Ativo') == st_map[status_sel]]
+    # --- PAINEL EXECUTIVO ---
+    with st.expander("📺 VISÃO DIRETORIA (BI)", expanded=False):
+        dashboard_executivo(st.session_state.db_pqi)
 
-    with c_f2:
+    # --- FILTROS ---
+    c_t1, c_t2, c_t3 = st.columns([1,2,1])
+    with c_t1:
+        status_filtro = st.radio("Filtro:", ["🚀 Ativos", "✅ Concluídos", "⏸️ Pausados"], horizontal=True)
+        status_map = {"🚀 Ativos": "Ativo", "✅ Concluídos": "Concluído", "⏸️ Pausados": "Pausado"}
+    
+    projs_f = [p for p in st.session_state.db_pqi if p.get('status', 'Ativo') == status_map[status_filtro]]
+    
+    projeto = None
+    with c_t2:
         if projs_f:
-            escolha = st.selectbox("Selecione o Projeto PQI:", [p['titulo'] for p in projs_f])
+            escolha = st.selectbox("Selecione o Projeto:", [p['titulo'] for p in projs_f])
             projeto = next(p for p in st.session_state.db_pqi if p['titulo'] == escolha)
         else:
-            st.info("Nenhum processo nesta categoria.")
-            projeto = None
+            st.warning("Nenhum projeto encontrado.")
 
-    with c_f3:
+    with c_t3:
         if user_role in ["ADM", "GERENTE"]:
-            if st.button("➕ NOVO PROCESSO", use_container_width=True, type="primary"):
+            if st.button("➕ NOVO PROJETO", use_container_width=True, type="primary"):
                 novo = {
                     "titulo": f"Novo Processo {len(st.session_state.db_pqi)+1}", 
                     "fase": 1, "status": "Ativo", "notas": [], 
-                    "historico": {"1": datetime.now().strftime("%d/%m/%Y")}, 
-                    "lembretes": [], "custo_atual": 0.0, "custo_estimado": 0.0, "analise_mercado": ""
+                    "historico": {"1": datetime.now().strftime("%d/%m/%Y")},
+                    "custo_atual": 0.0, "custo_estimado": 0.0, "analise_mercado": ""
                 }
                 st.session_state.db_pqi.append(novo)
-                db.salvar_projetos(st.session_state.db_pqi); st.rerun()
+                db.salvar_projetos(st.session_state.db_pqi)
+                st.rerun()
 
     if projeto:
-        # --- RÉGUA DE EVOLUÇÃO ---
-        st.write("---")
+        # 3. RÉGUA DE NAVEGAÇÃO
+        st.write("")
         cols_r = st.columns(8)
         for i, etapa in enumerate(ROADMAP):
             n = i + 1
@@ -75,111 +133,105 @@ def exibir(user_role="OPERACIONAL"):
             with cols_r[i]:
                 st.markdown(f'<div class="{cl}">{txt}</div><div class="label-regua">{etapa["nome"]}</div>', unsafe_allow_html=True)
 
-        # --- ABAS ---
-        t1, t2, t3, t4, t5 = st.tabs(["🚀 Execução", "📅 Lembretes", "📂 Dossiê", "📊 Dashboards", "🔍 Mercado & ROI"])
+        # 4. TABS
+        tab_ex, tab_dos, tab_kpi, tab_merc, tab_cfg = st.tabs(["🚀 Execução", "📂 Dossiê", "📊 KPIs", "🔍 Mercado & ROI", "⚙️ Gestão"])
 
-        with t1:
-            c_ex1, c_ex2 = st.columns([2, 1])
-            with c_ex1:
-                st.subheader(f"📍 Fase Atual: {ROADMAP[projeto['fase']-1]['nome']}")
-                with st.expander("📝 Adicionar Novo Registro", expanded=False):
-                    with st.form("form_nota"):
-                        moti = st.selectbox("Assunto", MOTIVOS_PADRAO)
-                        setor = st.text_input("Responsável/Setor").upper()
-                        obs = st.text_area("Descrição da Atividade")
-                        if st.form_submit_button("Salvar no Dossiê"):
-                            nova = {"motivo": moti, "setor": setor, "texto": obs, "data": datetime.now().strftime("%d/%m/%Y"), "fase_origem": projeto['fase']}
-                            projeto.setdefault('notas', []).append(nova)
-                            db.salvar_projetos(st.session_state.db_pqi); st.rerun()
-                
-                # Exibição de Notas da Fase
+        with tab_ex:
+            c1, c2 = st.columns([2,1])
+            with c1:
+                st.subheader(f"📍 Etapa: {ROADMAP[projeto['fase']-1]['nome']}")
                 notas_fase = [n for n in projeto.get('notas', []) if n.get('fase_origem') == projeto['fase']]
-                for n in reversed(notas_fase):
-                    st.info(f"**{n['motivo']}** ({n['data']}) - {n['setor']}\n\n{n['texto']}")
-
-            with c_ex2:
-                st.markdown("### 🕹️ Gestão de Fluxo")
-                if user_role in ["ADM", "GERENTE"]:
-                    if projeto['fase'] < 8:
-                        if st.button("▶️ AVANÇAR ETAPA", use_container_width=True, type="primary"):
-                            projeto['fase'] += 1
-                            projeto['historico'][str(projeto['fase'])] = datetime.now().strftime("%d/%m/%Y")
-                            db.salvar_projetos(st.session_state.db_pqi); st.rerun()
-                    if projeto['fase'] > 1:
-                        if st.button("⏪ RECUAR ETAPA", use_container_width=True):
-                            projeto['fase'] -= 1
-                            db.salvar_projetos(st.session_state.db_pqi); st.rerun()
-
-        with t2:
-            st.subheader("📅 Gestão de Lembretes")
-            with st.popover("➕ Agendar Tarefa"):
-                t_txt = st.text_input("O que precisa ser feito?")
-                t_data = st.date_input("Para quando?", min_value=date.today())
-                if st.button("Confirmar Lembrete"):
-                    projeto.setdefault('lembretes', []).append({"texto": t_txt, "data_hora": t_data.strftime("%d/%m/%Y"), "status": "Pendente"})
-                    db.salvar_projetos(st.session_state.db_pqi); st.rerun()
-            
-            for idx, lem in enumerate(projeto.get('lembretes', [])):
-                d_obj = datetime.strptime(lem['data_hora'], "%d/%m/%Y").date()
-                cor = "#ef4444" if d_obj < date.today() else ("#facc15" if d_obj == date.today() else "#3b82f6")
-                icon = "🚨" if d_obj < date.today() else "⏰"
                 
-                st.markdown(f"""<div class="card-lembrete" style="border-left-color: {cor}">
-                    {icon} <b>{lem['data_hora']}</b>: {lem['texto']}
-                </div>""", unsafe_allow_html=True)
-                if st.button("✅ Concluir", key=f"btn_lem_{idx}"):
-                    projeto['lembretes'].pop(idx)
-                    db.salvar_projetos(st.session_state.db_pqi); st.rerun()
+                for idx, n in enumerate(notas_fase):
+                    with st.expander(f"📝 {n['motivo']} - {n.get('setor', 'GERAL')} ({n['data']})"):
+                        st.write(n['texto'])
+                        if n.get('arquivo_local') and os.path.exists(n['arquivo_local']):
+                            with open(n['arquivo_local'], "rb") as f:
+                                st.download_button("📥 Baixar Anexo", f, key=f"dl_{idx}_{n['data']}")
+                        
+                        if st.button("🗑️", key=f"del_{idx}_{n['data']}"):
+                            projeto['notas'].remove(n)
+                            db.salvar_projetos(st.session_state.db_pqi); st.rerun()
 
-        with t3:
-            st.subheader("📂 Dossiê de Esforço")
-            df_dos = pd.DataFrame(projeto.get('notas', []))
-            if not df_dos.empty:
-                st.dataframe(df_dos[['data', 'fase_origem', 'motivo', 'setor', 'texto']], use_container_width=True)
+                with st.popover("➕ Novo Registro"):
+                    mot = st.selectbox("Motivo", MOTIVOS_PADRAO)
+                    setor = st.text_input("Setor").upper()
+                    txt = st.text_area("Descrição")
+                    arq = st.file_uploader("Anexar Documento")
+                    if st.button("Salvar Registro"):
+                        caminho_anexo = None
+                        if arq:
+                            caminho_anexo = os.path.join(UPLOAD_DIR, f"{datetime.now().timestamp()}_{arq.name}")
+                            with open(caminho_anexo, "wb") as f: f.write(arq.getbuffer())
+                        
+                        projeto.setdefault('notas', []).append({
+                            "motivo": mot, "setor": setor, "texto": txt, 
+                            "data": datetime.now().strftime("%d/%m/%Y"), 
+                            "fase_origem": projeto['fase'],
+                            "arquivo_local": caminho_anexo
+                        })
+                        db.salvar_projetos(st.session_state.db_pqi); st.rerun()
+
+            with c2:
+                st.markdown("#### 🕹️ Fluxo")
+                if user_role in ["ADM", "GERENTE"]:
+                    if projeto['fase'] < 8 and st.button("▶️ AVANÇAR", use_container_width=True, type="primary"):
+                        projeto['fase'] += 1
+                        projeto.setdefault('historico', {})[str(projeto['fase'])] = datetime.now().strftime("%d/%m/%Y")
+                        db.salvar_projetos(st.session_state.db_pqi); st.rerun()
+                    
+                    if projeto['fase'] > 1 and st.button("⏪ RECUAR", use_container_width=True):
+                        projeto['fase'] -= 1
+                        db.salvar_projetos(st.session_state.db_pqi); st.rerun()
+
+        with tab_dos:
+            st.subheader("📜 Histórico de Esforço")
+            df_dossie = pd.DataFrame(projeto.get('notas', []))
+            if not df_dossie.empty:
+                st.dataframe(df_dossie, use_container_width=True)
                 output = io.BytesIO()
                 with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                    df_dos.to_excel(writer, index=False, sheet_name='Dossie')
-                st.download_button("📥 Exportar Dossiê para Excel", output.getvalue(), f"Dossie_{projeto['titulo']}.xlsx")
+                    df_dossie.to_excel(writer, index=False)
+                st.download_button("📥 Baixar Planilha Completa", output.getvalue(), f"Dossie_{projeto['titulo']}.xlsx")
+            else:
+                st.info("Nenhum registro para exportar.")
 
-        with t4:
-            st.subheader("📊 Análise de Produtividade")
-            if projeto.get('notas'):
-                df_kpi = pd.DataFrame(projeto['notas'])
-                c_k1, c_k2 = st.columns(2)
-                fig_mot = px.pie(df_kpi, names='motivo', title="Distribuição de Esforço", hole=0.4)
-                c_k1.plotly_chart(fig_mot, use_container_width=True)
-                
-                esforco_fase = df_kpi['fase_origem'].value_counts().reset_index()
-                fig_bar = px.bar(esforco_fase, x='fase_origem', y='count', title="Volume de Ações por Fase")
-                c_k2.plotly_chart(fig_bar, use_container_width=True)
+        with tab_kpi:
+            st.subheader("📊 Métricas do Projeto")
+            df_kpi = pd.DataFrame(projeto.get('notas', []))
+            if not df_kpi.empty:
+                col_k1, col_k2 = st.columns(2)
+                col_k1.metric("Total de Ações", len(df_kpi))
+                col_k2.metric("Estágio Atual", f"{projeto['fase']}/8")
+                st.bar_chart(df_kpi['motivo'].value_counts())
 
-        with t5:
-            st.subheader("🔍 Inteligência de Negócio")
-            cm1, cm2 = st.columns(2)
-            with cm1:
-                st.markdown("#### 💰 Calculadora de ROI")
-                c_at = st.number_input("Custo Mensal Atual (R$)", value=float(projeto.get('custo_atual', 0)))
-                c_es = st.number_input("Custo Solução Nova (R$)", value=float(projeto.get('custo_estimado', 0)))
-                projeto['custo_atual'] = c_at
-                projeto['custo_estimado'] = c_es
-                econ = c_at - c_es
-                st.markdown(f'<div class="roi-box"><h3>Economia Estimada</h3><h2>R$ {econ:,.2f}</h2><p>por mês</p></div>', unsafe_allow_html=True)
+        with tab_merc:
+            st.subheader("🔍 Inteligência de Mercado & ROI")
+            col_m1, col_m2 = st.columns(2)
+            with col_m1:
+                c_at = st.number_input("Custo Atual (R$)", value=float(projeto.get('custo_atual', 0)))
+                c_es = st.number_input("Custo Estimado (R$)", value=float(projeto.get('custo_estimado', 0)))
+                economia = c_at - c_es
+                st.markdown(f'<div class="roi-box">Economia: R$ {economia:,.2f}</div>', unsafe_allow_html=True)
+            with col_m2:
+                analise = st.text_area("Insights de Benchmarking", value=projeto.get('analise_mercado', ""))
             
-            with cm2:
-                st.markdown("#### 🏢 Benchmarking / Web Insights")
-                merca = st.text_area("Análise de Fornecedores e Mercado", value=projeto.get('analise_mercado', ""), height=200)
-                projeto['analise_mercado'] = merca
-            
-            if st.button("💾 Salvar Business Case"):
-                db.salvar_projetos(st.session_state.db_pqi); st.success("Estudo salvo!")
+            if st.button("Salvar Dados de Mercado"):
+                projeto['custo_atual'], projeto['custo_estimado'] = c_at, c_es
+                projeto['analise_mercado'] = analise
+                db.salvar_projetos(st.session_state.db_pqi); st.success("Salvo com sucesso!")
 
-        # GESTÃO DO PROJETO (Admin)
-        if user_role == "ADM":
-            with st.expander("⚙️ Configurações Críticas"):
-                novo_nome = st.text_input("Renomear Projeto", projeto['titulo'])
-                if st.button("Atualizar Nome"):
-                    projeto['titulo'] = novo_nome
-                    db.salvar_projetos(st.session_state.db_pqi); st.rerun()
-                if st.button("🗑️ DELETAR PROJETO", type="secondary"):
+        with tab_cfg:
+            new_name = st.text_input("Renomear Projeto", value=projeto['titulo'])
+            new_status = st.selectbox("Alterar Status", ["Ativo", "Concluído", "Pausado"], 
+                                    index=["Ativo", "Concluído", "Pausado"].index(projeto.get('status', 'Ativo')))
+            if st.button("Atualizar Configurações"):
+                projeto['titulo'] = new_name
+                projeto['status'] = new_status
+                db.salvar_projetos(st.session_state.db_pqi); st.rerun()
+            
+            if user_role == "ADM":
+                st.divider()
+                if st.button("🗑️ EXCLUIR PROJETO DEFINITIVAMENTE", type="secondary"):
                     st.session_state.db_pqi.remove(projeto)
                     db.salvar_projetos(st.session_state.db_pqi); st.rerun()
