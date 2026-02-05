@@ -1,171 +1,153 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
-from database import inicializar_db
-from datetime import datetime
-import io
-import unicodedata
+from database import inicializar_db  
 
-# --- 1. CONFIGURAÇÕES E ESTILO ---
-def aplicar_estilo_premium():
+# --- FUNÇÕES DE DADOS ---
+def carregar_estoque_firebase():
+    db = inicializar_db()
+    if not db: return {"analises": [], "idx_atual": 0, "picos": []}
+    try:
+        doc = db.collection("config").document("operacao_armazem").get()
+        if doc.exists: 
+            dados = doc.to_dict()
+            if "picos" not in dados: dados["picos"] = []
+            return dados
+        return {"analises": [], "idx_atual": 0, "picos": []}
+    except:
+        return {"analises": [], "idx_atual": 0, "picos": []}
+
+def salvar_estoque_firebase(dados):
+    db = inicializar_db()
+    if db:
+        db.collection("config").document("operacao_armazem").set(dados)
+
+# --- ABA 1: ANALISE DE COMPRAS ---
+def aba_analise_compras():
+    db_data = carregar_estoque_firebase()
+    
     st.markdown("""
         <style>
-        .main-card { background: white; padding: 25px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); border-top: 5px solid #002366; margin-bottom: 20px; }
-        .metric-box { background: #f8fafc; padding: 15px; border-radius: 12px; border: 1px solid #e2e8f0; text-align: center; height: 100%; color: #002366; }
-        .metric-box h3 { margin: 5px 0; font-size: 1.8rem; font-weight: bold; }
-        .search-box { background: #f1f5f9; padding: 20px; border-radius: 15px; border-left: 5px solid #002366; margin-bottom: 20px; }
+            .metric-card {
+                background: white; padding: 20px; border-radius: 10px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.05); border-top: 4px solid #D4AF37;
+                text-align: center; margin-bottom: 10px; color: #002366;
+            }
         </style>
     """, unsafe_allow_html=True)
 
-# --- 2. UTILITÁRIOS DE TRATAMENTO DE DADOS ---
-def normalizar_colunas(df, tipo="compras"):
-    def limpar_texto(txt):
-        if not isinstance(txt, str): return txt
-        # Remove acentos e padroniza para MAIÚSCULAS com Underline
-        txt = unicodedata.normalize('NFKD', txt).encode('ASCII', 'ignore').decode('ASCII')
-        return txt.strip().upper().replace(" ", "_").replace("-", "_")
-    
-    df.columns = [limpar_texto(c) for c in df.columns]
-
-    if tipo == "picos":
-        # Mapeamento para as 6 colunas específicas do seu relatório Zendesk/Whats
-        mapeamento = {
-            'CRIACAO_DO_TICKET_DATA': 'DATA_ENTRADA',
-            'CRIACAO_DO_TICKET_DIA_DA_SEMANA': 'DIA_SEMANA',
-            'CRIACAO_DO_TICKET_HORA': 'HORA',
-            'CRIACAO_DO_TICKET_MES': 'MES',
-            'CANAL_DO_TICKET': 'CANAL',
-            'TICKETS': 'QTD_TICKETS'
-        }
-        df = df.rename(columns=mapeamento)
-    return df
-
-# --- 3. COMUNICAÇÃO COM FIREBASE ---
-def carregar_dados_op(mes_ref):
-    db = inicializar_db()
-    doc = db.collection("operacoes_mensais").document(mes_ref).get()
-    return doc.to_dict() if doc.exists else {"analises": [], "picos": []}
-
-def salvar_dados_op(dados, mes_ref):
-    db = inicializar_db()
-    db.collection("operacoes_mensais").document(mes_ref).set(dados)
-
-# --- 4. COMPONENTE: ANÁLISE DE PICOS (BI) ---
-def aba_picos_demanda(df_picos):
-    if df_picos.empty:
-        st.info("💡 Nenhuma base de picos encontrada. Vá em Configurações.")
-        return
-
-    st.subheader("🔥 Inteligência de Demanda - WhatsApp")
-    
-    # KPIs Rápidos
-    df_picos['QTD_TICKETS'] = pd.to_numeric(df_picos['QTD_TICKETS'], errors='coerce').fillna(0)
-    total = df_picos['QTD_TICKETS'].sum()
-    media_hora = df_picos.groupby('HORA')['QTD_TICKETS'].mean()
-    pico_hora = media_hora.idxmax()
-    
-    c1, c2, c3 = st.columns(3)
-    c1.markdown(f"<div class='metric-box'><small>TOTAL MÊS</small><h3>{int(total)}</h3><p>Tickets</p></div>", unsafe_allow_html=True)
-    c2.markdown(f"<div class='metric-box'><small>HORA DE PICO</small><h3>{pico_hora}h</h3><p>Média Crítica</p></div>", unsafe_allow_html=True)
-    c3.markdown(f"<div class='metric-box'><small>DIA DE PICO</small><h3>{df_picos.groupby('DIA_SEMANA')['QTD_TICKETS'].sum().idxmax()}</h3><p>Maior Volume</p></div>", unsafe_allow_html=True)
-
-    # Mapa de Calor (Heatmap)
-    st.write("### 📅 Mapa de Calor: Horário vs Dia")
-    dias_ordem = ['Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado', 'Domingo']
-    pivot = df_picos.pivot_table(index='HORA', columns='DIA_SEMANA', values='QTD_TICKETS', aggfunc='sum').fillna(0)
-    pivot = pivot.reindex(columns=[d for d in dias_ordem if d in pivot.columns])
-    
-    fig = px.imshow(pivot, text_auto=True, aspect="auto", color_continuous_scale='Reds')
-    st.plotly_chart(fig, use_container_width=True)
-
-# --- 5. COMPONENTE: OPERAÇÃO DE COMPRAS ---
-def aba_operacao_compras(df_atual, db_data, mes_ref):
-    if df_atual.empty:
-        st.warning("⚠️ Nenhuma base de compras carregada.")
-        return
-
-    # Filtros e métricas
-    analisados = len(df_atual[df_atual['STATUS_COMPRA'] != "Pendente"])
-    total_itens = len(df_atual)
-    
-    st.progress(analisados / total_itens)
-    st.write(f"📊 **Progresso:** {analisados} de {total_itens} itens analisados.")
-
-    # Esteira de Decisão
-    pendentes = df_atual[df_atual['STATUS_COMPRA'] == "Pendente"]
-    
-    if not pendentes.empty:
-        idx = pendentes.index[0]
-        item = df_atual.loc[idx]
+    # --- DIFERENCIAÇÃO DE SUBIDA (SETUP) ---
+    if not db_data.get("analises") and not db_data.get("picos"):
+        st.info("📦 Armazém 41: Aguardando carga de dados.")
+        c1, c2 = st.columns(2)
         
-        with st.container():
-            st.markdown("<div class='main-card'>", unsafe_allow_html=True)
-            st.subheader(f"📦 {item['DESCRICAO']}")
-            st.write(f"**Código:** {item['CODIGO']} | **Necessidade:** {item['QUANTIDADE']}")
-            
-            c_input, c_btn1, c_btn2 = st.columns([1,1,1])
-            saldo = c_input.number_input("Estoque Real:", min_value=0, key=f"stock_{idx}")
-            
-            if c_btn1.button("✅ COMPRAR TOTAL", use_container_width=True):
-                df_atual.at[idx, 'STATUS_COMPRA'] = "Total"
-                df_atual.at[idx, 'QTD_SOLICITADA'] = item['QUANTIDADE']
-                df_atual.at[idx, 'SALDO_FISICO'] = saldo
-                db_data["analises"] = df_atual.to_dict(orient='records')
-                salvar_dados_op(db_data, mes_ref); st.rerun()
+        with c1:
+            st.subheader("🛒 Planilha de Compras")
+            arq_c = st.file_uploader("Subir Projeção (Excel)", type=["xlsx"], key="up_compras")
+            if arq_c:
+                df_i = pd.read_excel(arq_c)
+                df_i['SOLICITADO'] = df_i['QUANTIDADE'] if 'QUANTIDADE' in df_i.columns else 0
+                cols_faltantes = ['STATUS', 'ANALISADO', 'QTD_COMPRADA', 'SALDO_VAL', 'STATUS_REC', 'QTD_RECEBIDA', 'CONFERIDO']
+                for col in cols_faltantes:
+                    df_i[col] = 0 if 'QTD' in col or 'VAL' in col else (False if col != 'STATUS_REC' else "Aguardando")
+                df_i['STATUS'] = "Pendente"
+                db_data["analises"] = df_i.to_dict(orient='records')
+                salvar_estoque_firebase(db_data); st.rerun()
 
-            if c_btn2.button("❌ NÃO ENCOMENDAR", use_container_width=True):
-                df_atual.at[idx, 'STATUS_COMPRA'] = "Não Efetuada"
-                df_atual.at[idx, 'QTD_SOLICITADA'] = 0
-                df_atual.at[idx, 'SALDO_FISICO'] = saldo
-                db_data["analises"] = df_atual.to_dict(orient='records')
-                salvar_dados_op(db_data, mes_ref); st.rerun()
-            st.markdown("</div>", unsafe_allow_html=True)
-    else:
-        st.success("✅ Todos os itens do mês foram processados!")
+        with c2:
+            st.subheader("🔥 Planilha de Picos")
+            arq_p = st.file_uploader("Relatório Whats (Excel)", type=["xlsx"], key="up_picos")
+            if arq_p:
+                df_p = pd.read_excel(arq_p)
+                db_data["picos"] = df_p.to_dict(orient='records')
+                salvar_estoque_firebase(db_data); st.rerun()
+        return
 
-# --- 6. FUNÇÃO PRINCIPAL ---
+    # --- INTERFACE PRINCIPAL ---
+    t_exec, t_dash, t_picos, t_rel = st.tabs(["🚀 Execução", "📊 Dash Compras", "🔥 Dash Picos", "📋 Relatório"])
+
+    df = pd.DataFrame(db_data.get("analises", []))
+    df_p = pd.DataFrame(db_data.get("picos", []))
+
+    with t_exec:
+        if not df.empty:
+            idx = int(db_data.get("idx_atual", 0))
+            if idx < len(df):
+                item = df.iloc[idx]
+                st.subheader(f"Item {idx+1} de {len(df)}")
+                st.info(f"**Descrição:** {item.get('DESCRICAO', 'N/A')}")
+                c1, c2, c3 = st.columns(3)
+                with c1: saldo = st.number_input("Saldo em estoque:", min_value=0, key=f"sld_{idx}")
+                with c2:
+                    if st.button("✅ COMPRA TOTAL", use_container_width=True):
+                        df.at[idx, 'STATUS'] = "Compra Efetuada"; df.at[idx, 'QTD_COMPRADA'] = item['SOLICITADO']
+                        df.at[idx, 'SALDO_VAL'] = saldo; df.at[idx, 'ANALISADO'] = True
+                        db_data["idx_atual"] = idx + 1; db_data["analises"] = df.to_dict(orient='records')
+                        salvar_estoque_firebase(db_data); st.rerun()
+                with c3:
+                    if st.button("🔍 SEM ENCOMENDA", use_container_width=True):
+                        df.at[idx, 'STATUS'] = "Sem Encomenda"; df.at[idx, 'SALDO_VAL'] = saldo; df.at[idx, 'ANALISADO'] = True
+                        db_data["idx_atual"] = idx + 1; db_data["analises"] = df.to_dict(orient='records')
+                        salvar_estoque_firebase(db_data); st.rerun()
+            else:
+                st.success("✅ Todas as análises foram concluídas!")
+                if st.button("Reiniciar Processo"):
+                    db_data["idx_atual"] = 0; salvar_estoque_firebase(db_data); st.rerun()
+        else:
+            st.warning("Nenhuma planilha de compras carregada.")
+
+    with t_dash:
+        if not df.empty:
+            k1, k2, k3 = st.columns(3)
+            analisados = len(df[df['ANALISADO'] == True])
+            k1.markdown(f'<div class="metric-card"><h4>Total</h4><h2>{len(df)}</h2></div>', unsafe_allow_html=True)
+            k2.markdown(f'<div class="metric-card"><h4>Analisados</h4><h2>{analisados}</h2></div>', unsafe_allow_html=True)
+            k3.markdown(f'<div class="metric-card"><h4>Pendentes</h4><h2>{len(df) - analisados}</h2></div>', unsafe_allow_html=True)
+            if analisados > 0:
+                fig = px.pie(df, names='STATUS', title="Status das Operações", hole=0.4)
+                st.plotly_chart(fig, use_container_width=True)
+
+    with t_picos:
+        if not df_p.empty:
+            st.subheader("Análise de Picos (Tickets/Whats)")
+            # Mapeamento automático das 6 colunas do seu arquivo
+            df_p.columns = [c.strip().upper() for c in df_p.columns]
+            col_tickets = [c for c in df_p.columns if 'TICKETS' in c][0]
+            col_hora = [c for c in df_p.columns if 'HORA' in c][0]
+            col_dia = [c for c in df_p.columns if 'DIA DA SEMANA' in c or 'SEMANA' in c][0]
+
+            fig_pico = px.bar(df_p, x=col_hora, y=col_tickets, color=col_dia, title="Volume por Hora e Dia")
+            st.plotly_chart(fig_pico, use_container_width=True)
+            
+            with st.expander("Ver dados brutos de picos"):
+                st.dataframe(df_p, use_container_width=True)
+        else:
+            st.info("Aguardando upload da planilha de Picos em 'Relatório'.")
+
+    with t_rel:
+        if not df.empty:
+            st.dataframe(df[['CODIGO', 'DESCRICAO', 'SOLICITADO', 'STATUS', 'QTD_COMPRADA']], use_container_width=True)
+        if st.button("🗑️ Resetar Tudo (Compras e Picos)"):
+            salvar_estoque_firebase({"analises": [], "idx_atual": 0, "picos": []})
+            st.rerun()
+
+# --- FUNÇÃO PRINCIPAL ---
 def exibir_operacao_completa():
-    aplicar_estilo_premium()
+    st.title("📊 Gestão Operacional")
     
-    # Sidebar - Gestão de Tempo
-    st.sidebar.title("📅 Calendário Operacional")
-    mes_sel = st.sidebar.selectbox("Mês de Referência", ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"])
-    ano_sel = st.sidebar.selectbox("Ano", [2025, 2026], index=1)
-    mes_ref = f"{mes_sel}_{ano_sel}"
-    
-    db_data = carregar_dados_op(mes_ref)
-    
-    tab1, tab2, tab3 = st.tabs(["🛒 COMPRAS", "🔥 PICOS WHATSAPP", "⚙️ CONFIGURAÇÕES"])
+    sub_aba = st.segmented_control(
+        "Selecione a área:", 
+        ["🛒 Analise Compras", "🎧 Atendimento", "🎫 Chamados", "💬 Chat Interno"],
+        default="🛒 Analise Compras"
+    )
 
-    with tab1:
-        aba_operacao_compras(pd.DataFrame(db_data["analises"]), db_data, mes_ref)
+    st.divider()
 
-    with tab2:
-        aba_picos_demanda(pd.DataFrame(db_data["picos"]))
-
-    with tab3:
-        st.header("⚙️ Configurações de Dados")
-        
-        col_up1, col_up2 = st.columns(2)
-        
-        with col_up1:
-            st.subheader("Planilha de Compras")
-            up_compra = st.file_uploader("Base (CODIGO, DESCRICAO, QUANTIDADE)", type="xlsx", key="c")
-            if up_compra and st.button("Carregar Base Compras"):
-                df = normalizar_colunas(pd.read_excel(up_compra), "compras")
-                df['STATUS_COMPRA'] = "Pendente"
-                db_data["analises"] = df.to_dict(orient='records')
-                salvar_dados_op(db_data, mes_ref); st.rerun()
-
-        with col_up2:
-            st.subheader("Planilha de Picos")
-            up_pico = st.file_uploader("Relatório Whats (6 colunas)", type="xlsx", key="p")
-            if up_pico and st.button("Carregar Base Picos"):
-                df = normalizar_colunas(pd.read_excel(up_pico), "picos")
-                db_data["picos"] = df.to_dict(orient='records')
-                salvar_dados_op(db_data, mes_ref); st.rerun()
-        
-        st.divider()
-        if st.button("🗑️ Resetar Mês Atual"):
-            salvar_dados_op({"analises": [], "picos": []}, mes_ref); st.rerun()
+    if sub_aba == "🛒 Analise Compras":
+        aba_analise_compras()
+    elif sub_aba == "🎧 Atendimento":
+        st.info("Área de Atendimento em desenvolvimento...")
+    elif sub_aba == "🎫 Chamados":
+        st.info("Gestão de Chamados em desenvolvimento...")
+    elif sub_aba == "💬 Chat Interno":
+        st.info("Chat Interno em desenvolvimento...")
