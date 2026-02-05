@@ -120,68 +120,51 @@ def renderizar_dashboards_compras_completo(df):
         fig_rup.update_layout(title="Motivo das Não Encomendas", barmode='group', height=400); st.plotly_chart(fig_rup, use_container_width=True)
 
 # =========================================================
-# 4. DASHBOARD DE PICOS (OPERACIONAL) - COM MAPA DE CALOR
+# 4. DASHBOARD DE PICOS (OPERACIONAL) - VERSÃO RESTAURADA
 # =========================================================
 def renderizar_picos_operacional(db_picos):
     if not db_picos:
         st.info("💡 Sem dados de picos. Importe a planilha do Zendesk na aba CONFIGURAÇÕES."); return
     
-    # 1. Preparação dos Dados
     df = normalizar_picos(pd.DataFrame(db_picos))
     df['TICKETS'] = pd.to_numeric(df['TICKETS'], errors='coerce').fillna(0)
     
     st.markdown("### 📅 Filtro de Dias")
     dias_disponiveis = sorted(df['DATA'].unique())
-    
-    if "todos_sel" not in st.session_state: 
-        st.session_state.todos_sel = True
-        
+    if "todos_sel" not in st.session_state: st.session_state.todos_sel = True
     c_btn, c_sel = st.columns([1, 4])
-    if c_btn.button("Marcar/Desmarcar Todos"): 
-        st.session_state.todos_sel = not st.session_state.todos_sel
-        st.rerun()
-        
+    if c_btn.button("Marcar/Desmarcar Todos"): st.session_state.todos_sel = not st.session_state.todos_sel; st.rerun()
     dias_selecionados = c_sel.multiselect("Selecione os dias:", dias_disponiveis, default=dias_disponiveis if st.session_state.todos_sel else [])
     
-    if not dias_selecionados: 
-        st.warning("Selecione ao menos um dia para visualizar os gráficos.")
-        return
-
+    if not dias_selecionados: return
     df_f = df[df['DATA'].isin(dias_selecionados)]
     ordem_dias = ['Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado', 'Domingo']
 
     # --- NOVO: GRÁFICO DE TEMPERATURA (HEATMAP) ---
-    st.markdown("#### 🔥 Mapa de Calor de Chamados")
-    
-    # Criando a matriz: Horas (X) vs Dias (Y)
+    st.markdown("#### 🔥 Mapa de Calor (Temperatura de Chamados)")
+    # Criamos a matriz de calor cruzando Dia da Semana vs Hora
     fig_heat = px.density_heatmap(
         df_f, 
         x="HORA", 
         y="DIA_SEMANA", 
         z="TICKETS", 
         category_orders={"DIA_SEMANA": ordem_dias},
-        color_continuous_scale='Viridis', # Escala visual de "temperatura"
+        color_continuous_scale='Viridis', # Estilo "Temperatura"
         text_auto=True,
-        aspect="auto",
-        labels={'HORA': 'Hora', 'DIA_SEMANA': 'Dia', 'TICKETS': 'Tickets'}
+        labels={'HORA': 'Hora do Dia', 'DIA_SEMANA': 'Dia da Semana', 'TICKETS': 'Volume'}
     )
-    
-    fig_heat.update_layout(height=450)
     st.plotly_chart(fig_heat, use_container_width=True)
 
-    # --- GRÁFICOS DE BARRAS LADO A LADO ---
+    # --- GRÁFICOS DE BARRAS (QUE JÁ ESTAVAM LÁ) ---
     col1, col2 = st.columns(2)
     with col1:
         df_h = df_f.groupby('HORA')['TICKETS'].sum().reset_index()
-        fig_h = px.bar(df_h, x='HORA', y='TICKETS', title="Volume por Hora (Total)", text_auto=True, color_discrete_sequence=[PALETA[0]])
-        fig_h.update_traces(textposition='outside')
-        st.plotly_chart(fig_h, use_container_width=True)
-        
+        fig_h = px.bar(df_h, x='HORA', y='TICKETS', title="Volume Total por Hora", text_auto=True, color_discrete_sequence=[PALETA[0]])
+        fig_h.update_traces(textposition='outside'); st.plotly_chart(fig_h, use_container_width=True)
     with col2:
         df_d = df_f.groupby('DIA_SEMANA')['TICKETS'].sum().reindex(ordem_dias).reset_index().dropna()
-        fig_d = px.bar(df_d, x='DIA_SEMANA', y='TICKETS', title="Volume por Dia (Total)", text_auto=True, color_discrete_sequence=[PALETA[1]])
-        fig_d.update_traces(textposition='outside')
-        st.plotly_chart(fig_d, use_container_width=True)
+        fig_d = px.bar(df_d, x='DIA_SEMANA', y='TICKETS', title="Volume Total por Dia", text_auto=True, color_discrete_sequence=[PALETA[1]])
+        fig_d.update_traces(textposition='outside'); st.plotly_chart(fig_d, use_container_width=True)
 
 # =========================================================
 # 5. ESTRUTURA UNIFICADA (VERSÃO COM CADASTRO MANUAL E AUDITORIA)
