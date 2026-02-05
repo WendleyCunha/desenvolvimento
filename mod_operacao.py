@@ -255,15 +255,20 @@ def exibir_operacao_completa(user_role=None):
     with tab_modulo_picos:
         st.markdown(f"<div class='header-analise'>DASH OPERAÇÃO (PICOS) - {mes_sel.upper()}</div>", unsafe_allow_html=True)
         
-        # 1. Pegamos a lista bruta do banco (formato compatível com sua função)
         dados_picos = db_data.get("picos", [])
         
-        # 2. Verificamos se há dados. Se houver, enviamos a LISTA para a função
         if dados_picos:
-            # Enviamos como lista para não dar o erro de "ambiguous dataframe"
-            renderizar_picos_operacional(dados_picos)
+            # 1. Criamos um DF temporário para garantir que as datas sejam lidas como datas
+            df_temp = pd.DataFrame(dados_picos)
+            
+            # 2. Tentamos converter a coluna de data (ajuste o nome se for diferente na sua planilha)
+            if 'DATA' in df_temp.columns:
+                df_temp['DATA'] = pd.to_datetime(df_temp['DATA'])
+            
+            # 3. Enviamos de volta como lista tratada para a função
+            renderizar_picos_operacional(df_temp.to_dict(orient='records'))
         else:
-            st.info("📊 Sem dados de picos para este mês. Importe a base no menu CONFIGURAÇÕES.")
+            st.info("📊 Sem dados de picos. Importe a base em CONFIGURAÇÕES.")
 
     # --- ABA 3: CONFIGURAÇÕES (CADASTRO MANUAL + UPLOAD) ---
     with tab_modulo_config:
