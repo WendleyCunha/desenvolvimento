@@ -3,6 +3,8 @@ import pandas as pd
 from datetime import datetime
 import os
 import io
+import plotly.express as px
+import plotly.graph_objects as go
 import database as db
 
 # --- DIRETÓRIO DE ANEXOS ---
@@ -19,45 +21,48 @@ ROADMAP = [
 ]
 
 MOTIVOS_PADRAO = ["Reunião", "Pedido de Posicionamento", "Elaboração de Documentos", "Anotação Interna (Sem Dash)"]
+PALETA_CORES = ["#002366", "#10b981", "#f59e0b", "#ef4444", "#6366f1", "#8b5cf6"]
 
 def exibir(user_role="OPERACIONAL"):
-    # 1. ESTILO CSS
+    # 1. ESTILO CSS (Aprimorado)
     st.markdown("""
     <style>
-        .metric-card { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 1px solid #ececec; text-align: center; }
-        .metric-value { font-size: 24px; font-weight: 800; color: #002366; }
-        .metric-label { font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase; }
-        .ponto-regua { width: 30px; height: 30px; border-radius: 50%; background: #e2e8f0; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #64748b; margin: 0 auto; border: 2px solid #cbd5e1; font-size: 12px;}
-        .ponto-check { background: #10b981; color: white; border-color: #10b981; }
-        .ponto-atual { background: #002366; color: white; border-color: #002366; box-shadow: 0 0 8px rgba(0, 35, 102, 0.4); }
-        .label-regua { font-size: 9px; text-align: center; font-weight: bold; margin-top: 5px; color: #475569; height: 25px; line-height: 1; }
+        .main { background-color: #f8fafc; }
+        .metric-card { 
+            background-color: #ffffff; padding: 20px; border-radius: 12px; 
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border: 1px solid #e2e8f0; 
+            text-align: center; transition: transform 0.2s;
+        }
+        .metric-value { font-size: 28px; font-weight: 800; color: #002366; margin-bottom: 5px; }
+        .metric-label { font-size: 12px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+        
+        .ponto-regua { width: 35px; height: 35px; border-radius: 50%; background: #f1f5f9; display: flex; 
+                       align-items: center; justify-content: center; font-weight: bold; color: #94a3b8; 
+                       margin: 0 auto; border: 2px solid #e2e8f0; }
+        .ponto-check { background: #10b981 !important; color: white !important; border-color: #10b981 !important; }
+        .ponto-atual { background: #002366 !important; color: white !important; border-color: #002366 !important; box-shadow: 0 0 10px rgba(0, 35, 102, 0.3); }
+        .label-regua { font-size: 10px; text-align: center; font-weight: 700; margin-top: 8px; color: #475569; line-height: 1.2; height: 30px;}
     </style>
     """, unsafe_allow_html=True)
 
     # 2. INICIALIZAÇÃO DE DADOS
     if 'db_pqi' not in st.session_state:
-        try:
-            st.session_state.db_pqi = db.carregar_projetos()
-        except:
-            st.session_state.db_pqi = []
+        try: st.session_state.db_pqi = db.carregar_projetos()
+        except: st.session_state.db_pqi = []
 
     def salvar_seguro():
-        try:
-            db.salvar_projetos(st.session_state.db_pqi)
-        except Exception as e:
-            st.error(f"Erro ao salvar: {e}")
+        try: db.salvar_projetos(st.session_state.db_pqi)
+        except Exception as e: st.error(f"Erro ao salvar: {e}")
 
     # --- DEFINIÇÃO DAS ABAS ---
-    # Garantimos que as abas existam primeiro
     titulos = ["📊 DASHBOARD GERAL"]
     if user_role in ["ADM", "GERENTE"]:
         titulos.append("⚙️ GESTÃO")
     titulos.append("🚀 OPERAÇÃO PQI")
 
     tabs = st.tabs(titulos)
-    
-    # Referências para as abas
     tab_dash = tabs[0]
+    
     idx_atual = 1
     tab_gestao = None
     if user_role in ["ADM", "GERENTE"]:
@@ -73,13 +78,27 @@ def exibir(user_role="OPERACIONAL"):
         with sub_d1:
             ativos = [p for p in projs if p.get('status') != "Concluído"]
             if ativos:
+                # CARDS PREMIUM
                 c1, c2, c3 = st.columns(3)
                 c1.markdown(f'<div class="metric-card"><div class="metric-label">Ativos</div><div class="metric-value">{len(ativos)}</div></div>', unsafe_allow_html=True)
-                c2.markdown(f'<div class="metric-card"><div class="metric-label">Ações</div><div class="metric-value">{sum(len(p.get("notas", [])) for p in ativos)}</div></div>', unsafe_allow_html=True)
+                c2.markdown(f'<div class="metric-card"><div class="metric-label">Ações Totais</div><div class="metric-value">{sum(len(p.get("notas", [])) for p in ativos)}</div></div>', unsafe_allow_html=True)
                 c3.markdown(f'<div class="metric-card"><div class="metric-label">Lembretes</div><div class="metric-value">{sum(len(p.get("lembretes", [])) for p in ativos)}</div></div>', unsafe_allow_html=True)
                 
-                df_at = pd.DataFrame([{"Projeto": p['titulo'], "Fase": f"Fase {p['fase']}", "Esforço": len(p.get('notas', []))} for p in ativos])
-                st.bar_chart(df_at.set_index("Projeto")["Esforço"])
+                st.write("---")
+                
+                # GRÁFICO PLOTLY (Interativo)
+                df_at = pd.DataFrame([
+                    {"Projeto": p['titulo'], "Fase": f"Etapa {p['fase']}", "Esforço (Ações)": len(p.get('notas', []))} 
+                    for p in ativos
+                ])
+                
+                fig_bar = px.bar(df_at, x="Projeto", y="Esforço (Ações)", color="Fase",
+                                 title="Esforço por Projeto e Etapa Atual",
+                                 color_discrete_sequence=px.colors.qualitative.Prism,
+                                 text_auto=True)
+                fig_bar.update_layout(plot_bgcolor="rgba(0,0,0,0)", margin=dict(t=40, b=0, l=0, r=0))
+                st.plotly_chart(fig_bar, use_container_width=True)
+
                 st.dataframe(df_at, use_container_width=True, hide_index=True)
             else:
                 st.info("Nenhum projeto ativo.")
@@ -87,7 +106,10 @@ def exibir(user_role="OPERACIONAL"):
         with sub_d2:
             concluidos = [p for p in projs if p.get('status') == "Concluído"]
             if concluidos:
-                df_concl = pd.DataFrame([{"Projeto": p['titulo'], "Data": p.get('data_conclusao', 'S/D'), "Ações": len(p.get('notas', []))} for p in concluidos])
+                df_concl = pd.DataFrame([{"Projeto": p['titulo'], "Conclusão": p.get('data_conclusao', 'Finalizado'), "Ações Realizadas": len(p.get('notas', []))} for p in concluidos])
+                
+                fig_pie = px.pie(df_concl, names="Projeto", values="Ações Realizadas", hole=0.4, title="Participação no Volume de Entregas")
+                st.plotly_chart(fig_pie, use_container_width=True)
                 st.dataframe(df_concl, use_container_width=True, hide_index=True)
             else:
                 st.info("Nenhum projeto entregue.")
@@ -99,12 +121,8 @@ def exibir(user_role="OPERACIONAL"):
             if st.button("➕ CRIAR NOVO PROJETO PQI", type="primary", use_container_width=True):
                 novo_projeto = {
                     "titulo": f"Novo Projeto {len(st.session_state.db_pqi) + 1}",
-                    "fase": 1,
-                    "status": "Ativo",
-                    "notas": [],
-                    "lembretes": [],
-                    "pastas_virtuais": {},
-                    "motivos_custom": []
+                    "fase": 1, "status": "Ativo", "notas": [], "lembretes": [],
+                    "pastas_virtuais": {}, "motivos_custom": []
                 }
                 st.session_state.db_pqi.append(novo_projeto)
                 salvar_seguro()
@@ -115,11 +133,12 @@ def exibir(user_role="OPERACIONAL"):
             for i, p in enumerate(st.session_state.db_pqi):
                 with st.expander(f"Configurações: {p['titulo']}"):
                     p['titulo'] = st.text_input("Nome", p['titulo'], key=f"gest_t_{i}")
-                    p['status'] = st.selectbox("Status", ["Ativo", "Concluído", "Pausado"], index=["Ativo", "Concluído", "Pausado"].index(p.get('status','Ativo')), key=f"gest_s_{i}")
+                    p['status'] = st.selectbox("Status", ["Ativo", "Concluído", "Pausado"], 
+                                             index=["Ativo", "Concluído", "Pausado"].index(p.get('status','Ativo')), 
+                                             key=f"gest_s_{i}")
                     if st.button("🗑️ Excluir Projeto", key=f"gest_del_{i}"):
                         st.session_state.db_pqi.remove(p)
-                        salvar_seguro()
-                        st.rerun()
+                        salvar_seguro(); st.rerun()
 
     # --- 3. OPERAÇÃO PQI ---
     with tab_operacao:
@@ -130,7 +149,7 @@ def exibir(user_role="OPERACIONAL"):
             st.warning("Vá na aba GESTÃO e crie seu primeiro projeto para começar.")
         else:
             c_f1, c_f2 = st.columns([1, 2])
-            status_sel = c_f1.radio("Status:", ["🚀 Ativos", "✅ Concluídos", "⏸️ Pausados"], horizontal=True)
+            status_sel = c_f1.radio("Filtrar por Status:", ["🚀 Ativos", "✅ Concluídos", "⏸️ Pausados"], horizontal=True)
             map_status = {"🚀 Ativos": "Ativo", "✅ Concluídos": "Concluído", "⏸️ Pausados": "Pausado"}
             
             filtrados = [p for p in projs if p.get('status', 'Ativo') == map_status[status_sel]]
@@ -138,10 +157,10 @@ def exibir(user_role="OPERACIONAL"):
             if not filtrados:
                 st.info(f"Não há projetos com status '{map_status[status_sel]}'.")
             else:
-                escolha = c_f2.selectbox("Projeto Atual:", [p['titulo'] for p in filtrados])
+                escolha = c_f2.selectbox("Selecione o Projeto para Trabalhar:", [p['titulo'] for p in filtrados])
                 projeto = next(p for p in filtrados if p['titulo'] == escolha)
 
-                # RÉGUA DE NAVEGAÇÃO
+                # RÉGUA DE NAVEGAÇÃO ESTILIZADA
                 st.write("")
                 cols_r = st.columns(8)
                 for i, etapa in enumerate(ROADMAP):
@@ -156,9 +175,9 @@ def exibir(user_role="OPERACIONAL"):
                     col_e1, col_e2 = st.columns([2, 1])
                     with col_e1:
                         st.markdown(f"### Etapa {projeto['fase']}: {ROADMAP[projeto['fase']-1]['nome']}")
-                        # Exibir Notas
                         for n in [n for n in projeto.get('notas', []) if n.get('fase_origem') == projeto['fase']]:
-                            with st.expander(f"📌 {n['motivo']} - {n['data']}"):
+                            with st.chat_message("user" if "Anotação" not in n['motivo'] else "assistant"):
+                                st.write(f"**{n['motivo']}** - {n['data']}")
                                 st.write(n['texto'])
                         
                         st.divider()
@@ -167,10 +186,10 @@ def exibir(user_role="OPERACIONAL"):
                             dsc = st.text_area("O que foi feito?")
                             st.write("**⏰ Agendar Lembrete?**")
                             cl1, cl2 = st.columns(2)
-                            dl = cl1.date_input("Data", value=None)
-                            hl = cl2.time_input("Hora", value=None)
+                            dl = cl1.date_input("Data", value=None, key=f"date_{escolha}")
+                            hl = cl2.time_input("Hora", value=None, key=f"time_{escolha}")
                             
-                            if st.button("Gravar no Banco"):
+                            if st.button("Gravar no Banco", use_container_width=True):
                                 if dl and hl:
                                     projeto.setdefault('lembretes', []).append({
                                         "data_hora": f"{dl.strftime('%d/%m/%Y')} {hl.strftime('%H:%M')}",
@@ -181,11 +200,10 @@ def exibir(user_role="OPERACIONAL"):
                                     "data": datetime.now().strftime("%d/%m/%Y %H:%M"),
                                     "fase_origem": projeto['fase']
                                 })
-                                salvar_seguro()
-                                st.rerun()
+                                salvar_seguro(); st.rerun()
 
                     with col_e2:
-                        st.markdown("#### ⚙️ Controle")
+                        st.markdown("#### ⚙️ Controle de Fase")
                         if st.button("▶️ AVANÇAR ETAPA", use_container_width=True, type="primary"):
                             if projeto['fase'] < 8:
                                 projeto['fase'] += 1
@@ -195,10 +213,11 @@ def exibir(user_role="OPERACIONAL"):
                                 projeto['fase'] -= 1
                                 salvar_seguro(); st.rerun()
                         
-                        st.markdown("#### ⏰ Meus Lembretes")
+                        st.markdown("---")
+                        st.markdown("#### ⏰ Lembretes Deste Projeto")
                         for idx, l in enumerate(projeto.get('lembretes', [])):
                             cl_t, cl_b = st.columns([4, 1])
-                            cl_t.warning(f"**{l['data_hora']}**\n{l['texto']}")
+                            cl_t.info(f"**{l['data_hora']}**\n{l['texto']}")
                             if cl_b.button("✅", key=f"done_l_{idx}"):
                                 projeto['lembretes'].pop(idx)
                                 salvar_seguro(); st.rerun()
@@ -229,7 +248,10 @@ def exibir(user_role="OPERACIONAL"):
                                         with open(path, "wb") as f: f.write(a.getbuffer())
                                         pastas[p_nome].append({"nome": a.name, "path": path, "data": datetime.now().strftime("%d/%m/%Y")})
                                     salvar_seguro(); st.rerun()
-                    
+                                
+                                for arq in pastas[p_nome]:
+                                    st.caption(f"📄 {arq['nome']} ({arq['data']})")
+
                     with sub2:
                         df_hist = pd.DataFrame(projeto.get('notas', []))
                         if not df_hist.empty:
@@ -237,14 +259,17 @@ def exibir(user_role="OPERACIONAL"):
                             output = io.BytesIO()
                             with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                                 df_hist.to_excel(writer, index=False)
-                            st.download_button("📥 Exportar para Excel", output.getvalue(), f"Dossie_{projeto['titulo']}.xlsx")
+                            st.download_button("📥 Exportar Dossiê (Excel)", output.getvalue(), f"Dossie_{projeto['titulo']}.xlsx")
 
                 with t_esforco:
+                    st.markdown("#### 📊 Análise de Esforço")
                     df_k = pd.DataFrame(projeto.get('notas', []))
                     if not df_k.empty:
-                        st.bar_chart(df_k['motivo'].value_counts())
+                        fig_esf = px.pie(df_k, names="motivo", title="Distribuição por Tipo de Ação", 
+                                       color_discrete_sequence=px.colors.sequential.RdBu)
+                        st.plotly_chart(fig_esf, use_container_width=True)
+                        
+                        fig_timeline = px.histogram(df_k, x="data", title="Intensidade de Registros no Tempo")
+                        st.plotly_chart(fig_timeline, use_container_width=True)
                     else:
                         st.info("Inicie os registros para ver a análise.")
-
-# Seria útil visualizar o fluxo de dados entre o session_state e o banco de dados?
-#
