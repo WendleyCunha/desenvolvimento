@@ -353,20 +353,7 @@ def exibir_operacao_completa(user_role=None):
                     renderizar_tratativa_recebimento(pend_rec.iloc[0], pend_rec.iloc[0]['index'], df_atual, db_data, mes_ref, "main_r")
                     st.markdown("</div>", unsafe_allow_html=True)
             else: st.success("✅ Tudo recebido ou nada encomendado.")
-
-        with t3: 
-            renderizar_dashboards_compras_completo(df_atual)
-            if not df_atual.empty:
-                st.divider()
-                st.subheader("🔍 Auditoria")
-                itens_manuais = df_atual[df_atual.get('ORIGEM') == 'Manual']
-                if not itens_manuais.empty: st.warning(f"🚩 {len(itens_manuais)} itens manuais.")
-                c_aud1, c_aud2 = st.columns(2)
-                with c_aud1:
-                    with st.expander("🟢 COM ESTOQUE"): st.dataframe(df_atual[df_atual['SALDO_FISICO'] > 0], use_container_width=True)
-                with c_aud2:
-                    with st.expander("🔴 RUPTURA"): st.dataframe(df_atual[df_atual['SALDO_FISICO'] <= 0], use_container_width=True)
-
+        
         with t4:
             # Chamando a nova função perita que acabamos de criar
             renderizar_dashboards_recebimento_completo(df_atual)
