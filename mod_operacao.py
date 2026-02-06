@@ -165,64 +165,89 @@ def renderizar_dashboards_recebimento_ajustado(df):
 # =========================================================
 def renderizar_picos_operacional(db_picos, db_data, mes_ref):
     if not db_picos:
-        st.info("💡 Sem dados de picos. Importe a planilha do Zendesk na aba CONFIGURAÇÕES."); return
+        st.info("💡 Sem dados de picos. Importe a planilha do Zendesk na aba CONFIGURAÇÕES.")
+        return
     
     tab_picos, tab_dim, tab_abs = st.tabs(["🔥 MAPA DE CALOR", "👥 DIMENSIONAMENTO", "📝 REGISTRO ABS"])
     df = normalizar_picos(pd.DataFrame(db_picos))
     df['TICKETS'] = pd.to_numeric(df['TICKETS'], errors='coerce').fillna(0)
     ordem_dias = ['Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado', 'Domingo']
 
+    # Filtro global de dias (afeta Calor e Dimensionamento)
+    st.markdown("### 📅 Filtro de Análise")
+    dias_disponiveis = sorted(df['DATA'].unique())
+    dias_selecionados = st.multiselect("Selecione os dias para compor a média:", dias_disponiveis, default=dias_disponiveis)
+
     with tab_picos:
-        st.markdown("### 📅 Filtro de Dias")
-        dias_disponiveis = sorted(df['DATA'].unique())
-        if "todos_sel" not in st.session_state: st.session_state.todos_sel = True
-        c_btn, c_sel = st.columns([1, 4])
-        if c_btn.button("Marcar/Desmarcar Todos"): st.session_state.todos_sel = not st.session_state.todos_sel; st.rerun()
-        dias_selecionados = c_sel.multiselect("Selecione os dias:", dias_disponiveis, default=dias_disponiveis if st.session_state.todos_sel else [])
-        
         if dias_selecionados:
             df_f = df[df['DATA'].isin(dias_selecionados)]
             cores_suaves = ["#ADD8E6", "#FFFFE0", "#FFD700", "#FF8C00", "#FF4500"]
-            fig_heat = px.density_heatmap(df_f, x="HORA", y="DIA_SEMANA", z="TICKETS", category_orders={"DIA_SEMANA": ordem_dias},
+            fig_heat = px.density_heatmap(df_f, x="HORA", y="DIA_SEMANA", z="TICKETS", 
+                                        category_orders={"DIA_SEMANA": ordem_dias},
                                         color_continuous_scale=cores_suaves, text_auto=True)
             st.plotly_chart(fig_heat, use_container_width=True)
             
-            col1, col2 = st.columns(2)
-            with col1:
+            c1, c2 = st.columns(2)
+            with c1:
                 df_h = df_f.groupby('HORA')['TICKETS'].sum().reset_index()
-                st.plotly_chart(px.bar(df_h, x='HORA', y='TICKETS', title="Volume Total por Hora", text_auto=True, color_discrete_sequence=[PALETA[0]]), use_container_width=True)
-            with col2:
+                st.plotly_chart(px.bar(df_h, x='HORA', y='TICKETS', title="Volume por Hora", text_auto=True, color_discrete_sequence=[PALETA[0]]), use_container_width=True)
+            with c2:
                 df_d = df_f.groupby('DIA_SEMANA')['TICKETS'].sum().reindex(ordem_dias).reset_index().dropna()
-                st.plotly_chart(px.bar(df_d, x='DIA_SEMANA', y='TICKETS', title="Volume Total por Dia", text_auto=True, color_discrete_sequence=[PALETA[1]]), use_container_width=True)
+                st.plotly_chart(px.bar(df_d, x='DIA_SEMANA', y='TICKETS', title="Volume por Dia", text_auto=True, color_discrete_sequence=[PALETA[1]]), use_container_width=True)
 
     with tab_dim:
-        st.subheader("👥 Cálculo de Dimensionamento")
-        st.info("Regra aplicada: 4 Atendimentos por Hora/Colaborador")
+        st.subheader("👥 Simulador de Dimensionamento Dinâmico")
+        
+        # --- PAINEL DE CONTROLE (O QUE VOCÊ PEDIU) ---
+        with st.container(border=True):
+            col_sim1, col_sim2 = st.columns(2)
+            meta_hora = col_sim1.slider("Capacidade: Atendimentos/Hora por Agente", 1, 15, 4)
+            agentes_reais = col_sim2.number_input("Equipe em Operação (Cenário Real)", min_value=1, value=5)
+
         if dias_selecionados:
+            # Média de tickets por hora nos dias selecionados
             df_dim = df[df['DATA'].isin(dias_selecionados)].groupby('HORA')['TICKETS'].mean().reset_index()
-            df_dim['AGENTES_NECESSARIOS'] = (df_dim['TICKETS'] / 4).apply(lambda x: int(x) + 1 if x % 1 > 0 else int(x))
-            fig_dim = px.line(df_dim, x='HORA', y='AGENTES_NECESSARIOS', title="Necessidade de Staff por Hora (Média)", markers=True)
-            fig_dim.add_bar(x=df_dim['HORA'], y=df_dim['AGENTES_NECESSARIOS'], name="Agentes")
-            st.plotly_chart(fig_dim, use_container_width=True)
+            
+            # Cálculo 1: Quantos agentes eu preciso para manter a meta (Equipe Ideal)
+            df_dim['AGENTES_NECESSARIOS'] = (df_dim['TICKETS'] / meta_hora).apply(lambda x: int(x) + 1 if x % 1 > 0 else int(x))
+            
+            # Cálculo 2: Qual a carga por pessoa com a equipe informada (Cenário Real)
+            df_dim['CARGA_POR_AGENTE'] = (df_dim['TICKETS'] / agentes_reais).round(1)
+
+            # --- GRÁFICOS ---
+            g1, g2 = st.columns(2)
+            with g1:
+                st.markdown(f"**Equipe Ideal (Meta: {meta_hora}/h)**")
+                st.plotly_chart(px.bar(df_dim, x='HORA', y='AGENTES_NECESSARIOS', text_auto=True, color_discrete_sequence=[PALETA[0]]), use_container_width=True)
+            with g2:
+                st.markdown(f"**Carga Real (Com {agentes_reais} agentes)**")
+                fig_carga = px.line(df_dim, x='HORA', y='CARGA_POR_AGENTE', markers=True, color_discrete_sequence=['#ef4444'])
+                fig_carga.add_hline(y=meta_hora, line_dash="dash", line_color="green", annotation_text="Teto da Meta")
+                st.plotly_chart(fig_carga, use_container_width=True)
+
             st.divider()
-            st.subheader("☕ Sugestão de Pausas")
-            melhores_pausas = df_dim.sort_values(by='TICKETS').head(3)
-            p_cols = st.columns(3)
-            for i, (idx, row) in enumerate(melhores_pausas.iterrows()):
-                p_cols[i].markdown(f"<div class='metric-box'><small>{i+1}ª OPÇÃO</small><h3>{int(row['HORA'])}:00</h3></div>", unsafe_allow_html=True)
+            st.write("📋 **Tabela de Projeção Operacional**")
+            df_tab = df_dim.rename(columns={
+                'HORA': 'Hora', 
+                'TICKETS': 'Média Tickets', 
+                'AGENTES_NECESSARIOS': 'Staff Ideal', 
+                'CARGA_POR_AGENTE': 'Tickets/Agente Atual'
+            })
+            st.dataframe(df_tab, hide_index=True, use_container_width=True)
 
     with tab_abs:
         st.subheader("📝 Controle de ABS")
-        with st.form("form_abs", clear_on_submit=True):
-            c_a1, c_a2, c_a3 = st.columns(3)
-            data_abs = c_a1.date_input("Data", value=datetime.now())
-            tipo_abs = c_a2.selectbox("Tipo", ["Falta", "Atraso", "Saída Antecipada", "Atestado"])
-            nome_abs = c_a3.text_input("Nome do Colaborador")
-            motivo_abs = st.text_area("Observação/Motivo")
+        with st.form("form_abs_novo", clear_on_submit=True):
+            ca1, ca2, ca3 = st.columns(3)
+            d_abs = ca1.date_input("Data", value=datetime.now())
+            t_abs = ca2.selectbox("Tipo", ["Falta", "Atraso", "Saída Antecipada", "Atestado"])
+            n_abs = ca3.text_input("Nome do Colaborador")
+            m_abs = st.text_area("Observação/Motivo")
             if st.form_submit_button("Registrar Ocorrência"):
-                db_data.setdefault("abs", []).append({"data": str(data_abs), "tipo": tipo_abs, "nome": nome_abs.upper(), "motivo": motivo_abs})
+                db_data.setdefault("abs", []).append({"data": str(d_abs), "tipo": t_abs, "nome": n_abs.upper(), "motivo": m_abs})
                 salvar_dados_op(db_data, mes_ref); st.success("Registrado!"); st.rerun()
-        if db_data.get("abs"): st.table(pd.DataFrame(db_data["abs"]))
+        if db_data.get("abs"): 
+            st.table(pd.DataFrame(db_data["abs"]))
 
 # =========================================================
 # 5. ESTRUTURA UNIFICADA
