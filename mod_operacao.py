@@ -371,6 +371,7 @@ def exibir_operacao_completa(user_role=None):
     with tab_modulo_config:
         st.markdown(f"<div class='header-analise'>CONFIGURAÇÕES</div>", unsafe_allow_html=True)
         
+        # Manter Cadastro Manual
         with st.container(border=True):
             st.subheader("🆕 Cadastro Manual (Compras)")
             with st.form("cad_manual_form", clear_on_submit=True):
@@ -388,12 +389,62 @@ def exibir_operacao_completa(user_role=None):
         
         with c_up1:
             st.markdown("### 🛒 Base Compras")
-            up_c = st.file_uploader("Upload Excel Compras", type="xlsx", key="up_compras")
-            if up_c and st.button("Salvar Compras"):
+            up_c = st.file_uploader("Upload Excel Compras (INICIAL)", type="xlsx", key="up_compras")
+            if up_c and st.button("Salvar Base Nova"):
                 df_n = pd.read_excel(up_c)
                 df_n['ORIGEM'] = 'Planilha'
-                for c in ['STATUS_COMPRA', 'QTD_SOLICITADA', 'SALDO_FISICO', 'QTD_RECEBIDA', 'STATUS_RECEB']: df_n[c] = "Pendente" if "STATUS" in c else 0
+                for c in ['STATUS_COMPRA', 'QTD_SOLICITADA', 'SALDO_FISICO', 'QTD_RECEBIDA', 'STATUS_RECEB']: 
+                    df_n[c] = "Pendente" if "STATUS" in c else 0
                 db_data["analises"] = df_n.to_dict(orient='records'); salvar_dados_op(db_data, mes_ref); st.rerun()
+
+            # --- NOVO BLOCO: SUBIR AUDITORIA PRONTA ---
+            st.divider()
+            st.markdown("### 📝 Atualizar por Planilha Auditada")
+            st.caption("Use esta opção para subir o arquivo que você exportou e preencheu.")
+            up_aud = st.file_uploader("Upload Auditoria (Excel ou CSV)", type=["xlsx", "csv"], key="up_auditado")
+            
+            if up_aud and st.button("🚀 Aplicar Auditoria Automática"):
+                df_aud_nova = pd.read_csv(up_aud) if up_aud.name.endswith('.csv') else pd.read_excel(up_aud)
+                
+                # Normalizar colunas para evitar erro de maiúsculas/minúsculas
+                df_aud_nova.columns = [str(c).upper().strip() for c in df_aud_nova.columns]
+                colunas_foco = ['CODIGO', 'STATUS_COMPRA', 'QTD_SOLICITADA', 'SALDO_FISICO']
+                
+                if all(col in df_aud_nova.columns for col in colunas_foco):
+                    # Criar mapeamento de atualizações
+                    updates = df_aud_nova.set_index('CODIGO')[['STATUS_COMPRA', 'QTD_SOLICITADA', 'SALDO_FISICO']].to_dict('index')
+                    
+                    cont_sucesso = 0
+                    for i, row in df_atual.iterrows():
+                        cod = str(row['CODIGO']).strip()
+                        if cod in updates:
+                            df_atual.at[i, 'STATUS_COMPRA'] = updates[cod]['STATUS_COMPRA']
+                            df_atual.at[i, 'QTD_SOLICITADA'] = updates[cod]['QTD_SOLICITADA']
+                            df_atual.at[i, 'SALDO_FISICO'] = updates[cod]['SALDO_FISICO']
+                            cont_sucesso += 1
+                    
+                    db_data["analises"] = df_atual.to_dict(orient='records')
+                    salvar_dados_op(db_data, mes_ref)
+                    st.success(f"✅ Sucesso! {cont_sucesso} itens foram atualizados.")
+                    st.rerun()
+                else:
+                    st.error(f"Erro: A planilha deve conter as colunas: {colunas_foco}")
+            
+            # Botão de Reset que já existia
+            if st.button("🗑️ Resetar Apenas Compras", type="secondary"):
+                db_data["analises"] = []; db_data["idx_solic"] = 0; db_data["idx_receb"] = 0
+                salvar_dados_op(db_data, mes_ref); st.warning("Base de Compras limpa!"); st.rerun()
+
+        with c_up2:
+            st.markdown("### 📊 Base Picos (Zendesk)")
+            up_p = st.file_uploader("Upload Excel Picos", type="xlsx", key="up_picos")
+            if up_p and st.button("Salvar Picos"):
+                df_p = pd.read_excel(up_p)
+                db_data["picos"] = df_p.to_dict(orient='records'); salvar_dados_op(db_data, mes_ref); st.rerun()
+            
+            if st.button("🗑️ Resetar Apenas Picos", type="secondary"):
+                db_data["picos"] = []
+                salvar_dados_op(db_data, mes_ref); st.warning("Base de Picos limpa!"); st.rerun()
             
             # REQUISITO 4: Reset Base Compras
             if st.button("🗑️ Resetar Apenas Compras", type="secondary"):
