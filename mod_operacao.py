@@ -40,7 +40,6 @@ def normalizar_picos(df):
     df.columns = [unicodedata.normalize('NFKD', str(c)).encode('ASCII', 'ignore').decode('ASCII').upper().strip() for c in df.columns]
     return df.rename(columns=mapeamento)
 
-
 # =========================================================
 # 2. COMPONENTES DE TRATATIVA (COMPRAS/RECEBIMENTO)
 # =========================================================
@@ -84,7 +83,7 @@ def renderizar_tratativa_recebimento(item, index, df_completo, db_data, mes_ref,
             db_data["analises"] = df_completo.to_dict(orient='records'); del st.session_state[f"show_rec_p_{index}_{key_suffix}"]; salvar_dados_op(db_data, mes_ref); st.rerun()
 
 # =========================================================
-# 3. DASHBOARDS DE PERFORMANCE (COMPRAS)
+# 3. DASHBOARDS DE PERFORMANCE
 # =========================================================
 def renderizar_dashboards_compras_completo(df):
     if df.empty: return
@@ -105,16 +104,6 @@ def renderizar_dashboards_compras_completo(df):
     k3.markdown(f"<div class='metric-box'><small>ESTRATÉGICO</small><h3 style='color:#16a34a;'>{len(nao_efet_com_estoque)}</h3></div>", unsafe_allow_html=True)
     k4.markdown(f"<div class='metric-box'><small>RUPTURA</small><h3 style='color:#ef4444;'>{len(nao_efet_sem_estoque)}</h3></div>", unsafe_allow_html=True)
 
-    c1, c2 = st.columns(2)
-    with c1:
-        st_counts = df['STATUS_COMPRA'].value_counts().reset_index()
-        st_counts.columns = ['Status', 'Qtd']
-        fig_p = px.pie(st_counts, values='Qtd', names='Status', title="Decisões de Compra", hole=0.4, color='Status', color_discrete_map={'Total': '#002366', 'Parcial': '#3b82f6', 'Não Efetuada': '#ef4444', 'Pendente': '#cbd5e1'})
-        st.plotly_chart(fig_p, use_container_width=True)
-    with c2:
-        fig_rup = go.Figure(data=[go.Bar(name='Com Estoque', x=['Não Efetuadas'], y=[len(nao_efet_com_estoque)], marker_color='#16a34a'), go.Bar(name='Sem Estoque', x=['Não Efetuadas'], y=[len(nao_efet_sem_estoque)], marker_color='#ef4444')])
-        fig_rup.update_layout(title="Motivo das Não Encomendas", barmode='group', height=400); st.plotly_chart(fig_rup, use_container_width=True)
-
 # =========================================================
 # 4. DASHBOARD DE PICOS E DIMENSIONAMENTO (COMPLETO)
 # =========================================================
@@ -126,254 +115,115 @@ def renderizar_picos_operacional(db_picos):
     df = normalizar_picos(pd.DataFrame(db_picos))
     df['TICKETS'] = pd.to_numeric(df['TICKETS'], errors='coerce').fillna(0)
     
-    st.markdown("### 📅 Filtro de Dias")
-    dias_disponiveis = sorted(df['DATA'].unique())
-    
-    # Controle de seleção total
-    if "todos_sel" not in st.session_state: st.session_state.todos_sel = True
-    c_btn, c_sel = st.columns([1, 4])
-    if c_btn.button("Marcar/Desmarcar Todos"): 
-        st.session_state.todos_sel = not st.session_state.todos_sel
-        st.rerun()
-        
-    dias_selecionados = c_sel.multiselect("Selecione os dias:", dias_disponiveis, 
-                                          default=dias_disponiveis if st.session_state.todos_sel else [])
-    
-    if not dias_selecionados: return
-    df_f = df[df['DATA'].isin(dias_selecionados)]
-    ordem_dias = ['Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado', 'Domingo']
-
-    # --- 1. GRÁFICO DE TEMPERATURA (HEATMAP) ---
     st.markdown("#### 🔥 Mapa de Calor (Temperatura de Chamados)")
+    ordem_dias = ['Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado', 'Domingo']
     cores_suaves = ["#ADD8E6", "#FFFFE0", "#FFD700", "#FF8C00", "#FF4500"]
 
-    fig_heat = px.density_heatmap(
-        df_f, 
-        x="HORA", 
-        y="DIA_SEMANA", 
-        z="TICKETS", 
-        category_orders={"DIA_SEMANA": ordem_dias},
-        color_continuous_scale=cores_suaves, 
-        text_auto=True,
-        labels={'HORA': 'Hora do Dia', 'DIA_SEMANA': 'Dia da Semana', 'TICKETS': 'Volume'}
-    )
-    st.plotly_chart(fig_heat, use_container_width=True)
+    fig_heat = px.density_heatmap(df, x="HORA", y="DIA_SEMANA", z="TICKETS", category_orders={"DIA_SEMANA": ordem_dias}, color_continuous_scale=cores_suaves, text_auto=True)
+    st.plotly_chart(fig_heat, use_container_width=True, key="heat_op")
 
-    # --- 2 e 3. GRÁFICOS DE BARRAS (DENTRO DA FUNÇÃO PICOS) ---
     col1, col2 = st.columns(2)
     with col1:
-        df_h = df_f.groupby('HORA')['TICKETS'].sum().reset_index()
-        fig_h = px.bar(df_h, x='HORA', y='TICKETS', title="Volume Total por Hora", text_auto=True, color_discrete_sequence=[PALETA[0]])
-        fig_h.update_traces(textposition='outside')
-        st.plotly_chart(fig_h, use_container_width=True, key="graf_hora_picos") # Key única
+        df_h = df.groupby('HORA')['TICKETS'].sum().reset_index()
+        st.plotly_chart(px.bar(df_h, x='HORA', y='TICKETS', title="Volume por Hora", color_discrete_sequence=[PALETA[0]]), key="bar_hora")
     with col2:
-        df_d = df_f.groupby('DIA_SEMANA')['TICKETS'].sum().reindex(ordem_dias).reset_index().dropna()
-        fig_d = px.bar(df_d, x='DIA_SEMANA', y='TICKETS', title="Volume Total por Dia", text_auto=True, color_discrete_sequence=[PALETA[1]])
-        fig_d.update_traces(textposition='outside')
-        st.plotly_chart(fig_d, use_container_width=True, key="graf_dia_picos") # Key única
+        df_d = df.groupby('DIA_SEMANA')['TICKETS'].sum().reindex(ordem_dias).reset_index().dropna()
+        st.plotly_chart(px.bar(df_d, x='DIA_SEMANA', y='TICKETS', title="Volume por Dia", color_discrete_sequence=[PALETA[1]]), key="bar_dia")
 
 def renderizar_dimensionamento_abs(db_data, mes_ref):
-    # Esta função agora foca apenas no formulário para evitar duplicação de gráficos
     if "absenteismo" not in db_data: db_data["absenteismo"] = []
     
     st.markdown("#### 🤒 Registro de Ocorrências (Faltas/Atrasos)")
-    with st.form("form_abs_unificado", clear_on_submit=True):
+    with st.form("form_abs_final", clear_on_submit=True):
         c1, c2, c3 = st.columns([2, 2, 1])
         dt = c1.date_input("Data")
         nome = c2.text_input("Colaborador")
         tp = c3.selectbox("Tipo", ["Falta", "Atraso", "Saída Antecipada", "Atestado"])
         obs = st.text_input("Observação")
         if st.form_submit_button("Registrar Ocorrência"):
-            db_data["absenteismo"].append({
-                "DATA": dt.strftime("%d/%m/%Y"), 
-                "COLABORADOR": nome, 
-                "TIPO": tp,
-                "OBS": obs
-            })
-            salvar_dados_op(db_data, mes_ref)
-            st.success("Registrado!")
-            st.rerun()
+            db_data["absenteismo"].append({"DATA": dt.strftime("%d/%m/%Y"), "COLABORADOR": nome, "TIPO": tp, "OBS": obs})
+            salvar_dados_op(db_data, mes_ref); st.success("Registrado!"); st.rerun()
     
     if db_data["absenteismo"]:
-        st.write("#### Histórico")
         st.dataframe(pd.DataFrame(db_data["absenteismo"]), use_container_width=True, hide_index=True)
 
 # =========================================================
-# 5. ESTRUTURA UNIFICADA (VERSÃO COM CADASTRO MANUAL E AUDITORIA)
+# 5. ESTRUTURA UNIFICADA
 # =========================================================
 def exibir_operacao_completa(user_role=None):
     aplicar_estilo_premium()
-    
-    # Barra Lateral
     st.sidebar.title("📅 Gestão Mensal")
-    meses_lista = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
-    mes_sel = st.sidebar.selectbox("Mês", meses_lista, index=datetime.now().month - 1)
+    mes_sel = st.sidebar.selectbox("Mês", ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"], index=datetime.now().month - 1)
     ano_sel = st.sidebar.selectbox("Ano", [2024, 2025, 2026], index=1)
     mes_ref = f"{mes_sel}_{ano_sel}"
     
     db_data = carregar_dados_op(mes_ref)
     df_atual = pd.DataFrame(db_data["analises"]) if db_data.get("analises") else pd.DataFrame()
 
-    # --- ABAS NÍVEL 1 ---
-    tab_modulo_compras, tab_modulo_picos, tab_modulo_config = st.tabs([
-        "🛒 COMPRAS", 
-        "📊 DASH OPERAÇÃO", 
-        "⚙️ CONFIGURAÇÕES"
-    ])
+    tab_compras, tab_operacao, tab_config = st.tabs(["🛒 COMPRAS", "📊 DASH OPERAÇÃO", "⚙️ CONFIGURAÇÕES"])
 
-    # --- ABA 1: COMPRAS ---
-    with tab_modulo_compras:
+    with tab_compras:
         st.markdown(f"<div class='header-analise'>SISTEMA DE COMPRAS - {mes_sel.upper()}</div>", unsafe_allow_html=True)
-        tab1, tab2, tab3, tab4 = st.tabs(["🛒 COMPRAS", "📥 RECEBIMENTO", "📊 DASHBOARD COMPRAS", "📈 DASHBOARD RECEBIMENTO"])
-        
-        with tab1: # Processo de Compras
-            if df_atual.empty: 
-                st.warning("Sem dados. Vá na aba superior CONFIGURAÇÕES.")
+        t_c1, t_c2, t_c3 = st.tabs(["🛒 COMPRAS", "📥 RECEBIMENTO", "📊 DASHBOARD"])
+        with t_c1:
+            if df_atual.empty: st.warning("Sem dados.")
             else:
-                st.markdown('<div class="search-box">', unsafe_allow_html=True)
-                q = st.text_input("🔍 Localizar Item:").upper()
-                if q:
-                    it_b = df_atual[df_atual['CODIGO'].astype(str).str.contains(q) | df_atual['DESCRICAO'].astype(str).str.contains(q)]
-                    for i, r in it_b.iterrows():
-                        with st.container(border=True): renderizar_tratativa_compra(r, i, df_atual, db_data, mes_ref, "bq_c")
-                st.markdown('</div>', unsafe_allow_html=True)
-                
-                idx_s = db_data.get("idx_solic", 0)
-                while idx_s < len(df_atual) and df_atual.iloc[idx_s]['STATUS_COMPRA'] != "Pendente": idx_s += 1
-                if idx_s < len(df_atual):
-                    st.subheader(f"🚀 Esteira ({idx_s + 1}/{len(df_atual)})")
-                    with st.container():
-                        st.markdown("<div class='main-card'>", unsafe_allow_html=True)
-                        renderizar_tratativa_compra(df_atual.iloc[idx_s], idx_s, df_atual, db_data, mes_ref, "main_c")
-                        st.markdown("</div>", unsafe_allow_html=True)
-
-        with tab2: # Recebimento
+                q = st.text_input("🔍 Localizar:").upper()
+                it_b = df_atual[df_atual['CODIGO'].astype(str).str.contains(q) | df_atual['DESCRICAO'].astype(str).str.contains(q)] if q else df_atual
+                for i, r in it_b.iterrows():
+                    with st.container(border=True): renderizar_tratativa_compra(r, i, df_atual, db_data, mes_ref, "bq_c")
+        with t_c2:
             pend_rec = df_atual[(df_atual['QTD_SOLICITADA'] > 0) & (df_atual['STATUS_RECEB'] == "Pendente")].reset_index() if not df_atual.empty else pd.DataFrame()
             if not pend_rec.empty:
-                st.markdown('<div class="search-box-rec">', unsafe_allow_html=True)
-                q_r = st.text_input("🔍 Localizar Recebimento:").upper()
-                if q_r:
-                    it_r = pend_rec[pend_rec['CODIGO'].astype(str).str.contains(q_r) | pend_rec['DESCRICAO'].astype(str).str.contains(q_r)]
-                    for _, r in it_r.iterrows():
-                        with st.container(border=True): renderizar_tratativa_recebimento(r, r['index'], df_atual, db_data, mes_ref, "bq_r")
-                st.markdown('</div>', unsafe_allow_html=True)
-                st.subheader(f"📥 Recebimento ({len(pend_rec)} pendentes)")
-                with st.container():
-                    st.markdown("<div class='main-card' style='border-top-color:#16a34a;'>", unsafe_allow_html=True)
-                    renderizar_tratativa_recebimento(pend_rec.iloc[0], pend_rec.iloc[0]['index'], df_atual, db_data, mes_ref, "main_r")
-                    st.markdown("</div>", unsafe_allow_html=True)
-            else: st.success("✅ Tudo recebido ou nada encomendado.")
+                renderizar_tratativa_recebimento(pend_rec.iloc[0], pend_rec.iloc[0]['index'], df_atual, db_data, mes_ref, "main_r")
+            else: st.success("✅ Tudo recebido.")
+        with t_c3: renderizar_dashboards_compras_completo(df_atual)
 
-        with tab3: # DASHBOARD COMPRAS (COM AUDITORIA)
-            renderizar_dashboards_compras_completo(df_atual)
-            
-            if not df_atual.empty:
-                st.divider()
-                st.subheader("🔍 Detalhamento de Auditoria")
-                
-                # Identifica itens manuais para o ALERTA
-                itens_manuais = df_atual[df_atual.get('ORIGEM') == 'Manual']
-                if not itens_manuais.empty:
-                    st.warning(f"🚩 ALERTA: {len(itens_manuais)} itens manuais identificados.")
-                
-                col_aud1, col_aud2 = st.columns(2)
-                with col_aud1:
-                    with st.expander("🟢 ITENS COM ESTOQUE (Estratégico)"):
-                        estrat = df_atual[(df_atual['SALDO_FISICO'] > 0)]
-                        st.dataframe(estrat, use_container_width=True)
-                with col_aud2:
-                    with st.expander("🔴 ITENS SEM ESTOQUE (Ruptura)"):
-                        ruptura = df_atual[(df_atual['SALDO_FISICO'] <= 0)]
-                        st.dataframe(ruptura, use_container_width=True)
-
-                with st.expander("🔎 Ver itens fora da planilha"):
-                    st.dataframe(itens_manuais, use_container_width=True)
-                
-                st.download_button("📊 Baixar Relatório Geral Compras", df_atual.to_csv(index=False).encode('utf-8'), f"Relatorio_{mes_ref}.csv", "text/csv", use_container_width=True)
-
-        with tab4: # Dash Recebimento (Gráfico)
-            if not df_atual.empty:
-                encomendados = df_atual[df_atual['QTD_SOLICITADA'] > 0]
-                if not encomendados.empty:
-                    df_rec = encomendados[encomendados['STATUS_RECEB'] != "Pendente"]
-                    st.subheader("📊 Performance de Recebimento")
-                    # ... (mantém métricas de r1, r2, r3, r4)
-                    st.plotly_chart(px.bar(df_rec, x='CODIGO', y=['QTD_SOLICITADA', 'QTD_RECEBIDA'], barmode='group'), use_container_width=True)
-
-    # --- ABA 2: DASH OPERAÇÃO (PICOS) ---
-    with tab_modulo_picos:
-        st.markdown(f"<div class='header-analise'>DASH OPERAÇÃO (PICOS) - {mes_sel.upper()}</div>", unsafe_allow_html=True)
+    with tab_operacao:
+        st.markdown(f"### 📈 Gestão da Operação - {mes_sel}")
+        sub_picos, sub_dim, sub_abs = st.tabs(["🔥 Picos de Demanda", "📏 Dimensionamento & Pausas", "🤒 Registro de ABS"])
         
-        dados_picos = db_data.get("picos", [])
-        
-        if dados_picos:
-            # 1. Criamos um DF temporário para garantir que as datas sejam lidas como datas
-            df_temp = pd.DataFrame(dados_picos)
+        with sub_picos:
+            renderizar_picos_operacional(db_data.get("picos", []))
             
-            # 2. Tentamos converter a coluna de data (ajuste o nome se for diferente na sua planilha)
-            if 'DATA' in df_temp.columns:
-                df_temp['DATA'] = pd.to_datetime(df_temp['DATA'])
-            
-            # 3. Enviamos de volta como lista tratada para a função
-            renderizar_picos_operacional(df_temp.to_dict(orient='records'))
-        else:
-            st.info("📊 Sem dados de picos. Importe a base em CONFIGURAÇÕES.")
-
-    # --- ABA 3: CONFIGURAÇÕES (CADASTRO MANUAL + UPLOAD) ---
-    with tab_modulo_config:
-        st.markdown(f"<div class='header-analise'>CONFIGURAÇÕES DO SISTEMA</div>", unsafe_allow_html=True)
-        
-        # NOVO: CADASTRO MANUAL
-        with st.container(border=True):
-            st.subheader("🆕 Cadastro Manual")
-            with st.form("cad_manual_form", clear_on_submit=True):
-                m1, m2 = st.columns(2)
-                c_cod = m1.text_input("Código")
-                c_desc = m2.text_input("Descrição")
-                m3, m4, m5 = st.columns([2, 2, 1])
-                c_forn = m3.text_input("Fornecedor")
-                c_grupo = m4.selectbox("Grupo", ["COLCHAO", "ESTOFADO", "TRAVESSEIRO", "OUTROS"])
-                c_qtd = m5.number_input("Qtd", min_value=1, value=1)
+        with sub_dim:
+            if not db_data.get("picos"): st.info("Importe a base de picos em Configurações.")
+            else:
+                df_p = normalizar_picos(pd.DataFrame(db_data["picos"]))
+                prod = st.number_input("Tickets por Atendente/Hora:", min_value=1, value=4, key="prod_global")
+                df_dim = df_p.groupby('HORA')['TICKETS'].mean().reset_index()
+                df_dim['Atendentes'] = (df_dim['TICKETS'] / prod).apply(lambda x: int(np.ceil(x)))
+                st.plotly_chart(px.line(df_dim, x='HORA', y='Atendentes', text='Atendentes', title="Staff Necessário", markers=True), key="line_dim")
                 
-                if st.form_submit_button("➕ Adicionar"):
-                    novo_item = {
-                        "CODIGO": c_cod, "DESCRICAO": c_desc, "FORNECEDOR": c_forn, 
-                        "GRUPO": c_grupo, "QUANTIDADE": c_qtd, "ORIGEM": "Manual",
-                        "STATUS_COMPRA": "Pendente", "QTD_SOLICITADA": 0, "SALDO_FISICO": 0,
-                        "STATUS_RECEB": "Pendente", "QTD_RECEBIDA": 0
-                    }
-                    df_atual = pd.concat([df_atual, pd.DataFrame([novo_item])], ignore_index=True)
-                    db_data["analises"] = df_atual.to_dict(orient='records')
-                    salvar_dados_op(db_data, mes_ref)
-                    st.success("Item adicionado com sucesso!")
-                    st.rerun()
+                st.write("#### ☕ Janelas para Pausas")
+                melhores = df_dim.sort_values('TICKETS').head(4)['HORA'].tolist()
+                cols = st.columns(len(melhores))
+                for i, h in enumerate(melhores): cols[i].success(f"🕒 {h}:00")
 
-        st.divider()
-        st.subheader("⚙️ Importação de Planilhas")
+        with sub_abs:
+            renderizar_dimensionamento_abs(db_data, mes_ref)
+
+    with tab_config:
+        st.subheader("⚙️ Importação e Cadastro")
+        with st.expander("🆕 Cadastro Manual de Item"):
+            with st.form("cad_man"):
+                c1, c2 = st.columns(2); cod = c1.text_input("Código"); desc = c2.text_input("Descrição")
+                if st.form_submit_button("Adicionar"):
+                    novo = {"CODIGO": cod, "DESCRICAO": desc, "QUANTIDADE": 1, "ORIGEM": "Manual", "STATUS_COMPRA": "Pendente", "QTD_SOLICITADA": 0, "SALDO_FISICO": 0, "STATUS_RECEB": "Pendente", "QTD_RECEBIDA": 0}
+                    df_atual = pd.concat([df_atual, pd.DataFrame([novo])], ignore_index=True)
+                    db_data["analises"] = df_atual.to_dict(orient='records'); salvar_dados_op(db_data, mes_ref); st.rerun()
+
         c_up1, c_up2 = st.columns(2)
         with c_up1:
-            up_c = st.file_uploader("Base Compras (Excel)", type="xlsx")
-            if up_c and st.button("Salvar Base Compras"):
-                df_n = pd.read_excel(up_c)
-                df_n['ORIGEM'] = 'Planilha' # Marca origem para auditoria
-                for c in ['STATUS_COMPRA', 'QTD_SOLICITADA', 'SALDO_FISICO', 'QTD_RECEBIDA', 'STATUS_RECEB']: 
-                    df_n[c] = "Pendente" if "STATUS" in c else 0
-                db_data["analises"] = df_n.to_dict(orient='records')
-                salvar_dados_op(db_data, mes_ref)
-                st.rerun()
-        
+            up_c = st.file_uploader("Base Compras", type="xlsx")
+            if up_c and st.button("Salvar Compras"):
+                df_n = pd.read_excel(up_c); df_n['ORIGEM'] = 'Planilha'
+                for c in ['STATUS_COMPRA', 'QTD_SOLICITADA', 'SALDO_FISICO', 'QTD_RECEBIDA', 'STATUS_RECEB']: df_n[c] = "Pendente" if "STATUS" in c else 0
+                db_data["analises"] = df_n.to_dict(orient='records'); salvar_dados_op(db_data, mes_ref); st.rerun()
         with c_up2:
-            up_p = st.file_uploader("Base Picos Zendesk (Excel)", type="xlsx")
-            if up_p and st.button("Salvar Base Picos"):
-                df_p = pd.read_excel(up_p)
-                db_data["picos"] = df_p.to_dict(orient='records')
-                salvar_dados_op(db_data, mes_ref)
-                st.rerun()
-        
-        st.divider()
-        if st.button("🗑️ RESETAR MÊS ATUAL", type="primary"):
-            salvar_dados_op({"analises": [], "idx_solic": 0, "idx_receb": 0, "picos": []}, mes_ref)
-            st.rerun()
+            up_p = st.file_uploader("Base Picos", type="xlsx")
+            if up_p and st.button("Salvar Picos"):
+                db_data["picos"] = pd.read_excel(up_p).to_dict(orient='records'); salvar_dados_op(db_data, mes_ref); st.rerun()
 
 if __name__ == "__main__":
     exibir_operacao_completa()
