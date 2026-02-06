@@ -89,8 +89,9 @@ def renderizar_tratativa_recebimento(item, index, df_completo, db_data, mes_ref,
             db_data["analises"] = df_completo.to_dict(orient='records'); del st.session_state[f"show_rec_p_{index}_{key_suffix}"]; salvar_dados_op(db_data, mes_ref); st.rerun()
 
 # =========================================================
-# 3. DASHBOARDS DE PERFORMANCE (COMPRAS)
+# 3. DASHBOARDS DE PERFORMANCE (COMPRAS E RECEBIMENTO)
 # =========================================================
+
 def renderizar_dashboards_compras_completo(df):
     if df.empty: return
     total_itens = len(df)
@@ -119,6 +120,34 @@ def renderizar_dashboards_compras_completo(df):
     with c2:
         fig_rup = go.Figure(data=[go.Bar(name='Com Estoque', x=['Não Efetuadas'], y=[len(nao_efet_com_estoque)], marker_color='#16a34a'), go.Bar(name='Sem Estoque', x=['Não Efetuadas'], y=[len(nao_efet_sem_estoque)], marker_color='#ef4444')])
         fig_rup.update_layout(title="Motivo das Não Encomendas", barmode='group', height=400); st.plotly_chart(fig_rup, use_container_width=True)
+
+    # --- NOVO BLOCO DE AUDITORIA COMPRAS ---
+    st.divider()
+    st.subheader("🔍 Auditoria de Compras")
+    
+    itens_manuais = df[df.get('ORIGEM') == 'Manual']
+    if not itens_manuais.empty: 
+        st.warning(f"🚩 {len(itens_manuais)} itens manuais detectados.")
+    
+    escolha_aud = st.radio("Filtrar lista para Auditoria e Excel:", 
+                          ["Tudo", "Com Estoque", "Ruptura", "Manuais"], horizontal=True, key="aud_comp_radio")
+    
+    if escolha_aud == "Com Estoque":
+        df_aud = df[df['SALDO_FISICO'] > 0]
+    elif escolha_aud == "Ruptura":
+        df_aud = df[df['SALDO_FISICO'] <= 0]
+    elif escolha_aud == "Manuais":
+        df_aud = itens_manuais
+    else:
+        df_aud = df
+
+    st.dataframe(df_aud, use_container_width=True)
+    
+    if not df_aud.empty:
+        btn_xlsx = to_excel(df_aud)
+        st.download_button(label=f"📥 Baixar Lista: {escolha_aud}", data=btn_xlsx, 
+                           file_name=f"auditoria_compras_{escolha_aud.lower()}.xlsx",
+                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 def renderizar_dashboards_recebimento_completo(df):
     if df.empty:
@@ -168,7 +197,7 @@ def renderizar_dashboards_recebimento_completo(df):
     
     escolha = st.radio("Filtrar lista para exportação:", 
                       ["Todos Encomendados", "Apenas Pendentes", "Divergências (Faltou)"], 
-                      horizontal=True)
+                      horizontal=True, key="aud_rec_radio")
     
     df_export = df_rec.copy()
     if escolha == "Apenas Pendentes":
