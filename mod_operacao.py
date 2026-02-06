@@ -18,8 +18,6 @@ def aplicar_estilo_premium():
         .main-card {{ background: white; padding: 25px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); border-top: 5px solid {PALETA[0]}; margin-bottom: 20px; }}
         .metric-box {{ background: #f8fafc; padding: 15px; border-radius: 12px; border: 1px solid #e2e8f0; text-align: center; height: 100%; }}
         .metric-box h3 {{ margin: 5px 0; font-size: 1.8rem; font-weight: bold; color: {PALETA[0]}; }}
-        .search-box {{ background: #f1f5f9; padding: 20px; border-radius: 15px; border-left: 5px solid {PALETA[0]}; margin-bottom: 20px; }}
-        .search-box-rec {{ background: #f0fdf4; padding: 20px; border-radius: 15px; border-left: 5px solid {PALETA[2]}; margin-bottom: 20px; }}
         .header-analise {{ background: {PALETA[0]}; color: white; padding: 15px; border-radius: 10px; text-align: center; margin-bottom: 20px; font-weight: bold; font-size: 20px; }}
         </style>
     """, unsafe_allow_html=True)
@@ -53,7 +51,7 @@ def normalizar_picos(df):
     return df.rename(columns=mapeamento)
 
 # =========================================================
-# 2. TRATATIVAS (COMPRAS E RECEBIMENTO)
+# 2. COMPONENTES DE TRATATIVA
 # =========================================================
 def renderizar_tratativa_compra(item, index, df_completo, db_data, mes_ref, key_suffix=""):
     st.markdown(f"#### {item['DESCRICAO']}")
@@ -95,103 +93,102 @@ def renderizar_tratativa_recebimento(item, index, df_completo, db_data, mes_ref,
             db_data["analises"] = df_completo.to_dict(orient='records'); del st.session_state[f"show_rec_p_{index}_{key_suffix}"]; salvar_dados_op(db_data, mes_ref); st.rerun()
 
 # =========================================================
-# 3. DASHBOARDS (COMPRAS E RECEBIMENTO)
+# 3. DASHBOARDS (SIMÉTRICOS)
 # =========================================================
 def renderizar_dashboards_compras_completo(df):
     if df.empty: return
     total_itens = len(df)
     df_proc = df[df['STATUS_COMPRA'] != "Pendente"]
-    itens_conferidos = len(df_proc)
+    itens_conf = len(df_proc)
     compras_ok = len(df_proc[df_proc['STATUS_COMPRA'].isin(['Total', 'Parcial'])])
-    perc_conf = (itens_conferidos / total_itens * 100) if total_itens > 0 else 0
-    perc_ok = (compras_ok / itens_conferidos * 100) if itens_conferidos > 0 else 0
-    df_nao_efetuada = df_proc[df_proc['STATUS_COMPRA'] == "Não Efetuada"]
-    nao_efet_com_estoque = df_nao_efetuada[df_nao_efetuada['SALDO_FISICO'] > 0]
-    nao_efet_sem_estoque = df_nao_efetuada[df_nao_efetuada['SALDO_FISICO'] == 0]
-
+    perc_conf = (itens_conf / total_itens * 100) if total_itens > 0 else 0
+    df_nao = df_proc[df_proc['STATUS_COMPRA'] == "Não Efetuada"]
+    
     st.subheader("📊 Performance de Compras")
     k1, k2, k3, k4 = st.columns(4)
-    k1.markdown(f"<div class='metric-box'><small>CONFERÊNCIA</small><h3>{itens_conferidos}</h3><p>{perc_conf:.1f}%</p></div>", unsafe_allow_html=True)
-    k2.markdown(f"<div class='metric-box'><small>COMPRAS OK</small><h3>{compras_ok}</h3><p>{perc_ok:.1f}%</p></div>", unsafe_allow_html=True)
-    k3.markdown(f"<div class='metric-box'><small>ESTRATÉGICO</small><h3 style='color:#16a34a;'>{len(nao_efet_com_estoque)}</h3></div>", unsafe_allow_html=True)
-    k4.markdown(f"<div class='metric-box'><small>RUPTURA</small><h3 style='color:#ef4444;'>{len(nao_efet_sem_estoque)}</h3></div>", unsafe_allow_html=True)
+    k1.markdown(f"<div class='metric-box'><small>CONFERÊNCIA</small><h3>{itens_conf}</h3><p>{perc_conf:.1f}%</p></div>", unsafe_allow_html=True)
+    k2.markdown(f"<div class='metric-box'><small>COMPRAS OK</small><h3>{compras_ok}</h3></div>", unsafe_allow_html=True)
+    k3.markdown(f"<div class='metric-box'><small>ESTRATEGICO</small><h3 style='color:#16a34a;'>{len(df_nao[df_nao['SALDO_FISICO'] > 0])}</h3></div>", unsafe_allow_html=True)
+    k4.markdown(f"<div class='metric-box'><small>RUPTURA</small><h3 style='color:#ef4444;'>{len(df_nao[df_nao['SALDO_FISICO'] <= 0])}</h3></div>", unsafe_allow_html=True)
 
     c1, c2 = st.columns(2)
     with c1:
-        st_counts = df['STATUS_COMPRA'].value_counts().reset_index()
-        st_counts.columns = ['Status', 'Qtd']
-        fig_p = px.pie(st_counts, values='Qtd', names='Status', title="Decisões de Compra", hole=0.4, color='Status', color_discrete_map={'Total': '#002366', 'Parcial': '#3b82f6', 'Não Efetuada': '#ef4444', 'Pendente': '#cbd5e1'})
-        st.plotly_chart(fig_p, use_container_width=True)
+        st.plotly_chart(px.pie(df, names='STATUS_COMPRA', title="Decisões de Compra", hole=0.4, color='STATUS_COMPRA', color_discrete_map={'Total': '#002366', 'Parcial': '#3b82f6', 'Não Efetuada': '#ef4444', 'Pendente': '#cbd5e1'}), use_container_width=True)
     with c2:
-        fig_rup = go.Figure(data=[go.Bar(name='Com Estoque', x=['Não Efetuadas'], y=[len(nao_efet_com_estoque)], marker_color='#16a34a'), go.Bar(name='Sem Estoque', x=['Não Efetuadas'], y=[len(nao_efet_sem_estoque)], marker_color='#ef4444')])
-        fig_rup.update_layout(title="Motivo das Não Encomendas", barmode='group', height=400); st.plotly_chart(fig_rup, use_container_width=True)
+        fig_rup = go.Figure(data=[go.Bar(name='Com Estoque', x=['Não Efetuadas'], y=[len(df_nao[df_nao['SALDO_FISICO'] > 0])], marker_color='#16a34a'), go.Bar(name='Sem Estoque', x=['Não Efetuadas'], y=[len(df_nao[df_nao['SALDO_FISICO'] <= 0])], marker_color='#ef4444')])
+        fig_rup.update_layout(title="Motivo das Não Encomendas", barmode='group'); st.plotly_chart(fig_rup, use_container_width=True)
+
+def renderizar_dashboards_recebimento_completo(df):
+    # Filtra apenas o que foi solicitado na compra (solicitada > 0)
+    df_f = df[df['QTD_SOLICITADA'] > 0]
+    if df_f.empty: 
+        st.info("Nenhuma compra solicitada para este mês."); return
+    
+    total_pedidos = len(df_f)
+    df_proc = df_f[df_f['STATUS_RECEB'] != "Pendente"]
+    itens_conferidos = len(df_proc)
+    recebidos_ok = len(df_proc[df_proc['STATUS_RECEB'] == "Recebido Total"])
+    divergentes = len(df_proc[df_proc['STATUS_RECEB'].isin(["Recebido Parcial", "Faltou"])])
+    perc_conf = (itens_conferidos / total_pedidos * 100) if total_pedidos > 0 else 0
+    
+    st.subheader("📊 Performance de Recebimento")
+    k1, k2, k3, k4 = st.columns(4)
+    k1.markdown(f"<div class='metric-box'><small>CONFERÊNCIA</small><h3>{itens_conferidos}</h3><p>{perc_conf:.1f}%</p></div>", unsafe_allow_html=True)
+    k2.markdown(f"<div class='metric-box'><small>TOTAL OK</small><h3 style='color:#16a34a;'>{recebidos_ok}</h3></div>", unsafe_allow_html=True)
+    k3.markdown(f"<div class='metric-box'><small>DIVERGENTES</small><h3 style='color:#ef4444;'>{divergentes}</h3></div>", unsafe_allow_html=True)
+    k4.markdown(f"<div class='metric-box'><small>PENDENTES</small><h3>{total_pedidos - itens_conferidos}</h3></div>", unsafe_allow_html=True)
+
+    c1, c2 = st.columns(2)
+    with c1:
+        st.plotly_chart(px.pie(df_f, names='STATUS_RECEB', title="Status de Recebimento", hole=0.4, color='STATUS_RECEB', color_discrete_map={'Recebido Total': '#16a34a', 'Recebido Parcial': '#facc15', 'Faltou': '#ef4444', 'Pendente': '#cbd5e1'}), use_container_width=True)
+    with c2:
+        fig_comp = go.Figure()
+        fig_comp.add_trace(go.Bar(name='Solicitado', x=df_f['CODIGO'][:15], y=df_f['QTD_SOLICITADA'][:15], marker_color=PALETA[0]))
+        fig_comp.add_trace(go.Bar(name='Recebido', x=df_f['CODIGO'][:15], y=df_f['QTD_RECEBIDA'][:15], marker_color=PALETA[2]))
+        fig_comp.update_layout(title="Acuracidade (Top 15 Itens)", barmode='group'); st.plotly_chart(fig_comp, use_container_width=True)
 
 # =========================================================
-# 4. DASH OPERAÇÃO (PICOS, DIMENSIONAMENTO E ABS)
+# 4. DASH OPERAÇÃO
 # =========================================================
 def renderizar_picos_operacional(db_picos, db_data, mes_ref):
-    if not db_picos:
-        st.info("💡 Sem dados de picos. Importe a planilha do Zendesk na aba CONFIGURAÇÕES."); return
-    
+    if not db_picos: st.info("💡 Sem dados de picos."); return
     tab_picos, tab_dim, tab_abs = st.tabs(["🔥 MAPA DE CALOR", "👥 DIMENSIONAMENTO", "📝 REGISTRO ABS"])
-
     df = normalizar_picos(pd.DataFrame(db_picos))
     df['TICKETS'] = pd.to_numeric(df['TICKETS'], errors='coerce').fillna(0)
     ordem_dias = ['Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado', 'Domingo']
 
     with tab_picos:
-        dias_disponiveis = sorted(df['DATA'].unique())
-        dias_selecionados = st.multiselect("Selecione os dias:", dias_disponiveis, default=dias_disponiveis)
-        
-        if dias_selecionados:
-            df_f = df[df['DATA'].isin(dias_selecionados)]
-            # 1. HEATMAP (RECUPERADO)
-            cores_suaves = ["#ADD8E6", "#FFFFE0", "#FFD700", "#FF8C00", "#FF4500"]
-            fig_heat = px.density_heatmap(df_f, x="HORA", y="DIA_SEMANA", z="TICKETS", category_orders={"DIA_SEMANA": ordem_dias}, color_continuous_scale=cores_suaves, text_auto=True)
-            st.plotly_chart(fig_heat, use_container_width=True)
-            
-            # 2. GRÁFICOS DE BARRA (RECUPERADOS)
-            col1, col2 = st.columns(2)
-            with col1:
-                df_h = df_f.groupby('HORA')['TICKETS'].sum().reset_index()
-                st.plotly_chart(px.bar(df_h, x='HORA', y='TICKETS', title="Volume Total por Hora", text_auto=True, color_discrete_sequence=[PALETA[0]]), use_container_width=True)
-            with col2:
-                df_d = df_f.groupby('DIA_SEMANA')['TICKETS'].sum().reindex(ordem_dias).reset_index().dropna()
-                st.plotly_chart(px.bar(df_d, x='DIA_SEMANA', y='TICKETS', title="Volume Total por Dia", text_auto=True, color_discrete_sequence=[PALETA[1]]), use_container_width=True)
+        dias_sel = st.multiselect("Dias:", sorted(df['DATA'].unique()), default=sorted(df['DATA'].unique()))
+        if dias_sel:
+            df_f = df[df['DATA'].isin(dias_sel)]
+            st.plotly_chart(px.density_heatmap(df_f, x="HORA", y="DIA_SEMANA", z="TICKETS", category_orders={"DIA_SEMANA": ordem_dias}, color_continuous_scale="Viridis", text_auto=True), use_container_width=True)
+            c1, c2 = st.columns(2)
+            c1.plotly_chart(px.bar(df_f.groupby('HORA')['TICKETS'].sum().reset_index(), x='HORA', y='TICKETS', title="Por Hora", color_discrete_sequence=[PALETA[0]]), use_container_width=True)
+            c2.plotly_chart(px.bar(df_f.groupby('DIA_SEMANA')['TICKETS'].sum().reindex(ordem_dias).reset_index().dropna(), x='DIA_SEMANA', y='TICKETS', title="Por Dia", color_discrete_sequence=[PALETA[1]]), use_container_width=True)
 
     with tab_dim:
-        st.subheader("👥 Cálculo de Dimensionamento")
-        meta_hora = st.slider("Meta de Atendimentos por Hora/Colaborador:", min_value=1, max_value=20, value=4)
-        if dias_selecionados:
-            df_dim = df[df['DATA'].isin(dias_selecionados)].groupby('HORA')['TICKETS'].mean().reset_index()
-            df_dim['AGENTES_NECESSARIOS'] = (df_dim['TICKETS'] / meta_hora).apply(lambda x: int(x) + 1 if x % 1 > 0 else int(x))
-            st.plotly_chart(px.bar(df_dim, x='HORA', y='AGENTES_NECESSARIOS', text='AGENTES_NECESSARIOS', title="Necessidade de Staff", color_discrete_sequence=[PALETA[1]]), use_container_width=True)
-            
-            st.subheader("☕ Sugestão de Pausas")
-            melhores_pausas = df_dim.sort_values(by='TICKETS').head(3)
-            p_cols = st.columns(3)
-            for i, (idx, row) in enumerate(melhores_pausas.iterrows()):
-                p_cols[i].markdown(f"<div class='metric-box'><small>{i+1}ª OPÇÃO</small><h3>{int(row['HORA'])}:00</h3></div>", unsafe_allow_html=True)
+        meta = st.slider("Atendimentos por Hora/Colaborador:", 1, 20, 4)
+        if dias_sel:
+            df_dim = df[df['DATA'].isin(dias_sel)].groupby('HORA')['TICKETS'].mean().reset_index()
+            df_dim['STAFF'] = (df_dim['TICKETS'] / meta).apply(lambda x: int(x) + 1 if x % 1 > 0 else int(x))
+            st.plotly_chart(px.bar(df_dim, x='HORA', y='STAFF', text='STAFF', title=f"Necessidade de Staff (Meta: {meta})", color_discrete_sequence=[PALETA[1]]), use_container_width=True)
 
     with tab_abs:
-        st.subheader("📝 Controle de ABS")
-        with st.form("form_abs", clear_on_submit=True):
-            c_a1, c_a2, c_a3 = st.columns(3)
-            data_abs = c_a1.date_input("Data")
-            tipo_abs = c_a2.selectbox("Tipo", ["Falta", "Atraso", "Atestado"])
-            nome_abs = c_a3.text_input("Nome")
+        with st.form("abs_f"):
+            ca1, ca2, ca3 = st.columns(3)
+            d_abs, t_abs, n_abs = ca1.date_input("Data"), ca2.selectbox("Tipo", ["Falta", "Atraso", "Atestado"]), ca3.text_input("Nome")
             if st.form_submit_button("Registrar"):
                 if "abs" not in db_data: db_data["abs"] = []
-                db_data["abs"].append({"data": str(data_abs), "tipo": tipo_abs, "nome": nome_abs.upper()})
-                salvar_dados_op(db_data, mes_ref); st.success("Registrado!"); st.rerun()
+                db_data["abs"].append({"data": str(d_abs), "tipo": t_abs, "nome": n_abs.upper()})
+                salvar_dados_op(db_data, mes_ref); st.rerun()
         if db_data.get("abs"): st.table(pd.DataFrame(db_data["abs"]))
 
 # =========================================================
-# 5. ESTRUTURA UNIFICADA (MAIN)
+# 5. ESTRUTURA MAIN
 # =========================================================
 def exibir_operacao_completa(user_role=None):
     aplicar_estilo_premium()
-    st.sidebar.title("📅 Gestão Mensal")
+    st.sidebar.title("📅 Gestão")
     mes_sel = st.sidebar.selectbox("Mês", ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"], index=datetime.now().month - 1)
     ano_sel = st.sidebar.selectbox("Ano", [2024, 2025, 2026], index=1)
     mes_ref = f"{mes_sel}_{ano_sel}"
@@ -199,21 +196,19 @@ def exibir_operacao_completa(user_role=None):
     db_data = carregar_dados_op(mes_ref)
     df_atual = pd.DataFrame(db_data["analises"]) if db_data.get("analises") else pd.DataFrame()
 
-    tab_modulo_compras, tab_modulo_picos, tab_modulo_config = st.tabs(["🛒 COMPRAS", "📊 DASH OPERAÇÃO", "⚙️ CONFIGURAÇÕES"])
+    tab_compras, tab_opera, tab_config = st.tabs(["🛒 COMPRAS/REC", "📊 OPERAÇÃO", "⚙️ CONFIG"])
 
-    with tab_modulo_compras:
-        st.markdown(f"<div class='header-analise'>SISTEMA DE COMPRAS - {mes_sel.upper()}</div>", unsafe_allow_html=True)
-        t1, t2, t3, t4 = st.tabs(["🛒 COMPRAS", "📥 RECEBIMENTO", "📊 DASHBOARD COMPRAS", "📈 DASHBOARD RECEBIMENTO"])
+    with tab_compras:
+        st.markdown(f"<div class='header-analise'>FLUXO DE MERCADORIAS - {mes_sel.upper()}</div>", unsafe_allow_html=True)
+        t1, t2, t3, t4 = st.tabs(["🛒 COMPRAS", "📥 RECEBIMENTO", "📊 DASH COMPRAS", "📈 DASH RECEBIMENTO"])
         
         with t1:
             if df_atual.empty: st.warning("Sem dados.")
             else:
                 q = st.text_input("🔍 Localizar Item:").upper()
                 if q:
-                    it_b = df_atual[df_atual['CODIGO'].astype(str).str.contains(q) | df_atual['DESCRICAO'].astype(str).str.contains(q)]
-                    for i, r in it_b.iterrows():
+                    for i, r in df_atual[df_atual['CODIGO'].astype(str).str.contains(q) | df_atual['DESCRICAO'].astype(str).str.contains(q)].iterrows():
                         with st.container(border=True): renderizar_tratativa_compra(r, i, df_atual, db_data, mes_ref, "bq_c")
-                
                 idx_s = db_data.get("idx_solic", 0)
                 while idx_s < len(df_atual) and df_atual.iloc[idx_s]['STATUS_COMPRA'] != "Pendente": idx_s += 1
                 if idx_s < len(df_atual):
@@ -224,67 +219,44 @@ def exibir_operacao_completa(user_role=None):
         with t2:
             pend_rec = df_atual[(df_atual['QTD_SOLICITADA'] > 0) & (df_atual['STATUS_RECEB'] == "Pendente")].reset_index() if not df_atual.empty else pd.DataFrame()
             if not pend_rec.empty:
-                q_r = st.text_input("🔍 Localizar Recebimento:").upper()
+                q_r = st.text_input("🔍 Localizar Receb:").upper()
                 if q_r:
-                    it_r = pend_rec[pend_rec['CODIGO'].astype(str).str.contains(q_r) | pend_rec['DESCRICAO'].astype(str).str.contains(q_r)]
-                    for _, r in it_r.iterrows():
+                    for _, r in pend_rec[pend_rec['CODIGO'].astype(str).str.contains(q_r) | pend_rec['DESCRICAO'].astype(str).str.contains(q_r)].iterrows():
                         with st.container(border=True): renderizar_tratativa_recebimento(r, r['index'], df_atual, db_data, mes_ref, "bq_r")
                 st.markdown("<div class='main-card' style='border-top-color:#16a34a;'>", unsafe_allow_html=True)
                 renderizar_tratativa_recebimento(pend_rec.iloc[0], pend_rec.iloc[0]['index'], df_atual, db_data, mes_ref, "main_r")
                 st.markdown("</div>", unsafe_allow_html=True)
             else: st.success("✅ Tudo recebido.")
 
-        with t3: # DASHBOARD COMPRAS (RECUPERADO)
-            renderizar_dashboards_compras_completo(df_atual)
-            if not df_atual.empty:
-                st.divider()
-                st.subheader("🔍 Auditoria")
-                itens_manuais = df_atual[df_atual.get('ORIGEM') == 'Manual']
-                if not itens_manuais.empty: st.warning(f"🚩 {len(itens_manuais)} itens manuais.")
-                c_aud1, c_aud2 = st.columns(2)
-                with c_aud1:
-                    with st.expander("🟢 COM ESTOQUE"): st.dataframe(df_atual[df_atual['SALDO_FISICO'] > 0], use_container_width=True)
-                with c_aud2:
-                    with st.expander("🔴 RUPTURA"): st.dataframe(df_atual[df_atual['SALDO_FISICO'] <= 0], use_container_width=True)
+        with t3: renderizar_dashboards_compras_completo(df_atual)
+        with t4: renderizar_dashboards_recebimento_completo(df_atual)
 
-        with t4: # DASHBOARD RECEBIMENTO (RECUPERADO)
-            if not df_atual.empty:
-                encomendados = df_atual[df_atual['QTD_SOLICITADA'] > 0]
-                if not encomendados.empty:
-                    st.plotly_chart(px.bar(encomendados, x='CODIGO', y=['QTD_SOLICITADA', 'QTD_RECEBIDA'], barmode='group', title="Pedido vs Recebido"), use_container_width=True)
+    with tab_opera: renderizar_picos_operacional(db_data.get("picos", []), db_data, mes_ref)
 
-    with tab_modulo_picos:
-        st.markdown(f"<div class='header-analise'>DASH OPERAÇÃO - {mes_sel.upper()}</div>", unsafe_allow_html=True)
-        renderizar_picos_operacional(db_data.get("picos", []), db_data, mes_ref)
-
-    with tab_modulo_config:
-        st.markdown(f"<div class='header-analise'>CONFIGURAÇÕES</div>", unsafe_allow_html=True)
-        # CADASTRO MANUAL (RECUPERADO)
+    with tab_config:
         with st.container(border=True):
             st.subheader("🆕 Cadastro Manual")
-            with st.form("cad_manual_form", clear_on_submit=True):
-                m1, m2 = st.columns(2); c_cod = m1.text_input("Código"); c_desc = m2.text_input("Descrição")
-                m3, m4, m5 = st.columns([2, 2, 1]); c_forn = m3.text_input("Fornecedor"); c_grupo = m4.selectbox("Grupo", ["COLCHAO", "ESTOFADO", "TRAVESSEIRO", "OUTROS"]); c_qtd = m5.number_input("Qtd", min_value=1, value=1)
-                if st.form_submit_button("➕ Adicionar"):
-                    novo = {"CODIGO": c_cod, "DESCRICAO": c_desc, "FORNECEDOR": c_forn, "GRUPO": c_grupo, "QUANTIDADE": c_qtd, "ORIGEM": "Manual", "STATUS_COMPRA": "Pendente", "QTD_SOLICITADA": 0, "SALDO_FISICO": 0, "STATUS_RECEB": "Pendente", "QTD_RECEBIDA": 0}
+            with st.form("cad_m"):
+                m1, m2, m3 = st.columns([1,2,1])
+                c_cod = m1.text_input("Cód"); c_des = m2.text_input("Desc"); c_qtd = m3.number_input("Qtd", 1)
+                if st.form_submit_button("Adicionar"):
+                    novo = {"CODIGO": c_cod, "DESCRICAO": c_des, "QUANTIDADE": c_qtd, "ORIGEM": "Manual", "STATUS_COMPRA": "Pendente", "QTD_SOLICITADA": 0, "SALDO_FISICO": 0, "STATUS_RECEB": "Pendente", "QTD_RECEBIDA": 0}
                     df_atual = pd.concat([df_atual, pd.DataFrame([novo])], ignore_index=True)
                     db_data["analises"] = df_atual.to_dict(orient='records'); salvar_dados_op(db_data, mes_ref); st.rerun()
 
         st.divider()
-        c_up1, c_up2 = st.columns(2)
-        with c_up1:
-            st.markdown("### 🛒 Compras")
-            up_c = st.file_uploader("Excel Compras", type="xlsx", key="upc")
+        c1, c2 = st.columns(2)
+        with c1:
+            up_c = st.file_uploader("Excel Compras", type="xlsx")
             if up_c and st.button("Salvar Compras"):
                 df_n = pd.read_excel(up_c); df_n['ORIGEM'] = 'Planilha'
                 db_data["analises"] = df_n.to_dict(orient='records'); db_data = garantir_colunas(db_data); salvar_dados_op(db_data, mes_ref); st.rerun()
-            if st.button("🗑️ Resetar Compras"): db_data["analises"] = []; salvar_dados_op(db_data, mes_ref); st.rerun()
-        with c_up2:
-            st.markdown("### 📊 Picos")
-            up_p = st.file_uploader("Excel Picos", type="xlsx", key="upp")
+            if st.button("🗑️ Reset Compras"): db_data["analises"] = []; salvar_dados_op(db_data, mes_ref); st.rerun()
+        with c2:
+            up_p = st.file_uploader("Excel Picos", type="xlsx")
             if up_p and st.button("Salvar Picos"):
                 db_data["picos"] = pd.read_excel(up_p).to_dict(orient='records'); salvar_dados_op(db_data, mes_ref); st.rerun()
-            if st.button("🗑️ Resetar Picos"): db_data["picos"] = []; salvar_dados_op(db_data, mes_ref); st.rerun()
+            if st.button("🗑️ Reset Picos"): db_data["picos"] = []; salvar_dados_op(db_data, mes_ref); st.rerun()
 
 if __name__ == "__main__":
     exibir_operacao_completa()
