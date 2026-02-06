@@ -40,6 +40,12 @@ def normalizar_picos(df):
     df.columns = [unicodedata.normalize('NFKD', str(c)).encode('ASCII', 'ignore').decode('ASCII').upper().strip() for c in df.columns]
     return df.rename(columns=mapeamento)
 
+def to_excel(df):
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df.to_excel(writer, index=False, sheet_name='Auditoria')
+    return output.getvalue()
+
 # =========================================================
 # 2. COMPONENTES DE TRATATIVA (COMPRAS/RECEBIMENTO)
 # =========================================================
@@ -113,6 +119,70 @@ def renderizar_dashboards_compras_completo(df):
     with c2:
         fig_rup = go.Figure(data=[go.Bar(name='Com Estoque', x=['Não Efetuadas'], y=[len(nao_efet_com_estoque)], marker_color='#16a34a'), go.Bar(name='Sem Estoque', x=['Não Efetuadas'], y=[len(nao_efet_sem_estoque)], marker_color='#ef4444')])
         fig_rup.update_layout(title="Motivo das Não Encomendas", barmode='group', height=400); st.plotly_chart(fig_rup, use_container_width=True)
+
+def renderizar_dashboards_recebimento_completo(df):
+    if df.empty:
+        st.info("Aguardando dados para análise.")
+        return
+
+    df_rec = df[df['QTD_SOLICITADA'] > 0].copy()
+    
+    if df_rec.empty:
+        st.warning("Nenhum item foi marcado como 'Comprado' ainda.")
+        return
+
+    total_pedidos = len(df_rec)
+    recebidos_full = len(df_rec[df_rec['STATUS_RECEB'] == "Recebido Total"])
+    recebidos_parc = len(df_rec[df_rec['STATUS_RECEB'] == "Recebido Parcial"])
+    pendentes = len(df_rec[df_rec['STATUS_RECEB'] == "Pendente"])
+    faltou = len(df_rec[df_rec['STATUS_RECEB'] == "Faltou"])
+
+    st.subheader("📊 Performance de Recebimento")
+    
+    k1, k2, k3, k4 = st.columns(4)
+    k1.markdown(f"<div class='metric-box'><small>PEDIDOS</small><h3>{total_pedidos}</h3></div>", unsafe_allow_html=True)
+    k2.markdown(f"<div class='metric-box'><small>OK / PARCIAL</small><h3 style='color:{PALETA[2]};'>{recebidos_full + recebidos_parc}</h3></div>", unsafe_allow_html=True)
+    k3.markdown(f"<div class='metric-box'><small>PENDENTES</small><h3 style='color:{PALETA[4]};'>{pendentes}</h3></div>", unsafe_allow_html=True)
+    k4.markdown(f"<div class='metric-box'><small>DIVERGENTES</small><h3 style='color:{PALETA[3]};'>{faltou}</h3></div>", unsafe_allow_html=True)
+
+    c1, c2 = st.columns(2)
+    with c1:
+        st_counts = df_rec['STATUS_RECEB'].value_counts().reset_index()
+        st_counts.columns = ['Status', 'Qtd']
+        fig_p = px.pie(st_counts, values='Qtd', names='Status', title="Status de Recebimento", hole=0.4,
+                     color='Status', color_discrete_map={
+                         'Recebido Total': '#16a34a', 
+                         'Recebido Parcial': '#3b82f6', 
+                         'Faltou': '#ef4444', 
+                         'Pendente': '#cbd5e1'})
+        st.plotly_chart(fig_p, use_container_width=True)
+    
+    with c2:
+        fig_comp = px.bar(df_rec, x='CODIGO', y=['QTD_SOLICITADA', 'QTD_RECEBIDA'], 
+                         barmode='group', title="Pedido vs Recebido",
+                         color_discrete_sequence=[PALETA[0], PALETA[2]])
+        st.plotly_chart(fig_comp, use_container_width=True)
+
+    st.divider()
+    st.subheader("🔍 Auditoria de Recebimento")
+    
+    escolha = st.radio("Filtrar lista para exportação:", 
+                      ["Todos Encomendados", "Apenas Pendentes", "Divergências (Faltou)"], 
+                      horizontal=True)
+    
+    df_export = df_rec.copy()
+    if escolha == "Apenas Pendentes":
+        df_export = df_rec[df_rec['STATUS_RECEB'] == "Pendente"]
+    elif escolha == "Divergências (Faltou)":
+        df_export = df_rec[df_rec['STATUS_RECEB'] == "Faltou"]
+
+    st.dataframe(df_export, use_container_width=True)
+    
+    btn_xlsx = to_excel(df_export)
+    st.download_button(label="📥 Exportar Lista (Excel)", 
+                       data=btn_xlsx, 
+                       file_name=f"auditoria_recebimento_{datetime.now().strftime('%d_%m')}.xlsx",
+                       mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 # =========================================================
 # 4. DASHBOARD DE PICOS E DIMENSIONAMENTO (OPERACIONAL)
@@ -269,11 +339,9 @@ def exibir_operacao_completa(user_role=None):
                     with st.expander("🔴 RUPTURA"): st.dataframe(df_atual[df_atual['SALDO_FISICO'] <= 0], use_container_width=True)
 
         with t4:
-            if not df_atual.empty:
-                encomendados = df_atual[df_atual['QTD_SOLICITADA'] > 0]
-                if not encomendados.empty:
-                    st.plotly_chart(px.bar(encomendados, x='CODIGO', y=['QTD_SOLICITADA', 'QTD_RECEBIDA'], barmode='group', title="Comparativo Pedido vs Recebido"), use_container_width=True)
-
+            # Chamando a nova função perita que acabamos de criar
+            renderizar_dashboards_recebimento_completo(df_atual)
+           
     # --- ABA 2: DASH OPERAÇÃO (PICOS, DIMENSIONAMENTO E ABS) ---
     with tab_modulo_picos:
         st.markdown(f"<div class='header-analise'>DASH OPERAÇÃO - {mes_sel.upper()}</div>", unsafe_allow_html=True)
