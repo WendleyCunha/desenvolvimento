@@ -146,70 +146,45 @@ def renderizar_picos_operacional(db_picos):
     )
     st.plotly_chart(fig_heat, use_container_width=True)
 
-    # --- 2 e 3. GRÁFICOS DE BARRAS ---
+    # --- 2 e 3. GRÁFICOS DE BARRAS (DENTRO DA FUNÇÃO PICOS) ---
     col1, col2 = st.columns(2)
     with col1:
         df_h = df_f.groupby('HORA')['TICKETS'].sum().reset_index()
         fig_h = px.bar(df_h, x='HORA', y='TICKETS', title="Volume Total por Hora", text_auto=True, color_discrete_sequence=[PALETA[0]])
         fig_h.update_traces(textposition='outside')
-        st.plotly_chart(fig_h, use_container_width=True)
+        st.plotly_chart(fig_h, use_container_width=True, key="graf_hora_picos") # Key única
     with col2:
         df_d = df_f.groupby('DIA_SEMANA')['TICKETS'].sum().reindex(ordem_dias).reset_index().dropna()
         fig_d = px.bar(df_d, x='DIA_SEMANA', y='TICKETS', title="Volume Total por Dia", text_auto=True, color_discrete_sequence=[PALETA[1]])
         fig_d.update_traces(textposition='outside')
-        st.plotly_chart(fig_d, use_container_width=True)
+        st.plotly_chart(fig_d, use_container_width=True, key="graf_dia_picos") # Key única
 
 def renderizar_dimensionamento_abs(db_data, mes_ref):
-    st.subheader("📏 Planejamento de Capacidade e ABS")
-    t1, t2, t3 = st.tabs(["👥 Dimensionamento", "☕ Sugestão de Pausas", "🤒 Registro de ABS"])
+    # Esta função agora foca apenas no formulário para evitar duplicação de gráficos
+    if "absenteismo" not in db_data: db_data["absenteismo"] = []
     
-    with t1:
-        if not db_data.get("picos"):
-            st.info("Importe a base de picos nas Configurações.")
-        else:
-            df_p = normalizar_picos(pd.DataFrame(db_data["picos"]))
-            produtividade = st.number_input("Tickets por Atendente/Hora:", min_value=1, value=4)
-            df_dim = df_p.groupby('HORA')['TICKETS'].mean().reset_index()
-            # np.ceil garante que 1.1 atendentes vire 2
-            df_dim['Atendentes Necessários'] = (df_dim['TICKETS'] / produtividade).apply(lambda x: int(np.ceil(x)))
-            
-            fig_dim = px.line(df_dim, x='HORA', y='Atendentes Necessários', text='Atendentes Necessários', title="Média de Staff Necessário por Hora", markers=True)
-            st.plotly_chart(fig_dim, use_container_width=True)
-            st.dataframe(df_dim, use_container_width=True, hide_index=True)
+    st.markdown("#### 🤒 Registro de Ocorrências (Faltas/Atrasos)")
+    with st.form("form_abs_unificado", clear_on_submit=True):
+        c1, c2, c3 = st.columns([2, 2, 1])
+        dt = c1.date_input("Data")
+        nome = c2.text_input("Colaborador")
+        tp = c3.selectbox("Tipo", ["Falta", "Atraso", "Saída Antecipada", "Atestado"])
+        obs = st.text_input("Observação")
+        if st.form_submit_button("Registrar Ocorrência"):
+            db_data["absenteismo"].append({
+                "DATA": dt.strftime("%d/%m/%Y"), 
+                "COLABORADOR": nome, 
+                "TIPO": tp,
+                "OBS": obs
+            })
+            salvar_dados_op(db_data, mes_ref)
+            st.success("Registrado!")
+            st.rerun()
+    
+    if db_data["absenteismo"]:
+        st.write("#### Histórico")
+        st.dataframe(pd.DataFrame(db_data["absenteismo"]), use_container_width=True, hide_index=True)
 
-    with t2:
-        if db_data.get("picos"):
-            st.write("#### 💡 Horários Recomendados para Pausas")
-            df_p = normalizar_picos(pd.DataFrame(db_data["picos"]))
-            melhores_horas = df_p.groupby('HORA')['TICKETS'].mean().sort_values().head(4).index.tolist()
-            cols = st.columns(len(melhores_horas))
-            for i, hora in enumerate(melhores_horas):
-                cols[i].success(f"🕒 {hora}:00")
-        else: st.info("Dados de picos necessários.")
-
-    with t3:
-        if "absenteismo" not in db_data: db_data["absenteismo"] = []
-        with st.form("form_abs", clear_on_submit=True):
-            c1, c2, c3 = st.columns([2, 2, 1])
-            dt = c1.date_input("Data")
-            nome = c2.text_input("Colaborador")
-            tp = c3.selectbox("Tipo", ["Falta", "Atraso", "Saída Antecipada", "Atestado"])
-            obs = st.text_input("Observação")
-            if st.form_submit_button("Registrar Ocorrência"):
-                db_data["absenteismo"].append({
-                    "DATA": dt.strftime("%d/%m/%Y"), 
-                    "COLABORADOR": nome, 
-                    "TIPO": tp,
-                    "OBS": obs
-                })
-                salvar_dados_op(db_data, mes_ref)
-                st.success("Registrado!")
-                st.rerun()
-        
-        if db_data["absenteismo"]:
-            st.write("#### Histórico")
-            st.dataframe(pd.DataFrame(db_data["absenteismo"]), use_container_width=True)
-            
 # =========================================================
 # 5. FUNÇÃO PRINCIPAL UNIFICADA
 # =========================================================
@@ -223,7 +198,7 @@ def exibir_operacao_completa(user_role=None):
     db_data = carregar_dados_op(mes_ref)
     df_atual = pd.DataFrame(db_data["analises"]) if db_data.get("analises") else pd.DataFrame()
 
-    # --- ABAS INTEGRADAS (AGORA UNIFICADAS) ---
+    # --- ABAS INTEGRADAS (REORGANIZADAS) ---
     tab_compras, tab_stats, tab_config = st.tabs([
         "🛒 COMPRAS", "📊 ESTATÍSTICAS OPERAÇÃO", "⚙️ CONFIGURAÇÕES"
     ])
@@ -231,11 +206,10 @@ def exibir_operacao_completa(user_role=None):
     with tab_compras:
         st.markdown(f"<div class='header-analise'>SISTEMA DE COMPRAS - {mes_sel.upper()}</div>", unsafe_allow_html=True)
         t_c1, t_c2, t_c3 = st.tabs(["🛒 COMPRAS", "📥 RECEBIMENTO", "📊 DASHBOARD"])
-        
         with t_c1:
             if df_atual.empty: st.warning("Sem dados.")
             else:
-                q = st.text_input("🔍 Localizar Item:").upper()
+                q = st.text_input("🔍 Localizar:").upper()
                 it_b = df_atual[df_atual['CODIGO'].astype(str).str.contains(q) | df_atual['DESCRICAO'].astype(str).str.contains(q)] if q else df_atual
                 for i, r in it_b.iterrows():
                     with st.container(border=True): renderizar_tratativa_compra(r, i, df_atual, db_data, mes_ref, "bq_c")
@@ -250,7 +224,6 @@ def exibir_operacao_completa(user_role=None):
 
     with tab_stats:
         st.markdown(f"### 📈 Gestão da Operação - {mes_sel}")
-        # Sub-abas para organizar Picos, Dimensionamento e ABS em um só lugar
         sub_picos, sub_dim, sub_abs = st.tabs(["🔥 Picos de Demanda", "📏 Dimensionamento & Pausas", "🤒 Registro de ABS"])
         
         with sub_picos:
@@ -258,18 +231,17 @@ def exibir_operacao_completa(user_role=None):
             
         with sub_dim:
             if not db_data.get("picos"):
-                st.info("Importe a base de picos nas Configurações para calcular o staff.")
+                st.info("Importe a base de picos nas Configurações.")
             else:
                 df_p = normalizar_picos(pd.DataFrame(db_data["picos"]))
-                produtividade = st.number_input("Meta de Tickets por Atendente/Hora:", min_value=1, value=4)
+                produtividade = st.number_input("Tickets por Atendente/Hora:", min_value=1, value=4, key="prod_input_global")
                 df_dim = df_p.groupby('HORA')['TICKETS'].mean().reset_index()
                 df_dim['Atendentes Necessários'] = (df_dim['TICKETS'] / produtividade).apply(lambda x: int(np.ceil(x)))
                 
-                fig_dim = px.line(df_dim, x='HORA', y='Atendentes Necessários', text='Atendentes Necessários', 
-                                 title="Média de Staff Necessário por Hora", markers=True)
-                st.plotly_chart(fig_dim, use_container_width=True)
+                fig_dim = px.line(df_dim, x='HORA', y='Atendentes Necessários', text='Atendentes Necessários', title="Média de Staff Necessário por Hora", markers=True)
+                st.plotly_chart(fig_dim, use_container_width=True, key="graf_line_dim_final")
                 
-                st.write("#### ☕ Janelas Recomendadas para Pausas")
+                st.write("#### ☕ Sugestão de Pausas (Menor Volume)")
                 melhores_horas = df_dim.sort_values('TICKETS').head(4)['HORA'].tolist()
                 cols = st.columns(len(melhores_horas))
                 for i, hora in enumerate(melhores_horas):
@@ -279,19 +251,17 @@ def exibir_operacao_completa(user_role=None):
             renderizar_dimensionamento_abs(db_data, mes_ref)
 
     with tab_config:
-        st.subheader("⚙️ Importação de Dados")
-        c_up1, c_up2 = st.columns(2)
-        with c_up1:
-            up_c = st.file_uploader("Base Compras (Excel)", type="xlsx")
-            if up_c and st.button("Salvar Compras"):
+        st.subheader("⚙️ Importação")
+        c1, c2 = st.columns(2)
+        with c1:
+            up_c = st.file_uploader("Base Compras", type="xlsx")
+            if up_c and st.button("Salvar Compras", key="btn_save_comp"):
                 df_n = pd.read_excel(up_c)
-                for c in ['STATUS_COMPRA', 'QTD_SOLICITADA', 'SALDO_FISICO', 'QTD_RECEBIDA', 'STATUS_RECEB']: 
-                    df_n[c] = "Pendente" if "STATUS" in c else 0
+                for c in ['STATUS_COMPRA', 'QTD_SOLICITADA', 'SALDO_FISICO', 'QTD_RECEBIDA', 'STATUS_RECEB']: df_n[c] = "Pendente" if "STATUS" in c else 0
                 db_data["analises"] = df_n.to_dict(orient='records'); salvar_dados_op(db_data, mes_ref); st.rerun()
-        
-        with c_up2:
-            up_p = st.file_uploader("Base Picos (Zendesk)", type="xlsx")
-            if up_p and st.button("Salvar Picos"):
+        with c2:
+            up_p = st.file_uploader("Base Picos", type="xlsx")
+            if up_p and st.button("Salvar Picos", key="btn_save_picos"):
                 db_data["picos"] = pd.read_excel(up_p).to_dict(orient='records'); salvar_dados_op(db_data, mes_ref); st.rerun()
 
 if __name__ == "__main__":
