@@ -84,24 +84,36 @@ def renderizar_tratativa_recebimento(item, index, df_completo, db_data, mes_ref,
             db_data["analises"] = df_completo.to_dict(orient='records'); del st.session_state[f"show_rec_p_{index}_{key_suffix}"]; salvar_dados_op(db_data, mes_ref); st.rerun()
 
 # =========================================================
-# 3. DASHBOARDS DE PERFORMANCE
+# 3. DASHBOARDS DE PERFORMANCE (COMPRAS)
 # =========================================================
 def renderizar_dashboards_compras_completo(df):
     if df.empty: return
+    total_itens = len(df)
     df_proc = df[df['STATUS_COMPRA'] != "Pendente"]
     itens_conferidos = len(df_proc)
     compras_ok = len(df_proc[df_proc['STATUS_COMPRA'].isin(['Total', 'Parcial'])])
-    
+    perc_conf = (itens_conferidos / total_itens * 100) if total_itens > 0 else 0
+    perc_ok = (compras_ok / itens_conferidos * 100) if itens_conferidos > 0 else 0
+    df_nao_efetuada = df_proc[df_proc['STATUS_COMPRA'] == "Não Efetuada"]
+    nao_efet_com_estoque = df_nao_efetuada[df_nao_efetuada['SALDO_FISICO'] > 0]
+    nao_efet_sem_estoque = df_nao_efetuada[df_nao_efetuada['SALDO_FISICO'] == 0]
+
     st.subheader("📊 Performance de Compras")
     k1, k2, k3, k4 = st.columns(4)
-    k1.markdown(f"<div class='metric-box'><small>CONFERÊNCIA</small><h3>{itens_conferidos}</h3></div>", unsafe_allow_html=True)
-    k2.markdown(f"<div class='metric-box'><small>COMPRAS OK</small><h3>{compras_ok}</h3></div>", unsafe_allow_html=True)
+    k1.markdown(f"<div class='metric-box'><small>CONFERÊNCIA</small><h3>{itens_conferidos}</h3><p>{perc_conf:.1f}%</p></div>", unsafe_allow_html=True)
+    k2.markdown(f"<div class='metric-box'><small>COMPRAS OK</small><h3>{compras_ok}</h3><p>{perc_ok:.1f}%</p></div>", unsafe_allow_html=True)
+    k3.markdown(f"<div class='metric-box'><small>ESTRATÉGICO</small><h3 style='color:#16a34a;'>{len(nao_efet_com_estoque)}</h3></div>", unsafe_allow_html=True)
+    k4.markdown(f"<div class='metric-box'><small>RUPTURA</small><h3 style='color:#ef4444;'>{len(nao_efet_sem_estoque)}</h3></div>", unsafe_allow_html=True)
 
     c1, c2 = st.columns(2)
     with c1:
         st_counts = df['STATUS_COMPRA'].value_counts().reset_index()
-        fig_p = px.pie(st_counts, values='count', names='STATUS_COMPRA', title="Decisões de Compra", hole=0.4)
+        st_counts.columns = ['Status', 'Qtd']
+        fig_p = px.pie(st_counts, values='Qtd', names='Status', title="Decisões de Compra", hole=0.4, color='Status', color_discrete_map={'Total': '#002366', 'Parcial': '#3b82f6', 'Não Efetuada': '#ef4444', 'Pendente': '#cbd5e1'})
         st.plotly_chart(fig_p, use_container_width=True)
+    with c2:
+        fig_rup = go.Figure(data=[go.Bar(name='Com Estoque', x=['Não Efetuadas'], y=[len(nao_efet_com_estoque)], marker_color='#16a34a'), go.Bar(name='Sem Estoque', x=['Não Efetuadas'], y=[len(nao_efet_sem_estoque)], marker_color='#ef4444')])
+        fig_rup.update_layout(title="Motivo das Não Encomendas", barmode='group', height=400); st.plotly_chart(fig_rup, use_container_width=True)
 
 # =========================================================
 # 4. DASHBOARD DE PICOS E DIMENSIONAMENTO (COMPLETO)
