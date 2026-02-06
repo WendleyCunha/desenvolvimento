@@ -212,7 +212,7 @@ def renderizar_dashboards_recebimento_completo(df):
                        data=btn_xlsx, 
                        file_name=f"auditoria_recebimento_{datetime.now().strftime('%d_%m')}.xlsx",
                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-
+   
 # =========================================================
 # 4. DASHBOARD DE PICOS E DIMENSIONAMENTO (OPERACIONAL)
 # =========================================================
@@ -353,7 +353,11 @@ def exibir_operacao_completa(user_role=None):
                     renderizar_tratativa_recebimento(pend_rec.iloc[0], pend_rec.iloc[0]['index'], df_atual, db_data, mes_ref, "main_r")
                     st.markdown("</div>", unsafe_allow_html=True)
             else: st.success("✅ Tudo recebido ou nada encomendado.")
-        
+
+
+        with t3: 
+            renderizar_dashboards_compras_completo(df_atual)
+    
         with t4:
             # Chamando a nova função perita que acabamos de criar
             renderizar_dashboards_recebimento_completo(df_atual)
