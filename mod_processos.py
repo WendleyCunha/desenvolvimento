@@ -52,6 +52,13 @@ def exibir(user_role="OPERACIONAL"):
     </style>
     """, unsafe_allow_html=True)
 
+    if 'db_pqi' not in st.session_state:
+        try:
+            st.session_state.db_pqi = db.carregar_projetos()
+        except Exception as e:
+            st.error(f"Erro ao carregar banco de dados: {e}")
+            st.session_state.db_pqi = [] # Fallback para não travar a tela
+
     # 2. INICIALIZAÇÃO DE DADOS
     if 'db_pqi' not in st.session_state:
         try: st.session_state.db_pqi = db.carregar_projetos()
@@ -133,7 +140,7 @@ def exibir(user_role="OPERACIONAL"):
                                        orientation='h', text_auto='.1f',
                                        color='Porcentagem', color_continuous_scale='Blues')
                     fig_depto.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', showlegend=False)
-                    st.plotly_chart(fig_depto, use_container_width=True)
+                    st.plotly_chart(fig, width='stretch')
 
             with col_right:
                 st.markdown("#### 🍩 Distribuição de Assuntos")
@@ -142,7 +149,7 @@ def exibir(user_role="OPERACIONAL"):
                                        color_discrete_sequence=px.colors.sequential.RdBu)
                     fig_donut.update_traces(textinfo='percent+label')
                     fig_donut.update_layout(margin=dict(t=0, b=0, l=0, r=0), paper_bgcolor='rgba(0,0,0,0)')
-                    st.plotly_chart(fig_donut, use_container_width=True)
+                    st.plotly_chart(fig, width='stretch')
 
     # --- ABA OPERAÇÃO (CÉREBRO DO SISTEMA) ---
     with tabs[-1]:
