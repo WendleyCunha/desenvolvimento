@@ -40,6 +40,7 @@ def normalizar_picos(df):
     df.columns = [unicodedata.normalize('NFKD', str(c)).encode('ASCII', 'ignore').decode('ASCII').upper().strip() for c in df.columns]
     return df.rename(columns=mapeamento)
 
+
 # =========================================================
 # 2. COMPONENTES DE TRATATIVA (COMPRAS/RECEBIMENTO)
 # =========================================================
