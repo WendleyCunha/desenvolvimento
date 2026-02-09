@@ -15,12 +15,12 @@ PALETA = ['#002366', '#3b82f6', '#16a34a', '#ef4444', '#facc15']
 def aplicar_estilo_premium():
     st.markdown(f"""
         <style>
-        .main-card {{ background: white; padding: 25px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); border-top: 5px solid {PALETA[0]}; margin-bottom: 20px; }}
-        .metric-box {{ background: #f8fafc; padding: 15px; border-radius: 12px; border: 1px solid #e2e8f0; text-align: center; height: 100%; }}
-        .metric-box h3 {{ margin: 5px 0; font-size: 1.8rem; font-weight: bold; color: {PALETA[0]}; }}
-        .search-box {{ background: #f1f5f9; padding: 20px; border-radius: 15px; border-left: 5px solid {PALETA[0]}; margin-bottom: 20px; }}
-        .search-box-rec {{ background: #f0fdf4; padding: 20px; border-radius: 15px; border-left: 5px solid {PALETA[2]}; margin-bottom: 20px; }}
-        .header-analise {{ background: {PALETA[0]}; color: white; padding: 15px; border-radius: 10px; text-align: center; margin-bottom: 20px; font-weight: bold; font-size: 20px; }}
+        .main-card {{ background: white; padding: 25_px; border-radius: 20_px; box-shadow: 0 10_px 25_px rgba(0,0,0,0.05); border-top: 5_px solid {PALETA[0]}; margin-bottom: 20_px; }}
+        .metric-box {{ background: #f8fafc; padding: 15_px; border-radius: 12_px; border: 1px solid #e2e8f0; text-align: center; height: 100%; }}
+        .metric-box h3 {{ margin: 5_px 0; font-size: 1.8rem; font-weight: bold; color: {PALETA[0]}; }}
+        .search-box {{ background: #f1f5f9; padding: 20_px; border-radius: 15_px; border-left: 5_px solid {PALETA[0]}; margin-bottom: 20_px; }}
+        .search-box-rec {{ background: #f0fdf4; padding: 20_px; border-radius: 15_px; border-left: 5_px solid {PALETA[2]}; margin-bottom: 20_px; }}
+        .header-analise {{ background: {PALETA[0]}; color: white; padding: 15_px; border-radius: 10_px; text-align: center; margin-bottom: 20_px; font-weight: bold; font-size: 20_px; }}
         </style>
     """, unsafe_allow_html=True)
 
@@ -93,7 +93,42 @@ def renderizar_tratativa_recebimento(item, index, df_completo, db_data, mes_ref,
             db_data["analises"] = df_completo.to_dict(orient='records'); del st.session_state[f"show_rec_p_{index}_{key_suffix}"]; salvar_dados_op(db_data, mes_ref); st.rerun()
 
 # =========================================================
-# 3. DASHBOARDS DE PERFORMANCE
+# 3. NOVO: COMPONENTE DE AUDITORIA (COMPRAS / RECEBIMENTO)
+# =========================================================
+def renderizar_auditoria_sistema(df, tipo="COMPRAS"):
+    st.markdown(f"### 🔍 Auditoria de {tipo}")
+    
+    if tipo == "COMPRAS":
+        # Filtros para Compras
+        df_estoque = df[df['SALDO_FISICO'] > 0]
+        df_ruptura = df[(df['SALDO_FISICO'] == 0) & (df['STATUS_COMPRA'] != "Pendente")]
+        df_manual = df[df['ORIGEM'] == 'Manual']
+    else:
+        # Filtros para Recebimento (Itens que foram solicitados)
+        df_ref = df[df['QTD_SOLICITADA'] > 0]
+        df_estoque = df_ref[df_ref['STATUS_RECEB'] == "Recebido Total"]
+        df_ruptura = df_ref[df_ref['STATUS_RECEB'].isin(["Faltou", "Recebido Parcial"])]
+        df_manual = df_ref[df_ref['ORIGEM'] == 'Manual']
+
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.info("🟢 COM ESTOQUE / OK")
+        st.dataframe(df_estoque[['GRUPO', 'DESCRICAO', 'SALDO_FISICO']], use_container_width=True, hide_index=True)
+        st.download_button("📥 Baixar Excel", data=converter_para_excel(df_estoque), file_name=f"auditoria_{tipo.lower()}_estoque.xlsx", key=f"dl_est_{tipo}")
+
+    with col2:
+        st.error("🔴 RUPTURA")
+        st.dataframe(df_ruptura[['GRUPO', 'DESCRICAO', 'STATUS_COMPRA' if tipo == "COMPRAS" else 'STATUS_RECEB']], use_container_width=True, hide_index=True)
+        st.download_button("📥 Baixar Excel", data=converter_para_excel(df_ruptura), file_name=f"auditoria_{tipo.lower()}_ruptura.xlsx", key=f"dl_rup_{tipo}")
+
+    with col3:
+        st.warning("➕ MANUAL")
+        st.dataframe(df_manual[['GRUPO', 'DESCRICAO', 'QUANTIDADE']], use_container_width=True, hide_index=True)
+        st.download_button("📥 Baixar Excel", data=converter_para_excel(df_manual), file_name=f"auditoria_{tipo.lower()}_manual.xlsx", key=f"dl_man_{tipo}")
+
+# =========================================================
+# 4. DASHBOARDS DE PERFORMANCE
 # =========================================================
 def renderizar_dashboards_compras_completo(df):
     if df.empty: return
@@ -123,6 +158,10 @@ def renderizar_dashboards_compras_completo(df):
     with c2:
         fig_rup = go.Figure(data=[go.Bar(name='Com Estoque', x=['Não Efetuadas'], y=[len(nao_efet_com_estoque)], marker_color='#16a34a'), go.Bar(name='Sem Estoque', x=['Não Efetuadas'], y=[len(nao_efet_sem_estoque)], marker_color='#ef4444')])
         fig_rup.update_layout(title="Motivo das Não Encomendas", barmode='group', height=400); st.plotly_chart(fig_rup, use_container_width=True)
+    
+    # Adicionando Auditoria aqui
+    st.divider()
+    renderizar_auditoria_sistema(df, "COMPRAS")
 
 def renderizar_dashboards_recebimento_ajustado(df):
     if df.empty: return
@@ -157,9 +196,13 @@ def renderizar_dashboards_recebimento_ajustado(df):
         top_dif = df_f[df_f['DIF'] > 0].sort_values(by='DIF', ascending=False).head(10)
         fig_dif = px.bar(top_dif, x='CODIGO', y='DIF', title="Maiores Faltas por SKU", color_discrete_sequence=['#ef4444'], text_auto=True)
         st.plotly_chart(fig_dif, use_container_width=True)
+    
+    # Adicionando Auditoria aqui
+    st.divider()
+    renderizar_auditoria_sistema(df, "RECEBIMENTO")
 
 # =========================================================
-# 4. DASHBOARD DE PICOS E DIMENSIONAMENTO (OPERACIONAL)
+# 5. DASHBOARD DE PICOS E DIMENSIONAMENTO (OPERACIONAL)
 # =========================================================
 def renderizar_picos_operacional(db_picos, db_data, mes_ref):
     with st.expander("🛠️ RECUPERAÇÃO DE DADOS"):
@@ -228,7 +271,7 @@ def renderizar_picos_operacional(db_picos, db_data, mes_ref):
         if db_data.get("abs"): st.table(pd.DataFrame(db_data["abs"]))
 
 # =========================================================
-# 5. ESTRUTURA UNIFICADA
+# 6. ESTRUTURA UNIFICADA
 # =========================================================
 def exibir_operacao_completa(user_role=None):
     aplicar_estilo_premium()
@@ -293,7 +336,6 @@ def exibir_operacao_completa(user_role=None):
 
     with tab_modulo_config:
         st.markdown(f"<div class='header-analise'>CONFIGURAÇÕES GERAIS</div>", unsafe_allow_html=True)
-        # Filtro de referência para upload
         c_ref1, c_ref2 = st.columns(2)
         mes_cfg = c_ref1.selectbox("Referência para Upload (Mês)", meses_lista, index=datetime.now().month - 1, key="cfg_mes")
         ano_cfg = c_ref2.selectbox("Referência para Upload (Ano)", [2024, 2025, 2026], index=1, key="cfg_ano")
