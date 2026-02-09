@@ -35,8 +35,13 @@ def salvar_dados_op(dados, mes_ref):
     fire.collection("operacoes_mensais").document(mes_ref).set(dados)
 
 def normalizar_picos(df):
-    mapeamento = {'CRIACAO DO TICKET - DATA': 'DATA', 'CRIACAO DO TICKET - DIA DA SEMANA': 'DIA_SEMANA', 'CRIACAO DO TICKET - HORA': 'HORA', 'TICKETS': 'TICKETS'}
     df.columns = [unicodedata.normalize('NFKD', str(c)).encode('ASCII', 'ignore').decode('ASCII').upper().strip() for c in df.columns]
+    mapeamento = {
+        'CRIACAO DO TICKET - DATA': 'DATA', 
+        'CRIACAO DO TICKET - DIA DA SEMANA': 'DIA_SEMANA', 
+        'CRIACAO DO TICKET - HORA': 'HORA', 
+        'TICKETS': 'TICKETS'
+    }
     return df.rename(columns=mapeamento)
 
 def converter_para_excel(df):
@@ -88,7 +93,7 @@ def renderizar_tratativa_recebimento(item, index, df_completo, db_data, mes_ref,
             db_data["analises"] = df_completo.to_dict(orient='records'); del st.session_state[f"show_rec_p_{index}_{key_suffix}"]; salvar_dados_op(db_data, mes_ref); st.rerun()
 
 # =========================================================
-# 3. DASHBOARDS DE PERFORMANCE (COMPRAS E RECEBIMENTO)
+# 3. DASHBOARDS DE PERFORMANCE
 # =========================================================
 def renderizar_dashboards_compras_completo(df):
     if df.empty: return
@@ -121,7 +126,7 @@ def renderizar_dashboards_compras_completo(df):
 
 def renderizar_dashboards_recebimento_ajustado(df):
     if df.empty: return
-    df_f = df[df['QTD_SOLICITADA'] > 0] # Apenas o que foi de fato pedido
+    df_f = df[df['QTD_SOLICITADA'] > 0]
     if df_f.empty:
         st.info("Nenhuma compra efetuada para analisar recebimento."); return
 
@@ -129,7 +134,6 @@ def renderizar_dashboards_recebimento_ajustado(df):
     df_rec = df_f[df_f['STATUS_RECEB'] != "Pendente"]
     itens_processados = len(df_rec)
     rec_total = len(df_rec[df_rec['STATUS_RECEB'] == "Recebido Total"])
-    
     perc_proc = (itens_processados / total_pedidos * 100) if total_pedidos > 0 else 0
     perc_efici = (rec_total / itens_processados * 100) if itens_processados > 0 else 0
 
@@ -137,12 +141,8 @@ def renderizar_dashboards_recebimento_ajustado(df):
     rk1, rk2, rk3, rk4 = st.columns(4)
     rk1.markdown(f"<div class='metric-box'><small>PROCESSADO</small><h3>{itens_processados}</h3><p>{perc_proc:.1f}%</p></div>", unsafe_allow_html=True)
     rk2.markdown(f"<div class='metric-box'><small>REC. TOTAL</small><h3>{rec_total}</h3><p>{perc_efici:.1f}%</p></div>", unsafe_allow_html=True)
-    
-    # Cálculo de Itens Faltantes (Volume)
     falta_vol = df_f['QTD_SOLICITADA'].sum() - df_f['QTD_RECEBIDA'].sum()
     rk3.markdown(f"<div class='metric-box'><small>QTD FALTANTE</small><h3 style='color:#ef4444;'>{int(falta_vol)}</h3></div>", unsafe_allow_html=True)
-    
-    # Eficiência de Volume
     efi_vol = (df_f['QTD_RECEBIDA'].sum() / df_f['QTD_SOLICITADA'].sum() * 100) if df_f['QTD_SOLICITADA'].sum() > 0 else 0
     rk4.markdown(f"<div class='metric-box'><small>EFICIÊNCIA VOL.</small><h3 style='color:#16a34a;'>{efi_vol:.1f}%</h3></div>", unsafe_allow_html=True)
 
@@ -150,11 +150,9 @@ def renderizar_dashboards_recebimento_ajustado(df):
     with rc1:
         st_rec = df_f['STATUS_RECEB'].value_counts().reset_index()
         st_rec.columns = ['Status', 'Qtd']
-        fig_r = px.pie(st_rec, values='Qtd', names='Status', title="Status de Recebimento", hole=0.4, 
-                       color='Status', color_discrete_map={'Recebido Total': '#16a34a', 'Recebido Parcial': '#facc15', 'Faltou': '#ef4444', 'Pendente': '#cbd5e1'})
+        fig_r = px.pie(st_rec, values='Qtd', names='Status', title="Status de Recebimento", hole=0.4, color='Status', color_discrete_map={'Recebido Total': '#16a34a', 'Recebido Parcial': '#facc15', 'Faltou': '#ef4444', 'Pendente': '#cbd5e1'})
         st.plotly_chart(fig_r, use_container_width=True)
     with rc2:
-        # Top 10 Divergências
         df_f['DIF'] = df_f['QTD_SOLICITADA'] - df_f['QTD_RECEBIDA']
         top_dif = df_f[df_f['DIF'] > 0].sort_values(by='DIF', ascending=False).head(10)
         fig_dif = px.bar(top_dif, x='CODIGO', y='DIF', title="Maiores Faltas por SKU", color_discrete_sequence=['#ef4444'], text_auto=True)
@@ -164,29 +162,35 @@ def renderizar_dashboards_recebimento_ajustado(df):
 # 4. DASHBOARD DE PICOS E DIMENSIONAMENTO (OPERACIONAL)
 # =========================================================
 def renderizar_picos_operacional(db_picos, db_data, mes_ref):
+    with st.expander("🛠️ RECUPERAÇÃO DE DADOS"):
+        if st.button("🚨 LIMPAR TODOS OS PICOS DESTE MÊS", use_container_width=True):
+            db_data["picos"] = []
+            salvar_dados_op(db_data, mes_ref); st.success("Dados limpos!"); st.rerun()
+
     if not db_picos:
-        st.info("💡 Sem dados de picos. Importe a planilha do Zendesk na aba CONFIGURAÇÕES.")
+        st.info("💡 Sem dados de picos para este período.")
         return
     
     tab_picos, tab_dim, tab_abs = st.tabs(["🔥 MAPA DE CALOR", "👥 DIMENSIONAMENTO", "📝 REGISTRO ABS"])
-    df = normalizar_picos(pd.DataFrame(db_picos))
+    df = pd.DataFrame(db_picos)
+    df = normalizar_picos(df)
+    
+    colunas_fatais = [c for c in ['DATA', 'TICKETS', 'HORA', 'DIA_SEMANA'] if c not in df.columns]
+    if colunas_fatais:
+        st.error(f"❌ Erro de Colunas: A planilha não possui {colunas_fatais}"); return
+
     df['TICKETS'] = pd.to_numeric(df['TICKETS'], errors='coerce').fillna(0)
     ordem_dias = ['Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado', 'Domingo']
 
-    # Filtro global de dias (afeta Calor e Dimensionamento)
     st.markdown("### 📅 Filtro de Análise")
-    dias_disponiveis = sorted(df['DATA'].unique())
-    dias_selecionados = st.multiselect("Selecione os dias para compor a média:", dias_disponiveis, default=dias_disponiveis)
+    dias_disponiveis = sorted(df['DATA'].unique()) 
+    dias_selecionados = st.multiselect("Selecione os dias para compor a média:", dias_disponiveis, default=dias_disponiveis, key=f"filter_days_{mes_ref}")
 
     with tab_picos:
         if dias_selecionados:
             df_f = df[df['DATA'].isin(dias_selecionados)]
-            cores_suaves = ["#ADD8E6", "#FFFFE0", "#FFD700", "#FF8C00", "#FF4500"]
-            fig_heat = px.density_heatmap(df_f, x="HORA", y="DIA_SEMANA", z="TICKETS", 
-                                        category_orders={"DIA_SEMANA": ordem_dias},
-                                        color_continuous_scale=cores_suaves, text_auto=True)
+            fig_heat = px.density_heatmap(df_f, x="HORA", y="DIA_SEMANA", z="TICKETS", category_orders={"DIA_SEMANA": ordem_dias}, color_continuous_scale=["#ADD8E6", "#FFFFE0", "#FFD700", "#FF8C00", "#FF4500"], text_auto=True)
             st.plotly_chart(fig_heat, use_container_width=True)
-            
             c1, c2 = st.columns(2)
             with c1:
                 df_h = df_f.groupby('HORA')['TICKETS'].sum().reset_index()
@@ -197,175 +201,134 @@ def renderizar_picos_operacional(db_picos, db_data, mes_ref):
 
     with tab_dim:
         st.subheader("👥 Simulador de Dimensionamento Dinâmico")
-        
-        # --- PAINEL DE CONTROLE (O QUE VOCÊ PEDIU) ---
         with st.container(border=True):
             col_sim1, col_sim2 = st.columns(2)
-            meta_hora = col_sim1.slider("Capacidade: Atendimentos/Hora por Agente", 1, 15, 4)
-            agentes_reais = col_sim2.number_input("Equipe em Operação (Cenário Real)", min_value=1, value=5)
-
+            meta_hora = col_sim1.slider("Capacidade: Atendimentos/Hora por Agente", 1, 15, 4, key=f"meta_{mes_ref}")
+            agentes_reais = col_sim2.number_input("Equipe em Operação (Cenário Real)", min_value=1, value=5, key=f"ag_real_{mes_ref}")
         if dias_selecionados:
-            # Média de tickets por hora nos dias selecionados
             df_dim = df[df['DATA'].isin(dias_selecionados)].groupby('HORA')['TICKETS'].mean().reset_index()
-            
-            # Cálculo 1: Quantos agentes eu preciso para manter a meta (Equipe Ideal)
             df_dim['AGENTES_NECESSARIOS'] = (df_dim['TICKETS'] / meta_hora).apply(lambda x: int(x) + 1 if x % 1 > 0 else int(x))
-            
-            # Cálculo 2: Qual a carga por pessoa com a equipe informada (Cenário Real)
             df_dim['CARGA_POR_AGENTE'] = (df_dim['TICKETS'] / agentes_reais).round(1)
-
-            # --- GRÁFICOS ---
             g1, g2 = st.columns(2)
             with g1:
-                st.markdown(f"**Equipe Ideal (Meta: {meta_hora}/h)**")
-                st.plotly_chart(px.bar(df_dim, x='HORA', y='AGENTES_NECESSARIOS', text_auto=True, color_discrete_sequence=[PALETA[0]]), use_container_width=True)
+                st.plotly_chart(px.bar(df_dim, x='HORA', y='AGENTES_NECESSARIOS', title="Equipe Ideal", text_auto=True, color_discrete_sequence=[PALETA[0]]), use_container_width=True)
             with g2:
-                st.markdown(f"**Carga Real (Com {agentes_reais} agentes)**")
-                fig_carga = px.line(df_dim, x='HORA', y='CARGA_POR_AGENTE', markers=True, color_discrete_sequence=['#ef4444'])
+                fig_carga = px.line(df_dim, x='HORA', y='CARGA_POR_AGENTE', markers=True, title="Carga Real", color_discrete_sequence=['#ef4444'])
                 fig_carga.add_hline(y=meta_hora, line_dash="dash", line_color="green", annotation_text="Teto da Meta")
                 st.plotly_chart(fig_carga, use_container_width=True)
 
-            st.divider()
-            st.write("📋 **Tabela de Projeção Operacional**")
-            df_tab = df_dim.rename(columns={
-                'HORA': 'Hora', 
-                'TICKETS': 'Média Tickets', 
-                'AGENTES_NECESSARIOS': 'Staff Ideal', 
-                'CARGA_POR_AGENTE': 'Tickets/Agente Atual'
-            })
-            st.dataframe(df_tab, hide_index=True, use_container_width=True)
-
     with tab_abs:
         st.subheader("📝 Controle de ABS")
-        with st.form("form_abs_novo", clear_on_submit=True):
-            ca1, ca2, ca3 = st.columns(3)
-            d_abs = ca1.date_input("Data", value=datetime.now())
-            t_abs = ca2.selectbox("Tipo", ["Falta", "Atraso", "Saída Antecipada", "Atestado"])
-            n_abs = ca3.text_input("Nome do Colaborador")
+        with st.form(f"form_abs_{mes_ref}", clear_on_submit=True):
+            ca1, ca2, ca3 = st.columns(3); d_abs = ca1.date_input("Data", value=datetime.now()); t_abs = ca2.selectbox("Tipo", ["Falta", "Atraso", "Saída Antecipada", "Atestado"]); n_abs = ca3.text_input("Nome do Colaborador")
             m_abs = st.text_area("Observação/Motivo")
             if st.form_submit_button("Registrar Ocorrência"):
                 db_data.setdefault("abs", []).append({"data": str(d_abs), "tipo": t_abs, "nome": n_abs.upper(), "motivo": m_abs})
                 salvar_dados_op(db_data, mes_ref); st.success("Registrado!"); st.rerun()
-        if db_data.get("abs"): 
-            st.table(pd.DataFrame(db_data["abs"]))
+        if db_data.get("abs"): st.table(pd.DataFrame(db_data["abs"]))
 
 # =========================================================
 # 5. ESTRUTURA UNIFICADA
 # =========================================================
-def exibir_operacao_completa(user_role=None): # parâmetro restaurado para evitar erro
+def exibir_operacao_completa(user_role=None):
     aplicar_estilo_premium()
-    st.sidebar.title("📅 Gestão Mensal")
+    st.sidebar.title("💎 Sistema Premium")
     meses_lista = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
-    mes_sel = st.sidebar.selectbox("Mês", meses_lista, index=datetime.now().month - 1)
-    ano_sel = st.sidebar.selectbox("Ano", [2024, 2025, 2026], index=1)
-    mes_ref = f"{mes_sel}_{ano_sel}"
     
-    db_data = carregar_dados_op(mes_ref)
-    df_atual = pd.DataFrame(db_data["analises"]) if db_data.get("analises") else pd.DataFrame()
-
     tab_modulo_compras, tab_modulo_picos, tab_modulo_config = st.tabs(["🛒 COMPRAS", "📊 DASH OPERAÇÃO", "⚙️ CONFIGURAÇÕES"])
 
     with tab_modulo_compras:
-        st.markdown(f"<div class='header-analise'>SISTEMA DE COMPRAS - {mes_sel.upper()}</div>", unsafe_allow_html=True)
+        col_m1, col_m2 = st.columns(2)
+        mes_c = col_m1.selectbox("Selecione o Mês (COMPRAS)", meses_lista, index=datetime.now().month - 1, key="sel_mes_compras")
+        ano_c = col_m2.selectbox("Selecione o Ano (COMPRAS)", [2024, 2025, 2026], index=1, key="sel_ano_compras")
+        mes_ref_c = f"{mes_c}_{ano_c}"
+        db_c = carregar_dados_op(mes_ref_c)
+        df_c = pd.DataFrame(db_c["analises"]) if db_c.get("analises") else pd.DataFrame()
+
+        st.markdown(f"<div class='header-analise'>SISTEMA DE COMPRAS - {mes_c.upper()}</div>", unsafe_allow_html=True)
         t1, t2, t3, t4 = st.tabs(["🛒 COMPRAS", "📥 RECEBIMENTO", "📊 DASHBOARD COMPRAS", "📈 DASHBOARD RECEBIMENTO"])
         
         with t1:
-            if df_atual.empty: st.warning("Sem dados.")
+            if df_c.empty: st.warning("Sem dados para este período.")
             else:
                 q = st.text_input("🔍 Localizar Item:").upper()
                 if q:
-                    it_b = df_atual[df_atual['CODIGO'].astype(str).str.contains(q) | df_atual['DESCRICAO'].astype(str).str.contains(q)]
+                    it_b = df_c[df_c['CODIGO'].astype(str).str.contains(q) | df_c['DESCRICAO'].astype(str).str.contains(q)]
                     for i, r in it_b.iterrows():
-                        with st.container(border=True): renderizar_tratativa_compra(r, i, df_atual, db_data, mes_ref, "bq_c")
-                
-                idx_s = db_data.get("idx_solic", 0)
-                while idx_s < len(df_atual) and df_atual.iloc[idx_s]['STATUS_COMPRA'] != "Pendente": idx_s += 1
-                if idx_s < len(df_atual):
-                    st.subheader(f"🚀 Esteira ({idx_s + 1}/{len(df_atual)})")
+                        with st.container(border=True): renderizar_tratativa_compra(r, i, df_c, db_c, mes_ref_c, "bq_c")
+                idx_s = db_c.get("idx_solic", 0)
+                while idx_s < len(df_c) and df_c.iloc[idx_s]['STATUS_COMPRA'] != "Pendente": idx_s += 1
+                if idx_s < len(df_c):
+                    st.subheader(f"🚀 Esteira ({idx_s + 1}/{len(df_c)})")
                     st.markdown("<div class='main-card'>", unsafe_allow_html=True)
-                    renderizar_tratativa_compra(df_atual.iloc[idx_s], idx_s, df_atual, db_data, mes_ref, "main_c")
+                    renderizar_tratativa_compra(df_c.iloc[idx_s], idx_s, df_c, db_c, mes_ref_c, "main_c")
                     st.markdown("</div>", unsafe_allow_html=True)
 
         with t2:
-            pend_rec = df_atual[(df_atual['QTD_SOLICITADA'] > 0) & (df_atual['STATUS_RECEB'] == "Pendente")].reset_index() if not df_atual.empty else pd.DataFrame()
+            pend_rec = df_c[(df_c['QTD_SOLICITADA'] > 0) & (df_c['STATUS_RECEB'] == "Pendente")].reset_index() if not df_c.empty else pd.DataFrame()
             if not pend_rec.empty:
                 st.markdown('<div class="search-box-rec">', unsafe_allow_html=True)
                 q_r = st.text_input("🔍 Localizar Recebimento:").upper()
                 if q_r:
                     it_r = pend_rec[pend_rec['CODIGO'].astype(str).str.contains(q_r) | pend_rec['DESCRICAO'].astype(str).str.contains(q_r)]
                     for _, r in it_r.iterrows():
-                        with st.container(border=True): renderizar_tratativa_recebimento(r, r['index'], df_atual, db_data, mes_ref, "bq_r")
+                        with st.container(border=True): renderizar_tratativa_recebimento(r, r['index'], df_c, db_c, mes_ref_c, "bq_r")
                 st.markdown('</div>', unsafe_allow_html=True)
                 st.markdown("<div class='main-card' style='border-top-color:#16a34a;'>", unsafe_allow_html=True)
-                renderizar_tratativa_recebimento(pend_rec.iloc[0], pend_rec.iloc[0]['index'], df_atual, db_data, mes_ref, "main_r")
+                renderizar_tratativa_recebimento(pend_rec.iloc[0], pend_rec.iloc[0]['index'], df_c, db_c, mes_ref_c, "main_r")
                 st.markdown("</div>", unsafe_allow_html=True)
             else: st.success("✅ Tudo recebido ou nada encomendado.")
 
-        with t3:
-            renderizar_dashboards_compras_completo(df_atual)
-            if not df_atual.empty:
-                st.divider()
-                st.subheader("🔍 Auditoria de Compras")
-                c_aud1, c_aud2 = st.columns(2)
-                with c_aud1:
-                    with st.expander("🟢 COM ESTOQUE"): st.dataframe(df_atual[df_atual['SALDO_FISICO'] > 0], use_container_width=True)
-                with c_aud2:
-                    with st.expander("🔴 RUPTURA"): st.dataframe(df_atual[df_atual['SALDO_FISICO'] <= 0], use_container_width=True)
-                
-                # REQUISITO 3: Exportar Auditoria Compras
-                st.download_button("📥 Exportar Auditoria (Excel)", data=converter_para_excel(df_atual), file_name=f"Auditoria_Compras_{mes_ref}.xlsx")
-
-        with t4:
-            renderizar_dashboards_recebimento_ajustado(df_atual)
-            if not df_atual.empty:
-                st.divider()
-                # REQUISITO 4: Exportar Auditoria Recebimento
-                st.download_button("📥 Exportar Relatório Recebimento (Excel)", data=converter_para_excel(df_atual[df_atual['QTD_SOLICITADA'] > 0]), file_name=f"Auditoria_Recebimento_{mes_ref}.xlsx")
+        with t3: renderizar_dashboards_compras_completo(df_c)
+        with t4: renderizar_dashboards_recebimento_ajustado(df_c)
 
     with tab_modulo_picos:
-        renderizar_picos_operacional(db_data.get("picos", []), db_data, mes_ref)
+        col_p1, col_p2 = st.columns(2)
+        mes_p = col_p1.selectbox("Selecione o Mês (OPERAÇÃO)", meses_lista, index=datetime.now().month - 1, key="sel_mes_op")
+        ano_p = col_p2.selectbox("Selecione o Ano (OPERAÇÃO)", [2024, 2025, 2026], index=1, key="sel_ano_op")
+        mes_ref_p = f"{mes_p}_{ano_p}"
+        db_p = carregar_dados_op(mes_ref_p)
+        st.markdown(f"<div class='header-analise'>DASHBOARD OPERACIONAL - {mes_p.upper()}</div>", unsafe_allow_html=True)
+        renderizar_picos_operacional(db_p.get("picos", []), db_p, mes_ref_p)
 
     with tab_modulo_config:
-        st.markdown(f"<div class='header-analise'>CONFIGURAÇÕES</div>", unsafe_allow_html=True)
-        # Cadastro manual mantido...
+        st.markdown(f"<div class='header-analise'>CONFIGURAÇÕES GERAIS</div>", unsafe_allow_html=True)
+        # Filtro de referência para upload
+        c_ref1, c_ref2 = st.columns(2)
+        mes_cfg = c_ref1.selectbox("Referência para Upload (Mês)", meses_lista, index=datetime.now().month - 1, key="cfg_mes")
+        ano_cfg = c_ref2.selectbox("Referência para Upload (Ano)", [2024, 2025, 2026], index=1, key="cfg_ano")
+        mes_ref_cfg = f"{mes_cfg}_{ano_cfg}"
+        db_cfg = carregar_dados_op(mes_ref_cfg)
+        df_cfg = pd.DataFrame(db_cfg["analises"]) if db_cfg.get("analises") else pd.DataFrame()
+
         with st.container(border=True):
-            st.subheader("🆕 Cadastro Manual")
+            st.subheader(f"🆕 Cadastro Manual ({mes_ref_cfg})")
             with st.form("cad_manual_form", clear_on_submit=True):
                 m1, m2 = st.columns(2); c_cod = m1.text_input("Código"); c_desc = m2.text_input("Descrição")
                 m3, m4, m5 = st.columns([2, 2, 1]); c_forn = m3.text_input("Fornecedor"); c_grupo = m4.selectbox("Grupo", ["COLCHAO", "ESTOFADO", "OUTROS"]); c_qtd = m5.number_input("Qtd", min_value=1)
                 if st.form_submit_button("➕ Adicionar"):
                     novo = {"CODIGO": c_cod, "DESCRICAO": c_desc, "FORNECEDOR": c_forn, "GRUPO": c_grupo, "QUANTIDADE": c_qtd, "ORIGEM": "Manual", "STATUS_COMPRA": "Pendente", "QTD_SOLICITADA": 0, "SALDO_FISICO": 0, "STATUS_RECEB": "Pendente", "QTD_RECEBIDA": 0}
-                    df_atual = pd.concat([df_atual, pd.DataFrame([novo])], ignore_index=True)
-                    db_data["analises"] = df_atual.to_dict(orient='records'); salvar_dados_op(db_data, mes_ref); st.rerun()
+                    df_cfg = pd.concat([df_cfg, pd.DataFrame([novo])], ignore_index=True)
+                    db_cfg["analises"] = df_cfg.to_dict(orient='records'); salvar_dados_op(db_cfg, mes_ref_cfg); st.rerun()
 
         st.divider()
         c_up1, c_up2 = st.columns(2)
         with c_up1:
-            st.markdown("### 🛒 Base Compras")
-            up_c = st.file_uploader("Upload Excel Compras", type="xlsx")
-            
-            # REQUISITO 2: Permitir arquivo preenchido
-            tipo_import = st.radio("Modo de Importação:", ["Resetar Tudo (Nova Planilha)", "Preservar Status (Atualização/Preenchida)"])
-            
+            st.markdown(f"### 🛒 Base Compras ({mes_ref_cfg})")
+            up_c = st.file_uploader("Upload Excel Compras", type="xlsx", key="up_compras")
+            tipo_import = st.radio("Modo Importação:", ["Resetar Tudo", "Preservar Status"], key="radio_imp")
             if up_c and st.button("Confirmar Upload Compras"):
                 df_n = pd.read_excel(up_c)
-                if tipo_import == "Resetar Tudo (Nova Planilha)":
-                    df_n['ORIGEM'] = 'Planilha'
-                    for c in ['STATUS_COMPRA', 'STATUS_RECEB']: df_n[c] = "Pendente"
+                if tipo_import == "Resetar Tudo":
+                    df_n['ORIGEM'] = 'Planilha'; df_n['STATUS_COMPRA'] = "Pendente"; df_n['STATUS_RECEB'] = "Pendente"
                     for c in ['QTD_SOLICITADA', 'SALDO_FISICO', 'QTD_RECEBIDA']: df_n[c] = 0
-                
-                db_data["analises"] = df_n.to_dict(orient='records'); salvar_dados_op(db_data, mes_ref); st.success("Base Atualizada!"); st.rerun()
-
-            if st.button("🗑️ Resetar Apenas Compras"):
-                db_data["analises"] = []; salvar_dados_op(db_data, mes_ref); st.rerun()
+                db_cfg["analises"] = df_n.to_dict(orient='records'); salvar_dados_op(db_cfg, mes_ref_cfg); st.success("Atualizado!"); st.rerun()
 
         with c_up2:
-            st.markdown("### 📊 Base Picos")
-            up_p = st.file_uploader("Upload Zendesk", type="xlsx")
+            st.markdown(f"### 📊 Base Picos ({mes_ref_cfg})")
+            up_p = st.file_uploader("Upload Zendesk", type="xlsx", key="up_picos")
             if up_p and st.button("Salvar Picos"):
-                db_data["picos"] = pd.read_excel(up_p).to_dict(orient='records'); salvar_dados_op(db_data, mes_ref); st.rerun()
-            if st.button("🗑️ Resetar Apenas Picos"):
-                db_data["picos"] = []; salvar_dados_op(db_data, mes_ref); st.rerun()
+                db_cfg["picos"] = pd.read_excel(up_p).to_dict(orient='records'); salvar_dados_op(db_cfg, mes_ref_cfg); st.rerun()
 
 if __name__ == "__main__":
     exibir_operacao_completa()
