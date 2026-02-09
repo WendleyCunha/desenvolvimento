@@ -66,19 +66,21 @@ def exibir(user_role="OPERACIONAL"):
         tab_gestao = None
         tab_operacao = tabs[1]
 
-    # --- 1. DASHBOARD GERAL ---
+   # --- 1. DASHBOARD GERAL ---
     with tab_dash:
+        import plotly.express as px # Import local para garantir funcionamento
+        
         sub_d1, sub_d2 = st.tabs(["📈 Portfólio Ativo", "✅ Projetos Entregues"])
         projs = st.session_state.db_pqi
         
         with sub_d1:
             ativos = [p for p in projs if p.get('status') != "Concluído"]
             if ativos:
+                # --- MÉTRICAS ---
                 c1, c2, c3 = st.columns(3)
-                c1.markdown(f'<div class="metric-card"><div class="metric-label">Ativos</div><div class="metric-value">{len(ativos)}</div></div>', unsafe_allow_html=True)
-                c2.markdown(f'<div class="metric-card"><div class="metric-label">Ações</div><div class="metric-value">{sum(len(p.get("notas", [])) for p in ativos)}</div></div>', unsafe_allow_html=True)
+                c1.markdown(f'<div class="metric-card"><div class="metric-label">Projetos Ativos</div><div class="metric-value">{len(ativos)}</div></div>', unsafe_allow_html=True)
+                c2.markdown(f'<div class="metric-card"><div class="metric-label">Total de Ações</div><div class="metric-value">{sum(len(p.get("notas", [])) for p in ativos)}</div></div>', unsafe_allow_html=True)
                 
-                # Cálculo de Gargalo para o Dashboard
                 todas_notas = []
                 for p in ativos:
                     for n in p.get('notas', []):
@@ -88,12 +90,29 @@ def exibir(user_role="OPERACIONAL"):
                 gargalo = "N/A"
                 if not df_notas.empty and 'depto' in df_notas.columns:
                     gargalo = df_notas['depto'].mode()[0] if not df_notas['depto'].isnull().all() else "N/A"
+                c3.markdown(f'<div class="metric-card"><div class="metric-label">Gargalo (Depto)</div><div class="metric-value" style="font-size:18px">{gargalo}</div></div>', unsafe_allow_html=True)
                 
-                c3.markdown(f'<div class="metric-card"><div class="metric-label">Gargalo Atual</div><div class="metric-value" style="font-size:18px">{gargalo}</div></div>', unsafe_allow_html=True)
-                
-                st.divider()
+                st.write("") # Espaçador
+
+                # --- GRÁFICOS ---
                 df_at = pd.DataFrame([{"Projeto": p['titulo'], "Fase": f"Fase {p['fase']}", "Esforço": len(p.get('notas', []))} for p in ativos])
-                st.bar_chart(df_at.set_index("Projeto")["Esforço"])
+                
+                col_g1, col_g2 = st.columns(2)
+                
+                with col_g1:
+                    st.markdown("##### 📊 Esforço por Projeto (Barras)")
+                    st.bar_chart(df_at.set_index("Projeto")["Esforço"])
+                
+                with col_g2:
+                    st.markdown("##### 🍕 Participação no Portfólio (Pizza)")
+                    # Criando gráfico de pizza (estilo rosca/donut que é mais moderno)
+                    fig_pizza = px.pie(df_at, values='Esforço', names='Projeto', hole=0.4,
+                                     color_discrete_sequence=px.colors.qualitative.Prism)
+                    fig_pizza.update_layout(margin=dict(l=20, r=20, t=20, b=20), height=300, showlegend=True)
+                    st.plotly_chart(fig_pizza, use_container_width=True)
+
+                st.divider()
+                st.markdown("##### 📋 Detalhamento do Portfólio")
                 st.dataframe(df_at, use_container_width=True, hide_index=True)
             else:
                 st.info("Nenhum projeto ativo.")
@@ -271,13 +290,23 @@ def exibir(user_role="OPERACIONAL"):
                             st.dataframe(df_hist, use_container_width=True, hide_index=True)
 
                 with t_esforco:
+                    import plotly.express as px
                     df_k = pd.DataFrame(projeto.get('notas', []))
                     if not df_k.empty:
-                        c1, c2 = st.columns(2)
-                        c1.write("**Por Assunto**")
-                        c1.bar_chart(df_k['motivo'].value_counts())
-                        if 'depto' in df_k.columns:
-                            c2.write("**Por Departamento**")
-                            c2.bar_chart(df_k['depto'].value_counts())
+                        st.markdown(f"### Análise de Esforço: {projeto['titulo']}")
+                        
+                        c_esf1, c_esf2 = st.columns(2)
+                        
+                        with c_esf1:
+                            st.markdown("**Frequência de Assuntos**")
+                            st.bar_chart(df_k['motivo'].value_counts())
+                        
+                        with c_esf2:
+                            st.markdown("**Distribuição Percentual**")
+                            df_pizza_motivo = df_k['motivo'].value_counts().reset_index()
+                            df_pizza_motivo.columns = ['Motivo', 'Qtd']
+                            fig_mot = px.pie(df_pizza_motivo, values='Qtd', names='Motivo', hole=0.4)
+                            fig_mot.update_layout(margin=dict(l=20, r=20, t=20, b=20), height=300)
+                            st.plotly_chart(fig_mot, use_container_width=True)
                     else:
                         st.info("Inicie os registros para ver a análise.")
