@@ -199,7 +199,7 @@ if escolha == "🏠 Home":
     exibir_home()
 elif "Manutenção" in escolha:
     import mod_manutencao
-    mod_manutencao.exibir_manutencao(user_role=user_role)
+    mod_manutencao.main()
 elif "Processos" in escolha:
     import mod_processos
     mod_processos.exibir(user_role=user_role)
