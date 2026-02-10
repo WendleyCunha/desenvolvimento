@@ -4,131 +4,118 @@ import numpy as np
 
 def tratar_dados(df):
     """
-    Limpa nomes de colunas com erros de encoding e aplica regras iniciais.
+    Limpa nomes de colunas e prepara dados.
     """
-    # 1. Corrigir nomes de colunas (Encoding ANSI/UTF-8)
     df.columns = [
         col.encode('latin1').decode('utf-8', 'ignore') if isinstance(col, str) else col 
         for col in df.columns
     ]
 
-    # 2. Padronização de nomes para garantir que o código encontre as colunas
-    # Mapeamos variações comuns que podem vir do ERP
     mapeamento = {
         'Dt Emissão': 'Data Emissão',
         'Dt EmissÃ£o': 'Data Emissão',
         'Valor Venda': 'Valor Venda',
         'Custo': 'Custo',
-        'Filial': 'Filial',
-        'Tipo Venda': 'Tipo Venda'
+        'Pedido': 'Pedido',
+        'Orçamento': 'Pedido' # Caso o PV venha como Orçamento em algum relatório
     }
     df.rename(columns=mapeamento, inplace=True)
 
-    # 3. Conversão de Datas e Criação de Períodos
-    colunas_data = ['Data Emissão', 'Dt Age', 'Data Lib', 'Data Prev', 'Data Ent']
-    for col in colunas_data:
-        if col in df.columns:
-            df[col] = pd.to_datetime(df[col], errors='coerce')
-
-    # Criar colunas temporais apenas se a coluna de data existir
+    # Conversão de Datas
     if 'Data Emissão' in df.columns:
-        # Remover linhas com datas inválidas para não quebrar o gráfico
+        df['Data Emissão'] = pd.to_datetime(df['Data Emissão'], errors='coerce')
         df = df.dropna(subset=['Data Emissão'])
         df['Ano_Mes'] = df['Data Emissão'].dt.to_period('M').astype(str)
         df['Semana_Ano'] = df['Data Emissão'].dt.isocalendar().week.astype(str)
         df['Data_Apenas'] = df['Data Emissão'].dt.date
     
-    # 4. Tratamento Numérico
-    cols_numericas = ['Valor Venda', 'Custo']
-    for col in cols_numericas:
+    # Tratamento Numérico
+    for col in ['Valor Venda', 'Custo']:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
 
-    # 5. Cálculo de Margem
-    if 'Valor Venda' in df.columns and 'Custo' in df.columns:
-        df['Margem R$'] = df['Valor Venda'] - df['Custo']
-        df['Margem %'] = (df['Margem R$'] / df['Valor Venda'].replace(0, np.nan) * 100).round(2)
-        
     return df
 
 def exibir_manutencao(user_role):
     st.title("🏗️ Gestão de Manutenção & Vendas")
     st.markdown("---")
 
-    # Sistema de abas atualizado
     tab_dash, tab_config = st.tabs(["📊 Dashboard 360", "⚙️ Configurações"])
 
-    # --- ABA DE CONFIGURAÇÕES (Reset e Upload) ---
     with tab_config:
         st.subheader("Gerenciamento de Dados")
+        arquivo = st.file_uploader("Subir planilha", type=['xlsx', 'csv', 'xls'])
         
-        col_c1, col_c2 = st.columns(2)
-        
-        with col_c1:
-            st.write("### 📥 Upload")
-            arquivo = st.file_uploader("Subir nova planilha (.xlsx, .xls, .csv)", type=['xlsx', 'csv', 'xls'])
-            
-            if arquivo:
-                try:
-                    if arquivo.name.endswith('.csv'):
-                        df_raw = pd.read_csv(arquivo, sep=None, engine='python', encoding='latin1')
-                    elif arquivo.name.endswith('.xls'):
-                        df_raw = pd.read_excel(arquivo, engine='xlrd')
-                    else:
-                        df_raw = pd.read_excel(arquivo, engine='openpyxl')
-                    
-                    with st.spinner('Processando...'):
-                        df_limpo = tratar_dados(df_raw)
-                        st.session_state['dados_vendas'] = df_limpo
-                        st.success("Dados carregados!")
-                        st.rerun() # Atualiza a tela para mostrar no Dash
-                except Exception as e:
-                    st.error(f"Erro: {e}")
-
-        with col_c2:
-            st.write("### 🧹 Reset")
-            st.warning("Isso limpará os dados da sessão atual.")
-            if st.button("RESETAR SISTEMA", type="primary", use_container_width=True):
-                if 'dados_vendas' in st.session_state:
-                    del st.session_state['dados_vendas']
-                st.success("Dados limpos!")
+        if arquivo:
+            try:
+                if arquivo.name.endswith('.csv'):
+                    df_raw = pd.read_csv(arquivo, sep=None, engine='python', encoding='latin1')
+                else:
+                    engine = 'xlrd' if arquivo.name.endswith('.xls') else 'openpyxl'
+                    df_raw = pd.read_excel(arquivo, engine=engine)
+                
+                df_limpo = tratar_dados(df_raw)
+                st.session_state['dados_vendas'] = df_limpo
+                st.success("Dados carregados!")
                 st.rerun()
+            except Exception as e:
+                st.error(f"Erro: {e}")
 
-    # --- ABA DO DASHBOARD ---
+        if st.button("RESETAR SISTEMA", type="primary"):
+            if 'dados_vendas' in st.session_state:
+                del st.session_state['dados_vendas']
+            st.rerun()
+
     with tab_dash:
         if 'dados_vendas' in st.session_state:
             df = st.session_state['dados_vendas']
             
+            # --- LÓGICA DE UNICIDADE ---
+            # Se o pedido se repete, somamos o valor total mas contamos apenas 1 pedido
+            total_vendas = df['Valor Venda'].sum()
+            
+            # Aqui está o "pulo do gato": contar valores únicos na coluna Pedido
+            qtd_pedidos_reais = df['Pedido'].nunique() if 'Pedido' in df.columns else 0
+            
+            # Ticket Médio Real: Total vendido / Quantidade de Pedidos Únicos
+            ticket_medio_real = total_vendas / qtd_pedidos_reais if qtd_pedidos_reais > 0 else 0
+            
             # KPIs
             c1, c2, c3, c4 = st.columns(4)
-            c1.metric("Vendas Totais", f"R$ {df['Valor Venda'].sum():,.2f}")
-            c2.metric("Margem Bruta", f"R$ {df.get('Margem R$', pd.Series([0])).sum():,.2f}")
-            c3.metric("Qtd Pedidos", len(df))
-            c4.metric("Ticket Médio", f"R$ {df['Valor Venda'].mean():,.2f}")
+            c1.metric("Faturamento Total", f"R$ {total_vendas:,.2f}")
+            c2.metric("Qtd Pedidos (Únicos)", qtd_pedidos_reais)
+            c3.metric("Ticket Médio (p/ Pedido)", f"R$ {ticket_medio_real:,.2f}")
+            
+            margem_bruta = (df['Valor Venda'].sum() - df['Custo'].sum())
+            c4.metric("Margem Bruta", f"R$ {margem_bruta:,.2f}")
                 
             st.divider()
             
-            # Visão Temporal com Tratamento de Erro (KeyError Fix)
-            st.subheader("Análise Temporal")
+            # --- ANÁLISE POR DATA (CONSIDERANDO PEDIDOS ÚNICOS) ---
             if 'Data_Apenas' in df.columns:
-                visao = st.radio("Agrupar por:", ["Dia", "Semana", "Mês"], horizontal=True)
+                st.subheader("Evolução de Pedidos Únicos")
+                visao = st.radio("Agrupar por:", ["Dia", "Semana", "Mês"], horizontal=True, key="temp_radio")
                 mapa_tempo = {"Dia": "Data_Apenas", "Semana": "Semana_Ano", "Mês": "Ano_Mes"}
                 
-                vendas_tempo = df.groupby(mapa_tempo[visao])['Valor Venda'].sum()
-                st.line_chart(vendas_tempo)
-            else:
-                st.warning("Coluna de data não encontrada para gerar gráfico temporal.")
-
+                # Agrupando por tempo e contando quantos pedidos únicos existem em cada período
+                pedidos_tempo = df.groupby(mapa_tempo[visao])['Pedido'].nunique()
+                st.line_chart(pedidos_tempo)
+                
             st.divider()
             
             col_g1, col_g2 = st.columns(2)
             with col_g1:
-                st.subheader("Vendas por Filial")
-                if 'Filial' in df.columns:
-                    st.bar_chart(df.groupby('Filial')['Valor Venda'].sum())
+                st.subheader("Faturamento por Filial")
+                st.bar_chart(df.groupby('Filial')['Valor Venda'].sum())
             
             with col_g2:
-                st.subheader("Detalhamento")
-                st.dataframe(df[['Data Emissão', 'Filial', 'Valor Venda', 'Margem %']].head(50), hide_index=True)
+                st.subheader("Últimos Pedidos Processados")
+                # Mostra a lista sem repetir o mesmo pedido várias vezes (agrupado)
+                resumo_pedidos = df.groupby('Pedido').agg({
+                    'Data Emissão': 'first',
+                    'Filial': 'first',
+                    'Valor Venda': 'sum'
+                }).reset_index().sort_values('Data Emissão', ascending=False)
+                st.dataframe(resumo_pedidos.head(20), hide_index=True)
         else:
-            st.info("Nenhum dado carregado. Vá em 'Configurações' para subir uma planilha.")
+            st.info("Aguardando upload de dados nas Configurações.")
