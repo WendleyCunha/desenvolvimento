@@ -1,34 +1,63 @@
-import streamlit as st
 import pandas as pd
-import json
 import os
 
-def exibir():
-    st.header("🏗️ Gestão de Manutenção Predial")
-    
-    # Simulador do Core que faltava
-    DB_MANT = "manutencao_dados.json"
-    
-    if not os.path.exists(DB_MANT):
-        with open(DB_MANT, "w") as f: json.dump([], f)
-        
-    def carregar():
-        with open(DB_MANT, "r") as f: return json.load(f)
-    
-    dados = carregar()
-    
-    col1, col2 = st.columns([1, 2])
-    with col1:
-        with st.form("nova_manut"):
-            item = st.selectbox("Item", ["Ar-condicionado", "Pintura", "Elétrica", "Hidráulica"])
-            status = st.selectbox("Status", ["OK", "Necessita Reparo", "Em Manutenção"])
-            if st.form_submit_button("Registrar"):
-                dados.append({"Item": item, "Status": status, "Data": pd.Timestamp.now().strftime("%d/%m/%Y")})
-                with open(DB_MANT, "w") as f: json.dump(dados, f)
-                st.rerun()
-                
-    with col2:
-        if dados:
-            st.dataframe(pd.DataFrame(dados), use_container_width=True)
+def processar_dados_diarios(caminho_arquivo):
+    """
+    Lê a planilha, limpa os nomes das colunas e prepara os dados para o Dash 360.
+    """
+    try:
+        # Detecta se é Excel ou CSV e lê com encoding corrigido
+        if caminho_arquivo.endswith('.csv'):
+            df = pd.read_csv(caminho_arquivo, sep=';', encoding='latin1')
         else:
-            st.info("Nenhum registro encontrado.")
+            df = pd.read_excel(caminho_arquivo)
+
+        # 1. TRATAMENTO DE COLUNAS (Resolvendo o problema do 'Ã£')
+        # Mapeamento manual para garantir que o Python entenda exatamente o que é cada coluna
+        colunas_corrigidas = {
+            'Dt EmissÃ£o': 'dt_emissao',
+            'Dt Age': 'dt_agendamento',
+            'Data Lib': 'dt_liberacao',
+            'Data Prev': 'dt_previsao',
+            'Data Ent': 'dt_entrega',
+            'OrÃ§amento': 'orcamento',
+            'Tipo Venda': 'tipo_venda',
+            'Valor Venda': 'valor_venda'
+        }
+        df.rename(columns=colunas_corrigidas, inplace=True)
+
+        # 2. CONVERSÃO DE DATAS
+        # Isso permite que você filtre por "Vendas de Sexta a Domingo" facilmente
+        colunas_data = ['dt_emissao', 'dt_agendamento', 'dt_liberacao', 'dt_previsao', 'dt_entrega']
+        for col in colunas_data:
+            if col in df.columns:
+                df[col] = pd.to_datetime(df[col], errors='coerce')
+
+        # 3. CRIAÇÃO DE REGRAS (Exemplos para o Dash 360)
+        
+        # Regra A: Lucro Bruto e Margem
+        df['lucro'] = df['valor_venda'] - df['Custo']
+        df['margem_percentual'] = (df['lucro'] / df['valor_venda']) * 100
+
+        # Regra B: Status de Entrega (Atrasado ou No Prazo)
+        df['status_logistica'] = df.apply(
+            lambda x: 'Atrasado' if x['dt_entrega'] > x['dt_previsao'] else 'No Prazo', 
+            axis=1
+        )
+
+        # Regra C: Identificador de Dia da Semana (Para tratar o acúmulo de fds)
+        df['dia_semana_nome'] = df['dt_emissao'].dt.day_name() # 'Friday', 'Saturday', etc.
+
+        return df
+
+    except Exception as e:
+        return f"Erro ao processar arquivo: {e}"
+
+def consolidar_final_de_semana(df):
+    """
+    Regra específica para agrupar dados de Sex/Sab/Dom se necessário.
+    """
+    # Exemplo: Marcar vendas que entram no "bolo" da segunda-feira
+    dias_fds = ['Friday', 'Saturday', 'Sunday']
+    df['venda_fds'] = df['dia_semana_nome'].isin(dias_fds)
+    return df
