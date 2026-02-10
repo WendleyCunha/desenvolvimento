@@ -1,63 +1,68 @@
+import streamlit as st
 import pandas as pd
-import os
 
-def processar_dados_diarios(caminho_arquivo):
-    """
-    Lê a planilha, limpa os nomes das colunas e prepara os dados para o Dash 360.
-    """
-    try:
-        # Detecta se é Excel ou CSV e lê com encoding corrigido
-        if caminho_arquivo.endswith('.csv'):
-            df = pd.read_csv(caminho_arquivo, sep=';', encoding='latin1')
-        else:
-            df = pd.read_excel(caminho_arquivo)
-
-        # 1. TRATAMENTO DE COLUNAS (Resolvendo o problema do 'Ã£')
-        # Mapeamento manual para garantir que o Python entenda exatamente o que é cada coluna
-        colunas_corrigidas = {
-            'Dt EmissÃ£o': 'dt_emissao',
-            'Dt Age': 'dt_agendamento',
-            'Data Lib': 'dt_liberacao',
-            'Data Prev': 'dt_previsao',
-            'Data Ent': 'dt_entrega',
-            'OrÃ§amento': 'orcamento',
-            'Tipo Venda': 'tipo_venda',
-            'Valor Venda': 'valor_venda'
-        }
-        df.rename(columns=colunas_corrigidas, inplace=True)
-
-        # 2. CONVERSÃO DE DATAS
-        # Isso permite que você filtre por "Vendas de Sexta a Domingo" facilmente
-        colunas_data = ['dt_emissao', 'dt_agendamento', 'dt_liberacao', 'dt_previsao', 'dt_entrega']
-        for col in colunas_data:
-            if col in df.columns:
-                df[col] = pd.to_datetime(df[col], errors='coerce')
-
-        # 3. CRIAÇÃO DE REGRAS (Exemplos para o Dash 360)
+def tratar_dados(df):
+    """Aplica as regras de negócio e limpeza de colunas"""
+    # Corrige o encoding das colunas que vimos na imagem
+    mapeamento = {
+        'Dt EmissÃ£o': 'Data Emissão',
+        'OrÃ§amento': 'Orçamento',
+        'Tipo Venda': 'Tipo Venda'
+    }
+    df.rename(columns=mapeamento, inplace=True)
+    
+    # Converte colunas para datetime (essencial para Dash 360)
+    colunas_data = ['Data Emissão', 'Dt Age', 'Data Lib', 'Data Prev', 'Data Ent']
+    for col in colunas_data:
+        if col in df.columns:
+            df[col] = pd.to_datetime(df[col], errors='coerce')
+            
+    # Regra de Margem (Exemplo inicial)
+    if 'Valor Venda' in df.columns and 'Custo' in df.columns:
+        df['Margem R$'] = df['Valor Venda'] - df['Custo']
         
-        # Regra A: Lucro Bruto e Margem
-        df['lucro'] = df['valor_venda'] - df['Custo']
-        df['margem_percentual'] = (df['lucro'] / df['valor_venda']) * 100
-
-        # Regra B: Status de Entrega (Atrasado ou No Prazo)
-        df['status_logistica'] = df.apply(
-            lambda x: 'Atrasado' if x['dt_entrega'] > x['dt_previsao'] else 'No Prazo', 
-            axis=1
-        )
-
-        # Regra C: Identificador de Dia da Semana (Para tratar o acúmulo de fds)
-        df['dia_semana_nome'] = df['dt_emissao'].dt.day_name() # 'Friday', 'Saturday', etc.
-
-        return df
-
-    except Exception as e:
-        return f"Erro ao processar arquivo: {e}"
-
-def consolidar_final_de_semana(df):
-    """
-    Regra específica para agrupar dados de Sex/Sab/Dom se necessário.
-    """
-    # Exemplo: Marcar vendas que entram no "bolo" da segunda-feira
-    dias_fds = ['Friday', 'Saturday', 'Sunday']
-    df['venda_fds'] = df['dia_semana_nome'].isin(dias_fds)
     return df
+
+def exibir_manutencao(user_role):
+    st.title("🏗️ Gestão de Manutenção & Vendas")
+    st.markdown("---")
+
+    # Sistema de abas para organizar o Dash 360
+    tab_upload, tab_dash = st.tabs(["📥 Subir Relatório", "📊 Dashboard 360"])
+
+    with tab_upload:
+        st.subheader("Upload de Dados Diários")
+        arquivo = st.file_uploader("Arraste o relatório de vendas aqui", type=['xlsx', 'csv'])
+        
+        if arquivo:
+            try:
+                if arquivo.name.endswith('.csv'):
+                    df_raw = pd.read_csv(arquivo, sep=None, engine='python', encoding='latin1')
+                else:
+                    df_raw = pd.read_excel(arquivo)
+                
+                df_limpo = tratar_dados(df_raw)
+                st.session_state['dados_vendas'] = df_limpo
+                st.success("Dados processados com sucesso!")
+                st.dataframe(df_limpo.head(10))
+            except Exception as e:
+                st.error(f"Erro ao ler arquivo: {e}")
+
+    with tab_dash:
+        if 'dados_vendas' in st.session_state:
+            df = st.session_state['dados_vendas']
+            
+            # KPI Cards
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                st.metric("Volume de Vendas", f"R$ {df['Valor Venda'].sum():,.2f}")
+            with c2:
+                st.metric("Ticket Médio", f"R$ {df['Valor Venda'].mean():,.2f}")
+            with c3:
+                st.metric("Total Pedidos", len(df))
+                
+            st.divider()
+            st.subheader("Análise por Filial")
+            st.bar_chart(df.groupby('Filial')['Valor Venda'].sum())
+        else:
+            st.info("Por favor, suba um arquivo na aba 'Subir Relatório' para visualizar os indicadores.")
