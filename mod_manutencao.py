@@ -6,36 +6,45 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 
 # =========================================================
-# 1. TRATAMENTO DE DADOS (LOGICA REFINADA)
+# 1. TRATAMENTO DE DADOS (COM BLINDAGEM DE COLUNAS)
 # =========================================================
 def tratar_dados(df):
-    # Correção de Encoding nas colunas
-    df.columns = [col.encode('latin1').decode('utf-8', 'ignore') if isinstance(col, str) else col for col in df.columns]
+    # 1.1 Limpeza agressiva de nomes de colunas (Remove espaços e caracteres ocultos)
+    df.columns = [str(col).strip().encode('latin1').decode('utf-8', 'ignore') if isinstance(col, str) else str(col).strip() for col in df.columns]
     
+    # 1.2 Mapeamento flexível para evitar KeyError
     mapeamento = {
-        'Dt EmissÃ£o': 'Data Emissão', 'OrÃ§amento': 'Orçamento', 
-        'Data Ent': 'Data Entrega', 'Tipo Venda': 'Tipo Venda'
+        'Dt EmissÃ£o': 'Data Emissão', 
+        'Dt Emissao': 'Data Emissão',
+        'OrÃ§amento': 'Orçamento', 
+        'Orcamento': 'Orçamento',
+        'Data Ent': 'Data Entrega', 
+        'Tipo Venda': 'Tipo Venda'
     }
     df.rename(columns=mapeamento, inplace=True)
 
-    # Limpeza de IDs e strings
+    # 1.3 Verificação de colunas essenciais (Se não existirem, cria vazio para não travar)
+    cols_necessarias = ['Data Emissão', 'Data Entrega', 'Tipo Venda', 'Pedido', 'Orçamento', 'Produto', 'Qtd', 'Valor Venda']
+    for col in cols_necessarias:
+        if col not in df.columns:
+            df[col] = np.nan
+
+    # 1.4 Limpeza de IDs e strings
     for c in ['Pedido', 'Orçamento', 'Produto']:
-        if c in df.columns:
-            df[c] = df[c].astype(str).replace(['nan', 'None', '/ /'], '').str.strip()
+        df[c] = df[c].astype(str).replace(['nan', 'None', '/ /', ''], np.nan).str.strip()
 
-    # Conversão de Datas
+    # 1.5 Conversão de Datas
     for col in ['Data Emissão', 'Data Entrega']:
-        if col in df.columns:
-            df[col] = pd.to_datetime(df[col], errors='coerce')
+        df[col] = pd.to_datetime(df[col], errors='coerce')
 
-    # Tratamento Numérico (Qtd e Valores)
+    # 1.6 Tratamento Numérico (Qtd e Valores)
     for col in ['Valor Venda', 'Custo', 'Qtd']:
-        if col in df.columns:
-            if df[col].dtype == 'object':
-                df[col] = df[col].str.replace(r'[R\$\.\s]', '', regex=True).str.replace(',', '.')
-            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+        if df[col].dtype == 'object':
+            df[col] = df[col].str.replace(r'[R\$\.\s]', '', regex=True).str.replace(',', '.')
+        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
     
-    df['ID_Hibrido'] = df['Pedido'].replace('', np.nan).fillna(df['Orçamento']).astype(str)
+    # Lógica do ID Híbrido mantida
+    df['ID_Hibrido'] = df['Pedido'].fillna(df['Orçamento']).astype(str)
     return df
 
 # =========================================================
@@ -66,7 +75,7 @@ def renderizar_velocimetro(valor, titulo):
 def main():
     st.title("🚀 Dashboard de Gestão Operacional")
 
-    # Definição das Abas
+    # Definição das Abas conforme solicitado
     tab_dashboard, tab_planejamento, tab_config = st.tabs([
         "📊 Dashboard Operacional", 
         "📈 Planejamento de Compras (004)", 
@@ -91,21 +100,22 @@ def main():
                         df_raw = pd.read_excel(arquivo)
                     
                     st.session_state['dados_vendas'] = tratar_dados(df_raw)
-                    st.success(f"✅ Arquivo '{arquivo.name}' carregado com sucesso!")
+                    st.success(f"✅ Arquivo carregado com sucesso!")
+                    st.rerun() # Atualiza para liberar as outras abas
                 except Exception as e:
                     st.error(f"❌ Erro ao processar arquivo: {e}")
 
         with col_c2:
-            st.subheader("Limpeza de Banco")
-            st.write("Use o botão abaixo para limpar todos os dados carregados e resetar as análises.")
-            if st.button("🚨 Resetar Banco de Dados", use_container_width=True):
+            st.subheader("Limpeza e Reset")
+            st.write("Limpa o cache e os dados imputados.")
+            if st.button("🚨 Resetar Sistema", use_container_width=True):
                 st.session_state.clear()
-                st.success("Sistema resetado!")
+                st.success("Sistema resetado com sucesso!")
                 st.rerun()
 
-    # Verificação de segurança: se não há dados, para aqui
+    # Verificação: se não há dados, as abas operacionais ficam bloqueadas
     if 'dados_vendas' not in st.session_state:
-        st.info("👋 Bem-vindo! Vá até a aba **Configurações do Sistema** para carregar sua planilha.")
+        st.info("👋 Aguardando upload dos dados na aba **Configurações do Sistema**.")
         return
 
     df = st.session_state['dados_vendas']
@@ -114,16 +124,15 @@ def main():
     with tab_dashboard:
         st.header("Análise de Pedidos e SLA")
         
-        # Métricas de Cabeçalho
-        m1, m2, m3, m4 = st.columns(4)
+        # Métricas
+        m1, m2, m3 = st.columns(3)
         m1.metric("Total Pedidos", df['ID_Hibrido'].nunique())
         m2.metric("Qtd Total Itens", int(df['Qtd'].sum()))
         m3.metric("Faturamento Bruto", f"R$ {df.drop_duplicates('ID_Hibrido')['Valor Venda'].sum():,.2f}")
-        m4.metric("Ticket Médio", f"R$ {df.drop_duplicates('ID_Hibrido')['Valor Venda'].mean():,.2f}")
 
         st.divider()
 
-        # Analise SLA Entrega (003)
+        # Analise SLA Entrega (003) - Com proteção contra colunas vazias
         df_003 = df[df['Tipo Venda'].str.contains('003', na=False)].drop_duplicates('ID_Hibrido').copy()
         df_003 = df_003.dropna(subset=['Data Emissão', 'Data Entrega'])
 
@@ -140,66 +149,44 @@ def main():
             with c_info:
                 st.write("### Detalhes do Prazo")
                 st.success(f"No Prazo (Até 2 dias úteis): **{len(df_003[df_003['Dias_Uteis'] <= 2])}**")
-                st.error(f"Acima do Prazo / Agendado: **{len(df_003[df_003['Dias_Uteis'] > 2])}**")
-                
-                fig_hist = px.histogram(df_003, x='Dias_Uteis', title="Distribuição de Dias para Entrega")
-                st.plotly_chart(fig_hist, use_container_width=True)
+                st.error(f"Fora do Prazo: **{len(df_003[df_003['Dias_Uteis'] > 2])}**")
+        else:
+            st.warning("Sem dados suficientes de '003-ENTREGA' para calcular o SLA.")
 
-    # --- ABA PLANEJAMENTO DE COMPRAS (O CORAÇÃO DA SUA SOLICITAÇÃO) ---
+    # --- ABA PLANEJAMENTO DE COMPRAS (ITENS 004) ---
     with tab_planejamento:
-        st.header("📈 Planejamento de Compras (Itens 004)")
-        st.write("Base de cálculo: Últimos 90 dias de histórico para projeção de demanda.")
+        st.header("📈 Planejamento de Compras (004)")
+        st.write("Projeção baseada na Venda Média Diária (VMD) dos últimos 90 dias.")
 
-        # Parâmetros de Projeção
+        # Parâmetros
         c_p1, c_p2 = st.columns(2)
         dias_futuros = c_p1.slider("Projetar para quantos dias?", 25, 30, 25)
         margem_seg = c_p2.slider("Margem de Segurança (%)", 0, 100, 15)
 
-        # Lógica de Datas (Últimos 90 dias)
-        data_referencia = df['Data Emissão'].max()
-        data_corte = data_referencia - timedelta(days=90)
-        
-        # Filtro: Somente 004 nos últimos 90 dias
-        df_proj = df[(df['Tipo Venda'].str.contains('004', na=False)) & (df['Data Emissão'] >= data_corte)].copy()
-
-        if not df_proj.empty:
-            # Agrupar por produto
-            planejamento = df_proj.groupby('Produto').agg(
-                Qtd_90d=('Qtd', 'sum'),
-                Ultima_Venda=('Data Emissão', 'max')
-            ).reset_index()
-
-            # Venda Média Diária (VMD) baseada no trimestre
-            planejamento['VMD'] = planejamento['Qtd_90d'] / 90
-            
-            # Cálculo de Necessidade: (VMD * Dias Projetados) + Margem
-            planejamento['Necessidade_Base'] = planejamento['VMD'] * dias_futuros
-            planejamento['Qtd_Sugerida'] = (planejamento['Necessidade_Base'] * (1 + margem_seg/100)).apply(np.ceil).astype(int)
-
-            # Visualização da Tabela
-            st.subheader("Sugestão de Pedido de Compra")
-            
-            # Destacar itens críticos
-            st.dataframe(
-                planejamento.sort_values('Qtd_Sugerida', ascending=False),
-                column_config={
-                    "Produto": "Descrição do Item",
-                    "Qtd_90d": "Venda Total (90 dias)",
-                    "VMD": st.column_config.NumberColumn("VMD (Venda Média Diária)", format="%.2f"),
-                    "Qtd_Sugerida": st.column_config.NumberColumn("Sugestão de Compra (Qtd)", help="Baseado na VMD + Margem")
-                },
-                use_container_width=True, hide_index=True
-            )
-            
-            # Gráfico de Necessidade
-            fig_bar = px.bar(planejamento.sort_values('Qtd_Sugerida', ascending=False).head(15), 
-                             x='Produto', y='Qtd_Sugerida', 
-                             title=f"Top 15 Itens com maior demanda para {dias_futuros} dias",
-                             color='Qtd_Sugerida', color_continuous_scale='Blues')
-            st.plotly_chart(fig_bar, use_container_width=True)
-            
+        # Lógica de Projeção
+        data_max = df['Data Emissão'].max()
+        if pd.isna(data_max):
+            st.error("Não há datas válidas para calcular a projeção.")
         else:
-            st.warning("⚠️ Não foram encontrados itens do tipo '004-ENCOMENDA' nos últimos 90 dias da base carregada.")
+            data_corte = data_max - timedelta(days=90)
+            df_proj = df[(df['Tipo Venda'].str.contains('004', na=False)) & (df['Data Emissão'] >= data_corte)].copy()
+
+            if not df_proj.empty:
+                resumo = df_proj.groupby('Produto').agg(Qtd_Total=('Qtd', 'sum')).reset_index()
+                resumo['VMD'] = resumo['Qtd_Total'] / 90
+                resumo['Sugerido'] = (resumo['VMD'] * dias_futuros * (1 + margem_seg/100)).apply(np.ceil).astype(int)
+
+                st.subheader("Sugestão de Pedido")
+                st.dataframe(
+                    resumo.sort_values('Sugerido', ascending=False),
+                    column_config={
+                        "VMD": st.column_config.NumberColumn("Venda Média/Dia", format="%.2f"),
+                        "Sugerido": st.column_config.NumberColumn("Qtd a Comprar", help="Projeção + Margem")
+                    },
+                    use_container_width=True, hide_index=True
+                )
+            else:
+                st.warning("⚠️ Dados de '004-ENCOMENDA' não encontrados nos últimos 90 dias.")
 
 if __name__ == "__main__":
     main()
