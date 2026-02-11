@@ -94,81 +94,95 @@ def main():
                 m2.markdown(f"<div class='metric-card'><p class='metric-label'>003: Fora do Prazo</p><p class='metric-value'>{a48}</p></div>", unsafe_allow_html=True)
         else: st.info("Suba a base nas configurações.")
 
-    # --- AUDITORIA COM MEMÓRIA PERSISTENTE ---
+    # --- AUDITORIA ---
+
     with tabs[1]:
+
         if not df.empty:
-            # 1. Tenta carregar dados salvos anteriormente no CSV para não perder nada
-            try:
-                if 'classificacoes' not in st.session_state or not st.session_state.classificacoes:
-                    import os
-                    if os.path.exists('historico_auditoria.csv'):
-                        hist_df = pd.read_csv('historico_auditoria.csv')
-                        # Reconstrói o dicionário de classificações para o sistema saber quem já foi feito
-                        for _, r in hist_df.iterrows():
-                            st.session_state.classificacoes[str(r['Pedido'])] = r.to_dict()
-            except:
-                pass
 
             crit_venda = df['TIPO_VENDA'].astype(str).str.contains('003', na=False)
+
             crit_erro = (df['Seq_Pedido'] > 1) | (df['DATA_ENTREGA'].isna())
+
             view = df[crit_venda & crit_erro].copy()
-            
-            # Filtra: só mostra o que NÃO está no session_state nem no arquivo físico
+
             view = view[~view['Pedido'].astype(str).isin(st.session_state.classificacoes.keys())]
 
+
+
             st.subheader(f"🔍 Pendentes: {len(view)}")
+
             motivos = ["Não Analisado", "Pedido correto", "Pedido duplicado", "Alteração de pedido"] + st.session_state.motivos_extra
 
+
+
             for idx, row in view.head(10).iterrows():
+
                 pid = str(row['Pedido'])
+
                 with st.container():
+
                     st.markdown(f"<div class='esteira-card'><div class='card-header'>FILIAL: {row['Filial']} | PEDIDO: {pid}</div><b>Cliente:</b> {row['Cliente']} | <b>Vendedor:</b> {row['Vendedor']}</div>", unsafe_allow_html=True)
+
                     
+
                     c_col1, c_col2 = st.columns([2,1])
+
                     with c_col1:
+
                         sel = st.selectbox("Causa:", motivos, key=f"sel_{pid}_{idx}")
+
                     
+
                     data_final = row['DATA_PREVISTA']
+
                     
+
+                    # Se não tem Data Prevista, abre o calendário
+
                     if sel != "Não Analisado" and pd.isna(data_final):
+
                         with c_col2:
+
                             data_final = st.date_input("Inserir Data Real:", key=f"date_{pid}_{idx}")
+
                             data_final = pd.to_datetime(data_final)
 
+
+
                     if sel != "Não Analisado" and pd.notnull(data_final):
+
                         if st.button(f"Confirmar {pid}", key=f"btn_{pid}"):
+
                             # CÁLCULO REAL DO SLA
+
                             dif_horas = (data_final - row['DATA_EMISSAO']).total_seconds() / 3600
+
                             novo_sla = "Dentro 48h" if (0 <= dif_horas <= 48) else "Fora do Prazo"
+
                             
-                            # Atualiza Base Mestra (Memória da Sessão)
+
+                            # Atualiza Base Mestra
+
                             st.session_state.base_mestra.loc[st.session_state.base_mestra['Pedido'] == row['Pedido'], 'SLA_48H'] = novo_sla
+
                             st.session_state.base_mestra.loc[st.session_state.base_mestra['Pedido'] == row['Pedido'], 'DATA_ENTREGA'] = data_final
+
                             
-                            # Prepara o registro para salvar
-                            dados_auditoria = {
-                                'Pedido': pid, 
-                                'Status_Auditoria': sel, 
-                                'SLA_Final': novo_sla, 
-                                'Data_Inserida': data_final.strftime('%Y-%m-%d'), 
-                                'Filial': row['Filial'],
-                                'Vendedor': row['Vendedor'],
-                                'Cliente': row['Cliente']
+
+                            # Grava Relatório
+
+                            st.session_state.classificacoes[pid] = {
+
+                                'Status_Auditoria': sel, 'SLA_Final': novo_sla, 
+
+                                'Data_Inserida': data_final, 'Filial': row['Filial']
+
                             }
-                            
-                            # GRAVAÇÃO PERSISTENTE (SALVA NO ARQUIVO CSV)
-                            df_save = pd.DataFrame([dados_auditoria])
-                            import os
-                            header_needed = not os.path.exists('historico_auditoria.csv')
-                            df_save.to_csv('historico_auditoria.csv', mode='a', index=False, header=header_needed)
-                            
-                            # Atualiza o dicionário da sessão para o item sumir da tela
-                            st.session_state.classificacoes[pid] = dados_auditoria
-                            
-                            st.success(f"Pedido {pid} gravado com sucesso!")
+
                             st.rerun()
-        else: 
-            st.info("Aguardando base.")
+
+        else: st.info("Aguardando base.")
 
     # --- RELATÓRIO ---
     with tabs[2]:
