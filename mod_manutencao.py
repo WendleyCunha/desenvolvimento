@@ -2,11 +2,8 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
-# =========================================================
-# 1. TRATAMENTO DE DADOS (PROTEÇÃO PROTHEUS)
-# =========================================================
 def tratar_dados_protheus(df):
-    # Trata o erro de encoding do Protheus (Ã£)
+    # Correção de encoding para colunas como "Dt EmissÃ£o"
     df.columns = [str(col).strip().encode('latin1').decode('utf-8', 'ignore') 
                   if isinstance(col, str) else str(col).strip() for col in df.columns]
     
@@ -17,12 +14,10 @@ def tratar_dados_protheus(df):
     }
     df.rename(columns=mapeamento, inplace=True)
 
-    # Conversão de Datas
     for col in ['Dt_Emissao', 'Dt_Entrega', 'Data Prev']:
         if col in df.columns:
             df[col] = pd.to_datetime(df[col], errors='coerce')
     
-    # Conversão Numérica
     if 'Valor_Venda' in df.columns:
         if df['Valor_Venda'].dtype == 'object':
             df['Valor_Venda'] = df['Valor_Venda'].str.replace(r'[R\$\.\s]', '', regex=True).str.replace(',', '.')
@@ -30,87 +25,85 @@ def tratar_dados_protheus(df):
         
     return df
 
-# =========================================================
-# 2. LÓGICA DE COMPLEMENTAR E IDENTIFICAR RE-TRABALHO
-# =========================================================
 def processar_base_acumulada(df_novo):
-    # Se for o primeiro upload da sessão
     if 'base_acumulada' not in st.session_state:
         st.session_state.base_acumulada = df_novo
     else:
-        # Complementa: Junta a antiga com a nova
         base_total = pd.concat([st.session_state.base_acumulada, df_novo], ignore_index=True)
-        # Regra: Se o Pedido for o mesmo, mantém o que já existia
+        # Regra: Se o número do PEDIDO for igual, mantém o antigo e ignora o novo
         base_total = base_total.drop_duplicates(subset=['Pedido'], keep='first')
         st.session_state.base_acumulada = base_total
 
     df = st.session_state.base_acumulada
     
-    # IDENTIFICAÇÃO DO PULO DO GATO (RE-TRABALHO)
-    # Ordena para rastrear a linha do tempo do cliente
+    # Lógica do Re-trabalho: Se o Cliente (Coluna J) aparece com um NOVO Pedido
     df = df.sort_values(['ID_Cliente', 'Dt_Emissao'])
-    # Marca se é o 1º, 2º ou 3º pedido daquele cliente na história
     df['Seq_Pedido_Cliente'] = df.groupby('ID_Cliente').cumcount() + 1
     
     return df
 
-# =========================================================
-# 3. FUNÇÃO CHAMADA PELO MAIN.PY
-# =========================================================
 def main():
-    st.header("🏗️ Módulo de Manutenção e Eficiência")
+    st.title("🏗️ Módulo de Manutenção e Eficiência")
     
-    # Upload Centralizado
     with st.expander("📤 Upload de Planilha Protheus", expanded=True):
-        arquivo = st.file_uploader("Selecione o Excel ou CSV", type=['xlsx', 'csv'], key="up_manut")
+        # ADICIONADO 'xls' na lista de tipos aceitos
+        arquivo = st.file_uploader("Selecione o arquivo (XLS, XLSX ou CSV)", type=['xlsx', 'csv', 'xls'], key="up_manut")
+        
         if arquivo:
             try:
-                df_raw = pd.read_excel(arquivo) if arquivo.name.endswith('.xlsx') else pd.read_csv(arquivo, encoding='latin1')
+                # Lógica para ler diferentes formatos
+                if arquivo.name.endswith('.csv'):
+                    df_raw = pd.read_csv(arquivo, encoding='latin1')
+                else:
+                    # 'xlrd' é necessário para arquivos .xls antigos
+                    df_raw = pd.read_excel(arquivo)
+                
                 df_limpo = tratar_dados_protheus(df_raw)
                 df_final = processar_base_acumulada(df_limpo)
-                st.success("Dados processados e integrados com sucesso!")
+                st.success(f"✅ Arquivo '{arquivo.name}' integrado com sucesso!")
             except Exception as e:
-                st.error(f"Erro ao ler arquivo: {e}")
+                st.error(f"❌ Erro ao processar: {e}. Verifique se o arquivo não está corrompido.")
 
-    if 'base_acumulada' in st.session_state:
-        df = processar_base_acumulada(pd.DataFrame()) # Apenas para atualizar cálculos
+    if 'base_acumulada' in st.session_state and not st.session_state.base_acumulada.empty:
+        df = st.session_state.base_acumulada
+        # Recalcula a sequência para garantir que novos uploads ativem a apuração
+        df = df.sort_values(['ID_Cliente', 'Dt_Emissao'])
+        df['Seq_Pedido_Cliente'] = df.groupby('ID_Cliente').cumcount() + 1
 
-        tab1, tab2 = st.tabs(["📊 Visão CEO", "🚨 Apuração de Re-trabalho"])
+        tab1, tab2 = st.tabs(["📊 Dashboard CEO", "🚨 Apuração de Re-trabalho"])
 
         with tab1:
-            # KPIs de Green Belt
-            c1, c2, c3 = st.columns(3)
-            pedidos_reais = df[df['Seq_Pedido_Cliente'] == 1]
             re_trabalho = df[df['Seq_Pedido_Cliente'] > 1]
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Total Pedidos", len(df))
+            c2.metric("Casos Re-trabalho", len(re_trabalho))
+            c3.metric("Custo Estimado", f"R$ {re_trabalho['Valor_Venda'].sum():,.2f}")
             
-            c1.metric("Vendas Originais", len(pedidos_reais))
-            c2.metric("Casos de Re-trabalho", len(re_trabalho))
-            c3.metric("Impacto Financeiro Re-trabalho", f"R$ {re_trabalho['Valor_Venda'].sum():,.2f}")
-
-            st.divider()
-            st.write("### Ofensores de Re-trabalho por Vendedor")
             if not re_trabalho.empty:
+                st.subheader("Pareto de Re-trabalho (Por Vendedor)")
                 st.bar_chart(re_trabalho['Vendedor'].value_counts())
 
         with tab2:
-            st.subheader("Pedidos que geraram novos fluxos (PV Y)")
-            st.warning("Estes pedidos indicam que o cliente teve que comprar novamente ou houve erro no primeiro PV.")
-            
+            st.subheader("🚨 Pedidos Identificados como Re-trabalho")
             df_audit = re_trabalho.copy()
+            
             if not df_audit.empty:
-                # Campo para você preencher o motivo direto na tabela
                 if 'Motivo' not in df_audit.columns:
-                    df_audit['Motivo'] = "Analisar..."
+                    df_audit['Motivo'] = "Aguardando análise..."
                 
-                editado = st.data_editor(
+                # Editor interativo para você preencher os motivos
+                df_editado = st.data_editor(
                     df_audit[['Pedido', 'ID_Cliente', 'Dt_Emissao', 'Tipo_Venda', 'Valor_Venda', 'Motivo']],
                     use_container_width=True,
-                    key="editor_apuracao_manut"
+                    key="editor_apuracao_final"
                 )
                 
-                # Exportação para sua prova técnica
-                csv = editado.to_csv(index=False).encode('utf-8-sig')
-                st.download_button("📥 Baixar Relatório de Provas (Excel)", csv, "apuracao.csv", "text/csv")
-
+                # Botão para baixar o Excel com seus comentários para o CEO
+                csv = df_editado.to_csv(index=False).encode('utf-8-sig')
+                st.download_button("📥 Baixar Relatório para Reunião", csv, "apuracao_retrabalho.csv", "text/csv")
     else:
-        st.info("Suba uma planilha para ativar a análise de re-trabalho.")
+        st.info("Suba uma planilha para iniciar a análise perita de re-trabalho.")
+
+# Se você rodar este arquivo sozinho para teste, ele funciona:
+if __name__ == "__main__":
+    main()
