@@ -24,10 +24,11 @@ def aplicar_estilo():
     """, unsafe_allow_html=True)
 
 # =========================================================
-# 2. MOTOR DE TRATAMENTO E LÓGICA DE SLA
+# 2. MOTOR DE TRATAMENTO E SLA
 # =========================================================
 def tratar_dados_oficial(df):
     if df.empty: return df
+    # Limpa nomes de colunas
     df.columns = [str(col).strip() for col in df.columns]
     
     mapeamento = {
@@ -38,14 +39,15 @@ def tratar_dados_oficial(df):
     }
     df = df.rename(columns=mapeamento)
     
-    # Limpeza de aspas e espaços no Pedido (Chave Primária)
+    # Padroniza Pedido (remove aspas se houver)
     if 'Pedido' in df.columns:
         df['Pedido'] = df['Pedido'].astype(str).str.replace("'", "").str.strip()
     
     for col in ['DATA_EMISSAO', 'DATA_ENTREGA', 'DATA_PREVISTA']:
         if col in df.columns:
-            df[col] = pd.to_datetime(df[col].astype(str).replace(['/ /', 'nan', 'None'], np.nan), errors='coerce')
+            df[col] = pd.to_datetime(df[col].astype(str).replace(['/ /', 'nan', 'NaT'], np.nan), errors='coerce')
     
+    # Lógica de Sequência por Cliente
     if 'Cliente' in df.columns:
         df['Cliente_Limpo'] = df['Cliente'].astype(str).str.split('/').str[0].str.strip()
         df = df.sort_values(['Cliente_Limpo', 'DATA_EMISSAO'])
@@ -55,7 +57,6 @@ def tratar_dados_oficial(df):
 
 def calcular_sla(dt_emissao, dt_entrega):
     if pd.isna(dt_emissao) or pd.isna(dt_entrega): return "Pendente"
-    # Diferença em horas
     horas = (dt_entrega - dt_emissao).total_seconds() / 3600
     return "Dentro 48h" if (0 <= horas <= 48) else "Fora do Prazo"
 
@@ -68,7 +69,8 @@ def main():
 
     if 'base_mestra' not in st.session_state: st.session_state.base_mestra = pd.DataFrame()
     if 'classificacoes' not in st.session_state: st.session_state.classificacoes = {}
-    
+    if 'motivos_extra' not in st.session_state: st.session_state.motivos_extra = []
+
     # Carregar histórico físico do CSV
     if os.path.exists('historico_auditoria.csv') and not st.session_state.classificacoes:
         try:
@@ -77,126 +79,117 @@ def main():
                 st.session_state.classificacoes[str(r['Pedido'])] = r.to_dict()
         except: pass
 
-    tabs = st.tabs(["📊 Performance", "🔍 Auditoria Automática", "📋 Relatório Geral", "⚙️ Configurações"])
-    
-    # ---------------------------------------------------------
-    # ABA 4: CONFIGURAÇÕES (CARGA INICIAL)
-    # ---------------------------------------------------------
+    tabs = st.tabs(["📊 Performance", "🔍 Auditoria", "📋 Relatório", "⚙️ Configurações"])
+    df = st.session_state.base_mestra
+
+    # --- ABA 1: PERFORMANCE ---
+    with tabs[0]:
+        if not df.empty:
+            df_u = df.drop_duplicates(subset=['Pedido'])
+            st.subheader("📊 Visão Geral")
+            c1, c2, c3 = st.columns(3)
+            c1.markdown(f"<div class='metric-card'><p class='metric-label'>Total Pedidos</p><p class='metric-value'>{len(df_u)}</p></div>", unsafe_allow_html=True)
+            c2.markdown(f"<div class='metric-card'><p class='metric-label'>Auditados</p><p class='metric-value'>{len(st.session_state.classificacoes)}</p></div>", unsafe_allow_html=True)
+            
+            # Cálculo de SLA em tempo real para o gráfico
+            df['SLA_48H_REF'] = df.apply(lambda x: calcular_sla(x.get('DATA_EMISSAO'), x.get('DATA_ENTREGA')), axis=1)
+            df_003 = df[df['TIPO_VENDA'].astype(str).str.contains('003', na=False)]
+            
+            c3.markdown(f"<div class='metric-card'><p class='metric-label'>SLA OK (003)</p><p class='metric-value'>{len(df_003[df_003['SLA_48H_REF'] == 'Dentro 48h'])}</p></div>", unsafe_allow_html=True)
+            
+            st.plotly_chart(px.pie(df_003, names='SLA_48H_REF', title="Status SLA 48h (Tipo 003)", hole=0.4), use_container_width=True)
+        else:
+            st.info("Suba a base nas configurações.")
+
+    # --- ABA 2: AUDITORIA (Manual + Automática) ---
+    with tabs[1]:
+        if not df.empty:
+            st.subheader("🚀 Auditoria Automática (PROCV)")
+            with st.expander("Clique aqui para subir arquivo de Agendados e atualizar datas em massa"):
+                arq_agend = st.file_uploader("Relatório de Agendados (Busca Coluna B e D)", type=['csv', 'xlsx'], key="auto_up")
+                if arq_agend:
+                    df_ag = pd.read_csv(arq_agend, encoding='latin1', sep=None, engine='python') if arq_agend.name.endswith('.csv') else pd.read_excel(arq_agend)
+                    if st.button("Executar Cruzamento de Dados"):
+                        df_ag.columns = [str(c).strip() for c in df_ag.columns]
+                        # Assume colunas B e D conforme sua regra (Ped. Venda e Previsão Ent.)
+                        col_p = 'Ped. Venda'
+                        col_d = 'Previsão Ent.'
+                        
+                        if col_p in df_ag.columns and col_d in df_ag.columns:
+                            df_ag[col_p] = df_ag[col_p].astype(str).str.replace("'", "").str.strip()
+                            df_ag[col_d] = pd.to_datetime(df_ag[col_d], errors='coerce')
+                            
+                            sucessos = 0
+                            for _, r_ag in df_ag.iterrows():
+                                pid, nova_dt = r_ag[col_p], r_ag[col_d]
+                                if pd.notnull(nova_dt) and pid not in st.session_state.classificacoes:
+                                    mask = df['Pedido'] == pid
+                                    if mask.any():
+                                        dt_emi = df.loc[mask, 'DATA_EMISSAO'].iloc[0]
+                                        sla = calcular_sla(dt_emi, nova_dt)
+                                        # Atualiza memória e salva
+                                        df.loc[mask, 'DATA_ENTREGA'] = nova_dt
+                                        reg = {'Pedido': pid, 'Status_Auditoria': 'AUTOMÁTICO', 'SLA_Final': sla, 
+                                               'Data_Inserida': nova_dt.strftime('%Y-%m-%d'), 'Filial': df.loc[mask, 'Filial'].iloc[0], 'Vendedor': df.loc[mask, 'Vendedor'].iloc[0]}
+                                        st.session_state.classificacoes[pid] = reg
+                                        pd.DataFrame([reg]).to_csv('historico_auditoria.csv', mode='a', index=False, header=not os.path.exists('historico_auditoria.csv'))
+                                        sucessos += 1
+                            st.success(f"Pronto! {sucessos} pedidos atualizados automaticamente.")
+                            st.rerun()
+
+            st.divider()
+            # Esteira Manual
+            crit_venda = df['TIPO_VENDA'].astype(str).str.contains('003', na=False)
+            crit_erro = (df['Seq_Pedido'] > 1) | (df['DATA_ENTREGA'].isna())
+            view = df[crit_venda & crit_erro].copy()
+            view = view[~view['Pedido'].isin(st.session_state.classificacoes.keys())]
+
+            st.subheader(f"🔍 Pendências Manuais ({len(view)})")
+            motivos = ["Não Analisado", "Pedido correto", "Pedido duplicado"] + st.session_state.motivos_extra
+
+            for idx, row in view.head(10).iterrows():
+                pid = str(row['Pedido'])
+                with st.container():
+                    st.markdown(f"<div class='esteira-card'><div class='card-header'>FILIAL: {row['Filial']} | PEDIDO: {pid}</div>"
+                                f"<b>Cliente:</b> {row.get('Cliente_Limpo', 'N/A')}<br>"
+                                f"<span class='badge badge-red'>Seq: {row['Seq_Pedido']}</span>"
+                                f"<span class='badge badge-blue'>Entrega: {row['DATA_ENTREGA'] if pd.notnull(row['DATA_ENTREGA']) else 'PENDENTE'}</span></div>", unsafe_allow_html=True)
+                    
+                    c_col1, c_col2 = st.columns([2,1])
+                    sel = c_col1.selectbox("Causa:", motivos, key=f"sel_{pid}")
+                    data_f = c_col2.date_input("Data Real:", key=f"dt_{pid}") if sel != "Não Analisado" else None
+                    
+                    if sel != "Não Analisado" and st.button(f"Confirmar {pid}", key=f"btn_{pid}"):
+                        dt_dt = pd.to_datetime(data_f)
+                        sla = calcular_sla(row['DATA_EMISSAO'], dt_dt)
+                        reg = {'Pedido': pid, 'Status_Auditoria': sel, 'SLA_Final': sla, 'Data_Inserida': dt_dt.strftime('%Y-%m-%d'), 'Filial': row['Filial'], 'Vendedor': row['Vendedor']}
+                        st.session_state.classificacoes[pid] = reg
+                        pd.DataFrame([reg]).to_csv('historico_auditoria.csv', mode='a', index=False, header=not os.path.exists('historico_auditoria.csv'))
+                        st.rerun()
+        else: st.info("Aguardando base de dados.")
+
+    # --- ABA 3: RELATÓRIO ---
+    with tabs[2]:
+        if st.session_state.classificacoes:
+            resumo = pd.DataFrame.from_dict(st.session_state.classificacoes, orient='index').reset_index(drop=True)
+            st.subheader("📋 Histórico Consolidado")
+            st.dataframe(resumo, use_container_width=True)
+            st.download_button("📥 Baixar Planilha", resumo.to_csv(index=False).encode('utf-8'), "auditoria_final.csv")
+
+    # --- ABA 4: CONFIGURAÇÕES ---
     with tabs[3]:
-        st.subheader("Configuração da Base Mestra")
-        arq = st.file_uploader("Upload da Base de Vendas (Arquivo Principal)", type=['csv', 'xlsx'])
+        st.subheader("⚙️ Gestão de Dados")
+        arq = st.file_uploader("Upload Base Venda", type=['csv', 'xlsx'])
         if arq:
             df_raw = pd.read_csv(arq, encoding='latin1', sep=None, engine='python') if arq.name.endswith('.csv') else pd.read_excel(arq)
             st.session_state.base_mestra = tratar_dados_oficial(df_raw)
-            st.success("Base Mestra carregada e pronta!")
-
-        st.divider()
-        if st.button("🔥 RESETAR TUDO (Limpar Memória e Histórico)"):
+            st.rerun()
+        
+        if st.button("🔥 RESETAR TUDO"):
             st.session_state.base_mestra = pd.DataFrame()
             st.session_state.classificacoes = {}
             if os.path.exists('historico_auditoria.csv'): os.remove('historico_auditoria.csv')
             st.rerun()
-
-    # ---------------------------------------------------------
-    # ABA 2: AUDITORIA AUTOMÁTICA (O NOVO CAMINHO)
-    # ---------------------------------------------------------
-    with tabs[1]:
-        df = st.session_state.base_mestra
-        if not df.empty:
-            st.subheader("📥 Cruzamento com Relatório de Agendados")
-            st.info("O sistema buscará o 'Ped. Venda' (B) e aplicará a 'Previsão Ent.' (D) nos pedidos sem data de entrega.")
-            
-            arq_agend = st.file_uploader("Upload Relatório de Agendados", type=['csv', 'xlsx'], key="agend_audit")
-            
-            if arq_agend:
-                df_ag = pd.read_csv(arq_agend, encoding='latin1', sep=None, engine='python') if arq_agend.name.endswith('.csv') else pd.read_excel(arq_agend)
-                
-                if st.button("🚀 Executar Auditoria Automática"):
-                    df_ag.columns = [str(c).strip() for c in df_ag.columns]
-                    
-                    # Colunas fixas conforme sua regra (B e D)
-                    col_pv = 'Ped. Venda' 
-                    col_ent = 'Previsão Ent.'
-                    
-                    if col_pv in df_ag.columns and col_ent in df_ag.columns:
-                        df_ag[col_pv] = df_ag[col_pv].astype(str).str.replace("'", "").str.strip()
-                        df_ag[col_ent] = pd.to_datetime(df_ag[col_ent], errors='coerce')
-                        
-                        sucessos = 0
-                        for _, row_ag in df_ag.iterrows():
-                            pv = row_ag[col_pv]
-                            data_f = row_ag[col_ent]
-                            
-                            if pd.notnull(data_f):
-                                # Procura na Mestra onde o pedido bate e a entrega está vazia ou é 003
-                                mask = (df['Pedido'] == pv)
-                                if mask.any():
-                                    idx_mestra = df[mask].index[0]
-                                    # Só atualiza se ainda estiver pendente ou se você quiser sobrescrever
-                                    if pd.isna(df.at[idx_mestra, 'DATA_ENTREGA']):
-                                        dt_emi = df.at[idx_mestra, 'DATA_EMISSAO']
-                                        sla = calcular_sla(dt_emi, data_f)
-                                        
-                                        # Atualiza Dataframe em memória
-                                        df.at[idx_mestra, 'DATA_ENTREGA'] = data_f
-                                        df.at[idx_mestra, 'SLA_48H'] = sla
-                                        
-                                        # Registra no histórico
-                                        registro = {
-                                            'Pedido': pv, 'Status_Auditoria': 'AUTOMÁTICO (AGENDADOS)',
-                                            'SLA_Final': sla, 'Data_Inserida': data_f.strftime('%Y-%m-%d'),
-                                            'Filial': df.at[idx_mestra, 'Filial'], 'Vendedor': df.at[idx_mestra, 'Vendedor']
-                                        }
-                                        st.session_state.classificacoes[pv] = registro
-                                        pd.DataFrame([registro]).to_csv('historico_auditoria.csv', mode='a', index=False, header=not os.path.exists('historico_auditoria.csv'))
-                                        sucessos += 1
-                        
-                        st.success(f"Processo concluído! {sucessos} pedidos auditados automaticamente.")
-                        st.rerun()
-                    else:
-                        st.error(f"Colunas '{col_pv}' ou '{col_ent}' não encontradas no arquivo.")
-
-            st.divider()
-            # Visualização do que ainda sobra (Manual)
-            pendentes = df[(df['TIPO_VENDA'].astype(str).str.contains('003')) & (df['DATA_ENTREGA'].isna())]
-            st.subheader(f"🔍 Pendências Restantes ({len(pendentes)})")
-            if not pendentes.empty:
-                for idx, r in pendentes.head(5).iterrows():
-                    st.markdown(f"<div class='esteira-card'><b>PEDIDO: {r['Pedido']}</b> | Cliente: {r.get('Cliente_Limpo', 'N/A')}<br><small>Seq: {r.get('Seq_Pedido', '1')}</small></div>", unsafe_allow_html=True)
-        else:
-            st.warning("Por favor, carregue a Base Mestra na aba Configurações primeiro.")
-
-    # ---------------------------------------------------------
-    # ABA 1: PERFORMANCE (DASHBOARDS)
-    # ---------------------------------------------------------
-    with tabs[0]:
-        if not df.empty:
-            st.subheader("📊 Performance Consolidada")
-            # Garante cálculo de SLA para o gráfico
-            df['SLA_48H'] = df.apply(lambda x: calcular_sla(x['DATA_EMISSAO'], x['DATA_ENTREGA']), axis=1)
-            
-            df_003 = df[df['TIPO_VENDA'].astype(str).str.contains('003', na=False)]
-            
-            c1, c2, c3 = st.columns(3)
-            c1.markdown(f"<div class='metric-card'><p class='metric-label'>Total Pedidos</p><p class='metric-value'>{len(df)}</p></div>", unsafe_allow_html=True)
-            c2.markdown(f"<div class='metric-card'><p class='metric-label'>Auditados</p><p class='metric-value'>{len(st.session_state.classificacoes)}</p></div>", unsafe_allow_html=True)
-            c3.markdown(f"<div class='metric-card'><p class='metric-label'>Dentro 48h (003)</p><p class='metric-value'>{len(df_003[df_003['SLA_48H'] == 'Dentro 48h'])}</p></div>", unsafe_allow_html=True)
-            
-            st.plotly_chart(px.pie(df_003, names='SLA_48H', title="SLA de Entregas (Tipo 003)", hole=0.4), use_container_width=True)
-        else:
-            st.info("Aguardando dados para gerar indicadores.")
-
-    # ---------------------------------------------------------
-    # ABA 3: RELATÓRIO
-    # ---------------------------------------------------------
-    with tabs[2]:
-        if st.session_state.classificacoes:
-            res_df = pd.DataFrame.from_dict(st.session_state.classificacoes, orient='index').reset_index(drop=True)
-            st.subheader("📋 Histórico de Auditoria (Automática + Manual)")
-            st.dataframe(res_df, use_container_width=True)
-            st.download_button("📥 Baixar Planilha de Auditoria", res_df.to_csv(index=False).encode('utf-8'), "relatorio_auditoria.csv")
-        else:
-            st.info("Nenhum pedido auditado no momento.")
 
 if __name__ == "__main__":
     main()
