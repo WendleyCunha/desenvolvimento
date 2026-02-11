@@ -4,7 +4,7 @@ import plotly.express as px
 import numpy as np
 
 # =========================================================
-# 1. ESTILO E CONFIGURAÇÃO
+# 1. ESTILO E PADRONIZAÇÃO
 # =========================================================
 def aplicar_estilo():
     st.markdown("""
@@ -18,30 +18,44 @@ def aplicar_estilo():
     """, unsafe_allow_html=True)
 
 # =========================================================
-# 2. TRATAMENTO DE DADOS
+# 2. MOTOR DE TRATAMENTO (ROBUSTO)
 # =========================================================
 def tratar_dados_oficial(df):
-    if df.empty: return df
+    if df.empty:
+        return pd.DataFrame(columns=['Filial', 'DATA_EMISSAO', 'DATA_ENTREGA', 'Pedido', 'Vendedor', 'Cliente', 'TIPO_VENDA', 'VALOR', 'Seq_Pedido', 'SLA_48H'])
+    
+    # Limpa nomes das colunas
     df.columns = [str(col).strip() for col in df.columns]
     
+    # Mapeamento para tratar o erro de encoding do Protheus (Ã£o, etc)
     mapeamento = {
-        'Dt EmissÃ£o': 'DATA_EMISSAO', 'Dt Emissão': 'DATA_EMISSAO',
-        'Data Ent': 'DATA_ENTREGA', 'Data Entrega': 'DATA_ENTREGA',
-        'Tipo Venda': 'TIPO_VENDA', 'Valor Venda': 'VALOR'
+        'Dt EmissÃ\x83Â£o': 'DATA_EMISSAO',
+        'Dt EmissÃ£o': 'DATA_EMISSAO',
+        'Dt Emissão': 'DATA_EMISSAO',
+        'Data Ent': 'DATA_ENTREGA',
+        'Data Entrega': 'DATA_ENTREGA',
+        'Tipo Venda': 'TIPO_VENDA',
+        'Valor Venda': 'VALOR'
     }
     df = df.rename(columns=mapeamento)
     
+    # Garante colunas essenciais
+    cols_necessarias = ['DATA_EMISSAO', 'DATA_ENTREGA', 'TIPO_VENDA', 'Pedido', 'Cliente', 'Filial']
+    for c in cols_necessarias:
+        if c not in df.columns: df[c] = np.nan
+
+    # Converte Datas
     for col in ['DATA_EMISSAO', 'DATA_ENTREGA']:
-        if col in df.columns:
-            df[col] = pd.to_datetime(df[col].astype(str).replace('/ /', np.nan), errors='coerce')
+        df[col] = pd.to_datetime(df[col].astype(str).replace('/ /', np.nan), errors='coerce')
     
-    if 'Cliente' in df.columns and 'DATA_EMISSAO' in df.columns:
-        df = df.sort_values(['Cliente', 'DATA_EMISSAO'])
-        df['Seq_Pedido'] = df.groupby('Cliente').cumcount() + 1
+    # Cálculo de Re-trabalho
+    df = df.sort_values(['Cliente', 'DATA_EMISSAO'])
+    df['Seq_Pedido'] = df.groupby('Cliente').cumcount() + 1
     
+    # Cálculo de SLA 48h (Criação da coluna para evitar KeyError)
     df['SLA_48H'] = "Pendente"
-    if 'DATA_EMISSAO' in df.columns and 'DATA_ENTREGA' in df.columns:
-        mask = df['DATA_ENTREGA'].notnull() & df['DATA_EMISSAO'].notnull()
+    mask = df['DATA_ENTREGA'].notnull() & df['DATA_EMISSAO'].notnull()
+    if mask.any():
         horas = (df.loc[mask, 'DATA_ENTREGA'] - df.loc[mask, 'DATA_EMISSAO']).dt.total_seconds() / 3600
         df.loc[mask, 'SLA_48H'] = horas.apply(lambda x: "Dentro 48h" if (0 <= x <= 48) else "Fora do Prazo")
         
@@ -50,116 +64,45 @@ def tratar_dados_oficial(df):
 # =========================================================
 # 3. INTERFACE PRINCIPAL
 # =========================================================
-def main(user_role="ADM"): # Recebe o perfil do main.py
+def main():
     aplicar_estilo()
+    
+    # Recupera role do usuário (padrão ADM se não definido no main.py)
+    user_role = st.session_state.get("user_role", "ADM")
+    
     st.title("🏗️ Manutenção e Eficiência King Star")
 
-    # Inicialização do Banco de Dados Virtual
+    # Inicialização do Banco de Dados em Cache
     if 'base_mestra' not in st.session_state:
         st.session_state.base_mestra = pd.DataFrame()
     if 'classificacoes' not in st.session_state:
         st.session_state.classificacoes = {}
 
     # Definição das Abas
-    abas = ["📊 Performance", "🔍 Auditoria", "📋 Relatório"]
+    titulos_abas = ["📊 Performance", "🔍 Auditoria", "📋 Relatório"]
     if user_role == "ADM":
-        abas.append("⚙️ Configurações")
+        titulos_abas.append("⚙️ Configurações")
     
-    tabs = st.tabs(abas)
+    tabs = st.tabs(titulos_abas)
 
     # --- ABA 1: PERFORMANCE ---
     with tabs[0]:
         df = st.session_state.base_mestra
-        if not df.empty:
-            df_entregas = df[df['TIPO_VENDA'].astype(str).str.contains('003|004', na=False)]
+        if not df.empty and 'TIPO_VENDA' in df.columns:
+            df_entregas = df[df['TIPO_VENDA'].astype(str).str.contains('003|004', na=False)].copy()
+            
             c1, c2, c3 = st.columns(3)
-            c1.metric("Total Entregas", len(df_entregas))
-            c2.metric("Re-trabalhos", len(df_entregas[df_entregas['Seq_Pedido'] > 1]))
+            total = len(df_entregas)
+            # Uso de .get() ou verificação para evitar KeyError: 'SLA_48H'
+            qtd_48h = len(df_entregas[df_entregas['SLA_48H'] == "Dentro 48h"]) if 'SLA_48H' in df_entregas.columns else 0
+            retrabalhos = len(df_entregas[df_entregas['Seq_Pedido'] > 1]) if 'Seq_Pedido' in df_entregas.columns else 0
             
-            agil = (len(df_entregas[df_entregas['SLA_48H'] == "Dentro 48h"]) / len(df_entregas) * 100) if len(df_entregas) > 0 else 0
-            c3.metric("Agilidade 48h", f"{agil:.1f}%")
+            c1.markdown(f"<div class='metric-card'>TOTAL ENTREGAS<h3>{total}</h3></div>", unsafe_allow_html=True)
+            c2.markdown(f"<div class='metric-card'>RE-TRABALHOS<h3>{retrabalhos}</h3></div>", unsafe_allow_html=True)
+            agil = (qtd_48h / total * 100) if total > 0 else 0
+            c3.markdown(f"<div class='metric-card'>AGILIDADE 48H<h3>{agil:.1f}%</h3></div>", unsafe_allow_html=True)
 
-            # Top Filial (Ajuste solicitado: Coluna A)
-            top_f = df_entregas[df_entregas['Seq_Pedido'] > 1]['Filial'].value_counts().head(10).reset_index()
-            st.plotly_chart(px.bar(top_f, x='Filial', y='count', title="Top 10 Filiais (Re-trabalho)"), use_container_width=True)
-        else:
-            st.warning("Nenhum dado carregado. Vá em Configurações.")
-
-    # --- ABA 2: AUDITORIA (CORREÇÃO DO ERRO DE CHAVE DUPLICADA) ---
-    with tabs[1]:
-        df = st.session_state.base_mestra
-        if not df.empty:
-            df_audit = df[df['TIPO_VENDA'].astype(str).str.contains('003|004', na=False)]
-            df_audit = df_audit[df_audit['Seq_Pedido'] > 1]
-            
-            for idx, row in df_audit.head(30).iterrows():
-                # CHAVE ÚNICA: Combinamos o Pedido com o índice da linha para evitar erro de duplicidade
-                chave_unica = f"{row['Pedido']}_{idx}"
-                
-                with st.container():
-                    st.markdown(f"""
-                        <div class='esteira-card'>
-                            <b>Filial: {row['Filial']} | Pedido: {row['Pedido']}</b><br>
-                            Cliente: {row['Cliente']} | Vendedor: {row['Vendedor']}
-                        </div>
-                    """, unsafe_allow_html=True)
-                    
-                    opcoes = ["Não Analisado", "Pedido correto", "Pedido duplicado", "Alteração de pedido", "Correção de pedido"]
-                    # Busca classificação anterior pelo Pedido (não pela chave única, para manter consistência)
-                    atual = st.session_state.classificacoes.get(str(row['Pedido']), {}).get('status', "Não Analisado")
-                    
-                    sel = st.selectbox("Causa:", opcoes, index=opcoes.index(atual), key=f"sel_{chave_unica}")
-                    if sel != "Não Analisado":
-                        st.session_state.classificacoes[str(row['Pedido'])] = {'status': sel, 'Filial': row['Filial']}
-
-    # --- ABA 3: RELATÓRIO ---
-    with tabs[2]:
-        if st.session_state.classificacoes:
-            resumo = pd.DataFrame.from_dict(st.session_state.classificacoes, orient='index').reset_index()
-            st.dataframe(resumo, use_container_width=True)
-        else:
-            st.info("Nenhuma auditoria pendente.")
-
-    # --- ABA 4: CONFIGURAÇÕES (RESTRITA ADM) ---
-    if user_role == "ADM":
-        with tabs[3]:
-            st.header("⚙️ Painel de Controle ADM")
-            
-            # 1. Upload
-            st.subheader("📥 Upload de Dados")
-            arquivo = st.file_uploader("Adicionar novos dados à base", type=['csv', 'xlsx'])
-            if arquivo:
-                df_new = pd.read_csv(arquivo, encoding='latin1', sep=None, engine='python') if arquivo.name.endswith('.csv') else pd.read_excel(arquivo)
-                df_tratado = tratar_dados_oficial(df_new)
-                # Acumula na base existente
-                st.session_state.base_mestra = pd.concat([st.session_state.base_mestra, df_tratado]).drop_duplicates(subset=['Pedido', 'Cliente', 'Produto'])
-                st.success("Dados integrados com sucesso!")
-
-            st.divider()
-            
-            # 2. Limpeza por Mês
-            st.subheader("📅 Limpeza por Período")
-            if not st.session_state.base_mestra.empty:
-                df_temp = st.session_state.base_mestra.copy()
-                df_temp['Mes_Ano'] = df_temp['DATA_EMISSAO'].dt.strftime('%m/%Y')
-                meses = df_temp['Mes_Ano'].unique()
-                mes_para_limpar = st.selectbox("Selecione o mês para excluir:", meses)
-                
-                if st.button(f"🗑️ Limpar dados de {mes_para_limpar}"):
-                    st.session_state.base_mestra = df_temp[df_temp['Mes_Ano'] != mes_para_limpar].drop(columns=['Mes_Ano'])
-                    st.success(f"Dados de {mes_para_limpar} removidos!")
-                    st.rerun()
-
-            st.divider()
-
-            # 3. Reset Total
-            st.subheader("🚨 Zona de Perigo")
-            if st.button("🔥 RESETAR SISTEMA INTEIRO"):
-                st.session_state.base_mestra = pd.DataFrame()
-                st.session_state.classificacoes = {}
-                st.warning("Todos os dados e auditorias foram apagados.")
-                st.rerun()
-
-if __name__ == "__main__":
-    # Simulação de role, no seu main.py você passa o user_role real
-    main(user_role="ADM")
+            if not df_entregas.empty:
+                st.plotly_chart(px.bar(
+                    df_entregas[df_entregas['Seq_Pedido'] > 1]['Filial'].value_counts().head(10).reset_index(),
+                    x='Filial', y='count',
