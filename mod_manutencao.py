@@ -24,7 +24,7 @@ def aplicar_estilo():
     """, unsafe_allow_html=True)
 
 # =========================================================
-# 2. MOTOR DE TRATAMENTO (LOGICA ATUALIZADA)
+# 2. MOTOR DE TRATAMENTO
 # =========================================================
 def tratar_dados_oficial(df, df_agendados=None):
     if df.empty: return df
@@ -38,33 +38,24 @@ def tratar_dados_oficial(df, df_agendados=None):
     }
     df = df.rename(columns=mapeamento)
 
-    # CRUZAMENTO COM RELATÓRIO 2 (AUDITORIA AUTOMÁTICA)
     if df_agendados is not None:
         df_agendados.columns = [str(col).strip() for col in df_agendados.columns]
-        # Limpa o pedido e o /99 do cliente no relatório 2
         df_agendados['Ped. Venda'] = df_agendados['Ped. Venda'].astype(str).str.replace("'", "").str.strip()
-        
-        # Merge (PROCV)
         df['Pedido'] = df['Pedido'].astype(str).str.strip()
         df = pd.merge(df, df_agendados[['Ped. Venda', 'Previsão Ent.']], left_on='Pedido', right_on='Ped. Venda', how='left')
-        
-        # Preenche data de entrega se estiver vazia
         df['DATA_ENTREGA'] = df['DATA_ENTREGA'].replace('/ /', np.nan)
         df['DATA_ENTREGA'] = df['DATA_ENTREGA'].fillna(df['Previsão Ent.'])
         df.drop(columns=['Ped. Venda', 'Previsão Ent.'], inplace=True, errors='ignore')
 
-    # Trata datas e limpa Cliente
     for col in ['DATA_EMISSAO', 'DATA_ENTREGA', 'DATA_PREVISTA']:
         if col in df.columns:
             df[col] = pd.to_datetime(df[col].astype(str).replace(['/ /', 'nan', 'NaT'], np.nan), errors='coerce')
     
     if 'Cliente' in df.columns:
-        # Resolve o problema do /99 no cliente
         df['Cliente'] = df['Cliente'].astype(str).str.split('/').str[0].str.strip()
         df = df.sort_values(['Cliente', 'DATA_EMISSAO'])
         df['Seq_Pedido'] = df.groupby('Cliente').cumcount() + 1
     
-    # Lógica de SLA
     df['SLA_48H'] = "Pendente"
     if 'DATA_EMISSAO' in df.columns and 'DATA_ENTREGA' in df.columns:
         mask = df['DATA_ENTREGA'].notnull() & df['DATA_EMISSAO'].notnull()
@@ -77,7 +68,7 @@ def tratar_dados_oficial(df, df_agendados=None):
 # 3. INTERFACE PRINCIPAL
 # =========================================================
 def main():
-    aplicar_style = aplicar_estilo()
+    aplicar_estilo()
     st.title("🏗️ Performance e Auditoria King Star")
 
     if 'base_mestra' not in st.session_state: st.session_state.base_mestra = pd.DataFrame()
@@ -87,7 +78,6 @@ def main():
     tabs = st.tabs(["📊 Performance", "🔍 Auditoria", "📋 Relatório", "⚙️ Configurações"])
     df = st.session_state.base_mestra
 
-    # --- ABA 1: PERFORMANCE ---
     with tabs[0]:
         if not df.empty:
             df_u = df.drop_duplicates(subset=['Pedido'])
@@ -100,7 +90,6 @@ def main():
             st.plotly_chart(px.pie(df_u, names='TIPO_VENDA', title="Mix de Vendas (%)", hole=0.4), use_container_width=True)
         else: st.info("Suba a base nas configurações.")
 
-    # --- ABA 2: AUDITORIA ---
     with tabs[1]:
         if not df.empty:
             if os.path.exists('historico_auditoria.csv'):
@@ -120,27 +109,34 @@ def main():
             st.subheader(f"🔍 Esteira de Auditoria: {len(view)} pendentes")
             motivos = ["Não Analisado", "Pedido correto", "Pedido duplicado", "Alteração de pedido"] + st.session_state.motivos_extra
 
+            # CORREÇÃO DO ERRO DE CHAVE DUPLICADA: usamos o índice real (idx) para garantir unicidade
             for idx, row in view.head(10).iterrows():
                 pid = str(row['Pedido'])
                 with st.container():
                     st.markdown(f"<div class='esteira-card'><div class='card-header'>FILIAL: {row['Filial']} | PEDIDO: {pid}</div><b>Vendedor:</b> {row['Vendedor']} | <b>Cliente:</b> {row['Cliente']}<br><span class='badge badge-red'>Seq: {row['Seq_Pedido']}</span><span class='badge badge-blue'>Entrega: {row['DATA_ENTREGA'] if pd.notnull(row['DATA_ENTREGA']) else 'AGENDAMENTO PENDENTE'}</span></div>", unsafe_allow_html=True)
                     c_col1, c_col2 = st.columns([2,1])
-                    with c_col1: sel = st.selectbox("Causa:", motivos, key=f"sel_{pid}")
+                    with c_col1: 
+                        sel = st.selectbox("Causa:", motivos, key=f"sel_{pid}_{idx}")
+                    
                     data_final = row['DATA_PREVISTA']
                     if sel != "Não Analisado" and pd.isna(data_final):
-                        with c_col2: data_final = pd.to_datetime(st.date_input("Data Real:", key=f"date_{pid}"))
+                        with c_col2: 
+                            data_final = st.date_input("Data Real:", key=f"date_{pid}_{idx}")
+                    
                     if sel != "Não Analisado" and pd.notnull(data_final):
-                        if st.button(f"Confirmar {pid}", key=f"btn_{pid}"):
-                            dif_horas = (pd.to_datetime(data_final) - pd.to_datetime(row['DATA_EMISSAO'])).total_seconds() / 3600
+                        if st.button(f"Confirmar {pid}", key=f"btn_{pid}_{idx}"):
+                            data_final_dt = pd.to_datetime(data_final)
+                            dif_horas = (data_final_dt - pd.to_datetime(row['DATA_EMISSAO'])).total_seconds() / 3600
                             novo_sla = "Dentro 48h" if (0 <= dif_horas <= 48) else "Fora do Prazo"
-                            st.session_state.base_mestra.loc[st.session_state.base_mestra['Pedido'] == row['Pedido'], ['SLA_48H', 'DATA_ENTREGA']] = [novo_sla, data_final]
-                            registro = {'Pedido': pid, 'Status_Auditoria': sel, 'SLA_Final': novo_sla, 'Data_Inserida': pd.to_datetime(data_final).strftime('%Y-%m-%d'), 'Filial': row['Filial'], 'Vendedor': row['Vendedor']}
+                            
+                            st.session_state.base_mestra.loc[st.session_state.base_mestra['Pedido'] == row['Pedido'], ['SLA_48H', 'DATA_ENTREGA']] = [novo_sla, data_final_dt]
+                            
+                            registro = {'Pedido': pid, 'Status_Auditoria': sel, 'SLA_Final': novo_sla, 'Data_Inserida': data_final_dt.strftime('%Y-%m-%d'), 'Filial': row['Filial'], 'Vendedor': row['Vendedor']}
                             pd.DataFrame([registro]).to_csv('historico_auditoria.csv', mode='a', index=False, header=not os.path.exists('historico_auditoria.csv'))
                             st.session_state.classificacoes[pid] = registro
                             st.rerun()
         else: st.info("Aguardando base de dados.")
 
-    # --- ABA 3: RELATÓRIO ---
     with tabs[2]:
         if st.session_state.classificacoes:
             resumo = pd.DataFrame.from_dict(st.session_state.classificacoes, orient='index').reset_index(drop=True)
@@ -148,12 +144,11 @@ def main():
             st.dataframe(resumo, use_container_width=True)
             st.download_button("📥 Baixar Planilha", resumo.to_csv(index=False).encode('utf-8'), "auditoria_final.csv")
 
-    # --- ABA 4: CONFIGURAÇÕES (UPGRADED) ---
     with tabs[3]:
         st.subheader("⚙️ Configurações de Dados")
         col1, col2 = st.columns(2)
-        with col1: arq_v = st.file_uploader("1. Base Venda (Obrigatório)", type=['csv', 'xlsx'])
-        with col2: arq_a = st.file_uploader("2. Relatório Agendados (Opcional)", type=['csv', 'xlsx'])
+        with col1: arq_v = st.file_uploader("1. Base Venda", type=['csv', 'xlsx'])
+        with col2: arq_a = st.file_uploader("2. Relatório Agendados", type=['csv', 'xlsx'])
         
         if st.button("🚀 PROCESSAR E CRUZAR BASES"):
             if arq_v:
@@ -162,10 +157,9 @@ def main():
                 if arq_a:
                     df_a = pd.read_csv(arq_a, encoding='latin1', sep=None, engine='python') if arq_a.name.endswith('.csv') else pd.read_excel(arq_a)
                 st.session_state.base_mestra = tratar_dados_oficial(df_v, df_a)
-                st.success("Bases sincronizadas com sucesso!")
+                st.success("Bases sincronizadas!")
                 st.rerun()
         
-        st.divider()
         if st.button("🔥 RESETAR TUDO"):
             st.session_state.base_mestra = pd.DataFrame()
             st.session_state.classificacoes = {}
