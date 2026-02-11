@@ -94,109 +94,109 @@ def main():
                 m2.markdown(f"<div class='metric-card'><p class='metric-label'>003: Fora do Prazo</p><p class='metric-value'>{a48}</p></div>", unsafe_allow_html=True)
         else: st.info("Suba a base nas configurações.")
 
-    # --- AUDITORIA ---
-
+    # --- ABA 2: AUDITORIA (Visual Restaurado + Gravação Persistente) ---
     with tabs[1]:
-
         if not df.empty:
+            # Carregar histórico do CSV para o session_state se ainda não foi carregado
+            import os
+            if os.path.exists('historico_auditoria.csv'):
+                try:
+                    hist_df = pd.read_csv('historico_auditoria.csv')
+                    for _, r in hist_df.iterrows():
+                        pid_str = str(r['Pedido'])
+                        if pid_str not in st.session_state.classificacoes:
+                            st.session_state.classificacoes[pid_str] = r.to_dict()
+                except: pass
 
             crit_venda = df['TIPO_VENDA'].astype(str).str.contains('003', na=False)
-
             crit_erro = (df['Seq_Pedido'] > 1) | (df['DATA_ENTREGA'].isna())
-
             view = df[crit_venda & crit_erro].copy()
-
             view = view[~view['Pedido'].astype(str).isin(st.session_state.classificacoes.keys())]
 
-
-
-            st.subheader(f"🔍 Pendentes: {len(view)}")
-
+            st.subheader(f"🔍 Esteira de Auditoria: {len(view)} pendentes")
+            
             motivos = ["Não Analisado", "Pedido correto", "Pedido duplicado", "Alteração de pedido"] + st.session_state.motivos_extra
 
-
-
             for idx, row in view.head(10).iterrows():
-
                 pid = str(row['Pedido'])
-
                 with st.container():
-
-                    st.markdown(f"<div class='esteira-card'><div class='card-header'>FILIAL: {row['Filial']} | PEDIDO: {pid}</div><b>Cliente:</b> {row['Cliente']} | <b>Vendedor:</b> {row['Vendedor']}</div>", unsafe_allow_html=True)
-
+                    # O visual "Bonito" que você pediu volta aqui:
+                    st.markdown(f"""
+                        <div class='esteira-card'>
+                            <div class='card-header'>FILIAL: {row['Filial']} | PEDIDO: {pid}</div>
+                            <b>Vendedor:</b> {row['Vendedor']}<br>
+                            <b>Cliente:</b> {row['Cliente']}<br>
+                            <span class='badge badge-red'>Seq: {row['Seq_Pedido']}</span>
+                            <span class='badge badge-blue'>Entrega: {row['DATA_ENTREGA'] if pd.notnull(row['DATA_ENTREGA']) else 'PENDENTE'}</span>
+                        </div>
+                    """, unsafe_allow_html=True)
                     
-
                     c_col1, c_col2 = st.columns([2,1])
-
                     with c_col1:
-
-                        sel = st.selectbox("Causa:", motivos, key=f"sel_{pid}_{idx}")
-
+                        sel = st.selectbox("Classificar causa:", motivos, key=f"sel_{pid}_{idx}")
                     
-
                     data_final = row['DATA_PREVISTA']
-
                     
-
-                    # Se não tem Data Prevista, abre o calendário
-
                     if sel != "Não Analisado" and pd.isna(data_final):
-
                         with c_col2:
-
                             data_final = st.date_input("Inserir Data Real:", key=f"date_{pid}_{idx}")
-
                             data_final = pd.to_datetime(data_final)
 
-
-
                     if sel != "Não Analisado" and pd.notnull(data_final):
-
-                        if st.button(f"Confirmar {pid}", key=f"btn_{pid}"):
-
-                            # CÁLCULO REAL DO SLA
-
-                            dif_horas = (data_final - row['DATA_EMISSAO']).total_seconds() / 3600
-
+                        if st.button(f"Confirmar Auditoria {pid}", key=f"btn_{pid}"):
+                            # Cálculo matemático do SLA
+                            dif_horas = (pd.to_datetime(data_final) - pd.to_datetime(row['DATA_EMISSAO'])).total_seconds() / 3600
                             novo_sla = "Dentro 48h" if (0 <= dif_horas <= 48) else "Fora do Prazo"
-
                             
-
-                            # Atualiza Base Mestra
-
+                            # Atualiza Base na Memória
                             st.session_state.base_mestra.loc[st.session_state.base_mestra['Pedido'] == row['Pedido'], 'SLA_48H'] = novo_sla
-
                             st.session_state.base_mestra.loc[st.session_state.base_mestra['Pedido'] == row['Pedido'], 'DATA_ENTREGA'] = data_final
-
                             
-
-                            # Grava Relatório
-
-                            st.session_state.classificacoes[pid] = {
-
-                                'Status_Auditoria': sel, 'SLA_Final': novo_sla, 
-
-                                'Data_Inserida': data_final, 'Filial': row['Filial']
-
+                            # Dados para o CSV
+                            registro = {
+                                'Pedido': pid, 
+                                'Status_Auditoria': sel, 
+                                'SLA_Final': novo_sla, 
+                                'Data_Inserida': pd.to_datetime(data_final).strftime('%Y-%m-%d'), 
+                                'Filial': row['Filial'],
+                                'Vendedor': row['Vendedor']
                             }
-
+                            
+                            # Gravação Física (Persistente)
+                            df_save = pd.DataFrame([registro])
+                            header_needed = not os.path.exists('historico_auditoria.csv')
+                            df_save.to_csv('historico_auditoria.csv', mode='a', index=False, header=header_needed)
+                            
+                            st.session_state.classificacoes[pid] = registro
+                            st.success(f"Pedido {pid} auditado!")
                             st.rerun()
+        else:
+            st.info("Aguardando base de dados.")
 
-        else: st.info("Aguardando base.")
-
-    # --- RELATÓRIO ---
+    # --- ABA 3: RELATÓRIO (Versão Única e Consolidada) ---
     with tabs[2]:
         if st.session_state.classificacoes:
-            resumo = pd.DataFrame.from_dict(st.session_state.classificacoes, orient='index').reset_index().rename(columns={'index': 'Pedido'})
+            # Criamos o DataFrame e usamos drop=True para não duplicar a coluna de Pedido/Index
+            resumo = pd.DataFrame.from_dict(st.session_state.classificacoes, orient='index').reset_index(drop=True)
+            
+            st.subheader("📋 Pedidos Auditados (Histórico)")
+            # Exibe a tabela limpa
             st.dataframe(resumo, use_container_width=True)
-        else: st.info("Nenhum pedido auditado.")
+            
+            # Botão de download para sua segurança
+            csv_data = resumo.to_csv(index=False).encode('utf-8')
+            st.download_button("📥 Baixar Planilha de Auditoria", csv_data, "auditoria_final.csv")
+        else:
+            st.info("Nenhum pedido auditado ainda.")
 
-    # --- CONFIGURAÇÕES ---
+    # --- ABA 4: CONFIGURAÇÕES ---
     with tabs[3]:
         st.subheader("📝 Motivos Customizados")
         n_motivo = st.text_input("Novo motivo:")
         if st.button("Adicionar"):
-            if n_motivo: st.session_state.motivos_extra.append(n_motivo); st.rerun()
+            if n_motivo: 
+                st.session_state.motivos_extra.append(n_motivo)
+                st.rerun()
         
         st.divider()
         arq = st.file_uploader("Upload Base", type=['csv', 'xlsx'])
@@ -205,8 +205,13 @@ def main():
             st.session_state.base_mestra = tratar_dados_oficial(df_raw)
             st.rerun()
         
+        # Botão para limpar tudo, inclusive se quiser deletar o histórico físico depois
         if st.button("🔥 RESETAR TUDO"):
-            st.session_state.base_mestra = pd.DataFrame(); st.session_state.classificacoes = {}; st.rerun()
+            st.session_state.base_mestra = pd.DataFrame()
+            st.session_state.classificacoes = {}
+            # Opcional: se quiser deletar o arquivo físico ao resetar, descomente a linha abaixo
+            # if os.path.exists('historico_auditoria.csv'): os.remove('historico_auditoria.csv')
+            st.rerun()
 
 if __name__ == "__main__":
     main()
