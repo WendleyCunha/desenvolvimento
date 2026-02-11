@@ -6,7 +6,7 @@ from datetime import datetime
 import os
 
 # =========================================================
-# 1. ESTILO E INTERFACE
+# 1. ESTILO E INTERFACE (INTEGRIDADE TOTAL)
 # =========================================================
 def aplicar_estilo():
     st.markdown("""
@@ -24,7 +24,7 @@ def aplicar_estilo():
     """, unsafe_allow_html=True)
 
 # =========================================================
-# 2. MOTOR DE TRATAMENTO (ATUALIZADO PARA CRUZAMENTO)
+# 2. MOTOR DE TRATAMENTO (LOGICA ATUALIZADA)
 # =========================================================
 def tratar_dados_oficial(df, df_agendados=None):
     if df.empty: return df
@@ -38,33 +38,33 @@ def tratar_dados_oficial(df, df_agendados=None):
     }
     df = df.rename(columns=mapeamento)
 
-    # TRATAMENTO DO RELATÓRIO 2 (AGENDADOS)
+    # CRUZAMENTO COM RELATÓRIO 2 (AUDITORIA AUTOMÁTICA)
     if df_agendados is not None:
         df_agendados.columns = [str(col).strip() for col in df_agendados.columns]
-        # Limpa aspas e lixo do Pedido e Data
+        # Limpa o pedido e o /99 do cliente no relatório 2
         df_agendados['Ped. Venda'] = df_agendados['Ped. Venda'].astype(str).str.replace("'", "").str.strip()
         
-        # PROCV: Traz a Previsão Ent. para a base principal
+        # Merge (PROCV)
         df['Pedido'] = df['Pedido'].astype(str).str.strip()
         df = pd.merge(df, df_agendados[['Ped. Venda', 'Previsão Ent.']], left_on='Pedido', right_on='Ped. Venda', how='left')
         
-        # Se Data Entrega for vazia (/ /), usa a Previsão do Agendado
+        # Preenche data de entrega se estiver vazia
         df['DATA_ENTREGA'] = df['DATA_ENTREGA'].replace('/ /', np.nan)
         df['DATA_ENTREGA'] = df['DATA_ENTREGA'].fillna(df['Previsão Ent.'])
         df.drop(columns=['Ped. Venda', 'Previsão Ent.'], inplace=True, errors='ignore')
-    
+
+    # Trata datas e limpa Cliente
     for col in ['DATA_EMISSAO', 'DATA_ENTREGA', 'DATA_PREVISTA']:
         if col in df.columns:
             df[col] = pd.to_datetime(df[col].astype(str).replace(['/ /', 'nan', 'NaT'], np.nan), errors='coerce')
     
-    df['MES_REF'] = df['DATA_EMISSAO'].dt.strftime('%m/%Y') if 'DATA_EMISSAO' in df.columns else "Indefinido"
-
     if 'Cliente' in df.columns:
-        # Limpa o /99 do cliente para a lógica de Seq_Pedido funcionar
+        # Resolve o problema do /99 no cliente
         df['Cliente'] = df['Cliente'].astype(str).str.split('/').str[0].str.strip()
         df = df.sort_values(['Cliente', 'DATA_EMISSAO'])
         df['Seq_Pedido'] = df.groupby('Cliente').cumcount() + 1
     
+    # Lógica de SLA
     df['SLA_48H'] = "Pendente"
     if 'DATA_EMISSAO' in df.columns and 'DATA_ENTREGA' in df.columns:
         mask = df['DATA_ENTREGA'].notnull() & df['DATA_EMISSAO'].notnull()
@@ -77,7 +77,7 @@ def tratar_dados_oficial(df, df_agendados=None):
 # 3. INTERFACE PRINCIPAL
 # =========================================================
 def main():
-    aplicar_estilo()
+    aplicar_style = aplicar_estilo()
     st.title("🏗️ Performance e Auditoria King Star")
 
     if 'base_mestra' not in st.session_state: st.session_state.base_mestra = pd.DataFrame()
@@ -123,21 +123,12 @@ def main():
             for idx, row in view.head(10).iterrows():
                 pid = str(row['Pedido'])
                 with st.container():
-                    st.markdown(f"""
-                        <div class='esteira-card'>
-                            <div class='card-header'>FILIAL: {row['Filial']} | PEDIDO: {pid}</div>
-                            <b>Vendedor:</b> {row['Vendedor']} | <b>Cliente:</b> {row['Cliente']}<br>
-                            <span class='badge badge-red'>Seq: {row['Seq_Pedido']}</span>
-                            <span class='badge badge-blue'>Entrega: {row['DATA_ENTREGA'] if pd.notnull(row['DATA_ENTREGA']) else 'AGUARDANDO AGENDAMENTO'}</span>
-                        </div>
-                    """, unsafe_allow_html=True)
-                    
+                    st.markdown(f"<div class='esteira-card'><div class='card-header'>FILIAL: {row['Filial']} | PEDIDO: {pid}</div><b>Vendedor:</b> {row['Vendedor']} | <b>Cliente:</b> {row['Cliente']}<br><span class='badge badge-red'>Seq: {row['Seq_Pedido']}</span><span class='badge badge-blue'>Entrega: {row['DATA_ENTREGA'] if pd.notnull(row['DATA_ENTREGA']) else 'AGENDAMENTO PENDENTE'}</span></div>", unsafe_allow_html=True)
                     c_col1, c_col2 = st.columns([2,1])
                     with c_col1: sel = st.selectbox("Causa:", motivos, key=f"sel_{pid}")
                     data_final = row['DATA_PREVISTA']
                     if sel != "Não Analisado" and pd.isna(data_final):
                         with c_col2: data_final = pd.to_datetime(st.date_input("Data Real:", key=f"date_{pid}"))
-
                     if sel != "Não Analisado" and pd.notnull(data_final):
                         if st.button(f"Confirmar {pid}", key=f"btn_{pid}"):
                             dif_horas = (pd.to_datetime(data_final) - pd.to_datetime(row['DATA_EMISSAO'])).total_seconds() / 3600
@@ -156,27 +147,26 @@ def main():
             st.subheader("📋 Histórico de Auditoria")
             st.dataframe(resumo, use_container_width=True)
             st.download_button("📥 Baixar Planilha", resumo.to_csv(index=False).encode('utf-8'), "auditoria_final.csv")
-        else: st.info("Nenhum pedido auditado.")
 
-    # --- ABA 4: CONFIGURAÇÕES ---
+    # --- ABA 4: CONFIGURAÇÕES (UPGRADED) ---
     with tabs[3]:
         st.subheader("⚙️ Configurações de Dados")
         col1, col2 = st.columns(2)
-        with col1: arq_v = st.file_uploader("1. Base Venda (xlsx/csv)", type=['csv', 'xlsx'])
-        with col2: arq_a = st.file_uploader("2. Relatório Agendados (opcional)", type=['csv', 'xlsx'])
+        with col1: arq_v = st.file_uploader("1. Base Venda (Obrigatório)", type=['csv', 'xlsx'])
+        with col2: arq_a = st.file_uploader("2. Relatório Agendados (Opcional)", type=['csv', 'xlsx'])
         
-        if st.button("🚀 PROCESSAR BASES"):
+        if st.button("🚀 PROCESSAR E CRUZAR BASES"):
             if arq_v:
                 df_v = pd.read_csv(arq_v, encoding='latin1', sep=None, engine='python') if arq_v.name.endswith('.csv') else pd.read_excel(arq_v)
                 df_a = None
                 if arq_a:
                     df_a = pd.read_csv(arq_a, encoding='latin1', sep=None, engine='python') if arq_a.name.endswith('.csv') else pd.read_excel(arq_a)
                 st.session_state.base_mestra = tratar_dados_oficial(df_v, df_a)
-                st.success("Dados cruzados com sucesso!")
+                st.success("Bases sincronizadas com sucesso!")
                 st.rerun()
-
+        
         st.divider()
-        if st.button("🔥 RESETAR SISTEMA"):
+        if st.button("🔥 RESETAR TUDO"):
             st.session_state.base_mestra = pd.DataFrame()
             st.session_state.classificacoes = {}
             st.rerun()
