@@ -3,6 +3,9 @@ import pandas as pd
 import plotly.express as px
 import numpy as np
 
+# =========================================================
+# 1. ESTILO E INTERFACE
+# =========================================================
 def aplicar_estilo():
     st.markdown("""
         <style>
@@ -10,163 +13,165 @@ def aplicar_estilo():
         .esteira-card { background: white; padding: 15px; border-radius: 10px; border: 1px solid #e2e8f0; margin-bottom: 10px; }
         .badge { padding: 4px 10px; border-radius: 15px; font-size: 11px; font-weight: bold; margin-right: 5px; }
         .badge-red { background: #fee2e2; color: #ef4444; }
-        .badge-green { background: #dcfce7; color: #166534; }
         .badge-blue { background: #e0f2fe; color: #0369a1; }
         </style>
     """, unsafe_allow_html=True)
 
+# =========================================================
+# 2. MOTOR DE TRATAMENTO
+# =========================================================
 def tratar_dados_oficial(df):
     if df.empty: return df
-    
-    # 1. Limpeza rigorosa de nomes de colunas
     df.columns = [str(col).strip() for col in df.columns]
     
-    # 2. Mapeamento para suportar erros de acentuação do Protheus
     mapeamento = {
-        'Dt EmissÃ£o': 'DATA_EMISSAO',
-        'Dt Emissão': 'DATA_EMISSAO',
-        'Data Ent': 'DATA_ENTREGA',
-        'Data Entrega': 'DATA_ENTREGA',
-        'Tipo Venda': 'TIPO_VENDA',
-        'Valor Venda': 'VALOR'
+        'Dt EmissÃ£o': 'DATA_EMISSAO', 'Dt Emissão': 'DATA_EMISSAO',
+        'Data Ent': 'DATA_ENTREGA', 'Data Entrega': 'DATA_ENTREGA',
+        'Tipo Venda': 'TIPO_VENDA', 'Valor Venda': 'VALOR'
     }
     df = df.rename(columns=mapeamento)
     
-    # 3. Conversão de Datas
     for col in ['DATA_EMISSAO', 'DATA_ENTREGA']:
         if col in df.columns:
             df[col] = pd.to_datetime(df[col].astype(str).replace('/ /', np.nan), errors='coerce')
     
-    # 4. Sequência de Pedidos (Re-trabalho)
-    if 'Cliente' in df.columns and 'DATA_EMISSAO' in df.columns:
+    # Criar coluna de Mês para evitar KeyError nas configurações
+    if 'DATA_EMISSAO' in df.columns:
+        df['MES_REF'] = df['DATA_EMISSAO'].dt.strftime('%m/%Y')
+    else:
+        df['MES_REF'] = "Indefinido"
+
+    # Sequência de Pedidos por Cliente
+    if 'Cliente' in df.columns:
         df = df.sort_values(['Cliente', 'DATA_EMISSAO'])
         df['Seq_Pedido'] = df.groupby('Cliente').cumcount() + 1
-    else:
-        df['Seq_Pedido'] = 1
-        
-    # 5. Cálculo do SLA 48h (Criação Segura da Coluna)
-    df['SLA_48H'] = "Pendente" # Valor padrão para evitar KeyError
-    if 'DATA_EMISSAO' in df.columns and 'DATA_ENTREGA' in df.columns:
-        # Calcula apenas onde tem data de entrega preenchida
-        mask = df['DATA_ENTREGA'].notnull() & df['DATA_EMISSAO'].notnull()
+    
+    # SLA 48h
+    df['SLA_48H'] = "Pendente"
+    mask = df['DATA_ENTREGA'].notnull() & df['DATA_EMISSAO'].notnull()
+    if mask.any():
         horas = (df.loc[mask, 'DATA_ENTREGA'] - df.loc[mask, 'DATA_EMISSAO']).dt.total_seconds() / 3600
         df.loc[mask, 'SLA_48H'] = horas.apply(lambda x: "Dentro 48h" if (0 <= x <= 48) else "Fora do Prazo")
         
     return df
 
+# =========================================================
+# 3. INTERFACE PRINCIPAL
+# =========================================================
 def main():
     aplicar_estilo()
+    user_role = st.session_state.get("user_role", "ADM") 
     st.title("🏗️ Manutenção e Eficiência King Star")
 
+    if 'base_mestra' not in st.session_state:
+        st.session_state.base_mestra = pd.DataFrame()
     if 'classificacoes' not in st.session_state:
         st.session_state.classificacoes = {}
 
-    with st.sidebar:
-        st.header("Upload")
-        arquivo = st.file_uploader("Subir base oficial", type=['csv', 'xlsx'])
-        if arquivo:
-            try:
-                # Tenta ler com diferentes encodings para evitar erro de leitura
-                if arquivo.name.endswith('.csv'):
-                    df_raw = pd.read_csv(arquivo, encoding='latin1', sep=None, engine='python')
-                else:
-                    df_raw = pd.read_excel(arquivo)
-                
-                st.session_state.base_mestra = tratar_dados_oficial(df_raw)
-                st.success("Dados carregados!")
-            except Exception as e:
-                st.error(f"Erro ao ler arquivo: {e}")
+    abas_lista = ["📊 Performance", "🔍 Auditoria", "📋 Relatório"]
+    if user_role == "ADM": abas_lista.append("⚙️ Configurações")
+    tabs = st.tabs(abas_lista)
 
-    if 'base_mestra' in st.session_state:
+    # --- ABA 1: PERFORMANCE ---
+    with tabs[0]:
         df = st.session_state.base_mestra
-        
-        # Segmentação
-        df_entregas = df[df['TIPO_VENDA'].astype(str).str.contains('003|004', na=False)].copy()
-        df_002 = df[df['TIPO_VENDA'].astype(str).str.contains('002', na=False)].copy()
-
-        tab1, tab2, tab3 = st.tabs(["📊 Performance", "🔍 Auditoria", "📋 Relatório"])
-
-        with tab1:
+        if not df.empty:
+            # Filtro solicitado: Apenas 003
+            df_003 = df[df['TIPO_VENDA'].astype(str).str.contains('003', na=False)].copy()
+            
             c1, c2, c3 = st.columns(3)
-            total = len(df_entregas)
+            c1.markdown(f"<div class='metric-card'>TOTAL ENTREGAS (003)<h3>{len(df_003)}</h3></div>", unsafe_allow_html=True)
             
-            # Cálculo seguro para evitar erro caso a coluna SLA_48H esteja vazia
-            qtd_48h = len(df_entregas[df_entregas['SLA_48H'] == "Dentro 48h"]) if 'SLA_48H' in df_entregas.columns else 0
-            retrabalhos = len(df_entregas[df_entregas['Seq_Pedido'] > 1]) if 'Seq_Pedido' in df_entregas.columns else 0
+            # Re-trabalhos classificados (Status inserido)
+            auditados = len(st.session_state.classificacoes)
+            c2.markdown(f"<div class='metric-card'>PEDIDOS AUDITADOS<h3>{auditados}</h3></div>", unsafe_allow_html=True)
             
-            c1.markdown(f"<div class='metric-card'>TOTAL ENTREGAS (003+004)<h3>{total}</h3></div>", unsafe_allow_html=True)
-            c2.markdown(f"<div class='metric-card'>RE-TRABALHOS<h3>{retrabalhos}</h3></div>", unsafe_allow_html=True)
-            
-            perc_agilidade = (qtd_48h / total * 100) if total > 0 else 0
-            c3.markdown(f"<div class='metric-card'>EFICIÊNCIA 48H<h3>{perc_agilidade:.1f}%</h3></div>", unsafe_allow_html=True)
+            # Pizza retorna aqui
+            if not df_003.empty:
+                st.plotly_chart(px.pie(df_003, names='SLA_48H', title="Status de Entrega (SLA 48h)", hole=0.4, 
+                                      color_discrete_sequence=['#002366', '#ef4444', '#cbd5e1']), use_container_width=True)
+        else:
+            st.info("Suba a base nas configurações.")
 
-            g1, g2 = st.columns(2)
-            with g1:
-                st.plotly_chart(px.pie(df_entregas, names='TIPO_VENDA', title="Mix Entregas", hole=0.4, color_discrete_sequence=['#002366', '#3b82f6']), use_container_width=True)
-            with g2:
-                # Top Filial (Ponto 2 solicitado)
-                if not df_entregas.empty:
-                    top_f = df_entregas[df_entregas['Seq_Pedido'] > 1]['Filial'].value_counts().head(10).reset_index()
-                    st.plotly_chart(px.bar(top_f, x='Filial', y='count', title="Top 10 Filiais (Re-trabalho)", color_discrete_sequence=['#ef4444']), use_container_width=True)
-
-            st.divider()
-            st.subheader("📦 Visão Tipo 002 (Retirada)")
-            st.info(f"Total de registros 002: {len(df_002)}")
-
-        with tab2:
-            st.markdown("### 🔍 Esteira de Auditoria")
-            q = st.text_input("Localizar Cliente ou Pedido").upper()
+    # --- ABA 2: AUDITORIA (LÓGICA DE FILTRO DINÂMICO) ---
+    with tabs[1]:
+        df = st.session_state.base_mestra
+        if not df.empty:
+            # REGRAS SOLICITADAS: 
+            # 1. Apenas 003
+            # 2. Cliente com mais de um pedido OU sem data de entrega
+            # 3. Que ainda NÃO foram classificados (para sumir da lista)
             
-            view = df_entregas.copy()
-            if q:
-                view = view[view['Cliente'].astype(str).str.contains(q) | view['Pedido'].astype(str).str.contains(q)]
+            crit_venda = df['TIPO_VENDA'].astype(str).str.contains('003', na=False)
+            crit_cliente = (df['Seq_Pedido'] > 1) | (df['DATA_ENTREGA'].isna())
             
-            # Ponto 1: Mostrar casos onde o cliente aparece mais de uma vez
-            view = view[view['Seq_Pedido'] > 1]
+            view = df[crit_venda & crit_cliente].copy()
             
-            st.write(f"Exibindo {len(view.head(30))} casos de re-trabalho:")
+            # Filtra para REMOVER quem já foi classificado
+            view = view[~view['Pedido'].astype(str).isin(st.session_state.classificacoes.keys())]
 
-            for _, row in view.head(30).iterrows():
+            st.subheader(f"Pedidos Pendentes de Análise: {len(view)}")
+            
+            for idx, row in view.head(20).iterrows():
                 pid = str(row['Pedido'])
                 with st.container():
                     st.markdown(f"""
                         <div class='esteira-card'>
                             <b>Filial: {row['Filial']} | Pedido: {pid}</b><br>
                             Cliente: {row['Cliente']} | Vendedor: {row['Vendedor']}<br>
-                            <span class='badge badge-red'>RE-TRABALHO (Vez: {row['Seq_Pedido']})</span>
-                            <span class='badge badge-blue'>Tipo: {row['TIPO_VENDA']}</span>
+                            <span class='badge badge-red'>Seq: {row['Seq_Pedido']}</span>
+                            <span class='badge badge-blue'>Entrega: {row['DATA_ENTREGA'] if pd.notnull(row['DATA_ENTREGA']) else 'NÃO ENTREGUE'}</span>
                         </div>
                     """, unsafe_allow_html=True)
                     
-                    # Ponto 2: Opções de classificação
                     opcoes = ["Não Analisado", "Pedido correto", "Pedido duplicado", "Alteração de pedido", "Correção de pedido"]
-                    atual = st.session_state.classificacoes.get(pid, {}).get('status', "Não Analisado")
+                    sel = st.selectbox("Classificar causa:", opcoes, key=f"sel_{pid}_{idx}")
                     
-                    sel = st.selectbox("Classificar causa:", opcoes, index=opcoes.index(atual), key=f"sel_{pid}")
                     if sel != "Não Analisado":
                         st.session_state.classificacoes[pid] = {
-                            'status': sel, 'Filial': row['Filial'], 'Cliente': row['Cliente'], 'Vendedor': row['Vendedor']
+                            'Status': sel, 'Filial': row['Filial'], 'Cliente': row['Cliente'], 
+                            'Vendedor': row['Vendedor'], 'Data_Emissao': row['DATA_EMISSAO']
                         }
-                    st.divider()
+                        st.rerun() # Faz o pedido "sumir" imediatamente ao classificar
 
-        with tab3:
-            st.subheader("📋 Relatório de Auditoria")
-            if st.session_state.classificacoes:
-                dados_audit = pd.DataFrame.from_dict(st.session_state.classificacoes, orient='index').reset_index()
-                dados_audit.rename(columns={'index': 'Pedido'}, inplace=True)
-                
-                c1, c2 = st.columns([1, 2])
-                c1.plotly_chart(px.pie(dados_audit, names='status', title="Causas Detectadas"), use_container_width=True)
-                c2.write("Detalhes da Auditoria:")
-                c2.dataframe(dados_audit, use_container_width=True)
-                
-                csv = dados_audit.to_csv(index=False).encode('utf-8')
-                st.download_button("📥 Baixar Relatório", csv, "auditoria_kingstar.csv", "text/csv")
-            else:
-                st.info("Nenhum pedido classificado na esteira ainda.")
+    # --- ABA 3: RELATÓRIO ---
+    with tabs[2]:
+        if st.session_state.classificacoes:
+            resumo = pd.DataFrame.from_dict(st.session_state.classificacoes, orient='index').reset_index()
+            resumo.rename(columns={'index': 'Pedido'}, inplace=True)
+            st.dataframe(resumo, use_container_width=True)
+            st.download_button("Exportar CSV", resumo.to_csv(index=False).encode('utf-8'), "relatorio_manutencao.csv")
+        else:
+            st.info("Nenhum pedido classificado ainda.")
 
-    else:
-        st.info("Suba a planilha no menu lateral para começar.")
+    # --- ABA 4: CONFIGURAÇÕES (ADM) ---
+    if user_role == "ADM":
+        with tabs[3]:
+            st.header("⚙️ Configurações de Sistema")
+            
+            # 1. Upload
+            arq = st.file_uploader("Upload de Base", type=['csv', 'xlsx'])
+            if arq:
+                df_raw = pd.read_csv(arq, encoding='latin1', sep=None, engine='python') if arq.name.endswith('.csv') else pd.read_excel(arq)
+                st.session_state.base_mestra = tratar_dados_oficial(df_raw)
+                st.success("Dados carregados!")
+                st.rerun()
+
+            st.divider()
+            # 2. Limpeza Mensal
+            if not st.session_state.base_mestra.empty:
+                meses = st.session_state.base_mestra['MES_REF'].unique()
+                mes_sel = st.selectbox("Limpar mês específico:", meses)
+                if st.button("Limpar Mês"):
+                    st.session_state.base_mestra = st.session_state.base_mestra[st.session_state.base_mestra['MES_REF'] != mes_sel]
+                    st.success(f"Mês {mes_sel} removido.")
+                    st.rerun()
+
+            # 3. Reset Total
+            if st.button("🔥 RESETAR SISTEMA INTEIRO"):
+                st.session_state.base_mestra = pd.DataFrame()
+                st.session_state.classificacoes = {}
+                st.rerun()
 
 if __name__ == "__main__":
     main()
