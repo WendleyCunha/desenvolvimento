@@ -2,7 +2,119 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
-def tratar_dados_protheus(df):
+def tratar_dados_protheus(df):import streamlit as st
+import pandas as pd
+import numpy as np
+
+def normalizar_colunas(df):
+    """Remove acentos, espaços e caracteres especiais das colunas do Protheus."""
+    if df.empty:
+        return df
+    
+    # Limpeza profunda de encoding (Trata o Dt EmissÃ£o)
+    df.columns = [
+        str(col).strip().encode('latin1', 'ignore').decode('utf-8', 'ignore').upper() 
+        for col in df.columns
+    ]
+    
+    # Dicionário de sinônimos para garantir que o código ache o que precisa
+    mapeamento = {
+        'DT EMISSAO': 'DT_EMISSAO', 'DT EMISSAO': 'DT_EMISSAO',
+        'DATA ENT': 'DT_ENTREGA', 'CLIENTE': 'ID_CLIENTE',
+        'TIPO VENDA': 'TIPO_VENDA', 'VALOR VENDA': 'VALOR_VENDA',
+        'PEDIDO': 'PEDIDO', 'VENDEDOR': 'VENDEDOR'
+    }
+    
+    # Renomeia o que encontrar de compatível
+    for col_original, col_nova in mapeamento.items():
+        for col_df in df.columns:
+            if col_original in col_df:
+                df.rename(columns={col_df: col_nova}, inplace=True)
+                
+    return df
+
+def processar_base_acumulada(df_novo):
+    if 'base_acumulada' not in st.session_state:
+        st.session_state.base_acumulada = pd.DataFrame()
+
+    if not df_novo.empty:
+        # 1. Combina bases
+        base_combinada = pd.concat([st.session_state.base_acumulada, df_novo], ignore_index=True)
+        
+        # 2. Regra: Se o PEDIDO for igual, mantém o antigo (Desconsidera a linha nova)
+        if 'PEDIDO' in base_combinada.columns:
+            base_combinada = base_combinada.drop_duplicates(subset=['PEDIDO'], keep='first')
+        
+        # 3. Lógica do Re-trabalho: Se o CLIENTE aparece com novo PEDIDO
+        if 'ID_CLIENTE' in base_combinada.columns and 'DT_EMISSAO' in base_combinada.columns:
+            base_combinada = base_combinada.sort_values(['ID_CLIENTE', 'DT_EMISSAO'])
+            base_combinada['SEQ_PEDIDO_CLIENTE'] = base_combinada.groupby('ID_CLIENTE').cumcount() + 1
+            
+        st.session_state.base_acumulada = base_combinada
+    
+    return st.session_state.base_acumulada
+
+def main():
+    st.title("🏗️ Módulo de Manutenção e Eficiência")
+    
+    with st.expander("📤 Upload de Planilha Protheus", expanded=True):
+        arquivo = st.file_uploader("Selecione o arquivo", type=['xlsx', 'csv', 'xls'], key="up_v5")
+        
+        if arquivo:
+            try:
+                # Carregamento flexível
+                if arquivo.name.endswith('.csv'):
+                    df_raw = pd.read_csv(arquivo, encoding='latin1')
+                else:
+                    df_raw = pd.read_excel(arquivo)
+                
+                # Processamento
+                df_limpo = normalizar_colunas(df_raw)
+                df_final = processar_base_acumulada(df_limpo)
+                st.success("✅ Dados integrados com sucesso!")
+            except Exception as e:
+                st.error(f"Erro no processamento: {e}")
+
+    # Exibição segura dos dados
+    if 'base_acumulada' in st.session_state and not st.session_state.base_acumulada.empty:
+        df = st.session_state.base_acumulada
+        
+        # Só exibe se a coluna de sequência foi criada com sucesso
+        if 'SEQ_PEDIDO_CLIENTE' in df.columns:
+            tab1, tab2 = st.tabs(["📊 Dashboard CEO", "🚨 Apuração"])
+            
+            re_trabalho = df[df['SEQ_PEDIDO_CLIENTE'] > 1].copy()
+            
+            with tab1:
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Total Pedidos", len(df))
+                c2.metric("Casos Re-trabalho", len(re_trabalho))
+                
+                # Conversão de valor para cálculo de impacto
+                if 'VALOR_VENDA' in re_trabalho.columns:
+                    if re_trabalho['VALOR_VENDA'].dtype == 'object':
+                        re_trabalho['VALOR_VENDA'] = pd.to_numeric(re_trabalho['VALOR_VENDA'].astype(str).str.replace(r'[R\$\.\s]', '', regex=True).str.replace(',', '.'), errors='coerce')
+                    
+                    c3.metric("Impacto Financeiro", f"R$ {re_trabalho['VALOR_VENDA'].sum():,.2f}")
+                
+                if not re_trabalho.empty and 'VENDEDOR' in re_trabalho.columns:
+                    st.write("### Ofensores por Vendedor")
+                    st.bar_chart(re_trabalho['VENDEDOR'].value_counts())
+
+            with tab2:
+                st.subheader("🚨 Detalhamento de Re-trabalho")
+                if 'MOTIVO' not in re_trabalho.columns:
+                    re_trabalho['MOTIVO'] = "Inserir motivo..."
+                
+                # Editor interativo
+                colunas_view = [c for c in ['PEDIDO', 'ID_CLIENTE', 'DT_EMISSAO', 'TIPO_VENDA', 'VALOR_VENDA', 'MOTIVO'] if c in re_trabalho.columns]
+                df_editado = st.data_editor(re_trabalho[colunas_view], use_container_width=True, key="editor_v5")
+                
+                # Exportação
+                csv = df_editado.to_csv(index=False).encode('utf-8-sig')
+                st.download_button("📥 Exportar Relatório para CEO", csv, "apuracao_retrabalho.csv", "text/csv")
+        else:
+            st.warning("⚠️ Planilha carregada, mas as colunas 'CLIENTE' ou 'PEDIDO' não foram localizadas. Verifique o cabeçalho.")
     if df.empty:
         return df
     
