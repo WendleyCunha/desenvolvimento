@@ -101,7 +101,7 @@ def main():
         else:
             st.info("Suba a base nas configurações.")
 
-    # --- ABA 2: AUDITORIA (Manual + Automática) ---
+   # --- ABA 2: AUDITORIA (Manual + Automática) ---
     with tabs[1]:
         if not df.empty:
             st.subheader("🚀 Auditoria Automática (PROCV)")
@@ -111,7 +111,6 @@ def main():
                     df_ag = pd.read_csv(arq_agend, encoding='latin1', sep=None, engine='python') if arq_agend.name.endswith('.csv') else pd.read_excel(arq_agend)
                     if st.button("Executar Cruzamento de Dados"):
                         df_ag.columns = [str(c).strip() for c in df_ag.columns]
-                        # Assume colunas B e D conforme sua regra (Ped. Venda e Previsão Ent.)
                         col_p = 'Ped. Venda'
                         col_d = 'Previsão Ent.'
                         
@@ -127,10 +126,13 @@ def main():
                                     if mask.any():
                                         dt_emi = df.loc[mask, 'DATA_EMISSAO'].iloc[0]
                                         sla = calcular_sla(dt_emi, nova_dt)
-                                        # Atualiza memória e salva
                                         df.loc[mask, 'DATA_ENTREGA'] = nova_dt
-                                        reg = {'Pedido': pid, 'Status_Auditoria': 'AUTOMÁTICO', 'SLA_Final': sla, 
-                                               'Data_Inserida': nova_dt.strftime('%Y-%m-%d'), 'Filial': df.loc[mask, 'Filial'].iloc[0], 'Vendedor': df.loc[mask, 'Vendedor'].iloc[0]}
+                                        reg = {
+                                            'Pedido': pid, 'Status_Auditoria': 'AUTOMÁTICO', 
+                                            'SLA_Final': sla, 'Data_Inserida': nova_dt.strftime('%Y-%m-%d'), 
+                                            'Filial': df.loc[mask, 'Filial'].iloc[0], 
+                                            'Vendedor': df.loc[mask, 'Vendedor'].iloc[0]
+                                        }
                                         st.session_state.classificacoes[pid] = reg
                                         pd.DataFrame([reg]).to_csv('historico_auditoria.csv', mode='a', index=False, header=not os.path.exists('historico_auditoria.csv'))
                                         sucessos += 1
@@ -138,10 +140,11 @@ def main():
                             st.rerun()
 
             st.divider()
-            # Esteira Manual
+            # Esteira Manual com Correção de Chaves Duplicadas
             crit_venda = df['TIPO_VENDA'].astype(str).str.contains('003', na=False)
             crit_erro = (df['Seq_Pedido'] > 1) | (df['DATA_ENTREGA'].isna())
             view = df[crit_venda & crit_erro].copy()
+            # Remove o que já foi auditado (seja automático ou manual)
             view = view[~view['Pedido'].isin(st.session_state.classificacoes.keys())]
 
             st.subheader(f"🔍 Pendências Manuais ({len(view)})")
@@ -149,24 +152,37 @@ def main():
 
             for idx, row in view.head(10).iterrows():
                 pid = str(row['Pedido'])
+                # CHAVE ÚNICA: Combina o ID do pedido com o índice da linha para evitar erros
+                chave_loop = f"{pid}_{idx}"
+                
                 with st.container():
-                    st.markdown(f"<div class='esteira-card'><div class='card-header'>FILIAL: {row['Filial']} | PEDIDO: {pid}</div>"
-                                f"<b>Cliente:</b> {row.get('Cliente_Limpo', 'N/A')}<br>"
-                                f"<span class='badge badge-red'>Seq: {row['Seq_Pedido']}</span>"
-                                f"<span class='badge badge-blue'>Entrega: {row['DATA_ENTREGA'] if pd.notnull(row['DATA_ENTREGA']) else 'PENDENTE'}</span></div>", unsafe_allow_html=True)
+                    st.markdown(f"""
+                        <div class='esteira-card'>
+                            <div class='card-header'>FILIAL: {row['Filial']} | PEDIDO: {pid}</div>
+                            <b>Cliente:</b> {row.get('Cliente_Limpo', 'N/A')}<br>
+                            <span class='badge badge-red'>Seq: {row['Seq_Pedido']}</span>
+                            <span class='badge badge-blue'>Entrega: {row['DATA_ENTREGA'] if pd.notnull(row['DATA_ENTREGA']) else 'PENDENTE'}</span>
+                        </div>
+                    """, unsafe_allow_html=True)
                     
                     c_col1, c_col2 = st.columns([2,1])
-                    sel = c_col1.selectbox("Causa:", motivos, key=f"sel_{pid}")
-                    data_f = c_col2.date_input("Data Real:", key=f"dt_{pid}") if sel != "Não Analisado" else None
+                    # Aplicação das chaves exclusivas (chave_loop)
+                    sel = c_col1.selectbox("Causa:", motivos, key=f"sel_{chave_loop}")
+                    data_f = c_col2.date_input("Data Real:", key=f"dt_{chave_loop}") if sel != "Não Analisado" else None
                     
-                    if sel != "Não Analisado" and st.button(f"Confirmar {pid}", key=f"btn_{pid}"):
+                    if sel != "Não Analisado" and st.button(f"Confirmar {pid}", key=f"btn_{chave_loop}"):
                         dt_dt = pd.to_datetime(data_f)
                         sla = calcular_sla(row['DATA_EMISSAO'], dt_dt)
-                        reg = {'Pedido': pid, 'Status_Auditoria': sel, 'SLA_Final': sla, 'Data_Inserida': dt_dt.strftime('%Y-%m-%d'), 'Filial': row['Filial'], 'Vendedor': row['Vendedor']}
+                        reg = {
+                            'Pedido': pid, 'Status_Auditoria': sel, 'SLA_Final': sla, 
+                            'Data_Inserida': dt_dt.strftime('%Y-%m-%d'), 
+                            'Filial': row['Filial'], 'Vendedor': row['Vendedor']
+                        }
                         st.session_state.classificacoes[pid] = reg
                         pd.DataFrame([reg]).to_csv('historico_auditoria.csv', mode='a', index=False, header=not os.path.exists('historico_auditoria.csv'))
                         st.rerun()
-        else: st.info("Aguardando base de dados.")
+        else:
+            st.info("Aguardando base de dados.")
 
     # --- ABA 3: RELATÓRIO ---
     with tabs[2]:
