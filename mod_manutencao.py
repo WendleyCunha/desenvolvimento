@@ -12,186 +12,158 @@ PALETA = ['#002366', '#ef4444', '#16a34a', '#3b82f6', '#facc15']
 def aplicar_estilo():
     st.markdown(f"""
         <style>
-        .metric-card {{ background: #f8fafc; padding: 20px; border-radius: 15px; border-top: 5px solid {PALETA[0]}; text-align: center; }}
-        .esteira-card {{ background: white; padding: 20px; border-radius: 15px; border: 1px solid #e2e8f0; margin-bottom: 10px; box-shadow: 2px 2px 10px rgba(0,0,0,0.05); }}
-        .badge-retrabalho {{ background: #fee2e2; color: #ef4444; padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 12px; }}
-        .badge-sla {{ background: #dcfce7; color: #166534; padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 12px; }}
-        .badge-atraso {{ background: #fef9c3; color: #854d0e; padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 12px; }}
+        .metric-card {{ background: #f8fafc; padding: 20px; border-radius: 15px; border-top: 5px solid {PALETA[0]}; text-align: center; margin-bottom: 10px; }}
+        .esteira-card {{ background: white; padding: 15px; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 8px; box-shadow: 2px 2px 5px rgba(0,0,0,0.03); }}
+        .badge-retrabalho {{ background: #fee2e2; color: #ef4444; padding: 3px 10px; border-radius: 15px; font-weight: bold; font-size: 11px; }}
+        .badge-sla {{ background: #dcfce7; color: #166534; padding: 3px 10px; border-radius: 15px; font-weight: bold; font-size: 11px; }}
         </style>
     """, unsafe_allow_html=True)
 
 # =========================================================
-# 2. PROCESSAMENTO DE DADOS (COM LÓGICA DE 48H)
+# 2. MOTOR DE TRATAMENTO (NORMALIZAÇÃO AUTOMÁTICA)
 # =========================================================
-def tratar_dados_v4(df):
+def tratar_dados_v5(df):
     if df.empty: return df
-    df.columns = [str(col).strip() for col in df.columns]
+    
+    # Normaliza nomes de colunas: remove espaços, acentos e padroniza
+    df.columns = [
+        str(col).strip().upper()
+        .replace('Ã', 'A').replace('Õ', 'O').replace('Ç', 'C')
+        .replace('Ê', 'E').replace('É', 'E').replace(' ', '_')
+        for col in df.columns
+    ]
+
+    # Mapeamento de colunas cruciais (Baseado no seu log/planilha)
+    # Procuramos os nomes normalizados: DT_EMISSAO, DATA_ENT, CLIENTE, PEDIDO, TIPO_VENDA
     
     # Datas
-    for col in ['Dt Emissão', 'Data Entrega']:
+    col_emissao = 'DT_EMISSAO' if 'DT_EMISSAO' in df.columns else 'DT_EMISS_O'
+    col_entrega = 'DATA_ENT' if 'DATA_ENT' in df.columns else 'DATA_ENTREGA'
+    
+    for col in [col_emissao, col_entrega]:
         if col in df.columns:
             df[col] = pd.to_datetime(df[col].astype(str).replace('/ /', np.nan), errors='coerce')
+
+    # Identificação de Re-trabalho (Seq > 1)
+    if 'CLIENTE' in df.columns and col_emissao in df.columns:
+        df = df.sort_values(['CLIENTE', col_emissao])
+        df['SEQ_PEDIDO'] = df.groupby('CLIENTE').cumcount() + 1
+    else:
+        df['SEQ_PEDIDO'] = 1
+
+    # Lógica SLA 48h
+    if col_emissao in df.columns and col_entrega in df.columns:
+        df['HORAS_ENTREGA'] = (df[col_entrega] - df[col_emissao]).dt.total_seconds() / 3600
+        df['SLA_48H'] = df['HORAS_ENTREGA'].apply(
+            lambda x: "Dentro 48h" if (pd.notnull(x) and x <= 48) 
+            else ("Atrasado" if (pd.notnull(x) and x > 48) else "Pendente")
+        )
     
-    # Identificação de Re-trabalho (Cliente com mais de 1 pedido)
-    if 'Cliente' in df.columns and 'Dt Emissão' in df.columns:
-        df = df.sort_values(['Cliente', 'Dt Emissão'])
-        df['Seq_Pedido'] = df.groupby('Cliente').cumcount() + 1
-    
-    # Lógica SLA 48h (Emissão até Entrega)
-    if 'Dt Emissão' in df.columns and 'Data Entrega' in df.columns:
-        # Calcula diferença em horas. Se não entregue, fica NaN
-        df['Horas_Entrega'] = (df['Data Entrega'] - df['Dt Emissão']).dt.total_seconds() / 3600
-        df['SLA_48H'] = df['Horas_Entrega'].apply(lambda x: "Dentro 48h" if x <= 48 else ("Atrasado" if x > 48 else "Pendente"))
-        
-    return df
+    return df, col_emissao
 
 # =========================================================
-# 3. INTERFACE PRINCIPAL
+# 3. INTERFACE
 # =========================================================
 def main():
     aplicar_estilo()
     st.title("🏗️ Gestão de Eficiência King Star")
 
-    # Sidebar para Upload
+    if 'classificacoes' not in st.session_state:
+        st.session_state.classificacoes = {}
+
     with st.sidebar:
         st.header("⚙️ Configurações")
-        arquivo = st.file_uploader("Subir Base King Star", type=['csv', 'xlsx'])
+        arquivo = st.file_uploader("Subir Base King Star (CSV ou Excel)", type=['csv', 'xlsx'])
         if arquivo:
-            df_raw = pd.read_csv(arquivo) if arquivo.name.endswith('.csv') else pd.read_excel(arquivo)
-            st.session_state.base_mestra = tratar_dados_v4(df_raw)
-            # Inicializa dicionário de classificações se não existir
-            if 'classificacoes' not in st.session_state:
-                st.session_state.classificacoes = {}
-            st.success("Base Carregada!")
+            try:
+                df_raw = pd.read_csv(arquivo) if arquivo.name.endswith('.csv') else pd.read_excel(arquivo)
+                df_processado, col_data = tratar_dados_v5(df_raw)
+                st.session_state.base_mestra = df_processado
+                st.session_state.col_data = col_data
+                st.success("Base carregada!")
+            except Exception as e:
+                st.error(f"Erro ao processar arquivo: {e}")
 
     if 'base_mestra' in st.session_state:
         df = st.session_state.base_mestra
+        col_data = st.session_state.col_data
         
         # Filtros de Segmentação
-        df_entregas = df[df['Tipo Venda'].astype(str).str.contains('003|004', na=False)].copy()
-        df_retira = df[df['Tipo Venda'].astype(str).str.contains('002', na=False)].copy()
+        df_entregas = df[df['TIPO_VENDA'].astype(str).str.contains('003|004', na=False)].copy()
+        df_retira = df[df['TIPO_VENDA'].astype(str).str.contains('002', na=False)].copy()
         
-        # --- DASHBOARDS ---
-        tab_geral, tab_esteira, tab_analise_audit = st.tabs(["📊 Performance Geral", "🔍 Esteira de Auditoria", "📋 Relatório de Classificação"])
+        tab_geral, tab_esteira, tab_audit = st.tabs(["📊 Performance", "🔍 Esteira Auditoria", "📋 Relatório"])
 
         with tab_geral:
-            # KPIS Principais
-            c1, c2, c3, c4 = st.columns(4)
-            total_100 = len(df_entregas)
-            casos_retrabalho = len(df_entregas[df_entregas['Seq_Pedido'] > 1])
-            dentro_48h = len(df_entregas[df_entregas['SLA_48H'] == "Dentro 48h"])
-            perc_agilidade = (dentro_48h / total_100 * 100) if total_100 > 0 else 0
-
-            c1.markdown(f"<div class='metric-card'>TOTAL (003+004)<h3>{total_100}</h3></div>", unsafe_allow_html=True)
-            c2.markdown(f"<div class='metric-card'>RE-TRABALHO<h3>{casos_retrabalho}</h3></div>", unsafe_allow_html=True)
-            c3.markdown(f"<div class='metric-card'>AGILIDADE 48H<h3>{perc_agilidade:.1f}%</h3></div>", unsafe_allow_html=True)
-            c4.markdown(f"<div class='metric-card'>TOTAL 002<h3>{len(df_retira)}</h3></div>", unsafe_allow_html=True)
-
-            st.divider()
+            c1, c2, c3 = st.columns(3)
+            total = len(df_entregas)
+            retrabalho_df = df_entregas[df_entregas['SEQ_PEDIDO'] > 1]
             
-            # Gráficos
+            c1.markdown(f"<div class='metric-card'>TOTAL ENTREGAS<h3>{total}</h3></div>", unsafe_allow_html=True)
+            c2.markdown(f"<div class='metric-card'>RE-TRABALHOS<h3>{len(retrabalho_df)}</h3></div>", unsafe_allow_html=True)
+            
+            # KPI 48H
+            dentro_48 = len(df_entregas[df_entregas.get('SLA_48H') == "Dentro 48h"])
+            perc = (dentro_48/total*100) if total > 0 else 0
+            c3.markdown(f"<div class='metric-card'>AGILIDADE 48H<h3>{perc:.1f}%</h3></div>", unsafe_allow_html=True)
+
             g1, g2 = st.columns(2)
             with g1:
-                # Pizza do Mix (Conforme solicitado, mantendo o 002 isolado se quiser, ou junto)
-                fig_mix = px.pie(df[df['Tipo Venda'].astype(str).str.contains('002|003|004')], 
-                               names='Tipo Venda', title="Mix Total de Vendas", hole=0.4,
-                               color_discrete_sequence=PALETA)
-                st.plotly_chart(fig_mix, use_container_width=True)
-            
+                st.plotly_chart(px.pie(df_entregas, names='TIPO_VENDA', title="Mix 003 vs 004", hole=0.4, color_discrete_sequence=PALETA), use_container_width=True)
             with g2:
-                # Dashboard SLA 48h (Ponto 3)
-                sla_counts = df_entregas['SLA_48H'].value_counts().reset_index()
-                fig_sla = px.bar(sla_counts, x='SLA_48H', y='count', 
-                                title="Eficiência de Entrega (Janela 48h)",
-                                color='SLA_48H', color_discrete_map={"Dentro 48h": "#16a34a", "Atrasado": "#ef4444", "Pendente": "#cbd5e1"})
-                st.plotly_chart(fig_sla, use_container_width=True)
-
-            # TOP FILIAL
-            st.subheader("Ineficiência por Filial")
-            filiais = df_entregas[df_entregas['Seq_Pedido'] > 1]['Filial'].value_counts().reset_index()
-            st.plotly_chart(px.bar(filiais, x='Filial', y='count', color_discrete_sequence=[PALETA[1]]), use_container_width=True)
+                # Top Filiais com Re-trabalho
+                filiais = retrabalho_df['FILIAL'].value_counts().head(10).reset_index()
+                st.plotly_chart(px.bar(filiais, x='FILIAL', y='count', title="Top 10 Filiais (Re-trabalho)", color_discrete_sequence=[PALETA[1]]), use_container_width=True)
 
         with tab_esteira:
-            # --- PONTO 2: ESTEIRA COM CLASSIFICAÇÃO ---
-            st.markdown("### 🔍 Esteira de Apuração de Re-trabalho")
+            st.markdown("### 🔍 Auditoria de Pedidos")
+            q = st.text_input("Filtrar por Pedido ou Cliente").upper()
             
-            col_search, col_filter = st.columns([2, 1])
-            q = col_search.text_input("Localizar Pedido ou Cliente", placeholder="Digite aqui...").upper()
-            filtro_audit = col_filter.selectbox("Filtrar por Status", ["Todos", "Apenas Re-trabalho", "Pendente Auditoria"])
-            
-            df_esteira = df_entregas.copy()
+            view = df_entregas.copy()
             if q:
-                df_esteira = df_esteira[df_esteira['Pedido'].astype(str).str.contains(q) | df_esteira['Cliente'].astype(str).str.contains(q)]
+                view = view[view['PEDIDO'].astype(str).str.contains(q) | view['CLIENTE'].astype(str).str.contains(q)]
             
-            if filtro_audit == "Apenas Re-trabalho":
-                df_esteira = df_esteira[df_esteira['Seq_Pedido'] > 1]
-            
-            for i, row in df_esteira.head(30).iterrows():
+            # Mostrar apenas casos de atenção por padrão
+            so_retrabalho = st.checkbox("Mostrar apenas Re-trabalhos", value=True)
+            if so_retrabalho:
+                view = view[view['SEQ_PEDIDO'] > 1]
+
+            for _, row in view.head(20).iterrows():
                 with st.container():
-                    # Definição de Badges
-                    badge_retrabalho = f"<span class='badge-retrabalho'>RE-TRABALHO (Seq: {row['Seq_Pedido']})</span>" if row['Seq_Pedido'] > 1 else ""
-                    badge_sla = f"<span class='badge-sla'>48H OK</span>" if row['SLA_48H'] == "Dentro 48h" else (f"<span class='badge-atraso'>SLA ROMPIDO</span>" if row['SLA_48H'] == "Atrasado" else "")
-                    
                     st.markdown(f"""
                         <div class='esteira-card'>
-                            <div style='display: flex; justify-content: space-between;'>
-                                <b>{row['Filial']} | Pedido: {row['Pedido']}</b>
-                                <div>{badge_retrabalho} {badge_sla}</div>
-                            </div>
-                            <small>Cliente: {row['Cliente']} | Vendedor: {row['Vendedor']} | Tipo: {row['Tipo Venda']}</small>
+                            <b>{row['FILIAL']} | Pedido: {row['PEDIDO']}</b><br>
+                            <small>Cliente: {row['CLIENTE']} | Vendedor: {row['VENDEDOR']}</small><br>
+                            {"<span class='badge-retrabalho'>RE-TRABALHO</span>" if row['SEQ_PEDIDO'] > 1 else ""}
+                            {"<span class='badge-sla'>48H OK</span>" if row.get('SLA_48H') == 'Dentro 48h' else ""}
                         </div>
                     """, unsafe_allow_html=True)
                     
-                    # SISTEMA DE CLASSIFICAÇÃO (Ponto 2)
-                    col_class, col_obs = st.columns([1, 2])
+                    c_sel, c_obs = st.columns([1, 2])
+                    chave = str(row['PEDIDO'])
                     
-                    # Recupera valor anterior se existir
-                    current_val = st.session_state.classificacoes.get(row['Pedido'], {}).get('status', 'Não Analisado')
-                    
+                    status_atual = st.session_state.classificacoes.get(chave, {}).get('status', 'Não Analisado')
                     opcoes = ["Não Analisado", "Pedido correto", "Pedido duplicado", "Alteração de pedido", "Correção de pedido"]
-                    idx_op = opcoes.index(current_val) if current_val in opcoes else 0
                     
-                    status = col_class.selectbox("Classificação:", opcoes, index=idx_op, key=f"sel_{row['Pedido']}")
-                    obs = col_obs.text_input("Observação interna:", value=st.session_state.classificacoes.get(row['Pedido'], {}).get('obs', ''), key=f"obs_{row['Pedido']}")
+                    novo_status = c_sel.selectbox("Motivo:", opcoes, index=opcoes.index(status_atual), key=f"s_{chave}")
+                    nova_obs = c_obs.text_input("Observação:", value=st.session_state.classificacoes.get(chave, {}).get('obs', ''), key=f"o_{chave}")
                     
-                    # Salva no estado
-                    st.session_state.classificacoes[row['Pedido']] = {
-                        'status': status,
-                        'obs': obs,
-                        'Filial': row['Filial'],
-                        'Cliente': row['Cliente'],
-                        'Valor': row['Valor Venda']
+                    # Salva se houver alteração
+                    st.session_state.classificacoes[chave] = {
+                        'status': novo_status, 'obs': nova_obs, 'filial': row['FILIAL'], 'cliente': row['CLIENTE']
                     }
-                    st.divider()
 
-        with tab_analise_audit:
-            # --- ABA DE DASHBOARD DE AUDITORIA ---
-            st.subheader("📊 Resultados da Auditoria")
-            
+        with tab_audit:
+            st.subheader("📋 Relatório Final de Auditoria")
             if st.session_state.classificacoes:
-                df_audit = pd.DataFrame.from_dict(st.session_state.classificacoes, orient='index').reset_index()
-                df_audit.rename(columns={'index': 'Pedido'}, inplace=True)
-                
-                # Gráfico de Classificações
-                df_audit_counts = df_audit[df_audit['status'] != 'Não Analisado']
-                if not df_audit_counts.empty:
-                    c1, c2 = st.columns(2)
-                    with c1:
-                        fig_audit = px.bar(df_audit_counts['status'].value_counts().reset_index(), 
-                                         x='status', y='count', title="Causas de Re-trabalho",
-                                         color_discrete_sequence=[PALETA[3]])
-                        st.plotly_chart(fig_audit, use_container_width=True)
-                    with c2:
-                        st.write("📋 Tabela para Relatório")
-                        st.dataframe(df_audit_counts, use_container_width=True)
-                        
-                        # Botão de Relatório
-                        csv = df_audit_counts.to_csv(index=False).encode('utf-8-sig')
-                        st.download_button("📥 Baixar Relatório de Auditoria", csv, "relatorio_auditoria_kingstar.csv", "text/csv")
+                resumo = pd.DataFrame.from_dict(st.session_state.classificacoes, orient='index').reset_index()
+                resumo = resumo[resumo['status'] != 'Não Analisado']
+                if not resumo.empty:
+                    st.plotly_chart(px.bar(resumo['status'].value_counts().reset_index(), x='status', y='count', title="Causas Identificadas"), use_container_width=True)
+                    st.dataframe(resumo, use_container_width=True)
+                    st.download_button("Baixar Relatório CSV", resumo.to_csv(index=False).encode('utf-8'), "auditoria_kingstar.csv")
                 else:
-                    st.info("Classifique os pedidos na Esteira para gerar o gráfico de causas.")
-            else:
-                st.info("Nenhuma auditoria realizada ainda.")
+                    st.info("Nenhum pedido foi classificado ainda.")
 
 if __name__ == "__main__":
     main()
