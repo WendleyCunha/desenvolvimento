@@ -46,29 +46,47 @@ def calcular_sla_48h(dt_emissao, dt_entrega):
 
 def tratar_dados_oficial(df):
     if df.empty: return df
+    
+    # 1. Limpeza radical de nomes de colunas (remove espaços e caracteres invisíveis)
     df.columns = [str(col).strip() for col in df.columns]
     
-    # Padronização conforme suas imagens
+    # 2. Mapeamento flexível (ajustado para os nomes exatos das suas fotos)
     mapeamento = {
         'Dt Emissão': 'DATA_EMISSAO',
+        'Dt EmissÃ£o': 'DATA_EMISSAO', # Tratando erro de codificação comum
         'Data Entrega': 'DATA_ENTREGA',
         'Pedido': 'PEDIDO',
-        'Tipo Venda': 'TIPO_VENDA'
+        'Tipo Venda': 'TIPO_VENDA',
+        'Cliente': 'CLIENTE_ORIGINAL'
     }
     df = df.rename(columns=mapeamento)
     
-    # Tratamento de datas e '//'
+    # 3. Tratamento de Datas (Garante que virem data ou fiquem vazias)
     for col in ['DATA_EMISSAO', 'DATA_ENTREGA']:
         if col in df.columns:
-            df[col] = df[col].astype(str).replace(['/ /', 'nan', 'NaT', '//'], np.nan)
+            # Substitui textos de erro por vazio antes de converter
+            df[col] = df[col].astype(str).replace(['/ /', 'nan', 'NaT', '//', 'None'], np.nan)
             df[col] = pd.to_datetime(df[col], dayfirst=True, errors='coerce')
     
-    # Identificação de duplicidade por cliente
-    if 'Cliente' in df.columns:
-        df['Cliente_Limpo'] = df['Cliente'].astype(str).str.split('/').str[0].str.strip()
-        df = df.sort_values(['Cliente_Limpo', 'DATA_EMISSAO'])
-        df['Seq_Pedido'] = df.groupby('Cliente_Limpo').cumcount() + 1
+    # 4. Criação da coluna Cliente_Limpo (se a coluna Cliente existir)
+    if 'CLIENTE_ORIGINAL' in df.columns:
+        df['Cliente_Limpo'] = df['CLIENTE_ORIGINAL'].astype(str).str.split('/').str[0].str.strip()
+    else:
+        df['Cliente_Limpo'] = "Não Informado"
+
+    # 5. ORDENAÇÃO SEGURA (Onde dava o erro)
+    # Só tenta ordenar se as colunas realmente existirem no DF final
+    cols_para_ordenar = []
+    if 'Cliente_Limpo' in df.columns: cols_para_ordenar.append('Cliente_Limpo')
+    if 'DATA_EMISSAO' in df.columns: cols_para_ordenar.append('DATA_EMISSAO')
     
+    if cols_para_ordenar:
+        df = df.sort_values(cols_para_ordenar)
+    
+    # Garante que Pedido seja string para o cruzamento futuro
+    if 'PEDIDO' in df.columns:
+        df['PEDIDO'] = df['PEDIDO'].astype(str).str.strip()
+        
     return df
 
 # =========================================================
