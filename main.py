@@ -14,7 +14,8 @@ MAPA_MODULOS_MESTRE = {
     "🏗️ Manutenção": "manutencao",
     "🎯 Processos": "processos",
     "📄 RH Docs": "rh",
-    "📊 Operação": "operacao"
+    "📊 Operação": "operacao",
+    "🧪 Testes/Planner": "testes"
 }
 
 ICON_MAP = {
@@ -23,6 +24,7 @@ ICON_MAP = {
     "🎯 Processos": "diagram-3",
     "📄 RH Docs": "file-earmark-text",
     "📊 Operação": "box-seam",
+    "🧪 Testes/Planner": "flask",
     "⚙️ Central de Comando": "shield-lock"
 }
 
@@ -209,6 +211,10 @@ elif "RH Docs" in escolha:
 elif "Operação" in escolha:
     import mod_operacao
     mod_operacao.exibir_operacao_completa(user_role=user_role)
+elif "Testes/Planner" in escolha:
+    # AQUI ENTRA O SEU NOVO MÓDULO DE INTEGRAÇÃO
+    import mod_testes
+    mod_testes.exibir_teste_planner(user_role=user_role)
 elif "Central de Comando" in escolha:
     exibir_central()
 
