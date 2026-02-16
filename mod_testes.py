@@ -3,27 +3,30 @@ import pandas as pd
 import plotly.express as px
 
 def exibir_teste_planner(user_role="OPERACIONAL"):
-    st.header("🧪 Central de Testes & API Planner")
+    st.header("📊 Dashboard de Ações CX 2026")
     
-    # Exemplo de como você organizaria as tarefas para o gestor
-    st.subheader("Visualização Clara de Demandas (AÇÕES CX 2026)")
+    # 🔗 O link oficial que você gerou no SharePoint da King Star
+    URL_SHAREPOINT = "https://colchoeskingstar.sharepoint.com/sites/PQI/Documentos%20Compartilhados/dados_planner.csv"
     
-    # Simulando dados que viriam da API do Planner
-    dados_planner = [
-        {"Tarefa": "Ajustar KPI Compras", "Status": "Em Andamento", "Prazo": "2026-02-20", "Responsável": "Você"},
-        {"Tarefa": "Integração Graph API", "Status": "Teste", "Prazo": "2026-02-25", "Responsável": "TI"},
-        {"Tarefa": "Dashboard Recebimento", "Status": "Concluído", "Prazo": "2026-02-15", "Responsável": "Você"},
-    ]
-    df = pd.DataFrame(dados_planner)
-    
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        st.dataframe(df, use_container_width=True)
+    try:
+        # Lendo os dados reais (O segredo: o Python organiza a "bagunça" do CSV sozinho)
+        df = pd.read_csv(URL_SHAREPOINT)
         
-    with col2:
-        fig = px.pie(df, names='Status', title="Resumo por Status")
-        st.plotly_chart(fig, use_container_width=True)
+        st.subheader("Visualização Real de Demandas (Planner King Star)")
+        
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            # Exibindo a tabela com Tarefa, Progresso e Bucket
+            st.dataframe(df, use_container_width=True)
+            
+        with col2:
+            # Gerando o gráfico baseado na coluna 'Progresso' (Não iniciado, Em andamento, Concluído)
+            fig = px.pie(df, names='Progresso', title="Status das Ações", color_discrete_sequence=px.colors.qualitative.Pastel)
+            st.plotly_chart(fig, use_container_width=True)
+            
+        st.success(f"✅ Sincronizado com sucesso! Total de {len(df)} tarefas monitoradas.")
 
-    if st.button("🔄 Sincronizar com Microsoft Graph (API)"):
-        st.warning("Aqui entrará a chamada da API para ler o Planner Cloud.")
+    except Exception as e:
+        st.error(f"Erro ao conectar com o SharePoint: {e}")
+        st.info("Verifique se o arquivo 'dados_planner.csv' está na pasta Documentos Compartilhados.")
