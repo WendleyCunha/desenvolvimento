@@ -70,32 +70,73 @@ def salvar_tickets(lista_tickets):
 
 def renderizar_modulo_tickets():
     st.markdown("<div class='header-analise'>🎫 GESTÃO DE TICKETS - CX 360º</div>", unsafe_allow_html=True)
+    
     dados = carregar_tickets()
     df = pd.DataFrame(dados) if dados else pd.DataFrame()
 
     if not df.empty:
-        # Tratamento de datas para o filtro
+        # --- TRATAMENTO DE DADOS ---
         df['Criação do ticket - Data'] = pd.to_datetime(df['Criação do ticket - Data'], errors='coerce')
+        df['Dia_Semana'] = df['Criação do ticket - Data'].dt.day_name()
         df['Mes_Ano'] = df['Criação do ticket - Data'].dt.strftime('%m/%Y')
         
+        # Filtro de Mês
         mes_sel = st.selectbox("Filtrar Mês:", ["Todos"] + sorted(df['Mes_Ano'].unique().tolist(), reverse=True))
         df_v = df if mes_sel == "Todos" else df[df['Mes_Ano'] == mes_sel]
         
-        # KPIs Rápidos
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Total Tickets", len(df_v))
-        c2.metric("Resolvidos", len(df_v[df_v['Status do ticket'].isin(['Closed', 'Solved'])]))
-        c3.metric("Lojas Ativas", df_v['Nome do solicitante'].nunique())
+        # --- 1. KPIs ESTILIZADOS (Estilo Cards) ---
+        total_t = len(df_v)
+        resolvidos = len(df_v[df_v['Status do ticket'].isin(['Closed', 'Solved'])])
+        taxa = (resolvidos / total_t * 100) if total_t > 0 else 0
+        loja_top = df_v['Nome do solicitante'].mode()[0] if not df_v.empty else "-"
 
-        # Gráficos de Análise
+        c1, c2, c3, c4 = st.columns(4)
+        c1.markdown(f'<div class="metric-box"><strong>TOTAL TICKETS</strong><h3>{total_t}</h3></div>', unsafe_allow_html=True)
+        c2.markdown(f'<div class="metric-box"><strong>RESOLVIDOS</strong><h3 style="color:#16a34a">{resolvidos}</h3></div>', unsafe_allow_html=True)
+        c3.markdown(f'<div class="metric-box"><strong>TAXA SOLUÇÃO</strong><h3 style="color:#3b82f6">{taxa:.1f}%</h3></div>', unsafe_allow_html=True)
+        c4.markdown(f'<div class="metric-box"><strong>LOJA CRÍTICA</strong><h3 style="color:#ef4444; font-size:1.2rem">{loja_top}</h3></div>', unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # --- 2. GRÁFICOS LINDOS (Pareto e Ranking) ---
         g1, g2 = st.columns(2)
+        
         with g1:
-            st.plotly_chart(px.bar(df_v['Assunto CX:'].value_counts().head(10), title="Top 10 Motivos"), use_container_width=True)
+            st.subheader("⚖️ Curva ABC: Motivos")
+            df_motivo = df_v['Assunto CX:'].value_counts().reset_index()
+            df_motivo.columns = ['Motivo', 'Qtd']
+            fig_pareto = px.bar(df_motivo.head(10), x='Motivo', y='Qtd', color='Qtd', color_continuous_scale='Blues')
+            fig_pareto.update_layout(showlegend=False, height=350)
+            st.plotly_chart(fig_pareto, use_container_width=True)
+
         with g2:
-            # Gráfico de pizza com os status
-            st.plotly_chart(px.pie(df_v, names='Status do ticket', title="Status Geral", hole=0.4), use_container_width=True)
+            st.subheader("🏪 Top Lojas (Abertura)")
+            df_lojas = df_v['Nome do solicitante'].value_counts().nlargest(10).reset_index()
+            df_lojas.columns = ['Loja', 'Qtd']
+            fig_lojas = px.bar(df_lojas, x='Qtd', y='Loja', orientation='h', color='Qtd', color_continuous_scale='Viridis')
+            fig_lojas.update_layout(yaxis={'categoryorder':'total ascending'}, height=350)
+            st.plotly_chart(fig_lojas, use_container_width=True)
+
+        # --- 3. SAZONALIDADE (Gráfico de Linha Spline) ---
+        st.subheader("📅 Quando os tickets entram?")
+        dias_ordem = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        traducao = {'Monday':'Seg', 'Tuesday':'Ter', 'Wednesday':'Qua', 'Thursday':'Qui', 'Friday':'Sex', 'Saturday':'Sab', 'Sunday':'Dom'}
+        
+        df_dias = df_v['Dia_Semana'].value_counts().reindex(dias_ordem).reset_index()
+        df_dias.columns = ['Dia', 'Qtd']
+        df_dias['Dia'] = df_dias['Dia'].map(traducao)
+
+        fig_linha = px.line(df_dias, x='Dia', y='Qtd', markers=True, line_shape="spline")
+        fig_linha.update_traces(line_color='#002366', fill='tozeroy') # Efeito de preenchimento
+        fig_linha.update_layout(height=300)
+        st.plotly_chart(fig_linha, use_container_width=True)
+
+        # --- 4. CONSULTA ---
+        with st.expander("🔍 Ver Detalhes da Base"):
+            st.dataframe(df_v[['Criação do ticket - Data', 'ID do ticket', 'Nome do solicitante', 'Assunto CX:', 'Status do ticket']], use_container_width=True)
+            
     else:
-        st.info("Nenhum dado de ticket encontrado no banco. Vá na aba Configurações e faça o upload da base.")
+        st.info("Nenhum dado de ticket encontrado. Vá em 'Configurações' e suba a base do Zendesk.")
 
 # =========================================================
 # 2. COMPONENTES DE TRATATIVA (COMPRAS/RECEBIMENTO)
