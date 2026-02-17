@@ -813,41 +813,26 @@ def exibir_operacao_completa(user_role=None):
 
 
         st.divider()
-
+        
+        # Primeiro, o uploader de Tickets em largura total
         st.markdown(f"### 🎫 Base Tickets (Zendesk)")
-
         up_t = st.file_uploader("Upload Excel Tickets", type=["xlsx", "csv"], key="up_tickets_cx")
-
         if up_t and st.button("Gravar Base de Tickets"):
-
             df_t = pd.read_excel(up_t) if up_t.name.endswith('.xlsx') else pd.read_csv(up_t)
-
             if salvar_tickets(df_t.to_dict(orient='records')):
-
                 st.success("Base de Tickets integrada!")
-
                 st.rerun()
 
+        st.divider()
+        
+        # Agora criamos as colunas para Compras e Picos
+        c_up1, c_up2 = st.columns(2) # <--- ESSA LINHA É A QUE FALTAVA
+        
         with c_up1:
-
             st.markdown(f"### 🛒 Base Compras ({mes_ref_cfg})")
-
-            up_c = st.file_uploader("Upload Excel Compras", type="xlsx", key="up_compras")
-
-            tipo_import = st.radio("Modo Importação:", ["Resetar Tudo", "Preservar Status"], key="radio_imp")
-
-            if up_c and st.button("Confirmar Upload Compras"):
-
-                df_n = pd.read_excel(up_c)
-
-                if tipo_import == "Resetar Tudo":
-
-                    df_n['ORIGEM'] = 'Planilha'; df_n['STATUS_COMPRA'] = "Pendente"; df_n['STATUS_RECEB'] = "Pendente"
-
-                    for c in ['QTD_SOLICITADA', 'SALDO_FISICO', 'QTD_RECEBIDA']: df_n[c] = 0
-
-                db_cfg["analises"] = df_n.to_dict(orient='records'); salvar_dados_op(db_cfg, mes_ref_cfg); st.success("Atualizado!"); st.rerun()
-
+            # ... resto do seu código de compras
+            
+        
 
 
         with c_up2:
