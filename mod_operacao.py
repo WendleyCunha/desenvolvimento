@@ -25,6 +25,7 @@ def aplicar_estilo_premium():
     """, unsafe_allow_html=True)
 
 # --- FUNÇÕES DE SUPORTE ---
+
 def carregar_dados_op(mes_ref):
     fire = inicializar_db()
     doc = fire.collection("operacoes_mensais").document(mes_ref).get()
@@ -49,6 +50,52 @@ def converter_para_excel(df):
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         df.to_excel(writer, index=False, sheet_name='Relatorio')
     return output.getvalue()
+
+# --- NOVAS FUNÇÕES DE TICKETS ---
+
+def carregar_tickets():
+    fire = inicializar_db()
+    docs = fire.collection("tickets_cx").stream()
+    return [doc.to_dict() for doc in docs]
+
+def salvar_tickets(lista_tickets):
+    fire = inicializar_db()
+    batch = fire.batch()
+    for ticket in lista_tickets:
+        # Usa o ID do ticket como chave única para evitar duplicatas
+        doc_ref = fire.collection("tickets_cx").document(str(ticket['ID do ticket']))
+        batch.set(doc_ref, ticket)
+    batch.commit()
+    return True
+
+def renderizar_modulo_tickets():
+    st.markdown("<div class='header-analise'>🎫 GESTÃO DE TICKETS - CX 360º</div>", unsafe_allow_html=True)
+    dados = carregar_tickets()
+    df = pd.DataFrame(dados) if dados else pd.DataFrame()
+
+    if not df.empty:
+        # Tratamento de datas para o filtro
+        df['Criação do ticket - Data'] = pd.to_datetime(df['Criação do ticket - Data'], errors='coerce')
+        df['Mes_Ano'] = df['Criação do ticket - Data'].dt.strftime('%m/%Y')
+        
+        mes_sel = st.selectbox("Filtrar Mês:", ["Todos"] + sorted(df['Mes_Ano'].unique().tolist(), reverse=True))
+        df_v = df if mes_sel == "Todos" else df[df['Mes_Ano'] == mes_sel]
+        
+        # KPIs Rápidos
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Total Tickets", len(df_v))
+        c2.metric("Resolvidos", len(df_v[df_v['Status do ticket'].isin(['Closed', 'Solved'])]))
+        c3.metric("Lojas Ativas", df_v['Nome do solicitante'].nunique())
+
+        # Gráficos de Análise
+        g1, g2 = st.columns(2)
+        with g1:
+            st.plotly_chart(px.bar(df_v['Assunto CX:'].value_counts().head(10), title="Top 10 Motivos"), use_container_width=True)
+        with g2:
+            # Gráfico de pizza com os status
+            st.plotly_chart(px.pie(df_v, names='Status do ticket', title="Status Geral", hole=0.4), use_container_width=True)
+    else:
+        st.info("Nenhum dado de ticket encontrado no banco. Vá na aba Configurações e faça o upload da base.")
 
 # =========================================================
 # 2. COMPONENTES DE TRATATIVA (COMPRAS/RECEBIMENTO)
@@ -278,7 +325,9 @@ def exibir_operacao_completa(user_role=None):
     st.sidebar.title("💎 Sistema Premium")
     meses_lista = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
     
-    tab_modulo_compras, tab_modulo_picos, tab_modulo_config = st.tabs(["🛒 COMPRAS", "📊 DASH OPERAÇÃO", "⚙️ CONFIGURAÇÕES"])
+    tab_modulo_compras, tab_modulo_picos, tab_modulo_tickets, tab_modulo_config = st.tabs([
+        "🛒 COMPRAS", "📊 DASH OPERAÇÃO", "🎫 TICKETS 360º", "⚙️ CONFIGURAÇÕES"
+    ])
 
     with tab_modulo_compras:
         col_m1, col_m2 = st.columns(2)
@@ -334,6 +383,9 @@ def exibir_operacao_completa(user_role=None):
         st.markdown(f"<div class='header-analise'>DASHBOARD OPERACIONAL - {mes_p.upper()}</div>", unsafe_allow_html=True)
         renderizar_picos_operacional(db_p.get("picos", []), db_p, mes_ref_p)
 
+    with tab_modulo_tickets:
+        renderizar_modulo_tickets()
+        
     with tab_modulo_config:
         st.markdown(f"<div class='header-analise'>CONFIGURAÇÕES GERAIS</div>", unsafe_allow_html=True)
         c_ref1, c_ref2 = st.columns(2)
@@ -354,18 +406,23 @@ def exibir_operacao_completa(user_role=None):
                     db_cfg["analises"] = df_cfg.to_dict(orient='records'); salvar_dados_op(db_cfg, mes_ref_cfg); st.rerun()
 
         st.divider()
+        
+        # Primeiro, o uploader de Tickets em largura total
+        st.markdown(f"### 🎫 Base Tickets (Zendesk)")
+        up_t = st.file_uploader("Upload Excel Tickets", type=["xlsx", "csv"], key="up_tickets_cx")
+        if up_t and st.button("Gravar Base de Tickets"):
+            df_t = pd.read_excel(up_t) if up_t.name.endswith('.xlsx') else pd.read_csv(up_t)
+            if salvar_tickets(df_t.to_dict(orient='records')):
+                st.success("Base de Tickets integrada!")
+                st.rerun()
+
+        st.divider()
+                
         c_up1, c_up2 = st.columns(2)
+        
         with c_up1:
             st.markdown(f"### 🛒 Base Compras ({mes_ref_cfg})")
-            up_c = st.file_uploader("Upload Excel Compras", type="xlsx", key="up_compras")
-            tipo_import = st.radio("Modo Importação:", ["Resetar Tudo", "Preservar Status"], key="radio_imp")
-            if up_c and st.button("Confirmar Upload Compras"):
-                df_n = pd.read_excel(up_c)
-                if tipo_import == "Resetar Tudo":
-                    df_n['ORIGEM'] = 'Planilha'; df_n['STATUS_COMPRA'] = "Pendente"; df_n['STATUS_RECEB'] = "Pendente"
-                    for c in ['QTD_SOLICITADA', 'SALDO_FISICO', 'QTD_RECEBIDA']: df_n[c] = 0
-                db_cfg["analises"] = df_n.to_dict(orient='records'); salvar_dados_op(db_cfg, mes_ref_cfg); st.success("Atualizado!"); st.rerun()
-
+                             
         with c_up2:
             st.markdown(f"### 📊 Base Picos ({mes_ref_cfg})")
             up_p = st.file_uploader("Upload Zendesk", type="xlsx", key="up_picos")
