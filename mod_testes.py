@@ -23,22 +23,25 @@ def exibir_teste_planner(user_role="OPERACIONAL"):
         
         if uploaded_file:
             try:
+                # Leitura do arquivo
                 if uploaded_file.name.endswith('.csv'):
                     df_novo = pd.read_csv(uploaded_file)
                 else:
                     df_novo = pd.read_excel(uploaded_file)
                 
-                # Padronização de colunas para garantir o "ID do ticket"
                 st.success(f"{len(df_novo)} registros lidos.")
                 
                 if st.button("🚀 GRAVAR NOVOS DADOS", use_container_width=True, type="primary"):
                     # Lógica de Deduplicação pelo ID do Ticket
                     ids_existentes = set(df_base['ID do ticket'].astype(str)) if not df_base.empty else set()
+                    
+                    # Filtra apenas o que NÃO está no banco (comparando IDs)
                     df_filtrado = df_novo[~df_novo['ID do ticket'].astype(str).isin(ids_existentes)]
                     
                     if not df_filtrado.empty:
                         novos_registros = df_filtrado.to_dict('records')
-                        db.salvar_tickets(novos_registros) # Função para salvar no seu Firebase/DB
+                        # Chama a função que você adicionou no database.py
+                        db.salvar_tickets(novos_registros) 
                         st.balloons()
                         st.success(f"Sucesso! {len(df_filtrado)} novos tickets adicionados.")
                         st.rerun()
