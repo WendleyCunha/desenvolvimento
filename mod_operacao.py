@@ -13,14 +13,73 @@ import unicodedata
 PALETA = ['#002366', '#3b82f6', '#16a34a', '#ef4444', '#facc15']
 
 def aplicar_estilo_premium():
+    PALETA = ["#002366", "#1e293b", "#16a34a", "#ef4444"]
     st.markdown(f"""
         <style>
-        .main-card {{ background: white; padding: 25_px; border-radius: 20_px; box-shadow: 0 10_px 25_px rgba(0,0,0,0.05); border-top: 5_px solid {PALETA[0]}; margin-bottom: 20_px; }}
-        .metric-box {{ background: #f8fafc; padding: 15_px; border-radius: 12_px; border: 1px solid #e2e8f0; text-align: center; height: 100%; }}
-        .metric-box h3 {{ margin: 5_px 0; font-size: 1.8rem; font-weight: bold; color: {PALETA[0]}; }}
-        .search-box {{ background: #f1f5f9; padding: 20_px; border-radius: 15_px; border-left: 5_px solid {PALETA[0]}; margin-bottom: 20_px; }}
-        .search-box-rec {{ background: #f0fdf4; padding: 20_px; border-radius: 15_px; border-left: 5_px solid {PALETA[2]}; margin-bottom: 20_px; }}
-        .header-analise {{ background: {PALETA[0]}; color: white; padding: 15_px; border-radius: 10_px; text-align: center; margin-bottom: 20_px; font-weight: bold; font-size: 20_px; }}
+        /* Fundo do App */
+        .stApp {{ background-color: #f4f7f9; }}
+        
+        /* Card Principal do Comprador e Recebimento */
+        .main-card {{ 
+            background: white; 
+            padding: 25px; 
+            border-radius: 20px; 
+            box-shadow: 0 10px 25px rgba(0,0,0,0.05); 
+            border-top: 5px solid {PALETA[0]}; 
+            margin-bottom: 20px; 
+        }}
+        
+        /* Cards de Métricas (Dashboard de Tickets e Compras) */
+        .metric-box {{ 
+            background: white; 
+            padding: 20px; 
+            border-radius: 15px; 
+            border-left: 5px solid {PALETA[0]}; 
+            box-shadow: 2px 2px 10px rgba(0,0,0,0.05); 
+            text-align: center; 
+            transition: transform 0.2s;
+        }}
+        .metric-box:hover {{ transform: translateY(-5px); }}
+        .metric-box h3 {{ margin: 10px 0; font-size: 2rem; font-weight: 800; }}
+        
+        /* Caixas de Busca */
+        .search-box {{ 
+            background: #f1f5f9; 
+            padding: 20px; 
+            border-radius: 15px; 
+            border-left: 5px solid {PALETA[0]}; 
+            margin-bottom: 20px; 
+        }}
+        .search-box-rec {{ 
+            background: #f0fdf4; 
+            padding: 20px; 
+            border-radius: 15px; 
+            border-left: 5px solid {PALETA[2]}; 
+            margin-bottom: 20px; 
+        }}
+        
+        /* Headers de Seção */
+        .header-analise {{ 
+            background: linear-gradient(90deg, {PALETA[0]}, #1e40af); 
+            color: white; 
+            padding: 15px; 
+            border-radius: 10px; 
+            text-align: center; 
+            margin-bottom: 20px; 
+            font-weight: bold; 
+            font-size: 22px; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }}
+
+        /* Ajuste das Tabs */
+        .stTabs [data-baseweb="tab-list"] {{ gap: 10px; }}
+        .stTabs [data-baseweb="tab"] {{
+            background-color: #e2e8f0;
+            border-radius: 10px 10px 0 0;
+            padding: 10px 20px;
+            color: #475569;
+        }}
+        .stTabs [aria-selected="true"] {{ background-color: {PALETA[0]} !important; color: white !important; }}
         </style>
     """, unsafe_allow_html=True)
 
@@ -71,10 +130,138 @@ def salvar_tickets(lista_tickets):
 def renderizar_modulo_tickets():
     st.markdown("<div class='header-analise'>🎫 GESTÃO DE TICKETS - CX 360º</div>", unsafe_allow_html=True)
     
+    # 1. CARREGAMENTO E VALIDAÇÃO
     dados = carregar_tickets()
-    df = pd.DataFrame(dados) if dados else pd.DataFrame()
+    if not dados:
+        st.info("Nenhum dado encontrado. Faça o upload na aba 'Configurações'.")
+        return
 
-    if not df.empty:
+    df = pd.DataFrame(dados)
+    
+    # 2. TRATAMENTO DE DADOS
+    df['Criação do ticket - Data'] = pd.to_datetime(df['Criação do ticket - Data'], errors='coerce')
+    df['Dia_Semana'] = df['Criação do ticket - Data'].dt.day_name()
+    df['Mes_Ano'] = df['Criação do ticket - Data'].dt.strftime('%m/%Y')
+    
+    # Filtro de Mês
+    mes_sel = st.selectbox("Filtrar Mês:", ["Todos"] + sorted(df['Mes_Ano'].unique().tolist(), reverse=True))
+    df_v = df if mes_sel == "Todos" else df[df['Mes_Ano'] == mes_sel]
+
+    # 3. MÉTRICAS (KPIs)
+    total_t = len(df_v)
+    status_limpo = df_v['Status do ticket'].astype(str).str.upper()
+    resolvidos = len(df_v[status_limpo.isin(['CLOSED', 'SOLVED'])])
+    taxa = (resolvidos / total_t * 100) if total_t > 0 else 0
+    loja_top = df_v['Nome do solicitante'].mode()[0] if not df_v.empty else "-"
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.markdown(f'<div class="metric-box"><strong>TOTAL TICKETS</strong><h3 style="color:#002366">{total_t}</h3></div>', unsafe_allow_html=True)
+    c2.markdown(f'<div class="metric-box"><strong>RESOLVIDOS</strong><h3 style="color:#16a34a">{resolvidos}</h3></div>', unsafe_allow_html=True)
+    c3.markdown(f'<div class="metric-box"><strong>TAXA SOLUÇÃO</strong><h3 style="color:#3b82f6">{taxa:.1f}%</h3></div>', unsafe_allow_html=True)
+    c4.markdown(f'<div class="metric-box"><strong>LOJA CRÍTICA</strong><h3 style="color:#ef4444; font-size:1.1rem">{loja_top}</h3></div>', unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # 4. GRÁFICOS (Pareto e Ranking)
+    g1, g2 = st.columns(2)
+    
+    with g1:
+        st.subheader("⚖️ Curva ABC: Motivos")
+        df_motivo = df_v['Assunto CX:'].value_counts().reset_index().head(10)
+        df_motivo.columns = ['Motivo', 'Qtd']
+        fig_motivo = px.bar(df_motivo, x='Motivo', y='Qtd', color='Qtd', color_continuous_scale='Blues')
+        fig_motivo.update_layout(showlegend=False, margin=dict(l=20, r=20, t=20, b=20))
+        st.plotly_chart(fig_motivo, use_container_width=True)
+
+    with g2:
+        st.subheader("🏪 Top Lojas")
+        df_lojas = df_v['Nome do solicitante'].value_counts().nlargest(10).reset_index()
+        df_lojas.columns = ['Loja', 'Qtd']
+        fig_lojas = px.bar(df_lojas, x='Qtd', y='Loja', orientation='h', color='Qtd', color_continuous_scale='Viridis')
+        fig_lojas.update_layout(yaxis={'categoryorder':'total ascending'}, margin=dict(l=20, r=20, t=20, b=20))
+        st.plotly_chart(fig_lojas, use_container_width=True)
+
+    # 5. SAZONALIDADE
+    st.subheader("📅 Sazonalidade Semanal")
+    dias_ordem = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    traducao = {'Monday':'Seg', 'Tuesday':'Ter', 'Wednesday':'Qua', 'Thursday':'Qui', 'Friday':'Sex', 'Saturday':'Sab', 'Sunday':'Dom'}
+    
+    df_dias = df_v['Dia_Semana'].value_counts().reindex(dias_ordem).fillna(0).reset_index()
+    df_dias.columns = ['Dia', 'Qtd']
+    df_dias['Dia'] = df_dias['Dia'].map(traducao)
+
+    fig_linha = px.line(df_dias, x='Dia', y='Qtd', markers=True, line_shape="spline")
+    fig_linha.update_traces(line_color='#002366', fill='tozeroy') 
+    st.plotly_chart(fig_linha, use_container_width=True)
+
+    # 6. TABELA DE CONSULTA
+    with st.expander("🔍 Detalhes da Base de Tickets"):
+        st.dataframe(
+            df_v[['Criação do ticket - Data', 'ID do ticket', 'Nome do solicitante', 'Assunto CX:', 'Status do ticket']], 
+            use_container_width=True, 
+            hide_index=True
+        )
+
+    # --- SAZONALIDADE ---
+    st.subheader("📅 Sazonalidade Semanal")
+    dias_ordem = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    traducao = {'Monday':'Seg', 'Tuesday':'Ter', 'Wednesday':'Qua', 'Thursday':'Qui', 'Friday':'Sex', 'Saturday':'Sab', 'Sunday':'Dom'}
+    
+    df_dias = df_v['Dia_Semana'].value_counts().reindex(dias_ordem).fillna(0).reset_index()
+    df_dias.columns = ['Dia', 'Qtd']
+    df_dias['Dia'] = df_dias['Dia'].map(traducao)
+
+    fig_linha = px.line(df_dias, x='Dia', y='Qtd', markers=True, line_shape="spline")
+    fig_linha.update_traces(line_color='#002366', fill='tozeroy') 
+    st.plotly_chart(fig_linha, use_container_width=True)
+
+        # --- 5. TABELA DE CONSULTA ---
+        with st.expander("🔍 Detalhes da Base de Tickets"):
+            st.dataframe(df_v[['Criação do ticket - Data', 'ID do ticket', 'Nome do solicitante', 'Assunto CX:', 'Status do ticket']], use_container_width=True, hide_index=True)
+            
+    else:
+        st.info("Nenhum dado de ticket encontrado no banco. Vá na aba 'Configurações' e faça o upload da base (Zendesk).")
+
+        # --- 2. GRÁFICOS (Pareto e Ranking) ---
+        g1, g2 = st.columns(2)
+        
+        with g1:
+            st.subheader("⚖️ Curva ABC: Motivos")
+            df_motivo = df_v['Assunto CX:'].value_counts().reset_index()
+            df_motivo.columns = ['Motivo', 'Qtd']
+            fig_pareto = px.bar(df_motivo.head(10), x='Motivo', y='Qtd', color='Qtd', color_continuous_scale='Blues')
+            fig_pareto.update_layout(showlegend=False, height=350, margin=dict(l=20, r=20, t=20, b=20))
+            st.plotly_chart(fig_pareto, use_container_width=True)
+
+        with g2:
+            st.subheader("🏪 Top Lojas (Abertura)")
+            df_lojas = df_v['Nome do solicitante'].value_counts().nlargest(10).reset_index()
+            df_lojas.columns = ['Loja', 'Qtd']
+            fig_lojas = px.bar(df_lojas, x='Qtd', y='Loja', orientation='h', color='Qtd', color_continuous_scale='Viridis')
+            fig_lojas.update_layout(yaxis={'categoryorder':'total ascending'}, height=350, margin=dict(l=20, r=20, t=20, b=20))
+            st.plotly_chart(fig_lojas, use_container_width=True)
+
+        # --- 3. SAZONALIDADE (Linha com Preenchimento) ---
+        st.subheader("📅 Entradas por Dia da Semana")
+        dias_ordem = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        traducao = {'Monday':'Seg', 'Tuesday':'Ter', 'Wednesday':'Qua', 'Thursday':'Qui', 'Friday':'Sex', 'Saturday':'Sab', 'Sunday':'Dom'}
+        
+        df_dias = df_v['Dia_Semana'].value_counts().reindex(dias_ordem).reset_index()
+        df_dias.columns = ['Dia', 'Qtd']
+        df_dias['Dia'] = df_dias['Dia'].map(traducao)
+
+        fig_linha = px.line(df_dias, x='Dia', y='Qtd', markers=True, line_shape="spline")
+        fig_linha.update_traces(line_color='#002366', fill='tozeroy') 
+        fig_linha.update_layout(height=300, margin=dict(l=20, r=20, t=40, b=20))
+        st.plotly_chart(fig_linha, use_container_width=True)
+
+        # --- 4. TABELA DE CONSULTA ---
+        with st.expander("🔍 Detalhes da Base de Tickets"):
+            st.dataframe(df_v[['Criação do ticket - Data', 'ID do ticket', 'Nome do solicitante', 'Assunto CX:', 'Status do ticket']], use_container_width=True, hide_index=True)
+            
+    else:
+        st.info("Nenhum dado de ticket encontrado no banco. Vá na aba 'Configurações' e faça o upload da base (Zendesk).")
+        
         # --- TRATAMENTO DE DADOS ---
         df['Criação do ticket - Data'] = pd.to_datetime(df['Criação do ticket - Data'], errors='coerce')
         df['Dia_Semana'] = df['Criação do ticket - Data'].dt.day_name()
