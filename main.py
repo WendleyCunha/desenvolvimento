@@ -16,6 +16,7 @@ MAPA_MODULOS_MESTRE = {
     "📄 RH Docs": "rh",
     "📊 Operação": "operacao",
     "🧪 Testes/Planner": "testes"
+    "🚗 Minha Spin": "spin"
 }
 
 ICON_MAP = {
@@ -25,6 +26,7 @@ ICON_MAP = {
     "📄 RH Docs": "file-earmark-text",
     "📊 Operação": "box-seam",
     "🧪 Testes/Planner": "flask",
+    "🚗 Minha Spin": "car-front-fill",
     "⚙️ Central de Comando": "shield-lock"
 }
 
@@ -215,6 +217,9 @@ elif "Testes/Planner" in escolha:
     # AQUI ENTRA O SEU NOVO MÓDULO DE INTEGRAÇÃO
     import mod_testes
     mod_testes.exibir_teste_planner(user_role=user_role)
+elif "Minha Spin" in escolha:
+    import mod_spin
+    mod_spin.exibir_tamagotchi(user_info) # Passando info do usuário se precisar    
 elif "Central de Comando" in escolha:
     exibir_central()
 
