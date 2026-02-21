@@ -15,8 +15,8 @@ MAPA_MODULOS_MESTRE = {
     "🎯 Processos": "processos",
     "📄 RH Docs": "rh",
     "📊 Operação": "operacao",
-    "🧪 Testes/Planner": "testes"
-    "🚗 Minha Spin": "spin"
+    "🧪 Testes/Planner": "testes",
+    "🚗 Minha Spin": "spin",
 }
 
 ICON_MAP = {
