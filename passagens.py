@@ -10,7 +10,6 @@ from datetime import datetime
 # =========================================================
 
 def inicializar_db():
-    """Inicializa a conexão com o Firestore utilizando as secrets do Streamlit."""
     if "db" not in st.session_state:
         try:
             key_dict = json.loads(st.secrets["textkey"])
@@ -22,7 +21,7 @@ def inicializar_db():
     return st.session_state.db
 
 # =========================================================
-# 2. LÓGICA DE DADOS (EVENTOS E PASSAGEIROS)
+# 2. LÓGICA DE DADOS
 # =========================================================
 
 def criar_evento(nome, datas, valor_passagem):
@@ -47,14 +46,16 @@ def carregar_eventos():
 def salvar_passageiro(id_evento, dados_pax):
     db = inicializar_db()
     if db:
-        # ID único baseado no nome e RG para evitar duplicatas
-        pax_id = f"{dados_pax['nome']}_{dados_pax['rg']}".lower().replace(" ", "")
+        # ID baseado no nome. Se o RG existir, usamos para reforçar a unicidade
+        sufixo = dados_pax['rg'] if dados_pax['rg'] else "reserva"
+        pax_id = f"{dados_pax['nome']}_{sufixo}".lower().replace(" ", "")
         db.collection("eventos").document(id_evento).collection("passageiros").document(pax_id).set(dados_pax)
 
 def deletar_passageiro(id_evento, nome, rg):
     db = inicializar_db()
     if db:
-        pax_id = f"{nome}_{rg}".lower().replace(" ", "")
+        sufixo = rg if rg else "reserva"
+        pax_id = f"{nome}_{sufixo}".lower().replace(" ", "")
         db.collection("eventos").document(id_evento).collection("passageiros").document(pax_id).delete()
 
 def carregar_passageiros(id_evento):
@@ -64,15 +65,15 @@ def carregar_passageiros(id_evento):
     return [p.to_dict() for p in paxs]
 
 # =========================================================
-# 3. INTERFACE VISUAL PREMIUM
+# 3. INTERFACE VISUAL
 # =========================================================
 
 @st.dialog("Gerenciar Passageiro")
 def gerenciar_pax_dialog(pax, id_evento):
-    """Pop-up para confirmar pagamento ou registrar desistência."""
-    st.write(f"O que deseja fazer com a reserva de:")
+    st.write(f"Gestão de Reserva:")
     st.subheader(pax['nome'])
-    st.info(f"RG: {pax['rg']} | Dias: {', '.join(pax['dias'])}")
+    rg_display = pax['rg'] if pax['rg'] else "Não informado"
+    st.info(f"RG: {rg_display} | Dias: {', '.join(pax['dias'])}")
     
     st.divider()
     c1, c2 = st.columns(2)
@@ -80,12 +81,12 @@ def gerenciar_pax_dialog(pax, id_evento):
     if c1.button("✅ Confirmar Pagamento", use_container_width=True, type="primary"):
         pax['pago'] = True
         salvar_passageiro(id_evento, pax)
-        st.success("Pagamento registrado!")
+        st.success("Pago!")
         st.rerun()
         
-    if c2.button("🗑️ Registrar Desistência", use_container_width=True):
+    if c2.button("🗑️ Excluir Reserva", use_container_width=True):
         deletar_passageiro(id_evento, pax['nome'], pax['rg'])
-        st.warning("Reserva excluída.")
+        st.warning("Removido.")
         st.rerun()
 
 def exibir_modulo_passagens():
@@ -93,38 +94,40 @@ def exibir_modulo_passagens():
     
     eventos = carregar_eventos()
     
-    tab1, tab2, tab3, tab4 = st.tabs([
-        "📊 Dashboard Geral", 
-        "📅 Vagas por Dia", 
-        "📝 Nova Reserva", 
-        "⚙️ Configurar Evento"
-    ])
+    # Aba 3 movida para 1 para facilitar fluxo, mas mantendo a lógica de configuração
+    tab1, tab2, tab3 = st.tabs(["📊 Dashboard Geral", "📝 Nova Reserva", "⚙️ Configurar Evento"])
 
-    # --- ABA: CONFIGURAR EVENTO ---
-    with tab4:
+    # --- ABA: CONFIGURAR EVENTO (Controle de Evento Ativo aqui) ---
+    with tab3:
+        if eventos:
+            st.subheader("Selecionar Evento Ativo")
+            id_sel = st.selectbox("Evento em administração:", list(eventos.keys()), format_func=lambda x: eventos[x]['nome'], key="seletor_evento")
+            st.divider()
+        else:
+            id_sel = None
+
         st.subheader("Criar Novo Evento")
         with st.form("novo_evento"):
             n_evento = st.text_input("Nome do Evento")
             v_evento = st.number_input("Valor da Passagem (R$)", min_value=0.0, value=50.0)
-            d_evento = st.multiselect("Dias disponíveis", ["Sexta", "Sábado", "Domingo"])
-            if st.form_submit_button("Salvar Evento"):
+            d_evento = st.multiselect("Dias do Evento", ["Sexta", "Sábado", "Domingo"])
+            if st.form_submit_button("Criar Evento"):
                 if n_evento and d_evento:
                     criar_evento(n_evento, d_evento, v_evento)
-                    st.success("Evento criado com sucesso!")
+                    st.success("Evento criado!")
                     st.rerun()
 
-    if not eventos:
-        st.warning("Crie um evento na aba de configurações para começar.")
+    if not id_sel:
+        st.warning("Acesse a aba 'Configurar Evento' para selecionar ou criar um evento.")
         return
 
-    # Seletor Global de Evento
-    id_sel = st.selectbox("Selecione o Evento:", list(eventos.keys()), format_func=lambda x: eventos[x]['nome'])
     evento_atual = eventos[id_sel]
     pax_lista = carregar_passageiros(id_sel)
     df = pd.DataFrame(pax_lista)
 
-    # --- ABA: DASHBOARD GERAL ---
+    # --- ABA: DASHBOARD GERAL (Unificado) ---
     with tab1:
+        st.subheader(f"📍 Evento: {evento_atual['nome']}")
         total_bus = 46
         qtd_total = len(df) if not df.empty else 0
         pagos_df = df[df['pago'] == True] if not df.empty else pd.DataFrame()
@@ -133,83 +136,77 @@ def exibir_modulo_passagens():
         v_pago = len(pagos_df) * evento_atual['valor']
         v_pend = len(pend_df) * evento_atual['valor']
         
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Ocupação Total", f"{qtd_total}/{total_bus}", f"{total_bus - qtd_total} livres")
-        c2.metric("Total Recebido", f"R$ {v_pago:,.2f}")
-        c3.metric("Pendente", f"R$ {v_pend:,.2f}", delta=f"-R$ {v_pend}", delta_color="inverse")
+        # Métricas Financeiras
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Ocupação (Geral)", f"{qtd_total}/{total_bus}")
+        m2.metric("Total Recebido", f"R$ {v_pago:,.2f}")
+        m3.metric("Falta Receber", f"R$ {v_pend:,.2f}", delta_color="inverse")
+        
+        # --- NOVO: DISPONIBILIDADE POR DIA (DENTRO DO DASH) ---
+        st.markdown("#### 📅 Vagas por Dia")
+        dias = evento_atual['datas']
+        cols_dias = st.columns(len(dias))
+        
+        for i, dia in enumerate(dias):
+            with cols_dias[i]:
+                count_dia = 0
+                if not df.empty:
+                    count_dia = df['dias'].apply(lambda x: dia in x).sum()
+                vagas_abertas = total_bus - count_dia
+                cor = "green" if vagas_abertas > 5 else "orange" if vagas_abertas > 0 else "red"
+                
+                st.markdown(f"""
+                <div style="border: 1px solid #ddd; border-radius: 8px; padding: 10px; text-align: center; background-color: #f9f9f9;">
+                    <strong style="font-size: 14px;">{dia}</strong>
+                    <h2 style="color:{cor}; margin:5px 0;">{vagas_abertas}</h2>
+                    <small>vagas</small>
+                </div>
+                """, unsafe_allow_html=True)
         
         st.divider()
         col_esq, col_dir = st.columns(2)
         
         with col_esq:
-            st.markdown("### ✅ Confirmados (Pagos)")
+            st.markdown("### ✅ Confirmados")
             if not pagos_df.empty:
                 for _, row in pagos_df.iterrows():
                     with st.container(border=True):
                         st.write(f"**{row['nome']}**")
-                        st.caption(f"RG: {row['rg']} | {', '.join(row['dias'])}")
-            else: st.write("Ninguém pagou ainda.")
+                        st.caption(f"{', '.join(row['dias'])}")
+            else: st.info("Ninguém pagou ainda.")
 
         with col_dir:
-            st.markdown("### ⚠️ Pendentes (Clique para Gerenciar)")
+            st.markdown("### ⚠️ Pendentes")
             if not pend_df.empty:
                 for _, row in pend_df.iterrows():
-                    # Card Interativo que abre o Pop-up
-                    if st.button(f"👤 {row['nome']} (Falta R$ {evento_atual['valor']})", key=f"p_{row['rg']}", use_container_width=True):
+                    if st.button(f"👤 {row['nome']}", key=f"p_{row['nome']}_{row['rg']}", use_container_width=True):
                         gerenciar_pax_dialog(row, id_sel)
-            else: st.write("Tudo em dia!")
-
-    # --- ABA: VAGAS POR DIA (VISÃO PREMIUM) ---
-    with tab2:
-        st.subheader("Disponibilidade por Dia")
-        dias = evento_atual['datas']
-        cols = st.columns(len(dias))
-        
-        for i, dia in enumerate(dias):
-            with cols[i]:
-                # Conta quantos passageiros selecionaram esse dia específico
-                count_dia = 0
-                if not df.empty:
-                    count_dia = df['dias'].apply(lambda x: dia in x).sum()
-                
-                vagas_abertas = total_bus - count_dia
-                cor = "green" if vagas_abertas > 10 else "orange" if vagas_abertas > 0 else "red"
-                
-                st.markdown(f"""
-                <div style="border: 1px solid #ddd; border-radius: 10px; padding: 20px; text-align: center; background-color: white;">
-                    <h3 style="margin:0;">{dia}</h3>
-                    <h1 style="color:{cor}; margin:10px 0;">{vagas_abertas}</h1>
-                    <p style="margin:0; font-size: 14px;">Vagas Restantes</p>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                # Barra de progresso visual para cada dia
-                st.progress(count_dia / total_bus)
+            else: st.success("Tudo pago!")
 
     # --- ABA: NOVA RESERVA ---
-    with tab3:
-        st.subheader("Cadastrar Interessado")
+    with tab2:
+        st.subheader("Adicionar à Lista")
         with st.form("add_pax"):
-            c_nome = st.text_input("Nome Completo")
-            c_rg = st.text_input("Documento (RG)")
-            c_dias = st.multiselect("Dias que irá viajar", evento_atual['datas'])
-            c_pago = st.toggle("Já realizou o pagamento?")
+            c_nome = st.text_input("Nome Completo *")
+            c_rg = st.text_input("RG (Opcional)")
+            c_dias = st.multiselect("Dias", evento_atual['datas'])
+            c_pago = st.toggle("Já pagou?")
             
-            if st.form_submit_button("Confirmar Reserva"):
-                if c_nome and c_rg and c_dias:
-                    # Verifica se há vaga em todos os dias escolhidos
+            if st.form_submit_button("Salvar Reserva"):
+                if c_nome and c_dias:
+                    # Validação de lotação por dia
                     lotado = False
                     for d in c_dias:
                         if not df.empty:
                             if df['dias'].apply(lambda x: d in x).sum() >= total_bus:
-                                st.error(f"O ônibus já está lotado para {d}!")
+                                st.error(f"Sem vagas para {d}!")
                                 lotado = True
                                 break
                     
                     if not lotado:
                         novo_pax = {"nome": c_nome, "rg": c_rg, "dias": c_dias, "pago": c_pago}
                         salvar_passageiro(id_sel, novo_pax)
-                        st.success(f"Reserva de {c_nome} realizada!")
+                        st.success("Reserva salva!")
                         st.rerun()
                 else:
-                    st.warning("Preencha todos os campos obrigatórios.")
+                    st.warning("Nome e Dias são obrigatórios.")
