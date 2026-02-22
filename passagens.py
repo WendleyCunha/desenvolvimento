@@ -157,4 +157,59 @@ def exibir_modulo_passagens():
                     # Card Interativo que abre o Pop-up
                     if st.button(f"👤 {row['nome']} (Falta R$ {evento_atual['valor']})", key=f"p_{row['rg']}", use_container_width=True):
                         gerenciar_pax_dialog(row, id_sel)
-            else: st.write("Tudo em
+            else: st.write("Tudo em dia!")
+
+    # --- ABA: VAGAS POR DIA (VISÃO PREMIUM) ---
+    with tab2:
+        st.subheader("Disponibilidade por Dia")
+        dias = evento_atual['datas']
+        cols = st.columns(len(dias))
+        
+        for i, dia in enumerate(dias):
+            with cols[i]:
+                # Conta quantos passageiros selecionaram esse dia específico
+                count_dia = 0
+                if not df.empty:
+                    count_dia = df['dias'].apply(lambda x: dia in x).sum()
+                
+                vagas_abertas = total_bus - count_dia
+                cor = "green" if vagas_abertas > 10 else "orange" if vagas_abertas > 0 else "red"
+                
+                st.markdown(f"""
+                <div style="border: 1px solid #ddd; border-radius: 10px; padding: 20px; text-align: center; background-color: white;">
+                    <h3 style="margin:0;">{dia}</h3>
+                    <h1 style="color:{cor}; margin:10px 0;">{vagas_abertas}</h1>
+                    <p style="margin:0; font-size: 14px;">Vagas Restantes</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Barra de progresso visual para cada dia
+                st.progress(count_dia / total_bus)
+
+    # --- ABA: NOVA RESERVA ---
+    with tab3:
+        st.subheader("Cadastrar Interessado")
+        with st.form("add_pax"):
+            c_nome = st.text_input("Nome Completo")
+            c_rg = st.text_input("Documento (RG)")
+            c_dias = st.multiselect("Dias que irá viajar", evento_atual['datas'])
+            c_pago = st.toggle("Já realizou o pagamento?")
+            
+            if st.form_submit_button("Confirmar Reserva"):
+                if c_nome and c_rg and c_dias:
+                    # Verifica se há vaga em todos os dias escolhidos
+                    lotado = False
+                    for d in c_dias:
+                        if not df.empty:
+                            if df['dias'].apply(lambda x: d in x).sum() >= total_bus:
+                                st.error(f"O ônibus já está lotado para {d}!")
+                                lotado = True
+                                break
+                    
+                    if not lotado:
+                        novo_pax = {"nome": c_nome, "rg": c_rg, "dias": c_dias, "pago": c_pago}
+                        salvar_passageiro(id_sel, novo_pax)
+                        st.success(f"Reserva de {c_nome} realizada!")
+                        st.rerun()
+                else:
+                    st.warning("Preencha todos os campos obrigatórios.")
