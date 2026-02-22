@@ -7,12 +7,10 @@ def exibir_tamagotchi(user_info):
     # --- 1. CONFIGURAÇÃO DE ESTADO ---
     if 'km_atual' not in st.session_state: 
         st.session_state.km_atual = 138000
-    
-    # Inicializa o histórico como uma lista vazia se não existir
     if 'historico' not in st.session_state: 
         st.session_state.historico = []
 
-    # --- 2. ESTRUTURA DE DADOS INTELIGENTE ---
+    # --- 2. ESTRUTURA DE DADOS ---
     CATEGORIAS = {
         "Manutenção Corretiva/Preventiva": [
             "Óleo do Motor (5W30)", "Correia Dentada", "Fluido de Câmbio (GF6)", 
@@ -30,31 +28,27 @@ def exibir_tamagotchi(user_info):
         "Amortecedores": 60000, "Óleo de Direção Hidráulica": 40000, "Bandejas e Buchas": 40000
     }
 
-    # --- 3. ESTILIZAÇÃO ---
+    # --- 3. SIDEBAR ---
     with st.sidebar:
-        st.header("⚙️ Painel de Controle")
+        st.header("⚙️ Painel Spin")
         modo_escuro = st.toggle("🌙 Modo Noturno", value=True)
         st.session_state.km_atual = st.number_input("KM Atual no Painel:", value=st.session_state.km_atual)
-        st.divider()
-        st.info(f"Veículo: Chevrolet Spin 2013\nUsuário: {user_info.get('nome', 'Piloto')}")
 
     bg, card, txt, brd = ("#0f172a", "#1e293b", "#f1f5f9", "#334155") if modo_escuro else ("#f8fafc", "#ffffff", "#1e293b", "#e2e8f0")
-    
-    st.markdown(f"""<style>
-        .stApp {{ background-color: {bg}; color: {txt}; }}
-        .card {{ background: {card}; padding: 15px; border-radius: 12px; border: 1px solid {brd}; margin-bottom: 10px; }}
-    </style>""", unsafe_allow_html=True)
+    st.markdown(f"<style>.stApp {{ background-color: {bg}; color: {txt}; }} .card {{ background: {card}; padding: 15px; border-radius: 12px; border: 1px solid {brd}; margin-bottom: 10px; }}</style>", unsafe_allow_html=True)
 
     st.title("🚗 SpinGenius: Gestão de Custos Real")
 
     # --- 4. ABAS ---
     tab_registro, tab_saude, tab_financeiro = st.tabs(["📝 Lançar Gasto/Previsão", "🩺 Saúde do Carro", "📊 Real vs. Previsto"])
 
-    # --- ABA 1: LANÇAMENTO ---
+    # --- ABA 1: LANÇAMENTO (REATIVIDADE CORRIGIDA) ---
     with tab_registro:
         st.subheader("Novo Registro")
-        with st.form("form_registro"):
-            tipo_selecionado = st.selectbox("Tipo de Gasto:", list(CATEGORIAS.keys()))
+        # Criamos o selectbox de tipo FORA do form para garantir reatividade imediata na lista de itens
+        tipo_selecionado = st.selectbox("Tipo de Gasto:", list(CATEGORIAS.keys()), key="tipo_gasto_select")
+        
+        with st.form("form_registro", clear_on_submit=True):
             itens_disponiveis = CATEGORIAS[tipo_selecionado]
             item_final = st.selectbox("O que foi feito/comprado?", itens_disponiveis)
             
@@ -82,12 +76,8 @@ def exibir_tamagotchi(user_info):
                 st.success(f"Registro de {item_final} salvo!")
                 st.rerun()
 
-    # Criar um DataFrame seguro para as próximas abas
-    if st.session_state.historico:
-        df_base = pd.DataFrame(st.session_state.historico)
-    else:
-        # Colunas vazias para evitar KeyError
-        df_base = pd.DataFrame(columns=["Data", "Tipo", "Item", "KM", "Previsto", "Real", "Litros", "Economia"])
+    # DataFrame mestre para as outras abas
+    df_base = pd.DataFrame(st.session_state.historico) if st.session_state.historico else pd.DataFrame(columns=["Data", "Tipo", "Item", "KM", "Previsto", "Real", "Litros", "Economia"])
 
     # --- ABA 2: SAÚDE ---
     with tab_saude:
@@ -95,38 +85,12 @@ def exibir_tamagotchi(user_info):
         if not df_base.empty:
             cols = st.columns(3)
             for idx, (peca, km_limite) in enumerate(PRAZOS_KM.items()):
-                ultima = df_base[df_base['Item'] == peca].sort_values('KM', ascending=False)
+                # Filtra apenas manutenções para calcular a saúde
+                ultima = df_base[(df_base['Item'] == peca) & (df_base['Tipo'] == "Manutenção Corretiva/Preventiva")].sort_values('KM', ascending=False)
                 km_rodado = st.session_state.km_atual - (ultima['KM'].iloc[0] if not ultima.empty else 0)
                 saude = max(0, 100 - (km_rodado / km_limite * 100))
-                
                 with cols[idx % 3]:
                     cor = "🟢" if saude > 70 else "🟡" if saude > 30 else "🔴"
-                    st.markdown(f"""<div class='card'>{cor} <b>{peca}</b><br>
-                                <h2 style='margin:0;'>{int(saude)}%</h2>
-                                <small>Faltam {max(0, km_limite-km_rodado)} KM</small></div>""", unsafe_allow_html=True)
+                    st.markdown(f"<div class='card'>{cor} <b>{peca}</b><br><h2 style='margin:0;'>{int(saude)}%</h2><small>Faltam {max(0, km_limite-km_rodado)} KM</small></div>", unsafe_allow_html=True)
         else:
-            st.info("Aguardando o primeiro registro de manutenção para calcular a saúde.")
-
-    # --- ABA 3: FINANCEIRO ---
-    with tab_financeiro:
-        if not df_base.empty:
-            m1, m2, m3 = st.columns(3)
-            # Conversão para garantir que valores vazios sejam zero
-            total_prev = pd.to_numeric(df_base['Previsto']).sum()
-            total_real = pd.to_numeric(df_base['Real']).sum()
-            
-            m1.metric("Total Planejado", f"R$ {total_prev:,.2f}")
-            m2.metric("Total Real Gasto", f"R$ {total_real:,.2f}", 
-                      delta=f"{total_prev - total_real:,.2f} economizados", delta_color="normal")
-            m3.metric("KM Atual", f"{st.session_state.km_atual}")
-
-            st.subheader("Planejado vs. Real por Categoria")
-            df_chart = df_base.groupby('Tipo')[['Previsto', 'Real']].sum().reset_index()
-            fig = px.bar(df_chart, x='Tipo', y=['Previsto', 'Real'], barmode='group',
-                         color_discrete_map={"Previsto": "#94a3b8", "Real": "#0ea5e9"})
-            st.plotly_chart(fig, use_container_width=True)
-            
-            st.subheader("Histórico Completo")
-            st.dataframe(df_base, use_container_width=True)
-        else:
-            st.warning("Nenhum dado financeiro disponível. Comece registrando um gasto ou abastecimento.")
+            st
