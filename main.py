@@ -17,6 +17,7 @@ MAPA_MODULOS_MESTRE = {
     "📊 Operação": "operacao",
     "🧪 Testes/Planner": "testes",
     "🚗 Minha Spin": "spin",
+    "🚌 Passagens": "passagens",
 }
 
 ICON_MAP = {
@@ -27,6 +28,7 @@ ICON_MAP = {
     "📊 Operação": "box-seam",
     "🧪 Testes/Planner": "flask",
     "🚗 Minha Spin": "car-front-fill",
+    "🚌 Passagens": "bus-front",
     "⚙️ Central de Comando": "shield-lock"
 }
 
@@ -219,7 +221,10 @@ elif "Testes/Planner" in escolha:
     mod_testes.exibir_teste_planner(user_role=user_role)
 elif "Minha Spin" in escolha:
     import mod_spin
-    mod_spin.exibir_tamagotchi(user_info) # Passando info do usuário se precisar    
+    mod_spin.exibir_tamagotchi(user_info) # Passando info do usuário se precisar
+elif escolha == "🚌 Passagens":
+    import passagens
+    passagens.exibir_modulo_passagens()
 elif "Central de Comando" in escolha:
     exibir_central()
 
