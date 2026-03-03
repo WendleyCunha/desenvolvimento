@@ -7,3 +7,6 @@ firebase-admin
 python-docx
 streamlit-option-menu
 fpdf2
+pypdf
+thefuzz
+requests
