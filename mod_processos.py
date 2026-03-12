@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime
 import os
 import io
+import plotly.express as px
 import database as db
 
 # --- DIRETÓRIO DE ANEXOS ---
@@ -18,12 +19,11 @@ ROADMAP = [
     {"id": 7, "nome": "Acompanhamento/Ajuste"}, {"id": 8, "nome": "Padronização & POP"}
 ]
 
-# Mantendo sua lista original e adicionando os departamentos para o novo dashboard
 MOTIVOS_PADRAO = ["Reunião", "Pedido de Posicionamento", "Elaboração de Documentos", "Anotação Interna (Sem Dash)"]
 DEPARTAMENTOS = ["Compras", "Logística", "TI", "Financeiro", "RH", "Operações", "Comercial", "Diretoria"]
 
 def exibir(user_role="OPERACIONAL"):
-    # 1. ESTILO CSS (Preservado)
+    # 1. ESTILO CSS
     st.markdown("""
     <style>
         .metric-card { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 1px solid #ececec; text-align: center; }
@@ -36,7 +36,7 @@ def exibir(user_role="OPERACIONAL"):
     </style>
     """, unsafe_allow_html=True)
 
-    # 2. INICIALIZAÇÃO DE DADOS (Preservado)
+    # 2. INICIALIZAÇÃO DE DADOS
     if 'db_pqi' not in st.session_state:
         try:
             st.session_state.db_pqi = db.carregar_projetos()
@@ -59,8 +59,8 @@ def exibir(user_role="OPERACIONAL"):
     titulos.append("🚀 OPERAÇÃO PQI")
 
     tabs = st.tabs(titulos)
-    
     tab_dash = tabs[0]
+    
     if user_role in ["ADM", "GERENTE"]:
         tab_gestao = tabs[1]
         tab_operacao = tabs[2]
@@ -68,10 +68,8 @@ def exibir(user_role="OPERACIONAL"):
         tab_gestao = None
         tab_operacao = tabs[1]
 
-   # --- 1. DASHBOARD GERAL ---
+    # --- 1. DASHBOARD GERAL ---
     with tab_dash:
-        import plotly.express as px 
-        
         sub_d1, sub_d2 = st.tabs(["📈 Portfólio Ativo", "✅ Projetos Entregues"])
         projs = st.session_state.db_pqi
         
@@ -86,15 +84,16 @@ def exibir(user_role="OPERACIONAL"):
                 for p in ativos:
                     for n in p.get('notas', []):
                         todas_notas.append(n)
-                df_notas = pd.DataFrame(todas_notas)
                 
+                df_notas = pd.DataFrame(todas_notas)
                 gargalo = "N/A"
                 if not df_notas.empty and 'depto' in df_notas.columns:
-                    gargalo = df_notas['depto'].mode()[0] if not df_notas['depto'].isnull().all() else "N/A"
+                    valid_deptos = df_notas['depto'].dropna()
+                    if not valid_deptos.empty:
+                        gargalo = valid_deptos.mode()[0]
                 c3.markdown(f'<div class="metric-card"><div class="metric-label">Gargalo (Depto)</div><div class="metric-value" style="font-size:18px">{gargalo}</div></div>', unsafe_allow_html=True)
                 
                 st.write("") 
-
                 df_at = pd.DataFrame([{"Projeto": p['titulo'], "Fase": f"Fase {p['fase']}", "Esforço": len(p.get('notas', []))} for p in ativos])
                 
                 col_g1, col_g2 = st.columns(2)
@@ -103,8 +102,7 @@ def exibir(user_role="OPERACIONAL"):
                     st.bar_chart(df_at.set_index("Projeto")["Esforço"])
                 with col_g2:
                     st.markdown("##### 🍕 Participação no Portfólio (Pizza)")
-                    fig_pizza = px.pie(df_at, values='Esforço', names='Projeto', hole=0.4,
-                                     color_discrete_sequence=px.colors.qualitative.Prism)
+                    fig_pizza = px.pie(df_at, values='Esforço', names='Projeto', hole=0.4, color_discrete_sequence=px.colors.qualitative.Prism)
                     fig_pizza.update_layout(margin=dict(l=20, r=20, t=20, b=20), height=300, showlegend=True)
                     st.plotly_chart(fig_pizza, use_container_width=True)
 
@@ -135,25 +133,30 @@ def exibir(user_role="OPERACIONAL"):
                         "pastas_virtuais": {}, "motivos_custom": []
                     }
                     st.session_state.db_pqi.append(novo_projeto)
-                    salvar_seguro(); st.rerun()
+                    salvar_seguro()
+                    st.rerun()
 
                 st.write("---")
                 for i, p in enumerate(st.session_state.db_pqi):
                     with st.expander(f"Configurações: {p['titulo']}"):
-                        col_g1, col_g2 = st.columns([2,1])
-                        p['titulo'] = col_g1.text_input("Nome do Projeto", p['titulo'], key=f"gest_t_{i}")
-                        p['status'] = col_g2.selectbox("Status", ["Ativo", "Concluído", "Pausado"], index=["Ativo", "Concluído", "Pausado"].index(p.get('status','Ativo')), key=f"gest_s_{i}")
+                        col_cfg1, col_cfg2 = st.columns([2,1])
+                        p['titulo'] = col_cfg1.text_input("Nome do Projeto", p['titulo'], key=f"gest_t_{i}")
+                        stts_options = ["Ativo", "Concluído", "Pausado"]
+                        p['status'] = col_cfg2.selectbox("Status", stts_options, index=stts_options.index(p.get('status','Ativo')), key=f"gest_s_{i}")
+                        
                         st.write("**Motivos de Esforço Customizados**")
                         novos_mots = st.text_input("Adicionar motivos (separados por vírgula)", key=f"mot_cust_{i}")
                         if st.button("Atualizar Motivos", key=f"btn_mot_{i}"):
                             p['motivos_custom'] = [m.strip() for m in novos_mots.split(",") if m.strip()]
-                            salvar_seguro(); st.rerun()
+                            salvar_seguro()
+                            st.rerun()
                         if st.button("🗑️ Excluir Projeto", key=f"gest_del_{i}"):
-                            st.session_state.db_pqi.remove(p); salvar_seguro(); st.rerun()
+                            st.session_state.db_pqi.pop(i)
+                            salvar_seguro()
+                            st.rerun()
 
             with sub_g2:
                 st.subheader("📓 Diário de Situações Diárias")
-                
                 with st.container(border=True):
                     col_sit1, col_sit2 = st.columns([2,1])
                     titulo_sit = col_sit1.text_input("O que pediram? (Ex: Reservar sala)")
@@ -178,22 +181,18 @@ def exibir(user_role="OPERACIONAL"):
                                 "obs_final": ""
                             }
                             st.session_state.situacoes_diarias.append(nova_sit)
-                            st.success("Demanda registrada!"); st.rerun()
+                            st.success("Demanda registrada!")
+                            st.rerun()
 
                 st.divider()
                 if st.session_state.situacoes_diarias:
-                    # Filtros de visualização do Diário
                     f_col1, f_col2 = st.columns([1,1])
                     ver_status = f_col1.multiselect("Filtrar Status:", ["Pendente", "Executado", "Cancelado", "Não Possível"], default=["Pendente"])
                     
-                    df_diario = pd.DataFrame(st.session_state.situacoes_diarias)
-                    df_filtrado = df_diario[df_diario['status'].isin(ver_status)] if ver_status else df_diario
-                    
-                    # Interface de Gestão das Demandas
                     for idx, sit in enumerate(st.session_state.situacoes_diarias):
-                        if sit['status'] in ver_status or not ver_status:
+                        if not ver_status or sit['status'] in ver_status:
                             cor_status = {"Pendente": "🔵", "Executado": "✅", "Cancelado": "❌", "Não Possível": "⚠️"}
-                            with st.expander(f"{cor_status.get(sit['status'])} {sit['solicitacao']} | {sit['depto']} ({sit['status']})"):
+                            with st.expander(f"{cor_status.get(sit['status'], '⚪')} {sit['solicitacao']} | {sit['depto']} ({sit['status']})"):
                                 st.write(f"**Registrado em:** {sit['data_reg']} | **Lembrete:** {sit['lembrete']}")
                                 st.info(f"**Detalhes:** {sit['detalhes']}")
                                 if sit['obs_final']: st.warning(f"**Motivo/OBS:** {sit['obs_final']}")
@@ -201,29 +200,25 @@ def exibir(user_role="OPERACIONAL"):
                                 if sit['status'] == "Pendente":
                                     c_btn1, c_btn2, c_btn3, c_btn4 = st.columns(4)
                                     if c_btn1.button("✅ Executado", key=f"ok_{idx}"):
-                                        sit['status'] = "Executado"; st.rerun()
-                                    
-                                    # Popovers para motivos de não execução
+                                        sit['status'] = "Executado"
+                                        st.rerun()
                                     with c_btn2.popover("❌ Cancelar"):
-                                        motivo = st.text_input("Motivo do Cancelamento")
-                                        if st.button("Confirmar Cancelamento", key=f"cnc_{idx}"):
-                                            sit['status'] = "Cancelado"; sit['obs_final'] = motivo; st.rerun()
-                                            
-                                    with c_btn3.popover("⚠️ Não foi possível"):
-                                        motivo = st.text_input("Por que não foi possível?")
-                                        if st.button("Confirmar Impeditivo", key=f"imp_{idx}"):
-                                            sit['status'] = "Não Possível"; sit['obs_final'] = motivo; st.rerun()
-                                    
+                                        motivo_canc = st.text_input("Motivo", key=f"txt_cnc_{idx}")
+                                        if st.button("Confirmar", key=f"btn_cnc_{idx}"):
+                                            sit['status'] = "Cancelado"; sit['obs_final'] = motivo_canc; st.rerun()
+                                    with c_btn3.popover("⚠️ Não Possível"):
+                                        motivo_imp = st.text_input("Motivo", key=f"txt_imp_{idx}")
+                                        if st.button("Confirmar", key=f"btn_imp_{idx}"):
+                                            sit['status'] = "Não Possível"; sit['obs_final'] = motivo_imp; st.rerun()
                                     if c_btn4.button("🗑️ Excluir", key=f"del_sit_{idx}"):
                                         st.session_state.situacoes_diarias.pop(idx); st.rerun()
 
-                    # Exportação
                     st.divider()
+                    df_export = pd.DataFrame(st.session_state.situacoes_diarias)
                     output = io.BytesIO()
                     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                        df_diario.to_excel(writer, index=False, sheet_name='Diario')
-                    st.download_button("📥 Exportar Diário Completo para Excel", output.getvalue(), 
-                                       file_name=f"diario_{datetime.now().strftime('%Y%m%d')}.xlsx", mime="application/vnd.ms-excel")
+                        df_export.to_excel(writer, index=False, sheet_name='Diario')
+                    st.download_button("📥 Exportar Diário para Excel", output.getvalue(), file_name=f"diario_{datetime.now().strftime('%Y%m%d')}.xlsx")
                 else:
                     st.info("Seu diário está vazio.")
 
@@ -242,6 +237,7 @@ def exibir(user_role="OPERACIONAL"):
             if filtrados:
                 escolha = c_f2.selectbox("Selecione o Projeto:", [p['titulo'] for p in filtrados])
                 projeto = next(p for p in filtrados if p['titulo'] == escolha)
+                
                 st.write("")
                 cols_r = st.columns(8)
                 for i, etapa in enumerate(ROADMAP):
@@ -272,7 +268,8 @@ def exibir(user_role="OPERACIONAL"):
                         st.divider()
                         notas_fase = [n for n in projeto.get('notas', []) if n.get('fase_origem') == projeto['fase']]
                         for n in reversed(notas_fase):
-                            with st.expander(f"📌 {n['motivo']} ({n.get('depto', 'Geral')}) - {n['data']}"): st.write(n['texto'])
+                            with st.expander(f"📌 {n['motivo']} ({n.get('depto', 'Geral')}) - {n['data']}"): 
+                                st.write(n['texto'])
 
                     with col_e2:
                         st.markdown("#### ⚙️ Controle")
@@ -281,45 +278,54 @@ def exibir(user_role="OPERACIONAL"):
                         if st.button("⏪ RECUAR", use_container_width=True) and projeto['fase'] > 1:
                             projeto['fase'] -= 1; salvar_seguro(); st.rerun()
                         st.markdown("#### ⏰ Lembretes")
-                        for idx, l in enumerate(projeto.get('lembretes', [])):
+                        for l_idx, l in enumerate(projeto.get('lembretes', [])):
                             with st.container(border=True):
                                 st.caption(f"📅 {l['data_hora']}"); st.write(l['texto'])
-                                if st.button("Concluir", key=f"done_pqi_{idx}"): projeto['lembretes'].pop(idx); salvar_seguro(); st.rerun()
+                                if st.button("Concluir", key=f"done_pqi_{l_idx}"): 
+                                    projeto['lembretes'].pop(l_idx); salvar_seguro(); st.rerun()
 
                 with t_dossie:
-                    sub1, sub2 = st.tabs(["📂 Pastas", "📜 Histórico"])
-                    with sub1:
+                    sub_dos1, sub_dos2 = st.tabs(["📂 Pastas", "📜 Histórico"])
+                    with sub_dos1:
                         with st.popover("➕ Criar Pasta"):
-                            np = st.text_input("Nome")
-                            if st.button("Salvar"): projeto.setdefault('pastas_virtuais', {})[np] = []; salvar_seguro(); st.rerun()
+                            nome_pasta = st.text_input("Nome da Pasta")
+                            if st.button("Salvar Pasta"):
+                                projeto.setdefault('pastas_virtuais', {})[nome_pasta] = []
+                                salvar_seguro(); st.rerun()
+                        
                         pastas = projeto.get('pastas_virtuais', {})
                         for p_nome in list(pastas.keys()):
                             with st.expander(f"📁 {p_nome}"):
-                                c_p1, c_p2 = st.columns([3, 1])
-                                novo_n = c_p1.text_input("Renomear", p_nome, key=f"r_{p_nome}_{projeto['titulo']}")
-                                if novo_n != p_nome: pastas[novo_n] = pastas.pop(p_nome); salvar_seguro(); st.rerun()
-                                if c_p2.button("🗑️", key=f"d_{p_nome}"): del pastas[p_nome]; salvar_seguro(); st.rerun()
-                                up = st.file_uploader("Anexar", accept_multiple_files=True, key=f"u_{p_nome}")
-                                if st.button("Subir", key=f"b_{p_nome}"):
-                                    for a in up:
+                                c_rn1, c_rn2 = st.columns([3, 1])
+                                novo_nome = c_rn1.text_input("Renomear", p_nome, key=f"r_{p_nome}_{projeto['titulo']}")
+                                if novo_nome != p_nome:
+                                    pastas[novo_nome] = pastas.pop(p_nome); salvar_seguro(); st.rerun()
+                                if c_rn2.button("🗑️", key=f"d_{p_nome}"):
+                                    del pastas[p_nome]; salvar_seguro(); st.rerun()
+                                
+                                up_files = st.file_uploader("Anexar", accept_multiple_files=True, key=f"u_{p_nome}")
+                                if st.button("Subir Arquivos", key=f"b_{p_nome}"):
+                                    for a in up_files:
                                         path = os.path.join(UPLOAD_DIR, f"{datetime.now().timestamp()}_{a.name}")
                                         with open(path, "wb") as f: f.write(a.getbuffer())
                                         pastas[p_nome].append({"nome": a.name, "path": path, "data": datetime.now().strftime("%d/%m/%Y")})
                                     salvar_seguro(); st.rerun()
-                    with sub2:
-                        df_h = pd.DataFrame(projeto.get('notas', []))
-                        if not df_h.empty: st.dataframe(df_h, use_container_width=True, hide_index=True)
+
+                    with sub_dos2:
+                        df_hist = pd.DataFrame(projeto.get('notas', []))
+                        if not df_hist.empty: st.dataframe(df_hist, use_container_width=True, hide_index=True)
 
                 with t_esforco:
-                    import plotly.express as px
-                    df_k = pd.DataFrame(projeto.get('notas', []))
-                    if not df_k.empty:
+                    df_esf = pd.DataFrame(projeto.get('notas', []))
+                    if not df_esf.empty:
                         st.markdown(f"### Análise: {projeto['titulo']}")
-                        c1, c2 = st.columns(2)
-                        with c1: st.bar_chart(df_k['motivo'].value_counts())
-                        with c2:
-                            df_p = df_k['motivo'].value_counts().reset_index()
+                        c_esf1, c_esf2 = st.columns(2)
+                        with c_esf1: st.bar_chart(df_esf['motivo'].value_counts())
+                        with c_esf2:
+                            df_p = df_esf['motivo'].value_counts().reset_index()
                             df_p.columns = ['Motivo', 'Qtd']
                             fig = px.pie(df_p, values='Qtd', names='Motivo', hole=0.4)
                             fig.update_layout(margin=dict(l=20,r=20,t=20,b=20), height=300)
                             st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("Nenhum projeto encontrado com este status.")
