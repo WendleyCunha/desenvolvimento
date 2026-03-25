@@ -2,7 +2,6 @@ import streamlit as st
 import database as db
 import pandas as pd
 import base64
-import plotly.express as px
 from datetime import datetime, timedelta
 from streamlit_option_menu import option_menu 
 
@@ -32,7 +31,7 @@ ICON_MAP = {
 }
 
 # =========================================================
-# 1. FUNÇÕES AUXILIARES, ESTILO E LÓGICA DE ESFORÇO
+# 1. FUNÇÕES AUXILIARES E ESTILO
 # =========================================================
 def processar_foto(arquivo_subido):
     if arquivo_subido is not None:
@@ -44,23 +43,6 @@ def processar_foto(arquivo_subido):
             st.error(f"Erro ao processar imagem: {e}")
     return None
 
-# --- LÓGICA DE ESFORÇO (CENTRALIZADA NO MAIN) ---
-def finalizar_atividade_atual(nome_usuario):
-    logs = db.carregar_esforco()
-    mudou = False
-    for idx, act in enumerate(logs):
-        if act['usuario'] == nome_usuario and act['status'] == 'Em andamento':
-            agora = datetime.now()
-            inicio = datetime.fromisoformat(act['inicio'])
-            duracao = (agora - inicio).total_seconds() / 60
-            logs[idx]['fim'] = agora.isoformat()
-            logs[idx]['status'] = 'Finalizado'
-            logs[idx]['duracao_min'] = round(duracao, 2)
-            mudou = True
-    if mudou:
-        db.salvar_esforco(logs)
-        st.session_state.atividades_log = logs
-
 st.markdown("""
     <style>
     .stApp { background-color: #f8fafc; }
@@ -69,21 +51,24 @@ st.markdown("""
         object-fit: cover; border: 3px solid #002366;
         margin: 0 auto 10px auto; display: block;
     }
-    .card-esforco { background: white; padding: 20px; border-radius: 10px; border-left: 5px solid #002366; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    .reminder-card {
+        background: white; padding: 15px; border-radius: 10px;
+        border-left: 5px solid #ef4444; margin-bottom: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .diary-card {
+        background: white; padding: 15px; border-radius: 10px;
+        border-left: 5px solid #3b82f6; margin-bottom: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
     </style>
 """, unsafe_allow_html=True)
 
 # =========================================================
-# 2. AUTENTICAÇÃO E CARREGAMENTO INICIAL
+# 2. AUTENTICAÇÃO
 # =========================================================
 usuarios = db.carregar_usuarios_firebase()
 departamentos = db.carregar_departamentos()
-
-# Inicialização de dados persistentes no state
-if 'atividades_log' not in st.session_state:
-    st.session_state.atividades_log = db.carregar_esforco()
-if 'motivos_gestao' not in st.session_state:
-    st.session_state.motivos_gestao = db.carregar_motivos()
 
 if "autenticado" not in st.session_state:
     st.session_state.autenticado = False
@@ -106,7 +91,6 @@ if not st.session_state.autenticado:
 
 user_id = st.session_state.user_id
 user_info = usuarios.get(user_id)
-user_nome = user_info.get('nome', 'Usuário')
 user_role = user_info.get('role', 'OPERACIONAL')
 is_adm = user_role == "ADM"
 modulos_permitidos = user_info.get('modulos', [])
@@ -117,7 +101,7 @@ modulos_permitidos = user_info.get('modulos', [])
 with st.sidebar:
     foto_atual = user_info.get('foto') or "https://cdn-icons-png.flaticon.com/512/149/149071.png"
     st.markdown(f'<img src="{foto_atual}" class="profile-pic">', unsafe_allow_html=True)
-    st.markdown(f"<p style='text-align:center; font-weight:bold; margin-bottom:20px;'>{user_nome}</p>", unsafe_allow_html=True)
+    st.markdown(f"<p style='text-align:center; font-weight:bold; margin-bottom:20px;'>{user_info['nome']}</p>", unsafe_allow_html=True)
     
     menu_options = ["🏠 Home"]
     for nome, mid in MAPA_MODULOS_MESTRE.items():
@@ -141,127 +125,231 @@ with st.sidebar:
         }
     )
 
+    st.markdown("<br>" * 5, unsafe_allow_html=True)
+    
+    with st.expander("👤 Meu Perfil"):
+        up_f = st.file_uploader("Trocar Foto", type=['jpg', 'png'])
+        nova_senha_user = st.text_input("Nova Senha", type="password")
+        confirma_senha_user = st.text_input("Confirmar Senha", type="password")
+        if st.button("Salvar Alterações"):
+            atualizacoes = {}
+            if up_f: atualizacoes['foto'] = processar_foto(up_f)
+            if nova_senha_user and nova_senha_user == confirma_senha_user:
+                atualizacoes['senha'] = nova_senha_user
+            if atualizacoes:
+                db.salvar_usuario(user_id, atualizacoes)
+                st.success("Atualizado!"); st.rerun()
+
     if st.button("🚪 Sair", use_container_width=True):
         st.session_state.autenticado = False
         st.rerun()
 
 # =========================================================
-# 4. FUNÇÕES DAS PÁGINAS (HOME E CENTRAL)
+# 4. FUNÇÕES DA HOME TURBINADA
 # =========================================================
 
 def exibir_home():
-    st.title(f"Olá, {user_nome}! 👋")
+    st.title(f"Olá, {user_info['nome']}! 👋")
     
-    # NOVAS ABAS NO MAIN (MEU ESFORÇO DISPONÍVEL PARA TODOS NA HOME)
-    tab_hoje, tab_esforço, tab_agenda, tab_novo = st.tabs(["🚀 Visão de Hoje", "⏱️ Meu Esforço", "📅 Agenda Master", "➕ Novo Agendamento"])
+    # NOVAS ABAS NO MAIN
+    tab_hoje, tab_agenda, tab_novo = st.tabs(["🚀 Visão de Hoje", "📅 Agenda Master", "➕ Novo Agendamento"])
     
-    # --- ABA: MEU ESFORÇO (OPERADOR LOGADO) ---
-    with tab_esforço:
-        st.subheader("Rastreador de Produtividade")
-        
-        # Atividade atual do usuário logado
-        atv_atual = next((a for a in st.session_state.atividades_log if a['usuario'] == user_nome and a['status'] == 'Em andamento'), None)
-        
-        c_atv1, c_atv2 = st.columns([2, 1])
-        with c_atv1:
-            if atv_atual:
-                st.markdown(f"""
-                <div class="card-esforco">
-                    <h3 style='color:#ef4444;'>⏳ TAREFA ATIVA</h3>
-                    <p><b>Motivo:</b> {atv_atual['motivo']}</p>
-                    <p><b>Início:</b> {datetime.fromisoformat(atv_atual['inicio']).strftime('%H:%M:%S')}</p>
-                </div>
-                """, unsafe_allow_html=True)
-                if st.button("⏹️ FINALIZAR AGORA", type="primary"):
-                    finalizar_atividade_atual(user_nome)
-                    st.rerun()
-            else:
-                st.info("Nenhuma atividade em andamento. Inicie uma abaixo!")
+    projs = db.carregar_projetos()
+    diario = db.carregar_diario()
+    hoje = datetime.now().strftime("%d/%m/%Y")
 
-        with c_atv2:
-            st.markdown("#### Novo Registro")
-            motivo_sel = st.selectbox("Selecione a Atividade", st.session_state.motivos_gestao)
-            obs_esf = st.text_input("Ticket / Obs")
-            if st.button("▶️ DAR PLAY", use_container_width=True):
-                finalizar_atividade_atual(user_nome)
-                nova = {
-                    "usuario": user_nome, "motivo": motivo_sel, "obs": obs_esf,
-                    "inicio": datetime.now().isoformat(), "fim": None, "status": "Em andamento", "duracao_min": 0
-                }
-                st.session_state.atividades_log.append(nova)
-                db.salvar_esforco(st.session_state.atividades_log)
-                st.rerun()
-
-    # (Lógica original de Lembretes/Agenda na Home...)
+    # --- ABA 1: O QUE TEMOS PARA HOJE ---
     with tab_hoje:
-        st.write("Visão de Hoje...") 
+        col1, col2 = st.columns(2)
+        with col1:
+            st.subheader("📌 Processos (PQI)")
+            tem_pqi = False
+            for p_idx, p in enumerate(projs):
+                if 'lembretes' in p:
+                    for l_idx, l in enumerate(p['lembretes']):
+                        if hoje in l['data_hora']:
+                            tem_pqi = True
+                            with st.container(border=True):
+                                st.markdown(f'<div class="reminder-card"><small style="color:red;">⏰ HOJE</small><br><strong>Projeto:</strong> {p["titulo"]}<br><strong>Tarefa:</strong> {l["texto"]}</div>', unsafe_allow_html=True)
+                                if st.button(f"Concluir PQI", key=f"main_pqi_{p_idx}_{l_idx}"):
+                                    p['lembretes'].pop(l_idx)
+                                    db.salvar_projetos(projs)
+                                    st.toast("Concluído!"); st.rerun()
+            if not tem_pqi: st.success("Sem PQIs hoje!")
+
+        with col2:
+            st.subheader("📓 Diário")
+            tem_dir = False
+            for idx, sit in enumerate(diario):
+                if sit.get('status') == "Pendente" and sit.get('lembrete') != "N/A":
+                    if hoje in sit['lembrete']:
+                        tem_dir = True
+                        with st.container(border=True):
+                            st.markdown(f'<div class="diary-card"><small style="color:#3b82f6;">📅 AGENDADO</small><br><strong>Solicitação:</strong> {sit["solicitacao"]}<br><strong>Depto:</strong> {sit["depto"]}</div>', unsafe_allow_html=True)
+                            if st.button(f"Executado", key=f"main_dir_{idx}"):
+                                sit['status'] = "Executado"
+                                db.salvar_diario(diario)
+                                st.toast("Atualizado!"); st.rerun()
+            if not tem_dir: st.info("Diário limpo hoje.")
+
+    # --- ABA 2: CALENDÁRIO / AGENDA DE DIAS À FRENTE ---
     with tab_agenda:
-        st.write("Agenda Master...")
+        st.subheader("🗓️ Próximos Compromissos")
+        agenda_data = []
+        for p in projs:
+            for l in p.get('lembretes', []):
+                data_limpa = l['data_hora'].split(" ")[0]
+                if data_limpa > hoje:
+                    agenda_data.append({"Data": data_limpa, "Origem": f"PQI: {p['titulo']}", "Descrição": l['texto']})
+        
+        for sit in diario:
+            if sit.get('status') == "Pendente" and sit.get('lembrete') != "N/A":
+                data_limpa = sit['lembrete'].split(" ")[0]
+                if data_limpa > hoje:
+                    agenda_data.append({"Data": data_limpa, "Origem": f"DIÁRIO: {sit['depto']}", "Descrição": sit['solicitacao']})
+        
+        if agenda_data:
+            df_agenda = pd.DataFrame(agenda_data).sort_values(by="Data")
+            st.dataframe(df_agenda, use_container_width=True, hide_index=True)
+        else:
+            st.write("Nenhum compromisso para os próximos dias.")
+
+    # --- ABA 3: AGENDAMENTO RÁPIDO ---
+    with tab_novo:
+        st.subheader("🎯 Criar Agendamento Direto")
+        with st.form("form_novo_lembrete_main"):
+            tipo = st.radio("Vincular a:", ["Processos (PQI)", "Situações Diárias (Diário)"], horizontal=True)
+            txt_lembrete = st.text_input("O que precisa ser feito?")
+            
+            c_data, c_hora = st.columns(2)
+            d_agendada = c_data.date_input("Data do Lembrete")
+            h_agendada = c_hora.time_input("Hora do Lembrete")
+            
+            projeto_vinculo = None
+            if tipo == "Processos (PQI)":
+                projeto_vinculo = st.selectbox("Selecione o Projeto:", [p['titulo'] for p in projs])
+            
+            if st.form_submit_button("Gerar Lembrete Monstro 🚀", use_container_width=True):
+                data_final = f"{d_agendada.strftime('%d/%m/%Y')} {h_agendada.strftime('%H:%M')}"
+                
+                if tipo == "Processos (PQI)":
+                    for p in projs:
+                        if p['titulo'] == projeto_vinculo:
+                            p.setdefault('lembretes', []).append({
+                                "id": datetime.now().timestamp(),
+                                "data_hora": data_final,
+                                "texto": txt_lembrete
+                            })
+                            db.salvar_projetos(projs)
+                else:
+                    nova_situacao = {
+                        "id": datetime.now().timestamp(),
+                        "data_reg": datetime.now().strftime("%d/%m/%Y %H:%M"),
+                        "solicitacao": txt_lembrete,
+                        "depto": "GERAL",
+                        "detalhes": "Criado via Atalho Home",
+                        "lembrete": data_final,
+                        "status": "Pendente",
+                        "obs_final": ""
+                    }
+                    diario.append(nova_situacao)
+                    db.salvar_diario(diario)
+                
+                st.success("Lembrete Gerado com Sucesso!"); st.rerun()
 
 def exibir_central():
+    # ... (Mantenha seu código original da Central de Comando aqui) ...
     st.title("⚙️ Painel de Governança")
-    # PONTO CHAVE: Adicionado "⚖️ Painel Esforço" aqui no Menu ADM
-    menu = st.segmented_control("Menu:", ["👥 Usuários", "⚖️ Painel Esforço", "➕ Novo", "🏢 Deptos", "⏱️ Motivos"], default="👥 Usuários")
-    
-    # --- NOVO PAINEL DE ESFORÇO (FILTROS) ---
-    if menu == "⚖️ Painel Esforço":
-        st.subheader("Análise de Esforço da Equipe")
-        df_esf = pd.DataFrame(st.session_state.atividades_log)
-        if not df_esf.empty:
-            df_esf['inicio_dt'] = pd.to_datetime(df_esf['inicio'])
-            df_esf['data_dia'] = df_esf['inicio_dt'].dt.date
-            
-            # FILTROS POR DIA, SEMANA, MÊS, OPERADOR E ATIVIDADE
-            with st.container(border=True):
-                f1, f2, f3 = st.columns(3)
-                periodo = f1.selectbox("Período", ["Hoje", "Esta Semana", "Este Mês", "Geral"])
-                f_user = f2.multiselect("Filtrar por Pessoa", options=df_esf['usuario'].unique())
-                f_task = f3.multiselect("Filtrar Atividade", options=df_esf['motivo'].unique())
-                
-                # Aplicação dos Filtros
-                hoje_ref = datetime.now()
-                if periodo == "Hoje": df_esf = df_esf[df_esf['data_dia'] == hoje_ref.date()]
-                elif periodo == "Esta Semana":
-                    segunda = hoje_ref.date() - timedelta(days=hoje_ref.weekday())
-                    df_esf = df_esf[df_esf['data_dia'] >= segunda]
-                elif periodo == "Este Mês":
-                    df_esf = df_esf[df_esf['inicio_dt'].dt.month == hoje_ref.month]
-                
-                if f_user: df_esf = df_esf[df_esf['usuario'].isin(f_user)]
-                if f_task: df_esf = df_esf[df_esf['motivo'].isin(f_task)]
-
-            # Dashboards Rápidos
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Horas Totais", f"{(df_esf['duracao_min'].sum()/60):.2f}h")
-            c2.metric("Qtd Atividades", len(df_esf))
-            c3.metric("Atividades/Dia", round(len(df_esf)/max(df_esf['data_dia'].nunique(), 1), 1))
-
-            st.plotly_chart(px.bar(df_esf, x='usuario', y='duracao_min', color='motivo', title="Esforço por Colaborador (Minutos)"), use_container_width=True)
-            st.dataframe(df_esf[['usuario', 'data_dia', 'motivo', 'obs', 'duracao_min']], use_container_width=True)
-        else:
-            st.warning("Nenhum dado registrado.")
-
-    # Gestão de Motivos (Configurações)
-    elif menu == "⏱️ Motivos":
-        st.subheader("Configurar Lista de Motivos")
-        novo_m = st.text_input("Nome do Motivo")
-        if st.button("Adicionar"):
-            st.session_state.motivos_gestao.append(novo_m); db.salvar_motivos(st.session_state.motivos_gestao); st.rerun()
-        for m in st.session_state.motivos_gestao:
-            c_m1, c_m2 = st.columns([4, 1])
-            c_m1.write(m)
-            if c_m2.button("Deletar", key=f"d_{m}"):
-                st.session_state.motivos_gestao.remove(m); db.salvar_motivos(st.session_state.motivos_gestao); st.rerun()
-
-    # ... Suas lógicas de Usuários e Deptos ...
+    menu = st.segmented_control("Menu:", ["👥 Usuários", "➕ Novo", "🏢 Deptos"], default="👥 Usuários")
+    if menu == "➕ Novo":
+        with st.form("f_novo"):
+            c1, c2 = st.columns(2)
+            nid = c1.text_input("Login (id)").lower().strip()
+            nnome = c2.text_input("Nome")
+            nrole = c1.selectbox("Alçada", ["OPERACIONAL", "SUPERVISÃO", "GERENTE", "ADM"])
+            ndepto = c2.selectbox("Departamento", departamentos)
+            nsenha = st.text_input("Senha")
+            if st.form_submit_button("Cadastrar"):
+                db.salvar_usuario(nid, {"nome": nnome, "senha": nsenha, "role": nrole, "depto": ndepto, "modulos": [], "foto": ""})
+                st.rerun()
+    elif menu == "🏢 Deptos":
+        c_a, c_r = st.columns(2)
+        with c_a:
+            nd = st.text_input("Nome Depto").upper()
+            if st.button("Adicionar Setor"):
+                departamentos.append(nd); db.salvar_departamentos(departamentos); st.rerun()
+        with c_r:
+            rd = st.selectbox("Escolha", [""] + departamentos)
+            if st.button("🗑️ Deletar Setor"):
+                departamentos.remove(rd); db.salvar_departamentos(departamentos); st.rerun()
     elif menu == "👥 Usuários":
-        st.write("Gestão de Usuários")
+        tabs_d = st.tabs(departamentos)
+        for idx, d_nome in enumerate(departamentos):
+            with tabs_d[idx]:
+                u_dept = {uid: info for uid, info in usuarios.items() if info.get('depto') == d_nome}
+                for uid, info in u_dept.items():
+                    with st.container(border=True):
+                        col_f, col_t, col_b = st.columns([1, 4, 2])
+                        f_u = info.get('foto') or "https://cdn-icons-png.flaticon.com/512/149/149071.png"
+                        col_f.markdown(f'<img src="{f_u}" style="width:45px; height:45px; border-radius:50%; object-fit:cover;">', unsafe_allow_html=True)
+                        mods_u = info.get('modulos', [])
+                        col_t.write(f"**{info['nome']}** ({info.get('role')})")
+                        col_t.caption(f"Acessos: {', '.join(mods_u) if mods_u else 'Nenhum'}")
+                        c_ed, c_de = col_b.columns(2)
+                        if c_ed.button("✏️", key=f"e_{uid}"): st.session_state.edit_id = uid; st.rerun()
+                        if c_de.button("🗑️", key=f"d_{uid}"): db.deletar_usuario(uid); st.rerun()
 
 # =========================================================
-# 5. ROTEAMENTO
+# 5. ROTEAMENTO DE CONTEÚDO
 # =========================================================
 if escolha == "🏠 Home":
     exibir_home()
+elif "Manutenção" in escolha:
+    import mod_manutencao
+    mod_manutencao.main()
+elif "Processos" in escolha:
+    import mod_processos
+    mod_processos.exibir(user_role=user_role)
+elif "RH Docs" in escolha:
+    import mod_cartas
+    mod_cartas.exibir(user_role=user_role)
+elif "Operação" in escolha:
+    import mod_operacao
+    mod_operacao.exibir_operacao_completa(user_role=user_role)
+elif "Minha Spin" in escolha:
+    import mod_spin
+    mod_spin.exibir_tamagotchi(user_info)
+elif escolha == "🚌 Passagens":
+    import passagens
+    passagens.exibir_modulo_passagens()
 elif "Central de Comando" in escolha:
     exibir_central()
-# ... outros módulos (Manutenção, Processos, etc) ...
+
+# Lógica de edição ADM fora da função para persistência do rerun
+if "edit_id" in st.session_state and escolha == "⚙️ Central de Comando":
+    eid = st.session_state.edit_id
+    einfo = usuarios[eid]
+    st.divider()
+    st.subheader(f"Editando Acessos: {einfo['nome']}")
+    with st.container(border=True):
+        c_edit1, c_edit2 = st.columns(2)
+        enome = c_edit1.text_input("Nome", einfo['nome'])
+        erole = c_edit1.selectbox("Alçada", ["OPERACIONAL", "SUPERVISÃO", "GERENTE", "ADM"], index=["OPERACIONAL", "SUPERVISÃO", "GERENTE", "ADM"].index(einfo.get('role', 'OPERACIONAL')))
+        edept = c_edit2.selectbox("Depto", departamentos, index=departamentos.index(einfo['depto']) if einfo['depto'] in departamentos else 0)
+        esenha = c_edit2.text_input("Resetar Senha", type="password")
+        
+        st.write("**Módulos Liberados:**")
+        acessos_atuais = einfo.get('modulos', [])
+        cols_chk = st.columns(3)
+        novos_mods = []
+        for idx_m, (nome_exibicao, id_interno) in enumerate(MAPA_MODULOS_MESTRE.items()):
+            if cols_chk[idx_m % 3].checkbox(nome_exibicao, value=(id_interno in acessos_atuais), key=f"chk_{id_interno}_{eid}"):
+                novos_mods.append(id_interno)
+
+        if st.button("Salvar Alterações de Acesso", type="primary"):
+            dados_update = {"nome": enome, "role": erole, "depto": edept, "modulos": novos_mods}
+            if esenha: dados_update["senha"] = esenha
+            db.salvar_usuario(eid, dados_update)
+            st.success("Dados salvos!")
+            del st.session_state.edit_id
+            st.rerun()
