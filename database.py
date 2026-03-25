@@ -2,12 +2,12 @@ import streamlit as st
 from google.cloud import firestore
 from google.oauth2 import service_account
 import json
+import os
 
 # --- FUNÇÃO DE CONEXÃO ---
 def inicializar_db():
     if "db" not in st.session_state:
         try:
-            # Tenta carregar das secrets do Streamlit
             if "textkey" in st.secrets:
                 key_dict = json.loads(st.secrets["textkey"])
                 creds = service_account.Credentials.from_service_account_info(key_dict)
@@ -40,9 +40,12 @@ def deletar_usuario(user_id):
 # --- FUNÇÕES DE DEPARTAMENTOS ---
 def carregar_departamentos():
     db = inicializar_db()
-    if not db: return ["CX", "PQI", "TI"]
-    doc = db.collection("config").document("departamentos").get()
-    return doc.to_dict().get("lista", ["CX", "PQI", "TI"]) if doc.exists else ["CX", "PQI", "TI"]
+    default = ["CX", "PQI", "TI"]
+    if not db: return default
+    try:
+        doc = db.collection("config").document("departamentos").get()
+        return doc.to_dict().get("lista", default) if doc.exists else default
+    except: return default
 
 def salvar_departamentos(lista):
     db = inicializar_db()
@@ -51,20 +54,48 @@ def salvar_departamentos(lista):
 # --- FUNÇÕES DE MOTIVOS (TIMER) ---
 def carregar_motivos():
     db = inicializar_db()
-    if not db: return ["Reunião", "Análise", "Documentação"]
-    doc = db.collection("config").document("motivos_timer").get()
-    return doc.to_dict().get("lista", ["Reunião", "Análise", "Documentação"]) if doc.exists else ["Reunião", "Análise", "Documentação"]
+    default = ["Operação Padrão", "Reunião", "Pausa", "Ajuste de Sistema"]
+    if not db: return default
+    try:
+        doc = db.collection("config").document("motivos_timer").get()
+        return doc.to_dict().get("lista", default) if doc.exists else default
+    except: return default
 
 def salvar_motivos(lista):
     db = inicializar_db()
     if db: db.collection("config").document("motivos_timer").set({"lista": lista})
+
+# --- FUNÇÕES DE ESFORÇO (TIMER NO FIREBASE) ---
+def carregar_esforco():
+    db = inicializar_db()
+    if not db: return []
+    try:
+        # Trazemos os esforços ordenados por início para facilitar o painel
+        esforcos = db.collection("timer_esforco").order_by("inicio", direction=firestore.Query.DESCENDING).stream()
+        return [e.to_dict() for e in esforcos]
+    except Exception as e:
+        print(f"Erro ao carregar esforço: {e}")
+        return []
+
+def salvar_esforco(lista_esforco):
+    db = inicializar_db()
+    if not db: return
+    try:
+        batch = db.batch()
+        for atv in lista_esforco:
+            # Gera um ID único para cada atividade para não sobrescrever o histórico
+            id_atv = f"{atv.get('usuario')}_{atv.get('inicio')}".replace(".", "_").replace(":", "_")
+            doc_ref = db.collection("timer_esforco").document(id_atv)
+            batch.set(doc_ref, atv)
+        batch.commit()
+    except Exception as e:
+        st.error(f"Erro ao salvar esforço no Firebase: {e}")
 
 # --- FUNÇÕES DE PROJETOS PQI ---
 def carregar_projetos():
     db = inicializar_db()
     if not db: return []
     try:
-        # Carrega todos os projetos da coleção
         projs = db.collection("projetos_pqi").stream()
         return [p.to_dict() for p in projs]
     except: return []
@@ -74,29 +105,8 @@ def salvar_projetos(lista_projetos):
     if not db: return
     batch = db.batch()
     for proj in lista_projetos:
-        # Usa o título como ID de documento (ou crie um campo 'id' único)
         doc_ref = db.collection("projetos_pqi").document(proj['titulo'])
         batch.set(doc_ref, proj)
-    batch.commit()
-
-# --- FUNÇÕES DE ESFORÇO (TIMER) ---
-def carregar_esforco():
-    db = inicializar_db()
-    if not db: return []
-    try:
-        esforcos = db.collection("timer_esforco").stream()
-        return [e.to_dict() for e in esforcos]
-    except: return []
-
-def salvar_esforco(lista_esforco):
-    db = inicializar_db()
-    if not db: return
-    batch = db.batch()
-    for atv in lista_esforco:
-        # Gera um ID baseado no timestamp e usuário para não sobrepor
-        id_atv = f"{atv.get('usuario')}_{atv.get('inicio')}".replace(".", "_")
-        doc_ref = db.collection("timer_esforco").document(id_atv)
-        batch.set(doc_ref, atv)
     batch.commit()
 
 # --- FUNÇÕES DO DIÁRIO DE SITUAÇÕES ---
@@ -113,7 +123,6 @@ def salvar_diario(lista_diario):
     if not db: return
     batch = db.batch()
     for sit in lista_diario:
-        # Usa o ID gerado na criação do registro
         sid = str(sit.get('id'))
         doc_ref = db.collection("diario_situacoes").document(sid)
         batch.set(doc_ref, sit)
