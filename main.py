@@ -2,8 +2,8 @@ import streamlit as st
 import database as db
 import pandas as pd
 import base64
-from datetime import datetime
-from streamlit_option_menu import option_menu
+from datetime import datetime, timedelta
+from streamlit_option_menu import option_menu 
 
 # =========================================================
 # 0. CONFIGURAÇÕES E MAPAS
@@ -15,7 +15,6 @@ MAPA_MODULOS_MESTRE = {
     "🎯 Processos": "processos",
     "📄 RH Docs": "rh",
     "📊 Operação": "operacao",
-    "🧪 Testes/Planner": "testes",
     "🚗 Minha Spin": "spin",
     "🚌 Passagens": "passagens",
 }
@@ -26,7 +25,6 @@ ICON_MAP = {
     "🎯 Processos": "diagram-3",
     "📄 RH Docs": "file-earmark-text",
     "📊 Operação": "box-seam",
-    "🧪 Testes/Planner": "flask",
     "🚗 Minha Spin": "car-front-fill",
     "🚌 Passagens": "bus-front",
     "⚙️ Central de Comando": "shield-lock"
@@ -58,6 +56,11 @@ st.markdown("""
         border-left: 5px solid #ef4444; margin-bottom: 10px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     }
+    .diary-card {
+        background: white; padding: 15px; border-radius: 10px;
+        border-left: 5px solid #3b82f6; margin-bottom: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -74,7 +77,7 @@ if not st.session_state.autenticado:
     c1, c2, c3 = st.columns([1, 1.2, 1])
     with c2:
         st.markdown("<br><br><br>", unsafe_allow_html=True)
-        st.markdown("<h1 style='text-align:center;'>👑 Portal King Star</h1>", unsafe_allow_html=True)
+        st.markdown("<h1 style='text-align:center;'>Wendley Portal</h1>", unsafe_allow_html=True)
         u = st.text_input("Usuário").lower().strip()
         p = st.text_input("Senha", type="password")
         if st.button("ACESSAR SISTEMA", use_container_width=True, type="primary"):
@@ -86,7 +89,6 @@ if not st.session_state.autenticado:
                 st.error("Credenciais inválidas.")
     st.stop()
 
-# Dados do usuário logado
 user_id = st.session_state.user_id
 user_info = usuarios.get(user_id)
 user_role = user_info.get('role', 'OPERACIONAL')
@@ -123,6 +125,8 @@ with st.sidebar:
         }
     )
 
+    st.markdown("<br>" * 5, unsafe_allow_html=True)
+    
     with st.expander("👤 Meu Perfil"):
         up_f = st.file_uploader("Trocar Foto", type=['jpg', 'png'])
         nova_senha_user = st.text_input("Nova Senha", type="password")
@@ -141,27 +145,122 @@ with st.sidebar:
         st.rerun()
 
 # =========================================================
-# 4. ROTEAMENTO DE CONTEÚDO
+# 4. FUNÇÕES DA HOME TURBINADA
 # =========================================================
+
 def exibir_home():
     st.title(f"Olá, {user_info['nome']}! 👋")
-    st.subheader("📌 Lembretes de Processos (PQI)")
+    
+    # NOVAS ABAS NO MAIN
+    tab_hoje, tab_agenda, tab_novo = st.tabs(["🚀 Visão de Hoje", "📅 Agenda Master", "➕ Novo Agendamento"])
+    
     projs = db.carregar_projetos()
+    diario = db.carregar_diario()
     hoje = datetime.now().strftime("%d/%m/%Y")
-    tem_lembrete = False
-    for p in projs:
-        if 'lembretes' in p:
-            for l in p['lembretes']:
-                if hoje in l['data_hora']:
-                    tem_lembrete = True
-                    st.markdown(f"""<div class="reminder-card"><small style="color:red; font-weight:bold;">⏰ HOJE</small><br>
-                        <strong>Projeto:</strong> {p['titulo']}<br><strong>Tarefa:</strong> {l['texto']}</div>""", unsafe_allow_html=True)
-    if not tem_lembrete: st.success("Sem lembretes para hoje!")
+
+    # --- ABA 1: O QUE TEMOS PARA HOJE ---
+    with tab_hoje:
+        col1, col2 = st.columns(2)
+        with col1:
+            st.subheader("📌 Processos (PQI)")
+            tem_pqi = False
+            for p_idx, p in enumerate(projs):
+                if 'lembretes' in p:
+                    for l_idx, l in enumerate(p['lembretes']):
+                        if hoje in l['data_hora']:
+                            tem_pqi = True
+                            with st.container(border=True):
+                                st.markdown(f'<div class="reminder-card"><small style="color:red;">⏰ HOJE</small><br><strong>Projeto:</strong> {p["titulo"]}<br><strong>Tarefa:</strong> {l["texto"]}</div>', unsafe_allow_html=True)
+                                if st.button(f"Concluir PQI", key=f"main_pqi_{p_idx}_{l_idx}"):
+                                    p['lembretes'].pop(l_idx)
+                                    db.salvar_projetos(projs)
+                                    st.toast("Concluído!"); st.rerun()
+            if not tem_pqi: st.success("Sem PQIs hoje!")
+
+        with col2:
+            st.subheader("📓 Diário")
+            tem_dir = False
+            for idx, sit in enumerate(diario):
+                if sit.get('status') == "Pendente" and sit.get('lembrete') != "N/A":
+                    if hoje in sit['lembrete']:
+                        tem_dir = True
+                        with st.container(border=True):
+                            st.markdown(f'<div class="diary-card"><small style="color:#3b82f6;">📅 AGENDADO</small><br><strong>Solicitação:</strong> {sit["solicitacao"]}<br><strong>Depto:</strong> {sit["depto"]}</div>', unsafe_allow_html=True)
+                            if st.button(f"Executado", key=f"main_dir_{idx}"):
+                                sit['status'] = "Executado"
+                                db.salvar_diario(diario)
+                                st.toast("Atualizado!"); st.rerun()
+            if not tem_dir: st.info("Diário limpo hoje.")
+
+    # --- ABA 2: CALENDÁRIO / AGENDA DE DIAS À FRENTE ---
+    with tab_agenda:
+        st.subheader("🗓️ Próximos Compromissos")
+        agenda_data = []
+        for p in projs:
+            for l in p.get('lembretes', []):
+                data_limpa = l['data_hora'].split(" ")[0]
+                if data_limpa > hoje:
+                    agenda_data.append({"Data": data_limpa, "Origem": f"PQI: {p['titulo']}", "Descrição": l['texto']})
+        
+        for sit in diario:
+            if sit.get('status') == "Pendente" and sit.get('lembrete') != "N/A":
+                data_limpa = sit['lembrete'].split(" ")[0]
+                if data_limpa > hoje:
+                    agenda_data.append({"Data": data_limpa, "Origem": f"DIÁRIO: {sit['depto']}", "Descrição": sit['solicitacao']})
+        
+        if agenda_data:
+            df_agenda = pd.DataFrame(agenda_data).sort_values(by="Data")
+            st.dataframe(df_agenda, use_container_width=True, hide_index=True)
+        else:
+            st.write("Nenhum compromisso para os próximos dias.")
+
+    # --- ABA 3: AGENDAMENTO RÁPIDO ---
+    with tab_novo:
+        st.subheader("🎯 Criar Agendamento Direto")
+        with st.form("form_novo_lembrete_main"):
+            tipo = st.radio("Vincular a:", ["Processos (PQI)", "Situações Diárias (Diário)"], horizontal=True)
+            txt_lembrete = st.text_input("O que precisa ser feito?")
+            
+            c_data, c_hora = st.columns(2)
+            d_agendada = c_data.date_input("Data do Lembrete")
+            h_agendada = c_hora.time_input("Hora do Lembrete")
+            
+            projeto_vinculo = None
+            if tipo == "Processos (PQI)":
+                projeto_vinculo = st.selectbox("Selecione o Projeto:", [p['titulo'] for p in projs])
+            
+            if st.form_submit_button("Gerar Lembrete Monstro 🚀", use_container_width=True):
+                data_final = f"{d_agendada.strftime('%d/%m/%Y')} {h_agendada.strftime('%H:%M')}"
+                
+                if tipo == "Processos (PQI)":
+                    for p in projs:
+                        if p['titulo'] == projeto_vinculo:
+                            p.setdefault('lembretes', []).append({
+                                "id": datetime.now().timestamp(),
+                                "data_hora": data_final,
+                                "texto": txt_lembrete
+                            })
+                            db.salvar_projetos(projs)
+                else:
+                    nova_situacao = {
+                        "id": datetime.now().timestamp(),
+                        "data_reg": datetime.now().strftime("%d/%m/%Y %H:%M"),
+                        "solicitacao": txt_lembrete,
+                        "depto": "GERAL",
+                        "detalhes": "Criado via Atalho Home",
+                        "lembrete": data_final,
+                        "status": "Pendente",
+                        "obs_final": ""
+                    }
+                    diario.append(nova_situacao)
+                    db.salvar_diario(diario)
+                
+                st.success("Lembrete Gerado com Sucesso!"); st.rerun()
 
 def exibir_central():
+    # ... (Mantenha seu código original da Central de Comando aqui) ...
     st.title("⚙️ Painel de Governança")
     menu = st.segmented_control("Menu:", ["👥 Usuários", "➕ Novo", "🏢 Deptos"], default="👥 Usuários")
-    
     if menu == "➕ Novo":
         with st.form("f_novo"):
             c1, c2 = st.columns(2)
@@ -200,7 +299,9 @@ def exibir_central():
                         if c_ed.button("✏️", key=f"e_{uid}"): st.session_state.edit_id = uid; st.rerun()
                         if c_de.button("🗑️", key=f"d_{uid}"): db.deletar_usuario(uid); st.rerun()
 
-# --- LÓGICA DE EXECUÇÃO ---
+# =========================================================
+# 5. ROTEAMENTO DE CONTEÚDO
+# =========================================================
 if escolha == "🏠 Home":
     exibir_home()
 elif "Manutenção" in escolha:
@@ -215,20 +316,16 @@ elif "RH Docs" in escolha:
 elif "Operação" in escolha:
     import mod_operacao
     mod_operacao.exibir_operacao_completa(user_role=user_role)
-elif "Testes/Planner" in escolha:
-    # AQUI ENTRA O SEU NOVO MÓDULO DE INTEGRAÇÃO
-    import mod_testes
-    mod_testes.exibir_teste_planner(user_role=user_role)
 elif "Minha Spin" in escolha:
     import mod_spin
-    mod_spin.exibir_tamagotchi(user_info) # Passando info do usuário se precisar
+    mod_spin.exibir_tamagotchi(user_info)
 elif escolha == "🚌 Passagens":
     import passagens
     passagens.exibir_modulo_passagens()
 elif "Central de Comando" in escolha:
     exibir_central()
 
-# Lógica de Edição (Edit_id)
+# Lógica de edição ADM fora da função para persistência do rerun
 if "edit_id" in st.session_state and escolha == "⚙️ Central de Comando":
     eid = st.session_state.edit_id
     einfo = usuarios[eid]
@@ -241,7 +338,7 @@ if "edit_id" in st.session_state and escolha == "⚙️ Central de Comando":
         edept = c_edit2.selectbox("Depto", departamentos, index=departamentos.index(einfo['depto']) if einfo['depto'] in departamentos else 0)
         esenha = c_edit2.text_input("Resetar Senha", type="password")
         
-        st.write("**Módulos de Função Liberados:**")
+        st.write("**Módulos Liberados:**")
         acessos_atuais = einfo.get('modulos', [])
         cols_chk = st.columns(3)
         novos_mods = []
