@@ -2,9 +2,9 @@ import streamlit as st
 import database as db
 import pandas as pd
 import base64
+import plotly.express as px
 from datetime import datetime, timedelta
 from streamlit_option_menu import option_menu 
-import plotly.express as px
 
 # =========================================================
 # 0. CONFIGURAÇÕES E MAPAS
@@ -32,7 +32,7 @@ ICON_MAP = {
 }
 
 # =========================================================
-# 1. FUNÇÕES AUXILIARES E ESTILO
+# 1. FUNÇÕES AUXILIARES, ESTILO E LÓGICA DE ESFORÇO
 # =========================================================
 def processar_foto(arquivo_subido):
     if arquivo_subido is not None:
@@ -44,6 +44,23 @@ def processar_foto(arquivo_subido):
             st.error(f"Erro ao processar imagem: {e}")
     return None
 
+# --- LÓGICA DE ESFORÇO (CENTRALIZADA NO MAIN) ---
+def finalizar_atividade_atual(nome_usuario):
+    logs = db.carregar_esforco()
+    mudou = False
+    for idx, act in enumerate(logs):
+        if act['usuario'] == nome_usuario and act['status'] == 'Em andamento':
+            agora = datetime.now()
+            inicio = datetime.fromisoformat(act['inicio'])
+            duracao = (agora - inicio).total_seconds() / 60
+            logs[idx]['fim'] = agora.isoformat()
+            logs[idx]['status'] = 'Finalizado'
+            logs[idx]['duracao_min'] = round(duracao, 2)
+            mudou = True
+    if mudou:
+        db.salvar_esforco(logs)
+        st.session_state.atividades_log = logs
+
 st.markdown("""
     <style>
     .stApp { background-color: #f8fafc; }
@@ -52,17 +69,17 @@ st.markdown("""
         object-fit: cover; border: 3px solid #002366;
         margin: 0 auto 10px auto; display: block;
     }
-    .user-badge-home { background: #002366; color: white; padding: 5px 15px; border-radius: 15px; font-weight: bold; }
+    .card-esforco { background: white; padding: 20px; border-radius: 10px; border-left: 5px solid #002366; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
     </style>
 """, unsafe_allow_html=True)
 
 # =========================================================
-# 2. AUTENTICAÇÃO E CARREGAMENTO DE DADOS
+# 2. AUTENTICAÇÃO E CARREGAMENTO INICIAL
 # =========================================================
 usuarios = db.carregar_usuarios_firebase()
 departamentos = db.carregar_departamentos()
 
-# Inicializa estados de esforço
+# Inicialização de dados persistentes no state
 if 'atividades_log' not in st.session_state:
     st.session_state.atividades_log = db.carregar_esforco()
 if 'motivos_gestao' not in st.session_state:
@@ -89,24 +106,10 @@ if not st.session_state.autenticado:
 
 user_id = st.session_state.user_id
 user_info = usuarios.get(user_id)
+user_nome = user_info.get('nome', 'Usuário')
 user_role = user_info.get('role', 'OPERACIONAL')
-user_nome = user_info.get('nome', 'Colaborador') # Nome do operador logado
-is_adm = user_role in ["ADM", "GERENTE"]
+is_adm = user_role == "ADM"
 modulos_permitidos = user_info.get('modulos', [])
-
-# --- LÓGICA DE ESFORÇO ---
-def finalizar_atividade_atual(nome_usuario):
-    logs = db.carregar_esforco() # Carrega sempre do banco para integridade
-    for idx, act in enumerate(logs):
-        if act['usuario'] == nome_usuario and act['status'] == 'Em andamento':
-            agora = datetime.now()
-            inicio = datetime.fromisoformat(act['inicio'])
-            duracao = (agora - inicio).total_seconds() / 60
-            logs[idx]['fim'] = agora.isoformat()
-            logs[idx]['status'] = 'Finalizado'
-            logs[idx]['duracao_min'] = round(duracao, 2)
-    db.salvar_esforco(logs)
-    st.session_state.atividades_log = logs
 
 # =========================================================
 # 3. SIDEBAR E NAVEGAÇÃO
@@ -143,47 +146,43 @@ with st.sidebar:
         st.rerun()
 
 # =========================================================
-# 4. FUNÇÕES DA HOME (AGORA COM RASTREADOR DE ESFORÇO)
+# 4. FUNÇÕES DAS PÁGINAS (HOME E CENTRAL)
 # =========================================================
 
 def exibir_home():
     st.title(f"Olá, {user_nome}! 👋")
     
-    # NOVAS ABAS NO MAIN (Inclusão do Esforço e Painel ADM)
-    abas_home = ["🚀 Visão de Hoje", "📅 Agenda Master", "➕ Novo Agendamento", "⏱️ Meu Esforço"]
-    if is_adm:
-        abas_home.append("⚖️ Painel ADM (Esforço)")
-
-    tabs_h = st.tabs(abas_home)
+    # NOVAS ABAS NO MAIN (MEU ESFORÇO DISPONÍVEL PARA TODOS NA HOME)
+    tab_hoje, tab_esforço, tab_agenda, tab_novo = st.tabs(["🚀 Visão de Hoje", "⏱️ Meu Esforço", "📅 Agenda Master", "➕ Novo Agendamento"])
     
-    projs = db.carregar_projetos()
-    diario = db.carregar_diario()
-    hoje_dt = datetime.now()
-    hoje_str = hoje_dt.strftime("%d/%m/%Y")
-
     # --- ABA: MEU ESFORÇO (OPERADOR LOGADO) ---
-    with tabs_h[3]:
-        st.subheader("Rastreador de Atividade")
+    with tab_esforço:
+        st.subheader("Rastreador de Produtividade")
+        
+        # Atividade atual do usuário logado
         atv_atual = next((a for a in st.session_state.atividades_log if a['usuario'] == user_nome and a['status'] == 'Em andamento'), None)
         
         c_atv1, c_atv2 = st.columns([2, 1])
         with c_atv1:
             if atv_atual:
-                st.error(f"⏳ **EM ANDAMENTO:** {atv_atual['motivo']}")
-                st.caption(f"Iniciado às: {datetime.fromisoformat(atv_atual['inicio']).strftime('%H:%M:%S')}")
-                if st.button("⏹️ Encerrar Atividade Atual"):
-                    finalizar_atividade_atual(user_nome); st.rerun()
+                st.markdown(f"""
+                <div class="card-esforco">
+                    <h3 style='color:#ef4444;'>⏳ TAREFA ATIVA</h3>
+                    <p><b>Motivo:</b> {atv_atual['motivo']}</p>
+                    <p><b>Início:</b> {datetime.fromisoformat(atv_atual['inicio']).strftime('%H:%M:%S')}</p>
+                </div>
+                """, unsafe_allow_html=True)
+                if st.button("⏹️ FINALIZAR AGORA", type="primary"):
+                    finalizar_atividade_atual(user_nome)
+                    st.rerun()
             else:
-                st.success("✅ Você está disponível.")
-        
-        st.divider()
-        col_new1, col_new2 = st.columns([2, 1])
-        with col_new1:
-            motivo_sel = st.selectbox("O que vai fazer agora?", st.session_state.motivos_gestao)
-            obs_esf = st.text_input("Observação (Opcional)", key="obs_esf_home")
-        with col_new2:
-            st.write("<br>", unsafe_allow_html=True)
-            if st.button("▶️ INICIAR TAREFA", type="primary", use_container_width=True):
+                st.info("Nenhuma atividade em andamento. Inicie uma abaixo!")
+
+        with c_atv2:
+            st.markdown("#### Novo Registro")
+            motivo_sel = st.selectbox("Selecione a Atividade", st.session_state.motivos_gestao)
+            obs_esf = st.text_input("Ticket / Obs")
+            if st.button("▶️ DAR PLAY", use_container_width=True):
                 finalizar_atividade_atual(user_nome)
                 nova = {
                     "usuario": user_nome, "motivo": motivo_sel, "obs": obs_esf,
@@ -193,86 +192,70 @@ def exibir_home():
                 db.salvar_esforco(st.session_state.atividades_log)
                 st.rerun()
 
-    # --- ABA: PAINEL ADM ESFORÇO (FILTROS POR DIA/SEMANA/MÊS) ---
-    if is_adm:
-        with tabs_h[4]:
-            st.subheader("⚖️ Gestão Analítica de Esforço")
-            df_esf = pd.DataFrame(st.session_state.atividades_log)
-            if not df_esf.empty:
-                df_esf['inicio_dt'] = pd.to_datetime(df_esf['inicio'])
-                df_esf['data_dia'] = df_esf['inicio_dt'].dt.date
-                
-                # FILTROS
-                with st.expander("🔍 Filtros Avançados", expanded=True):
-                    f1, f2, f3 = st.columns(3)
-                    periodo = f1.selectbox("Período", ["Hoje", "Esta Semana", "Este Mês", "Todo o Histórico"])
-                    op_sel = f2.multiselect("Filtrar Operador", options=df_esf['usuario'].unique())
-                    at_sel = f3.multiselect("Filtrar Atividade", options=df_esf['motivo'].unique())
-                    
-                    # Lógica de Período
-                    if periodo == "Hoje":
-                        df_esf = df_esf[df_esf['data_dia'] == hoje_dt.date()]
-                    elif periodo == "Esta Semana":
-                        inicio_semana = hoje_dt.date() - timedelta(days=hoje_dt.weekday())
-                        df_esf = df_esf[df_esf['data_dia'] >= inicio_semana]
-                    elif periodo == "Este Mês":
-                        df_esf = df_esf[df_esf['inicio_dt'].dt.month == hoje_dt.month]
-                    
-                    if op_sel: df_esf = df_esf[df_esf['usuario'].isin(op_sel)]
-                    if at_sel: df_esf = df_esf[df_esf['motivo'].isin(at_sel)]
-
-                # DASHBOARD ADM
-                m1, m2, m3 = st.columns(3)
-                m1.metric("Horas Totais", f"{(df_esf['duracao_min'].sum()/60):.2f}h")
-                m2.metric("Atividades", len(df_esf))
-                m3.metric("Operadores Ativos", df_esf['usuario'].nunique())
-
-                g_col1, g_col2 = st.columns(2)
-                with g_col1:
-                    fig_op = px.bar(df_esf.groupby('usuario')['duracao_min'].sum().reset_index(), 
-                                    x='usuario', y='duracao_min', title="Minutos por Operador", color='usuario')
-                    st.plotly_chart(fig_op, use_container_width=True)
-                with g_col2:
-                    fig_at = px.pie(df_esf, names='motivo', values='duracao_min', title="Distribuição por Atividade")
-                    st.plotly_chart(fig_at, use_container_width=True)
-                
-                st.dataframe(df_esf[['usuario', 'data_dia', 'motivo', 'duracao_min', 'status']], use_container_width=True)
-            else:
-                st.info("Nenhum dado de esforço disponível.")
-
-    # (Mantendo suas lógicas originais das outras abas...)
-    with tabs_h[0]:
-        st.write("Visão de Hoje...") # Sua lógica original aqui
-    with tabs_h[1]:
-        st.write("Agenda Master...") # Sua lógica original aqui
-    with tabs_h[2]:
-        st.write("Novo Agendamento...") # Sua lógica original aqui
+    # (Lógica original de Lembretes/Agenda na Home...)
+    with tab_hoje:
+        st.write("Visão de Hoje...") 
+    with tab_agenda:
+        st.write("Agenda Master...")
 
 def exibir_central():
     st.title("⚙️ Painel de Governança")
-    # PONTO 3: ADM GERE MOTIVOS AQUI
-    menu = st.segmented_control("Menu:", ["👥 Usuários", "➕ Novo", "🏢 Deptos", "⏱️ Motivos Esforço"], default="👥 Usuários")
+    # PONTO CHAVE: Adicionado "⚖️ Painel Esforço" aqui no Menu ADM
+    menu = st.segmented_control("Menu:", ["👥 Usuários", "⚖️ Painel Esforço", "➕ Novo", "🏢 Deptos", "⏱️ Motivos"], default="👥 Usuários")
     
-    if menu == "⏱️ Motivos Esforço":
-        st.subheader("Gerenciar Categorias de Esforço")
-        new_m = st.text_input("Novo Motivo (Ex: Pausa, Reunião, Ajuste)")
-        if st.button("Cadastrar Motivo"):
-            st.session_state.motivos_gestao.append(new_m)
-            db.salvar_motivos(st.session_state.motivos_gestao)
-            st.rerun()
-        
+    # --- NOVO PAINEL DE ESFORÇO (FILTROS) ---
+    if menu == "⚖️ Painel Esforço":
+        st.subheader("Análise de Esforço da Equipe")
+        df_esf = pd.DataFrame(st.session_state.atividades_log)
+        if not df_esf.empty:
+            df_esf['inicio_dt'] = pd.to_datetime(df_esf['inicio'])
+            df_esf['data_dia'] = df_esf['inicio_dt'].dt.date
+            
+            # FILTROS POR DIA, SEMANA, MÊS, OPERADOR E ATIVIDADE
+            with st.container(border=True):
+                f1, f2, f3 = st.columns(3)
+                periodo = f1.selectbox("Período", ["Hoje", "Esta Semana", "Este Mês", "Geral"])
+                f_user = f2.multiselect("Filtrar por Pessoa", options=df_esf['usuario'].unique())
+                f_task = f3.multiselect("Filtrar Atividade", options=df_esf['motivo'].unique())
+                
+                # Aplicação dos Filtros
+                hoje_ref = datetime.now()
+                if periodo == "Hoje": df_esf = df_esf[df_esf['data_dia'] == hoje_ref.date()]
+                elif periodo == "Esta Semana":
+                    segunda = hoje_ref.date() - timedelta(days=hoje_ref.weekday())
+                    df_esf = df_esf[df_esf['data_dia'] >= segunda]
+                elif periodo == "Este Mês":
+                    df_esf = df_esf[df_esf['inicio_dt'].dt.month == hoje_ref.month]
+                
+                if f_user: df_esf = df_esf[df_esf['usuario'].isin(f_user)]
+                if f_task: df_esf = df_esf[df_esf['motivo'].isin(f_task)]
+
+            # Dashboards Rápidos
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Horas Totais", f"{(df_esf['duracao_min'].sum()/60):.2f}h")
+            c2.metric("Qtd Atividades", len(df_esf))
+            c3.metric("Atividades/Dia", round(len(df_esf)/max(df_esf['data_dia'].nunique(), 1), 1))
+
+            st.plotly_chart(px.bar(df_esf, x='usuario', y='duracao_min', color='motivo', title="Esforço por Colaborador (Minutos)"), use_container_width=True)
+            st.dataframe(df_esf[['usuario', 'data_dia', 'motivo', 'obs', 'duracao_min']], use_container_width=True)
+        else:
+            st.warning("Nenhum dado registrado.")
+
+    # Gestão de Motivos (Configurações)
+    elif menu == "⏱️ Motivos":
+        st.subheader("Configurar Lista de Motivos")
+        novo_m = st.text_input("Nome do Motivo")
+        if st.button("Adicionar"):
+            st.session_state.motivos_gestao.append(novo_m); db.salvar_motivos(st.session_state.motivos_gestao); st.rerun()
         for m in st.session_state.motivos_gestao:
             c_m1, c_m2 = st.columns([4, 1])
             c_m1.write(m)
-            if c_m2.button("🗑️", key=f"del_mot_{m}"):
-                st.session_state.motivos_gestao.remove(m)
-                db.salvar_motivos(st.session_state.motivos_gestao)
-                st.rerun()
-    
-    # ... Restante da sua Central de Comando (Usuários, Deptos) ...
+            if c_m2.button("Deletar", key=f"d_{m}"):
+                st.session_state.motivos_gestao.remove(m); db.salvar_motivos(st.session_state.motivos_gestao); st.rerun()
+
+    # ... Suas lógicas de Usuários e Deptos ...
     elif menu == "👥 Usuários":
-        # (Seu código original de listagem de usuários...)
-        st.write("Listagem de usuários...")
+        st.write("Gestão de Usuários")
 
 # =========================================================
 # 5. ROTEAMENTO
@@ -281,4 +264,4 @@ if escolha == "🏠 Home":
     exibir_home()
 elif "Central de Comando" in escolha:
     exibir_central()
-# ... outros elifs originais ...
+# ... outros módulos (Manutenção, Processos, etc) ...
