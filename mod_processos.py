@@ -21,6 +21,7 @@ ROADMAP = [
 ]
 
 DEPARTAMENTOS = ["CX", "PQI","Compras", "Logística", "TI", "Financeiro", "RH", "Fiscal", "Operações", "Comercial", "Diretoria"]
+MOTIVOS_PADRAO = ["Reunião", "Análise de Dados", "Mapeamento", "Treinamento", "Outros"]
 
 def exibir(user_role="OPERACIONAL", user_name="Usuário"):
     # 1. ESTILO CSS
@@ -52,13 +53,11 @@ def exibir(user_role="OPERACIONAL", user_name="Usuário"):
         db.salvar_diario(st.session_state.situacoes_diarias)
         db.salvar_esforco(st.session_state.historico_esforco)
 
-    # --- LÓGICA DO TIMER (ATIVIDADE EM ANDAMENTO) ---
     def finalizar_atividade_atual():
         for atv in st.session_state.historico_esforco:
             if atv['usuario'] == user_name and atv['status'] == 'Em andamento':
                 atv['fim'] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
                 atv['status'] = 'Finalizado'
-                # Cálculo de duração em minutos
                 inicio = datetime.strptime(atv['inicio'], "%d/%m/%Y %H:%M:%S")
                 fim = datetime.now()
                 atv['duracao_min'] = round((fim - inicio).total_seconds() / 60, 2)
@@ -73,11 +72,9 @@ def exibir(user_role="OPERACIONAL", user_name="Usuário"):
 
     tabs = st.tabs(titulos)
     
-    # --- ABA 0: MEU TIMER (INDIVIDUAL) ---
+    # --- ABA 0: MEU TIMER ---
     with tabs[0]:
         st.subheader(f"⏱️ Controle de Esforço: {user_name}")
-        
-        # Verificar se há atividade rodando
         atv_atual = next((a for a in st.session_state.historico_esforco if a['usuario'] == user_name and a['status'] == 'Em andamento'), None)
         
         if atv_atual:
@@ -94,15 +91,11 @@ def exibir(user_role="OPERACIONAL", user_name="Usuário"):
         obs_timer = col_t2.text_input("Observação (opcional)")
         
         if st.button("▶️ INICIAR NOVA ATIVIDADE", type="primary", use_container_width=True):
-            finalizar_atividade_atual() # Interrompe a anterior se houver
+            finalizar_atividade_atual()
             nova_atv = {
-                "usuario": user_name,
-                "motivo": novo_motivo_timer,
-                "obs": obs_timer,
+                "usuario": user_name, "motivo": novo_motivo_timer, "obs": obs_timer,
                 "inicio": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
-                "fim": None,
-                "duracao_min": 0,
-                "status": "Em andamento"
+                "fim": None, "duracao_min": 0, "status": "Em andamento"
             }
             st.session_state.historico_esforco.append(nova_atv)
             salvar_seguro()
@@ -115,7 +108,6 @@ def exibir(user_role="OPERACIONAL", user_name="Usuário"):
 
     # --- ABA 1: DASHBOARD ---
     with tabs[1]:
-        # Filtro individual no Dash (ADM vê tudo, Operacional vê só o dele)
         if user_role == "ADM":
             user_filter = st.multiselect("Filtrar Usuário:", list(set(a['usuario'] for a in st.session_state.historico_esforco)), default=None)
         else:
@@ -133,21 +125,16 @@ def exibir(user_role="OPERACIONAL", user_name="Usuário"):
             fig_pizza = px.pie(df_esf_dash, values="duracao_min", names="motivo", title="Distribuição de Atividades")
             c2.plotly_chart(fig_pizza, use_container_width=True)
 
-    # --- ABA 2: PAINEL ADM (SOMENTE ADM) ---
+    # --- ABA 2: PAINEL ADM (SE HOUVER) ---
+    current_idx = 2
     if user_role == "ADM":
-        with tabs[2]:
+        with tabs[current_idx]:
             st.subheader("🛡️ Gestão Administrativa")
-            
             sub_adm1, sub_adm2 = st.tabs(["👥 Usuários Online", "🏷️ Gerenciar Motivos"])
-            
             with sub_adm1:
-                st.write("**Atividades em Andamento Agora:**")
                 online = [a for a in st.session_state.historico_esforco if a['status'] == 'Em andamento']
-                if online:
-                    st.table(pd.DataFrame(online)[['usuario', 'motivo', 'inicio', 'obs']])
-                else:
-                    st.success("Nenhum colaborador com atividade pendente.")
-
+                if online: st.table(pd.DataFrame(online)[['usuario', 'motivo', 'inicio', 'obs']])
+                else: st.success("Nenhum colaborador com atividade pendente.")
             with sub_adm2:
                 col_m1, col_m2 = st.columns([3, 1])
                 novo_m = col_m1.text_input("Novo Motivo de Esforço")
@@ -155,8 +142,6 @@ def exibir(user_role="OPERACIONAL", user_name="Usuário"):
                     st.session_state.motivos_timer.append(novo_m)
                     db.salvar_motivos(st.session_state.motivos_timer)
                     st.rerun()
-                
-                st.write("---")
                 for m in st.session_state.motivos_timer:
                     cm1, cm2 = st.columns([4, 1])
                     cm1.write(m)
@@ -164,22 +149,17 @@ def exibir(user_role="OPERACIONAL", user_name="Usuário"):
                         st.session_state.motivos_timer.remove(m)
                         db.salvar_motivos(st.session_state.motivos_timer)
                         st.rerun()
+        current_idx += 1
 
-    # --- ABA GESTÃO (Integrada com sua lógica anterior) ---
-    # (Ajuste o índice das abas conforme o papel do usuário)
-    idx_gestao = 3 if user_role == "ADM" else 2
-    with tabs[idx_gestao]:
-        st.write("Aqui fica a sua lógica de Criar/Deletar Projetos e o Diário de Situações...")
-        # [MANTENHA AQUI O SEU CÓDIGO ORIGINAL DA ABA GESTÃO]
+    # --- ABA GESTÃO ---
+    with tabs[current_idx]:
+        st.subheader("⚙️ Gestão de Projetos")
+        st.info("Aqui você pode implementar a criação e deleção de projetos.")
+        # [Seu código de criação de projetos entra aqui]
+    current_idx += 1
 
-    # --- ABA OPERAÇÃO PQI ---
-    idx_op = 4 if user_role == "ADM" else 3
-    with tabs[idx_op]:
-        st.write("Aqui fica o seu Roadmap, Dossiê e Histórico de notas do PQI...")
-        # [MANTENHA AQUI O SEU CÓDIGO ORIGINAL DA ABA OPERAÇÃO PQI]
-
-    # --- 3. OPERAÇÃO PQI ---
-    with tab_operacao:
+    # --- ABA OPERAÇÃO PQI (A que estava dando erro) ---
+    with tabs[current_idx]:
         st.subheader("🚀 Operação de Processos")
         projs = st.session_state.db_pqi
         if not projs:
@@ -194,6 +174,7 @@ def exibir(user_role="OPERACIONAL", user_name="Usuário"):
                 escolha = c_f2.selectbox("Selecione o Projeto:", [p['titulo'] for p in filtrados])
                 projeto = next(p for p in filtrados if p['titulo'] == escolha)
                 
+                # Régua de Roadmap
                 st.write("")
                 cols_r = st.columns(8)
                 for i, etapa in enumerate(ROADMAP):
@@ -219,7 +200,7 @@ def exibir(user_role="OPERACIONAL", user_name="Usuário"):
                             if st.button("Gravar no Banco", type="primary"):
                                 if dl and hl:
                                     projeto.setdefault('lembretes', []).append({"id": datetime.now().timestamp(), "data_hora": f"{dl.strftime('%d/%m/%Y')} {hl.strftime('%H:%M')}", "texto": f"{projeto['titulo']}: {mot}"})
-                                projeto['notas'].append({"motivo": mot, "depto": dep, "texto": dsc, "data": datetime.now().strftime("%d/%m/%Y %H:%M"), "fase_origem": projeto['fase']})
+                                projeto.setdefault('notas', []).append({"motivo": mot, "depto": dep, "texto": dsc, "data": datetime.now().strftime("%d/%m/%Y %H:%M"), "fase_origem": projeto['fase']})
                                 salvar_seguro(); st.rerun()
                         st.divider()
                         notas_fase = [n for n in projeto.get('notas', []) if n.get('fase_origem') == projeto['fase']]
@@ -231,29 +212,20 @@ def exibir(user_role="OPERACIONAL", user_name="Usuário"):
                         st.markdown("#### ⚙️ Controle")
                         if st.button("▶️ AVANÇAR", use_container_width=True, type="primary") and projeto['fase'] < 8:
                             projeto['fase'] += 1
-                            salvar_seguro()
-                            st.rerun()
-                        
+                            salvar_seguro(); st.rerun()
                         if st.button("⏪ RECUAR", use_container_width=True) and projeto['fase'] > 1:
                             projeto['fase'] -= 1
-                            salvar_seguro()
-                            st.rerun()
+                            salvar_seguro(); st.rerun()
 
                         st.markdown("#### ⏰ Lembretes")
-                        # .get([], []) garante que o código não quebre se a lista estiver vazia
                         lembretes_atuais = projeto.get('lembretes', [])
-                        
                         for l_idx, l in enumerate(lembretes_atuais):
                             with st.container(border=True):
                                 st.caption(f"📅 {l['data_hora']}")
                                 st.write(l['texto'])
-                                
-                                # CORREÇÃO AQUI: l.get('id', l_idx) com ponto, não colchetes
                                 if st.button("Concluir", key=f"done_pqi_{l.get('id', l_idx)}"): 
                                     projeto['lembretes'].pop(l_idx)
-                                    salvar_seguro() # Isso grava as alterações no seu banco de dados
-                                    st.success("Lembrete concluído!")
-                                    st.rerun()
+                                    salvar_seguro(); st.success("Lembrete concluído!"); st.rerun()
 
                 with t_dossie:
                     sub_dos1, sub_dos2 = st.tabs(["📂 Pastas", "📜 Histórico"])
@@ -279,7 +251,6 @@ def exibir(user_role="OPERACIONAL", user_name="Usuário"):
                                         with open(path, "wb") as f: f.write(a.getbuffer())
                                         pastas[p_nome].append({"nome": a.name, "path": path, "data": datetime.now().strftime("%d/%m/%Y")})
                                     salvar_seguro(); st.rerun()
-
                     with sub_dos2:
                         df_hist = pd.DataFrame(projeto.get('notas', []))
                         if not df_hist.empty: st.dataframe(df_hist, use_container_width=True, hide_index=True)
