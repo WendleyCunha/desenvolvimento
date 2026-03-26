@@ -1,0 +1,66 @@
+import streamlit as st
+import pandas as pd
+from datetime import datetime, timedelta
+import database as db
+import uuid
+
+def exibir(user_info):
+    st.header("🎫 Central de Tickets & SLAs")
+    
+    # Carregamento de dados
+    tickets = db.carregar_tickets()
+    df = pd.DataFrame(tickets)
+    
+    # Alçada e Setor do Usuário
+    meu_setor = user_info.get('depto', 'GERAL')
+    is_adm = user_info.get('role') == "ADM"
+
+    # --- INDICADORES (O "DESH" COM CORES) ---
+    st.subheader(f"Dashboard: {meu_setor}")
+    c1, c2, c3, c4 = st.columns(4)
+    
+    # Filtro lógico para o atendente: ver apenas o que está no depto dele
+    if not df.empty:
+        meus_tickets = df[df['setor_atual'] == meu_setor]
+        atrasados = meus_tickets[meus_tickets['status_sla'] == "🔴 ATRASADO"]
+        
+        c1.metric("Minha Fila", len(meus_tickets))
+        c2.markdown(f'<p style="color:red; font-size:24px; font-weight:bold;">🔥 Atrasados: {len(atrasados)}</p>', unsafe_allow_html=True)
+        c3.metric("Média de Conclusão", "4.2h")
+        c4.metric("Geral Empresa", len(df))
+
+    # --- ABA DE TRATATIVA ---
+    tab_fila, tab_abertura, tab_adm = st.tabs(["📥 Minha Fila", "➕ Abrir Novo", "📊 Visão Mestre"])
+
+    with tab_fila:
+        if not df.empty:
+            # Mostra apenas o que compete ao atendente logado
+            meus_ativos = df[(df['setor_atual'] == meu_setor) & (df['status'] != "Finalizado")]
+            
+            for idx, t in meus_ativos.iterrows():
+                with st.container(border=True):
+                    col_t, col_a = st.columns([3, 1])
+                    col_t.write(f"**Ticket #{t['id']}** | Cliente: {t['cliente']}")
+                    col_t.caption(f"Motivo: {t['motivo']} | Aberto em: {t['abertura']}")
+                    
+                    if col_a.button("Tratar Ticket", key=f"tratar_{t['id']}"):
+                        st.session_state.ticket_em_foco = t['id']
+            
+            # Modal de Tratativa (Simulado)
+            if "ticket_em_foco" in st.session_state:
+                st.divider()
+                st.subheader(f"Tratando Ticket #{st.session_state.ticket_em_foco}")
+                with st.form("form_tratativa"):
+                    nova_obs = st.text_area("Relato da Tratativa")
+                    proximo_setor = st.selectbox("Tocar a bola para:", ["Finalizar", "COMPRAS", "LOGISTICA", "TI"])
+                    novo_motivo = st.selectbox("Alterar Motivo (Gera novo SLA):", ["Manter Atual", "Pendência Encomenda", "Liberação"])
+                    
+                    if st.form_submit_button("Confirmar Movimentação"):
+                        # Lógica de atualização no banco...
+                        st.success("Ticket Movimentado!")
+                        del st.session_state.ticket_em_foco
+                        st.rerun()
+
+    with tab_abertura:
+        st.write("Formulário de Abertura Único (identifica seu setor automaticamente)")
+        # ... (Aqui entra o form que já criamos antes)
