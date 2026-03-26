@@ -172,4 +172,22 @@ def salvar_esforco(logs):
     except Exception as e:
         print(f"Erro ao salvar esforço: {e}")
         return False
+def carregar_motivos():
+    """Busca a lista de motivos cadastrados no Firebase."""
+    try:
+        doc = db.collection("configuracoes").document("motivos").get()
+        if doc.exists:
+            # Retorna a lista que está dentro do campo 'lista'
+            return doc.to_dict().get('lista', ["Outros"])
+        return ["Reunião", "Feedback", "Treinamento", "Operacional"] # Padrão inicial
+    except Exception:
+        return ["Operacional", "Outros"]
 
+def salvar_motivos(lista_motivos):
+    """Salva a lista atualizada de motivos no Firebase."""
+    try:
+        db.collection("configuracoes").document("motivos").set({"lista": lista_motivos})
+        return True
+    except Exception as e:
+        print(f"Erro ao salvar motivos: {e}")
+        return False
