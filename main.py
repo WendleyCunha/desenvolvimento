@@ -324,6 +324,9 @@ elif escolha == "🚌 Passagens":
     passagens.exibir_modulo_passagens()
 elif "Central de Comando" in escolha:
     exibir_central()
+elif "Tickets" in escolha:
+    import mod_tickets
+    mod_tickets.exibir(user_info)
 
 # Lógica de edição ADM fora da função para persistência do rerun
 if "edit_id" in st.session_state and escolha == "⚙️ Central de Comando":
