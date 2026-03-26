@@ -86,18 +86,19 @@ st.markdown("""
 usuarios = db.carregar_usuarios_firebase()
 departamentos = db.carregar_departamentos()
 
-# --- BLOCO DE EMERGÊNCIA (Remover após logar) ---
-if not usuarios or 'admin' not in usuarios:
-    db.salvar_usuario('admin', {
-        "nome": "Wendley Admin",
-        "senha": "123", # Altere para sua senha de preferência
-        "role": "ADM",
-        "depto": "DIRETORIA",
-        "modulos": ["manutencao", "processos", "rh", "operacao", "spin", "passagens"]
-    })
-    # Recarrega a lista de usuários para garantir que o novo admin seja reconhecido no login
-    usuarios = db.carregar_usuarios_firebase() 
-# -----------------------------------------------
+# --- BLOCO DE EMERGÊNCIA (Simulação na Memória) ---
+if not usuarios:
+    # Se o Firebase falhar ou estiver vazio, criamos um acesso temporário
+    usuarios = {
+        'admin': {
+            "nome": "Wendley Admin",
+            "senha": "123",
+            "role": "ADM",
+            "depto": "DIRETORIA",
+            "modulos": ["manutencao", "processos", "rh", "operacao", "spin", "passagens"]
+        }
+    }
+# --------------------------------------------------
 
 if "autenticado" not in st.session_state:
     st.session_state.autenticado = False
