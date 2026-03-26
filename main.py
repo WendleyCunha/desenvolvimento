@@ -80,12 +80,24 @@ st.markdown("""
     .status-online { color: #10b981; font-weight: bold; }
     </style>
 """, unsafe_allow_html=True)
-
 # =========================================================
 # 2. AUTENTICAÇÃO
 # =========================================================
 usuarios = db.carregar_usuarios_firebase()
 departamentos = db.carregar_departamentos()
+
+# --- BLOCO DE EMERGÊNCIA (Remover após logar) ---
+if not usuarios or 'admin' not in usuarios:
+    db.salvar_usuario('admin', {
+        "nome": "Wendley Admin",
+        "senha": "123", # Altere para sua senha de preferência
+        "role": "ADM",
+        "depto": "DIRETORIA",
+        "modulos": ["manutencao", "processos", "rh", "operacao", "spin", "passagens"]
+    })
+    # Recarrega a lista de usuários para garantir que o novo admin seja reconhecido no login
+    usuarios = db.carregar_usuarios_firebase() 
+# -----------------------------------------------
 
 if "autenticado" not in st.session_state:
     st.session_state.autenticado = False
