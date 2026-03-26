@@ -149,3 +149,27 @@ def salvar_tickets(lista):
     if db:
         db.collection("config").document("tickets_kingstar").set({"dados": lista})
 
+def carregar_esforco():
+    """Tenta carregar os logs de esforço do Firebase, se falhar retorna lista vazia."""
+    try:
+        # Se você usa Firebase:
+        docs = db.collection("esforco").stream()
+        return [doc.to_dict() for doc in docs]
+    except Exception:
+        # Se você ainda não configurou a coleção no Firebase, 
+        # retorna uma lista vazia para o sistema não travar.
+        return []
+
+def salvar_esforco(logs):
+    """Salva a lista de logs. (Ajuste conforme sua estrutura de banco)"""
+    try:
+        # Exemplo simplificado para Firebase usando um ID único por log
+        for log in logs:
+            # Usa o início da tarefa como ID único para não duplicar
+            doc_id = f"{log['usuario']}_{log['inicio']}".replace(":", "").replace("-", "")
+            db.collection("esforco").document(doc_id).set(log, merge=True)
+        return True
+    except Exception as e:
+        print(f"Erro ao salvar esforço: {e}")
+        return False
+
