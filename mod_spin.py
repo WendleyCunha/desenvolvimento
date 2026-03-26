@@ -19,140 +19,165 @@ def exibir_tamagotchi(user_info):
     historico = st.session_state.dados_spin.get('historico', [])
     inspecoes = st.session_state.dados_spin.get('inspecoes', [])
 
-    # --- 3. CONFIGURAÇÕES DE MANUTENÇÃO ---
+    # --- 3. CONFIGURAÇÕES TÉCNICAS (UPGRADE PERITO) ---
+    # Referência: Revisão pesada feita aos 127k
     KM_REVISAO_GERAL = 127000 
     DATA_REVISAO_GERAL = datetime(2025, 1, 1, tzinfo=fuso_brasil)
 
+    # REGRAS: [KM para Troca, Meses para Troca]
     REGRAS_MANUTENCAO = {
-        "Óleo do Motor (5W30)": [5000, 6], "Correia Dentada": [50000, 48],
-        "Fluido de Câmbio (GF6)": [40000, 24], "Amortecedores": [60000, 60],
-        "Bandejas e Buchas": [40000, 36], "Óleo de Direção Hidráulica": [40000, 24],
-        "Fluido de Freio (DOT 4)": [20000, 12], "Líquido Arrefecimento": [30000, 24],
-        "Velas e Cabos": [30000, 24], "Pneus": [50000, 60]
+        "Óleo Motor (5W30)": [5000, 6],
+        "Filtro de Óleo/Ar/Comb.": [10000, 12],
+        "Velas de Ignição": [30000, 24],
+        "Cabos de Vela": [40000, 36],
+        "Correia Dentada/Tensor": [50000, 48],
+        "Fluido de Câmbio (AT)": [40000, 24],
+        "Líquido Arrefecimento": [30000, 24],
+        "Fluido de Freio (DOT 4)": [20000, 12],
+        "Pastilhas de Freio": [20000, 12],
+        "Rodízio de Pneus": [10000, 12],
+        "Amortecedores": [60000, 60],
+        "Bateria": [0, 30] # Foco apenas em tempo
     }
 
-    # --- 4. ESTILIZAÇÃO CSS ---
+    # --- 4. ESTILIZAÇÃO CSS AVANÇADA ---
     st.markdown(f"""
         <style>
-        .relogio {{ background: rgba(0,0,0,0.05); padding: 10px; border-radius: 10px; text-align: right; font-family: monospace; font-weight: bold; color: #3b82f6; margin-bottom: 20px; }}
-        .stTabs [data-baseweb="tab-list"] {{ gap: 10px; }}
-        .stTabs [data-baseweb="tab"] {{ padding: 10px 20px; border-radius: 10px 10px 0 0; font-weight: bold; }}
-        @keyframes blinker {{ 50% {{ opacity: 0.3; transform: scale(1.02); }} }}
-        .critico {{ background: rgba(239, 68, 68, 0.1) !important; border: 2px solid #ef4444 !important; animation: blinker 1.5s linear infinite; }}
-        .card-componente {{ padding: 20px; border-radius: 15px; margin-bottom: 15px; border: 1px solid #e2e8f0; transition: 0.3s; }}
+        .relogio {{ background: #1e293b; padding: 12px; border-radius: 12px; text-align: right; font-family: 'Courier New', monospace; font-weight: bold; color: #60a5fa; margin-bottom: 25px; border: 1px solid #334155; }}
+        .card-componente {{ padding: 15px; border-radius: 12px; margin-bottom: 12px; border: 1px solid #e2e8f0; background: white; }}
+        .status-header {{ font-size: 0.85rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }}
+        .progresso-bar {{ height: 8px; background: #f1f5f9; border-radius: 4px; margin-top: 8px; overflow: hidden; }}
+        .progresso-fill {{ height: 100%; border-radius: 4px; transition: width 0.5s ease-in-out; }}
+        @keyframes pulse {{ 0% {{ box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }} 70% {{ box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }} 100% {{ box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }} }}
+        .critico {{ border: 2px solid #ef4444 !important; animation: pulse 2s infinite; }}
         </style>
     """, unsafe_allow_html=True)
 
-    st.markdown(f"<div class='relogio'>🕒 Brasília: {data_hoje_str}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='relogio'>🛰️ TELEMETRIA SPIN | {data_hoje_str}</div>", unsafe_allow_html=True)
 
     CATEGORIAS = {
-        "Abastecimento": ["Gasolina", "Etanol", "GNV", "Diesel"],
-        "Manutenção Corretiva/Preventiva": list(REGRAS_MANUTENCAO.keys()),
-        "Estética": ["Polimento", "Lavagem Completa", "Pintura/Funilaria"],
-        "Documentação": ["IPVA", "Licenciamento", "Seguro Auto"],
-        "Acessórios/Upgrade": ["Som/Multimídia", "Lâmpadas LED", "Insulfilm"]
+        "Manutenção: Motor": ["Óleo Motor (5W30)", "Filtro de Óleo/Ar/Comb.", "Velas de Ignição", "Cabos de Vela", "Líquido Arrefecimento", "Correia Dentada/Tensor"],
+        "Manutenção: Chassi": ["Pastilhas de Freio", "Fluido de Freio (DOT 4)", "Amortecedores", "Rodízio de Pneus", "Suspensão/Buchas"],
+        "Abastecimento": ["Gasolina", "Etanol", "GNV"],
+        "Upgrade/Estética": ["Acessórios", "Lavagem", "Polimento"],
+        "Documentação": ["IPVA", "Licenciamento", "Seguro"]
     }
 
     # --- 5. UI SIDEBAR ---
     with st.sidebar:
-        st.header("⚙️ Painel Spin")
-        novo_km = st.number_input("KM Atual no Painel:", value=km_atual)
+        st.image("https://img.icons8.com/fluency/96/car-service.png", width=80)
+        st.header("Painel de Controle")
+        novo_km = st.number_input("Odômetro Atual:", value=km_atual, step=1)
         if novo_km != km_atual:
             st.session_state.dados_spin['km_atual'] = novo_km
             db.salvar_dados_spin(st.session_state.dados_spin)
             st.rerun()
+        
+        st.divider()
+        st.info(f"**Meta:** Cuidar de cada parafuso da Spin 2013.")
 
-    st.title("🚗 SpinGenius: Gestão Inteligente")
+    st.title("🚗 SpinGenius PRO")
 
-    tab_registro, tab_saude, tab_eficiencia, tab_inspecao, tab_financeiro = st.tabs([
-        "📝 Lançar Gasto", "🩺 Saúde", "📊 KM/L", "🔍 Inspeção", "💸 Financeiro"
+    tab_registro, tab_saude, tab_eficiencia, tab_inspecao = st.tabs([
+        "📝 Lançar Gasto", "🩺 Saúde da Spin", "📊 KM/L", "🔍 Checklist Perito"
     ])
 
     # --- ABA 1: REGISTRO ---
     with tab_registro:
-        st.subheader("Registrar Novo Evento")
         baixa_ativa = st.session_state.get('baixa_em_curso', None)
-        if baixa_ativa: st.warning(f"Finalizando inspeção: **{baixa_ativa['item']}**")
-        tipo_selecionado = st.selectbox("Categoria:", list(CATEGORIAS.keys()))
+        if baixa_ativa: st.warning(f"Baixando item da inspeção: **{baixa_ativa['item']}**")
+        
+        col_cat, col_item = st.columns(2)
+        tipo_selecionado = col_cat.selectbox("Categoria:", list(CATEGORIAS.keys()))
         itens_disponiveis = CATEGORIAS[tipo_selecionado]
         
         with st.form("form_registro", clear_on_submit=True):
             item_final = st.text_input("Item:", value=baixa_ativa['item']) if baixa_ativa else st.selectbox("Item:", itens_disponiveis)
-            c1, c2 = st.columns(2)
-            v_prev = c1.number_input("Previsão (R$)", min_value=0.0)
-            v_real = c2.number_input("Real Pago (R$)", min_value=0.0)
-            c3, c4 = st.columns(2)
-            km_reg = c3.number_input("KM Registrado:", value=novo_km)
-            litros = c4.number_input("Litros (Abastecimento):", min_value=0.0, step=0.1)
+            c1, c2, c3 = st.columns(3)
+            v_real = c1.number_input("Valor Pago (R$)", min_value=0.0)
+            km_reg = c2.number_input("KM na hora:", value=novo_km)
+            litros = c3.number_input("Litros (se for posto):", min_value=0.0)
 
-            if st.form_submit_button("💾 SALVAR NO LIVRO DE BORDO", use_container_width=True):
+            if st.form_submit_button("💾 REGISTRAR NO HISTÓRICO", use_container_width=True):
                 novo_dado = {
                     "Data": agora.strftime("%Y-%m-%d"), "Tipo": tipo_selecionado, "Item": item_final, 
-                    "KM": km_reg, "Previsto": float(v_prev), "Real": float(v_real),
-                    "Litros": float(litros), "Economia": float(v_prev - v_real)
+                    "KM": km_reg, "Real": float(v_real), "Litros": float(litros)
                 }
                 st.session_state.dados_spin['historico'].append(novo_dado)
-                if baixa_ativa: st.session_state.dados_spin['inspecoes'].pop(baixa_ativa['index']); del st.session_state['baixa_em_curso']
-                db.salvar_dados_spin(st.session_state.dados_spin); st.success("✅ Lançado!"); st.rerun()
-        if baixa_ativa and st.button("Cancelar Baixa"): del st.session_state['baixa_em_curso']; st.rerun()
-
-    df_base = pd.DataFrame(historico) if historico else pd.DataFrame()
+                if baixa_ativa: 
+                    st.session_state.dados_spin['inspecoes'].pop(baixa_ativa['index'])
+                    del st.session_state['baixa_em_curso']
+                db.salvar_dados_spin(st.session_state.dados_spin)
+                st.success("Dados salvos com sucesso!")
+                st.rerun()
 
     # --- ABA 2: SAÚDE ---
     with tab_saude:
-        st.subheader("Estado de Conservação")
+        df_h = pd.DataFrame(historico) if historico else pd.DataFrame()
         cols = st.columns(3)
+        
         for idx, (peca, prazos) in enumerate(REGRAS_MANUTENCAO.items()):
             km_limite, meses_limite = prazos[0], prazos[1]
             km_ut, data_ut = KM_REVISAO_GERAL, DATA_REVISAO_GERAL
-            if not df_base.empty:
-                h = df_base[df_base['Item'] == peca].sort_values('Data', ascending=False)
-                if not h.empty:
-                    km_ut = h['KM'].iloc[0]
-                    data_ut = datetime.strptime(h['Data'].iloc[0], "%Y-%m-%d").replace(tzinfo=fuso_brasil)
-            km_rodado = km_atual - km_ut
-            s_km = max(0, 100 - (km_rodado / km_limite * 100))
-            dias = (agora - data_ut).days
-            s_t = max(0, 100 - (dias / (meses_limite * 30) * 100))
-            s_f = min(s_km, s_t)
-            cor = "#ef4444" if s_f <= 20 else "#f59e0b" if s_f <= 50 else "#10b981"
-            with cols[idx % 3]:
-                st.markdown(f"<div class='card-componente {'critico' if s_f <= 20 else ''}' style='border-left: 5px solid {cor};'><b style='font-size: 0.9em;'>{peca}</b><h2 style='color: {cor}; margin: 5px 0;'>{int(s_f)}%</h2><small>Troca: {int(km_ut + km_limite):,} KM</small></div>", unsafe_allow_html=True)
+            
+            if not df_h.empty and peca in df_h['Item'].values:
+                h = df_h[df_h['Item'] == peca].sort_values('Data', ascending=False)
+                km_ut = h['KM'].iloc[0]
+                data_ut = datetime.strptime(h['Data'].iloc[0], "%Y-%m-%d").replace(tzinfo=fuso_brasil)
+            
+            # Cálculo de Saúde
+            perc_km = 100 - ((km_atual - km_ut) / km_limite * 100) if km_limite > 0 else 100
+            dias_uso = (agora - data_ut).days
+            perc_tempo = 100 - (dias_uso / (meses_limite * 30) * 100)
+            saude_final = max(0, min(perc_km, perc_tempo))
+            
+            # Definição de Cores
+            cor = "#10b981" if saude_final > 50 else "#f59e0b" if saude_final > 20 else "#ef4444"
+            is_critico = "critico" if saude_final <= 20 else ""
+            
+            prox_km = int(km_ut + km_limite) if km_limite > 0 else "N/A"
 
-    # --- ABA 3: EFICIÊNCIA (KM/L) ---
+            with cols[idx % 3]:
+                st.markdown(f"""
+                    <div class='card-componente {is_critico}'>
+                        <div class='status-header'>{peca}</div>
+                        <div style='font-size: 1.5rem; font-weight: bold; color: {cor};'>{int(saude_final)}%</div>
+                        <div class='progresso-bar'><div class='progresso-fill' style='width: {saude_final}%; background: {cor};'></div></div>
+                        <div style='margin-top: 8px; font-size: 0.75rem; color: #64748b;'>
+                            Próxima: <b>{prox_km} KM</b>
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
+
+    # --- ABA 3: EFICIÊNCIA ---
     with tab_eficiencia:
-        if not df_base.empty and "Litros" in df_base.columns:
-            df_fuel = df_base[df_base['Tipo'] == "Abastecimento"].sort_values('KM').copy()
+        if not df_h.empty and "Litros" in df_h.columns:
+            df_fuel = df_h[df_h['Litros'] > 0].sort_values('KM').copy()
             if len(df_fuel) >= 2:
                 df_fuel['KML'] = df_fuel['KM'].diff() / df_fuel['Litros']
-                st.plotly_chart(px.line(df_fuel.dropna(subset=['KML']), x='Data', y='KML', title="KM/L ao Longo do Tempo", markers=True), use_container_width=True)
-                m1, m2 = st.columns(2)
-                m1.metric("Média Geral", f"{df_fuel['KML'].mean():,.2f} km/l")
-                m2.metric("Último KM/L", f"{df_fuel['KML'].iloc[-1]:,.2f} km/l")
-            else: st.info("Registre pelo menos 2 abastecimentos.")
+                st.plotly_chart(px.area(df_fuel.dropna(subset=['KML']), x='Data', y='KML', title="Consumo Médio (km/l)", color_discrete_sequence=['#3b82f6']), use_container_width=True)
+                st.metric("Eficiência Atual", f"{df_fuel['KML'].iloc[-1]:,.2f} km/l")
+            else: st.info("Abasteça mais vezes para gerar o gráfico.")
 
     # --- ABA 4: INSPEÇÃO ---
     with tab_inspecao:
-        with st.form("f_insp"):
-            c1, c2 = st.columns(2)
-            i_it, i_st = c1.text_input("Item:"), c2.selectbox("Estado:", ["✅ Bom", "⚠️ Observar", "🚨 Trocar"])
-            i_obs = st.text_area("Notas:")
-            if st.form_submit_button("Salvar"):
-                st.session_state.dados_spin['inspecoes'].append({"Data": agora.strftime("%d/%m/%Y"), "Item": i_it, "Status": i_st, "Obs": i_obs, "KM": km_atual})
-                db.salvar_dados_spin(st.session_state.dados_spin); st.rerun()
-        for i_idx, i in enumerate(reversed(inspecoes)):
-            r_idx = len(inspecoes) - 1 - i_idx
-            cor_s = {"✅ Bom": "green", "⚠️ Observar": "orange", "🚨 Trocar": "red"}
-            c_inf, c_ac = st.columns([0.7, 0.3])
-            c_inf.markdown(f"**{i['Item']}** ({i['KM']:,} KM)\n<span style='color:{cor_s[i['Status']]}; font-weight:bold;'>{i['Status']}</span> - {i['Obs']}", unsafe_allow_html=True)
-            if c_ac.button("💸 Baixa", key=f"bx_{r_idx}"): st.session_state['baixa_em_curso'] = {'item': i['Item'], 'index': r_idx}; st.rerun()
+        st.subheader("Checklist de Perito")
+        with st.expander("🔍 Nova Verificação"):
+            with st.form("f_insp"):
+                c1, c2 = st.columns(2)
+                i_it = c1.text_input("O que está olhando?")
+                i_st = c2.selectbox("Estado:", ["✅ Perfeito", "⚠️ Atenção", "🚨 Urgente"])
+                i_obs = st.text_area("Detalhes (ex: barulho, vazamento, marca)")
+                if st.form_submit_button("Registrar Inspeção"):
+                    st.session_state.dados_spin['inspecoes'].append({"Data": agora.strftime("%d/%m/%Y"), "Item": i_it, "Status": i_st, "Obs": i_obs, "KM": km_atual})
+                    db.salvar_dados_spin(st.session_state.dados_spin)
+                    st.rerun()
 
-    # --- ABA 5: FINANCEIRO ---
-    with tab_financeiro:
-        if not df_base.empty:
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Total Pago", f"R$ {df_base['Real'].sum():,.2f}")
-            c2.metric("Abastecimento", f"R$ {df_base[df_base['Tipo']=='Abastecimento']['Real'].sum():,.2f}")
-            c3.metric("Economia", f"R$ {df_base['Economia'].sum():,.2f}")
-            st.dataframe(df_base.sort_values('Data', ascending=False), use_container_width=True)
-            if st.button("🗑️ Deletar Último"): st.session_state.dados_spin['historico'].pop(); db.salvar_dados_spin(st.session_state.dados_spin); st.rerun()
+        for i_idx, i in enumerate(reversed(inspecoes)):
+            cor_s = {"✅ Perfeito": "green", "⚠️ Atenção": "orange", "🚨 Urgente": "red"}
+            st.markdown(f"**{i['Item']}** - {i['Data']} | <span style='color:{cor_s[i['Status']]};'>{i['Status']}</span>", unsafe_allow_html=True)
+            st.caption(f"Nota: {i['Obs']} | KM: {i['KM']}")
+            if st.button("Baixar Manutenção", key=f"bx_{i_idx}"):
+                st.session_state['baixa_em_curso'] = {'item': i['Item'], 'index': len(inspecoes)-1-i_idx}
+                st.rerun()
+            st.divider()
