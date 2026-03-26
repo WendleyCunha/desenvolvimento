@@ -136,3 +136,16 @@ def salvar_diario(lista_diario):
         except Exception as e:
             st.error(f"Erro ao salvar diário no Firebase: {e}")
 
+def carregar_tickets():
+    db = inicializar_db()
+    if not db: return []
+    try:
+        doc = db.collection("config").document("tickets_kingstar").get()
+        return doc.to_dict().get("dados", []) if doc.exists else []
+    except: return []
+
+def salvar_tickets(lista):
+    db = inicializar_db()
+    if db:
+        db.collection("config").document("tickets_kingstar").set({"dados": lista})
+
