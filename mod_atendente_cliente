@@ -1,0 +1,70 @@
+import streamlit as st
+import pandas as pd
+import uuid
+from datetime import datetime
+
+# --- CONFIGURAÇÃO DE AMBIENTE ---
+if 'tickets_db' not in st.session_state:
+    st.session_state.tickets_db = []
+
+# Simulação de LOG de Sistema (Setor do Atendente)
+# Em produção, isso viria do seu sistema de login
+SETOR_LOGADO = "LOGÍSTICA" 
+
+st.set_page_config(page_title="Gestão de Chamados | King Star", layout="wide")
+
+# --- FUNÇÕES CORE ---
+def gerar_link_cliente(ticket_id):
+    # Gera um link único que não exige senha para o cliente
+    return f"https://suaempresa.streamlit.app/?token={uuid.uuid4()}&id={ticket_id}"
+
+# --- UI: DASHBOARD GERAL ---
+st.title(f"🎫 Painel Operacional - Setor: {SETOR_LOGADO}")
+
+# Filtro de Busca (Código do Cliente ou Status)
+with st.expander("🔍 Busca Avançada e Filtros"):
+    c_busca, s_busca = st.columns(2)
+    cod_cliente = c_busca.text_input("Código do Cliente")
+    status_filtro = s_busca.multiselect("Status", ["Aberto", "Em Andamento", "Pendente", "Finalizado"])
+
+# --- DASHBOARD DE MÉTRICAS (CORES EXCLUSIVAS) ---
+# Aqui criamos o "Desh" que você pediu, com cores por status
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("Abertos", "12", delta_color="normal", help="Novos chamados hoje")
+col2.markdown('<div style="color:orange; font-weight:bold;">🕒 Em Andamento: 08</div>', unsafe_allow_html=True)
+col3.markdown('<div style="color:red; font-weight:bold;">⚠️ Pendentes: 05</div>', unsafe_allow_html=True)
+col4.metric("Geral (Empresa)", "25")
+
+st.divider()
+
+# --- FORMULÁRIO DE ABERTURA (IDENTIFICA SETOR AUTOMÁTICO) ---
+with st.sidebar:
+    st.header("Novo Chamado")
+    with st.form("abertura_ticket"):
+        id_cli = st.text_input("Código Cliente (ex: 73MVBI)")
+        motivo = st.selectbox("Motivo", ["Liberação", "Pendência Encomenda", "Ajuste"])
+        obs = st.text_area("Descrição")
+        
+        if st.form_submit_button("Abrir Ticket"):
+            novo_t = {
+                "id": len(st.session_state.tickets_db) + 1,
+                "cliente": id_cli,
+                "setor_origem": SETOR_LOGADO, # Log automático do sistema
+                "status": "Aberto",
+                "abertura": datetime.now().strftime("%d/%m %H:%M"),
+                "token": str(uuid.uuid4())[:8]
+            }
+            st.session_state.tickets_db.append(novo_t)
+            st.success("Ticket Aberto com Sucesso!")
+
+# --- LISTAGEM "JUNTOS E SEPARADOS" ---
+# O atendente vê o que é dele, mas o sistema processa tudo
+st.subheader("Tratativas do Departamento")
+if st.session_state.tickets_db:
+    df = pd.DataFrame(st.session_state.tickets_db)
+    # Filtro de visualização do setor
+    df_setor = df[df['setor_origem'] == SETOR_LOGADO]
+    st.dataframe(df_setor, use_container_width=True)
+    
+    # Exemplo de Link Único para o Cliente
+    st.info(f"🔗 Link para o Cliente acompanhar: `https://kingstar.com/status?t={df_setor.iloc[-1]['token']}`")
