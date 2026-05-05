@@ -20,7 +20,7 @@ def inicializar_db():
             
             # ID DO PROJETO CONFIRMADO VIA CONSOLE GOOGLE CLOUD
             #
-            st.session_state.db = firestore.Client(credentials=creds, project="bancowendley")
+            st.session_state.db = firestore.Client(credentials=creds, project="wendleydesenvolvimento")
         except Exception as e:
             st.error(f"Erro crítico na inicialização do Firebase: {e}")
             return None
