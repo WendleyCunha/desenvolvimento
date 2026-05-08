@@ -1,68 +1,75 @@
 import streamlit as st
 
-# 1. Configuração da Página para ocupar a tela toda
-st.set_page_config(layout="wide", page_title="Teste Multi-Painel")
+# 1. Configuração da Página para aproveitar o máximo de espaço
+st.set_page_config(layout="wide", page_title="King Star - Quad View Test")
 
-# --- DEFINIÇÃO DAS PÁGINAS (FUNÇÕES) ---
+# --- FUNÇÕES DE RENDERIZAÇÃO COM ABAS INTERNAS ---
 
-def render_home():
-    st.subheader("🏠 Home - Visão Geral")
-    st.info("Aqui ficaria o seu resumo de atividades e boas-vindas.")
-    st.metric(label="Tarefas Pendentes", value=12, delta=-2)
-    st.bar_chart({"Esforço": [10, 20, 15, 30, 25]})
+def render_modulo(nome, cor):
+    st.markdown(f"### {nome}")
+    # Abas internas para simular seus códigos reais
+    tab1, tab2, tab3 = st.tabs(["📊 Dash", "⚙️ Opções", "📝 Docs"])
+    
+    with tab1:
+        st.write(f"Monitoramento do {nome}")
+        st.area_chart([10, 25, 15, cor, 20])
+        
+    with tab2:
+        st.selectbox(f"Selecione o filtro ({nome})", ["Geral", "Por Setor", "Por Analista"], key=f"sel_{nome}")
+        st.checkbox("Atualização Automática", key=f"check_{nome}")
+        
+    with tab3:
+        st.info(f"Instruções e logs do módulo {nome}.")
 
-def render_central_comando():
-    st.subheader("🎮 Central de Comando")
-    st.warning("Monitoramento de Operação em Tempo Real")
-    # Simulação de um gráfico de fluxo
-    st.area_chart({"Fluxo": [1, 5, 2, 6, 3, 7, 4]})
-
-def render_rh_docs():
-    st.subheader("📄 RH Docs")
-    st.write("Gestão de Documentação e Painel Administrativo.")
-    st.table({
-        "Documento": ["Contrato_01.pdf", "Ferias_Wendley.pdf"],
-        "Status": ["Assinado", "Pendente"]
-    })
-
-# --- SIDEBAR DE NAVEGAÇÃO ---
+# --- SIDEBAR E CONFIGURAÇÃO DO GRID ---
 
 with st.sidebar:
-    st.title("Sistema de Gestão")
-    st.write(f"Usuário: **Wendley Cunha**")
-    
-    # O Pulo do Gato: Checkbox para ativar o modo dividido
-    multi_view = st.toggle("📂 Ativar Modo Multi-Painel")
+    st.title("🚀 Central de Comando")
+    st.write("Usuário: **Wendley Cunha**")
     
     st.divider()
     
-    if not multi_view:
-        # Navegação normal se o modo multi-painel estiver desligado
-        page = st.radio("Ir para:", ["Home", "Central de Comando", "RH Docs"])
-    else:
-        st.write("**Modo Multi-Painel Ativo**")
-        st.caption("A Home ficará fixa na esquerda.")
-        segunda_janela = st.selectbox("Escolha o painel da direita:", ["Central de Comando", "RH Docs"])
-
-# --- LÓGICA DE EXIBIÇÃO ---
-
-if not multi_view:
-    # Renderização Padrão (Uma por vez)
-    if page == "Home":
-        render_home()
-    elif page == "Central de Comando":
-        render_central_comando()
-    else:
-        render_rh_docs()
-else:
-    # Renderização em Colunas (Lado a Lado)
-    col_esquerda, col_direita = st.columns(2)
+    st.subheader("Configuração do Layout")
+    num_paineis = st.slider("Quantidade de painéis simultâneos:", 1, 4, 2)
     
-    with col_esquerda:
-        render_home()
-        
-    with col_direita:
-        if segunda_janela == "Central de Comando":
-            render_central_comando()
-        else:
-            render_rh_docs()
+    st.divider()
+    
+    # Seleção dinâmica dos módulos para cada "slot"
+    opcoes_modulos = ["Home", "Central de Comando", "RH Docs", "Manutenção", "Processos", "Operação"]
+    
+    escolhidos = []
+    for i in range(num_paineis):
+        escolha = st.selectbox(f"Painel {i+1}:", opcoes_modulos, index=i % len(opcoes_modulos), key=f"p{i}")
+        escolhidos.append(escolha)
+
+# --- LÓGICA DE GRID DINÂMICO ---
+
+# Definindo cores fictícias para os gráficos dos painéis
+cores = [40, 10, 80, 50]
+
+if num_paineis == 1:
+    render_modulo(escolhidos[0], cores[0])
+
+elif num_paineis == 2:
+    col1, col2 = st.columns(2)
+    with col1: render_modulo(escolhidos[0], cores[0])
+    with col2: render_modulo(escolhidos[1], cores[1])
+
+elif num_paineis == 3:
+    col1, col2 = st.columns(2)
+    with col1: render_modulo(escolhidos[0], cores[0])
+    with col2: render_modulo(escolhidos[1], cores[1])
+    st.divider()
+    col3, _ = st.columns(2) # Terceiro painel na linha de baixo
+    with col3: render_modulo(escolhidos[2], cores[2])
+
+else: # 4 Painéis (Grid 2x2)
+    col1, col2 = st.columns(2)
+    with col1: render_modulo(escolhidos[0], cores[0])
+    with col2: render_modulo(escolhidos[1], cores[1])
+    
+    st.divider()
+    
+    col3, col4 = st.columns(2)
+    with col3: render_modulo(escolhidos[2], cores[2])
+    with col4: render_modulo(escolhidos[3], cores[3])
