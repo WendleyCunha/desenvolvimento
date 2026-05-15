@@ -1,9 +1,9 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from datetime import datetime
+from datetime import datetime, date, timedelta
+from modulos.utils_tempo import agora_br, parse_dt_safe
 import os
-import io
 from modulos import database as db
 
 # --- CONFIGURAÇÕES GERAIS ---
@@ -11,280 +11,450 @@ UPLOAD_DIR = "anexos_pqi"
 if not os.path.exists(UPLOAD_DIR):
     os.makedirs(UPLOAD_DIR)
 
-MAPA_MODULOS = {
-    "🏗️ Manutenção": "manutencao",
-    "🎯 Processos": "processos",
-    "📄 RH Docs": "rh",
-    "📊 Operação": "operacao",
-    "🚗 Minha Spin": "spin",
-    "🚌 Passagens": "passagens",
-    "🎫 Tickets": "tickets",
-}
-
-ROADMAP = [
-    {"id": 1, "nome": "Triagem & GUT"}, {"id": 2, "nome": "Escopo & Charter"},
-    {"id": 3, "nome": "Autorização Sponsor"}, {"id": 4, "nome": "Coleta & Impedimentos"},
-    {"id": 5, "nome": "Modelagem & Piloto"}, {"id": 6, "nome": "Migração (Go-Live)"},
-    {"id": 7, "nome": "Acompanhamento/Ajuste"}, {"id": 8, "nome": "Padronização & POP"}
+MOTIVOS_PADRAO = [
+    "Reunião", "Pedido de Posicionamento",
+    "Elaboração de Documentos", "Anotação Interna (Sem Dash)"
 ]
 
-MOTIVOS_PADRAO = ["Reunião", "Pedido de Posicionamento", "Elaboração de Documentos", "Anotação Interna (Sem Dash)"]
 
 # --- FUNÇÕES UTILITÁRIAS ---
 def formatar_duracao_h_min(minutos):
-    if pd.isna(minutos) or minutos <= 0: return "0min"
+    if pd.isna(minutos) or minutos <= 0:
+        return "0min"
     horas = int(minutos // 60)
-    mins = int(minutos % 60)
+    mins  = int(minutos % 60)
     return f"{horas}H:{mins:02d}min" if horas > 0 else f"{mins}min"
+
+
+def _parse_datas(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Converte a coluna 'inicio' para datetime de forma robusta,
+    tratando tanto strings com timezone quanto sem.
+    Retorna o df com coluna 'inicio_dt' (tz-naive) e 'data_ref' (date).
+    """
+    raw = pd.to_datetime(df['inicio'], errors='coerce', utc=True)
+    df['inicio_dt'] = raw.dt.tz_localize(None) if raw.dt.tz is None else raw.dt.tz_convert(None)
+    df['data_ref']  = df['inicio_dt'].dt.normalize()          # meia-noite, para comparação fácil
+    df['duracao_min'] = pd.to_numeric(df.get('duracao_min', 0), errors='coerce').fillna(0)
+    return df
+
 
 def exibir(is_adm):
     if not is_adm:
         st.error("🚫 Acesso restrito aos administradores.")
         return
 
-    # --- 1. ESTILO CSS ---
+    # ── ESTILO GLOBAL ──────────────────────────────────────────────────────────
     st.markdown("""
     <style>
-        .metric-card { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 1px solid #ececec; text-align: center; }
-        .metric-value { font-size: 24px; font-weight: 800; color: #002366; }
-        .metric-label { font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase; }
-        .ponto-regua { width: 30px; height: 30px; border-radius: 50%; background: #e2e8f0; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #64748b; margin: 0 auto; border: 2px solid #cbd5e1; font-size: 12px;}
-        .ponto-check { background: #10b981; color: white; border-color: #10b981; }
-        .ponto-atual { background: #002366; color: white; border-color: #002366; box-shadow: 0 0 8px rgba(0, 35, 102, 0.4); }
-        .label-regua { font-size: 9px; text-align: center; font-weight: bold; margin-top: 5px; color: #475569; height: 25px; line-height: 1; }
+        /* Cards de métricas */
+        .kpi-card {
+            background: linear-gradient(135deg,#f8faff 0%,#eef2ff 100%);
+            border: 1px solid #c7d2fe;
+            border-radius: 14px;
+            padding: 20px 16px;
+            text-align: center;
+            box-shadow: 0 2px 8px rgba(99,102,241,.08);
+        }
+        .kpi-value { font-size: 28px; font-weight: 900; color: #002366; margin: 4px 0; }
+        .kpi-label { font-size: 11px; color: #6366f1; font-weight: 700;
+                     text-transform: uppercase; letter-spacing: .06em; }
+        .kpi-sub   { font-size: 12px; color: #64748b; margin-top: 2px; }
+
+        /* Filtros highlight */
+        .filter-bar {
+            background: #f1f5f9;
+            border-radius: 12px;
+            padding: 14px 18px;
+            margin-bottom: 10px;
+            border: 1px solid #e2e8f0;
+        }
+
+        /* Motivos list */
+        .motivo-row {
+            display:flex; align-items:center; justify-content:space-between;
+            padding: 8px 12px; border-radius: 8px; margin: 4px 0;
+            background:#f8faff; border:1px solid #e0e7ff;
+        }
+        .motivo-nome { font-weight:600; color:#1e293b; font-size:14px; }
+
+        /* Monitor card */
+        .monitor-user { font-size:15px; font-weight:700; color:#002366; }
+        .monitor-motivo { font-size:13px; color:#475569; }
     </style>
     """, unsafe_allow_html=True)
 
-    # --- 2. CARREGAMENTO E INICIALIZAÇÃO ---
+    # ── CARREGAMENTO ───────────────────────────────────────────────────────────
     usuarios_dict = db.carregar_usuarios_firebase()
     departamentos = db.carregar_departamentos()
-    motivos = db.carregar_motivos()
-    logs_esforco = db.carregar_esforco()
+    motivos       = db.carregar_motivos()
+    logs_esforco  = db.carregar_esforco()
 
-    if 'db_pqi' not in st.session_state:
-        dados_pqi = db.carregar_projetos()
-        st.session_state.db_pqi = dados_pqi if isinstance(dados_pqi, list) else []
-
-    if 'situacoes_diarias' not in st.session_state:
-        dados_diario = db.carregar_diario()
-        st.session_state.situacoes_diarias = dados_diario if isinstance(dados_diario, list) else []
-
-    def salvar_seguro_pqi():
-        try:
-            db.salvar_projetos(st.session_state.db_pqi)
-            db.salvar_diario(st.session_state.situacoes_diarias)
-        except Exception as e:
-            st.error(f"Erro ao salvar: {e}")
-
-    # --- 3. MENU PRINCIPAL ---
+    # ── MENU ───────────────────────────────────────────────────────────────────
     st.title("⚙️ Central de Comando")
-    
+
+    # ✅ FIX 2: PROJETOS PQI removido
     menu = st.segmented_control(
-        "Gerenciamento:", 
-        ["🔴 MONITOR", "🚀 PROJETOS PQI", "📊 DASHBOARD", "👥 USUÁRIOS", "🏢 DEPTOS", "⚙️ MOTIVOS"], 
+        "Gerenciamento:",
+        ["🔴 MONITOR", "📊 DASHBOARD", "👥 USUÁRIOS", "🏢 DEPTOS", "⚙️ MOTIVOS"],
         default="🔴 MONITOR"
     )
 
-    # --- SEÇÃO 1: MONITORAMENTO ---
+    # ══════════════════════════════════════════════════════════════════════════
+    # MONITOR
+    # ══════════════════════════════════════════════════════════════════════════
     if menu == "🔴 MONITOR":
         st.subheader("Monitoramento em Tempo Real")
         ativos = [a for a in logs_esforco if a.get('status') == 'Em andamento']
-        
+
         if ativos:
             for atv in ativos:
                 with st.container(border=True):
-                    c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
-                    c1.markdown(f"👤 **{atv['usuario']}**")
-                    c2.markdown(f"📌 {atv['motivo']}\n<small>{atv.get('detalhes', '')}</small>", unsafe_allow_html=True)
-                    
-                    try:
-                        inicio_dt = datetime.fromisoformat(atv['inicio']).replace(tzinfo=None)
-                        decorrido = (datetime.now() - inicio_dt).seconds // 60
-                        c3.metric("Tempo", f"{decorrido} min")
-                    except: c3.write("⏰ N/A")
-                    
-                    key_btn = f"adm_stop_{atv['usuario']}_{atv['inicio']}".replace(":", "")
-                    if c4.button("🛑 Encerrar", key=key_btn):
-                        agora = datetime.now()
-                        duracao = (agora - inicio_dt).total_seconds() / 60
-                        for a in logs_esforco:
-                            if a['usuario'] == atv['usuario'] and a['status'] == 'Em andamento':
-                                a['status'] = 'Finalizado'
-                                a['fim'] = agora.isoformat()
-                                a['duracao_min'] = round(duracao, 2)
-                        db.salvar_esforco(logs_esforco)
-                        st.success(f"Finalizado: {atv['usuario']}")
-                        st.rerun()
+                    c1, c2, c3, c4 = st.columns([2, 2.5, 1, 1])
+                    c1.markdown(f"<span class='monitor-user'>👤 {atv['usuario']}</span>", unsafe_allow_html=True)
+                    c2.markdown(
+                        f"<span class='monitor-motivo'>📌 {atv['motivo']}<br>"
+                        f"<small>{atv.get('detalhes','')}</small></span>",
+                        unsafe_allow_html=True
+                    )
+                                   
+                    inicio_dt = parse_dt_safe(atv.get('inicio'))
+                    if inicio_dt:
+                        decorrido = int((agora_br() - inicio_dt).total_seconds() // 60)
+                        c3.metric("⏱ Tempo", f"{decorrido} min")
+                    else:
+                        c3.write("⏰ N/A")
+
+                    # ✅ FIX 1: encerra apenas a atividade específica (inicio exato + break)
+                    key_btn = (
+                        f"stop_{atv['usuario']}_{atv['inicio']}"
+                        .replace(":", "").replace(".", "").replace("-", "").replace("+", "")
+                    )
+                    if c4.button("🛑 Encerrar", key=key_btn, type="primary"):
+                        if inicio_dt:
+                            agora   = agora_br()
+                            duracao = (agora - inicio_dt).total_seconds() / 60
+                            for a in logs_esforco:
+                                if (a['usuario'] == atv['usuario']
+                                        and a['inicio']  == atv['inicio']
+                                        and a['status']  == 'Em andamento'):
+                                    a['status']      = 'Finalizado'
+                                    a['fim']         = agora.isoformat()
+                                    a['duracao_min'] = round(duracao, 2)
+                                    break
+                            db.salvar_esforco(logs_esforco)
+                            st.success(f"✅ Atividade de **{atv['usuario']}** encerrada.")
+                            st.rerun()
+                        else:
+                            st.error("Início inválido — não foi possível calcular o tempo.")
         else:
-            st.info("Ninguém online no momento.")
+            st.info("🟢 Ninguém em atividade no momento.")
 
-    # --- SEÇÃO 2: PROJETOS PQI (INTEGRADO) ---
-    elif menu == "🚀 PROJETOS PQI":
-        tab_dash_pqi, tab_gestao_pqi, tab_operacao_pqi = st.tabs(["📊 DASHBOARD GERAL", "⚙️ GESTÃO", "🚀 OPERAÇÃO"])
-
-        with tab_dash_pqi:
-            projs = st.session_state.db_pqi
-            sub_d1, sub_d2 = st.tabs(["📈 Ativos", "✅ Entregues"])
-            
-            with sub_d1:
-                ativos_pqi = [p for p in projs if p.get('status') != "Concluído"]
-                if ativos_pqi:
-                    c1, c2, c3 = st.columns(3)
-                    c1.markdown(f'<div class="metric-card"><div class="metric-label">Projetos Ativos</div><div class="metric-value">{len(ativos_pqi)}</div></div>', unsafe_allow_html=True)
-                    c2.markdown(f'<div class="metric-card"><div class="metric-label">Total de Ações</div><div class="metric-value">{sum(len(p.get("notas", [])) for p in ativos_pqi)}</div></div>', unsafe_allow_html=True)
-                    
-                    todas_notas = [n for p in ativos_pqi for n in p.get('notas', [])]
-                    df_notas = pd.DataFrame(todas_notas)
-                    gargalo = df_notas['depto'].mode().iloc[0] if not df_notas.empty else "N/A"
-                    c3.markdown(f'<div class="metric-card"><div class="metric-label">Gargalo (Depto)</div><div class="metric-value" style="font-size:18px">{gargalo}</div></div>', unsafe_allow_html=True)
-                    
-                    df_at = pd.DataFrame([{"Projeto": p['titulo'], "Esforço": len(p.get('notas', []))} for p in ativos_pqi])
-                    st.bar_chart(df_at.set_index("Projeto")["Esforço"])
-                else: st.info("Sem projetos ativos.")
-
-            with sub_d2:
-                concluidos = [p for p in projs if p.get('status') == "Concluído"]
-                if concluidos:
-                    st.dataframe(pd.DataFrame([{"Projeto": p['titulo'], "Data": p.get('data_conclusao', 'S/D')} for p in concluidos]), use_container_width=True)
-                else: st.info("Nenhum projeto entregue.")
-
-        with tab_gestao_pqi:
-            if st.button("➕ CRIAR NOVO PROJETO PQI", type="primary", use_container_width=True):
-                st.session_state.db_pqi.append({"titulo": f"Novo Projeto {len(st.session_state.db_pqi) + 1}", "fase": 1, "status": "Ativo", "notas": [], "lembretes": [], "pastas_virtuais": {}, "motivos_custom": []})
-                salvar_seguro_pqi(); st.rerun()
-            
-            st.divider()
-            for i, p in enumerate(st.session_state.db_pqi):
-                with st.expander(f"Configurar: {p['titulo']}"):
-                    p['titulo'] = st.text_input("Nome", p['titulo'], key=f"p_t_{i}")
-                    p['status'] = st.selectbox("Status", ["Ativo", "Concluído", "Pausado"], index=["Ativo", "Concluído", "Pausado"].index(p.get('status', 'Ativo')), key=f"p_s_{i}")
-                    if st.button("🗑️ Excluir Projeto", key=f"p_del_{i}"):
-                        st.session_state.db_pqi.pop(i); salvar_seguro_pqi(); st.rerun()
-
-        
-        with tab_operacao_pqi:
-            # Filtro robusto: considera "Ativo" como padrão se o campo não existir
-            filtrados = [p for p in st.session_state.db_pqi if p.get('status', 'Ativo') == "Ativo"]
-            
-            if filtrados:
-                # Adicionamos uma key única para evitar conflitos de widget
-                escolha = st.selectbox("Selecione o Projeto:", [p['titulo'] for p in filtrados], key="sel_proj_operacao")
-                
-                # Busca segura usando next com valor default None
-                projeto = next((p for p in filtrados if p['titulo'] == escolha), None)
-                
-                if projeto:
-                    # Regua de Roadmap
-                    cols_r = st.columns(8)
-                    for i, etapa in enumerate(ROADMAP):
-                        n, cl, txt = i+1, "ponto-regua", str(i+1)
-                        if n < projeto['fase']: cl += " ponto-check"; txt = "✔"
-                        elif n == projeto['fase']: cl += " ponto-atual"
-                        cols_r[i].markdown(f'<div class="{cl}">{txt}</div><div class="label-regua">{etapa["nome"]}</div>', unsafe_allow_html=True)
-                    
-                    t_exec, t_dossie = st.tabs(["📝 Execução", "📁 Dossiê"])
-            
-            else:
-                st.info("Nenhum projeto ativo encontrado. Ative ou crie um na aba GESTÃO.")
-                
-                with t_exec:
-                    c1, c2 = st.columns([2,1])
-                    with c1:
-                        st.write(f"### Etapa {projeto['fase']}")
-                        with st.popover("➕ Novo Registro"):
-                            mot = st.selectbox("Motivo", MOTIVOS_PADRAO + projeto.get('motivos_custom', []), key=f"m_{projeto['titulo']}")
-                            dep = st.selectbox("Departamento", departamentos, key=f"d_{projeto['titulo']}")
-                            dsc = st.text_area("Descrição")
-                            if st.button("Salvar Registro"):
-                                projeto['notas'].append({"motivo": mot, "depto": dep, "texto": dsc, "data": datetime.now().strftime("%d/%m/%Y %H:%M"), "fase_origem": projeto['fase']})
-                                salvar_seguro_pqi(); st.rerun()
-                        
-                        for n in reversed(projeto['notas']):
-                            if n.get('fase_origem') == projeto['fase']:
-                                with st.expander(f"📌 {n['motivo']} - {n['data']}"): st.write(n['texto'])
-                    with c2:
-                        if st.button("▶️ AVANÇAR", use_container_width=True) and projeto['fase'] < 8:
-                            projeto['fase'] += 1; salvar_seguro_pqi(); st.rerun()
-                        if st.button("⏪ RECUAR", use_container_width=True) and projeto['fase'] > 1:
-                            projeto['fase'] -= 1; salvar_seguro_pqi(); st.rerun()
-                
-                with t_dossie:
-                    # Upload Simplificado para Firestore
-                    nome_pasta = st.text_input("Nova Pasta Virtual")
-                    if st.button("Criar Pasta"):
-                        projeto.setdefault('pastas_virtuais', {})[nome_pasta] = []
-                        salvar_seguro_pqi(); st.rerun()
-                    
-                    for p_nome, arqs in projeto.get('pastas_virtuais', {}).items():
-                        with st.expander(f"📁 {p_nome}"):
-                            up = st.file_uploader("Subir", key=f"up_{p_nome}")
-                            if up and st.button("Confirmar Upload", key=f"btn_up_{p_nome}"):
-                                file_id = f"{datetime.now().timestamp()}_{up.name}"
-                                if db.salvar_arquivo_firestore(file_id, up.getvalue()):
-                                    arqs.append({"nome": up.name, "file_id": file_id, "data": datetime.now().strftime("%d/%m/%Y")})
-                                    salvar_seguro_pqi(); st.rerun()
-                            for a in arqs:
-                                st.write(f"📄 {a['nome']}")
-
-    # --- SEÇÃO 3: DASHBOARD BI (ESFORÇO GERAL) ---
+    # ══════════════════════════════════════════════════════════════════════════
+    # DASHBOARD
+    # ══════════════════════════════════════════════════════════════════════════
     elif menu == "📊 DASHBOARD":
-        st.subheader("📊 BI - Esforço Operacional")
-        df = pd.DataFrame(logs_esforco)
-        if not df.empty and 'status' in df.columns:
-            df_fin = df[df['status'] == 'Finalizado'].copy()
-            if not df_fin.empty:
-                col_f1, col_f2 = st.columns(2)
-                user_f = col_f1.selectbox("Filtrar Usuário", ["Todos"] + sorted(df_fin['usuario'].unique().tolist()))
-                if user_f != "Todos": df_fin = df_fin[df_fin['usuario'] == user_f]
+        st.subheader("📊 BI — Esforço Operacional")
 
-                m1, m2, m3 = st.columns(3)
-                m1.metric("Atividades", len(df_fin))
-                m2.metric("Tempo Total", formatar_duracao_h_min(df_fin['duracao_min'].sum()))
-                m3.metric("Média", f"{df_fin['duracao_min'].mean():.1f} min")
+        # ── Validação básica ──────────────────────────────────────────────────
+        if not logs_esforco:
+            st.info("Nenhum registro de esforço encontrado.")
+            return
 
-                g1, g2 = st.columns(2)
-                with g1:
-                    st.plotly_chart(px.bar(df_fin.groupby('motivo')['duracao_min'].sum().reset_index(), x='motivo', y='duracao_min', title="Tempo por Motivo"), use_container_width=True)
-                with g2:
-                    st.plotly_chart(px.pie(df_fin, names='usuario', title="Distribuição"), use_container_width=True)
-        else: st.warning("Sem dados de esforço.")
+        df_raw = pd.DataFrame(logs_esforco)
+        if df_raw.empty or 'status' not in df_raw.columns:
+            st.info("Nenhum registro de esforço encontrado.")
+            return
 
-    # --- SEÇÃO 4: USUÁRIOS ---
+        df_fin = df_raw[df_raw['status'] == 'Finalizado'].copy()
+        if df_fin.empty:
+            st.info("Nenhuma atividade finalizada ainda.")
+            return
+
+        # ── Conversão de datas robusta (suporta tz e sem tz) ─────────────────
+        # ✅ CORREÇÃO PRINCIPAL: trata strings com e sem timezone do Firebase
+        df_fin['inicio_dt'] = df_fin['inicio'].apply(parse_dt_safe)
+        df_fin = df_fin[df_fin['inicio_dt'].notna()]
+
+        if df_fin.empty:
+            st.warning("Não foi possível interpretar as datas dos registros.")
+            return
+
+        df_fin['data_ref']    = df_fin['inicio_dt'].dt.normalize()
+        df_fin['duracao_min'] = pd.to_numeric(df_fin.get('duracao_min', 0), errors='coerce').fillna(0)
+
+        hoje       = pd.Timestamp(date.today())
+        data_min   = df_fin['data_ref'].min().date()
+        data_max   = df_fin['data_ref'].max().date()
+
+        # ── FILTROS ───────────────────────────────────────────────────────────
+        st.markdown('<div class="filter-bar">', unsafe_allow_html=True)
+        st.markdown("##### 🔍 Filtros")
+
+        col_p, col_u, col_m = st.columns(3)
+
+        # Filtro de período
+        periodo = col_p.selectbox(
+            "📅 Período",
+            ["Hoje", "Últimos 7 dias", "Este mês", "Personalizado"],
+            key="dash_periodo"
+        )
+
+        lista_usuarios = ["Todos"] + sorted(df_fin['usuario'].dropna().unique().tolist())
+        lista_motivos  = ["Todos"] + sorted(df_fin['motivo'].dropna().unique().tolist())
+
+        user_f   = col_u.selectbox("👤 Operador", lista_usuarios, key="dash_user")
+        motivo_f = col_m.selectbox("📌 Motivo",   lista_motivos,  key="dash_motivo")
+
+        # Datas conforme período escolhido
+        if periodo == "Hoje":
+            de  = date.today()
+            ate = date.today()
+        elif periodo == "Últimos 7 dias":
+            de  = date.today() - timedelta(days=6)
+            ate = date.today()
+        elif periodo == "Este mês":
+            de  = date.today().replace(day=1)
+            ate = date.today()
+        else:  # Personalizado
+            col_de, col_ate = st.columns(2)
+            de  = col_de.date_input("De",  value=data_min, min_value=data_min, max_value=data_max, key="dash_de")
+            ate = col_ate.date_input("Até", value=data_max, min_value=data_min, max_value=data_max, key="dash_ate")
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        # ── Aplica filtros ────────────────────────────────────────────────────
+        ts_de  = pd.Timestamp(de)
+        ts_ate = pd.Timestamp(ate) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
+
+        df_view = df_fin.copy()
+        df_view = df_view[(df_view['data_ref'] >= ts_de) & (df_view['data_ref'] <= ts_ate)]
+        if user_f   != "Todos": df_view = df_view[df_view['usuario'] == user_f]
+        if motivo_f != "Todos": df_view = df_view[df_view['motivo']  == motivo_f]
+
+        st.divider()
+
+        if df_view.empty:
+            st.warning("Nenhum dado para os filtros selecionados.")
+            return
+
+        # ── KPIs ─────────────────────────────────────────────────────────────
+        total_ativ  = len(df_view)
+        total_tempo = df_view['duracao_min'].sum()
+        media_tempo = df_view['duracao_min'].mean()
+        n_operadores = df_view['usuario'].nunique()
+
+        k1, k2, k3, k4 = st.columns(4)
+        k1.markdown(f"""
+            <div class="kpi-card">
+                <div class="kpi-label">Atividades</div>
+                <div class="kpi-value">{total_ativ}</div>
+            </div>""", unsafe_allow_html=True)
+        k2.markdown(f"""
+            <div class="kpi-card">
+                <div class="kpi-label">Tempo Total</div>
+                <div class="kpi-value">{formatar_duracao_h_min(total_tempo)}</div>
+            </div>""", unsafe_allow_html=True)
+        k3.markdown(f"""
+            <div class="kpi-card">
+                <div class="kpi-label">Média p/ Atividade</div>
+                <div class="kpi-value">{media_tempo:.0f} min</div>
+            </div>""", unsafe_allow_html=True)
+        k4.markdown(f"""
+            <div class="kpi-card">
+                <div class="kpi-label">Operadores</div>
+                <div class="kpi-value">{n_operadores}</div>
+            </div>""", unsafe_allow_html=True)
+
+        st.write("")
+
+        # ── Gráficos — linha 1 ────────────────────────────────────────────────
+        g1, g2 = st.columns(2)
+
+        with g1:
+            df_bar = (
+                df_view.groupby('motivo')['duracao_min']
+                .sum().reset_index()
+                .sort_values('duracao_min', ascending=True)
+            )
+            fig_bar = px.bar(
+                df_bar, x='duracao_min', y='motivo', orientation='h',
+                title="⏱️ Tempo por Motivo",
+                labels={'duracao_min': 'Minutos', 'motivo': ''},
+                color='duracao_min',
+                color_continuous_scale='Blues'
+            )
+            fig_bar.update_layout(
+                showlegend=False, coloraxis_showscale=False,
+                plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+                margin=dict(l=10, r=10, t=40, b=10), height=300
+            )
+            st.plotly_chart(fig_bar, use_container_width=True)
+
+        with g2:
+            fig_pie = px.pie(
+                df_view, names='usuario',
+                title="👥 Distribuição por Operador",
+                hole=0.45,
+                color_discrete_sequence=px.colors.qualitative.Set2
+            )
+            fig_pie.update_layout(
+                margin=dict(l=10, r=10, t=40, b=10), height=300,
+                paper_bgcolor='rgba(0,0,0,0)'
+            )
+            fig_pie.update_traces(textposition='inside', textinfo='percent+label')
+            st.plotly_chart(fig_pie, use_container_width=True)
+
+        # ── Gráfico — evolução diária ─────────────────────────────────────────
+        df_linha = (
+            df_view.groupby(df_view['inicio_dt'].dt.date)['duracao_min']
+            .sum().reset_index()
+        )
+        df_linha.columns = ['Data', 'Minutos']
+
+        fig_linha = px.area(
+            df_linha, x='Data', y='Minutos',
+            title="📈 Evolução Diária de Esforço",
+            markers=True,
+            color_discrete_sequence=['#6366f1']
+        )
+        fig_linha.update_layout(
+            plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+            margin=dict(l=10, r=10, t=40, b=10), height=280
+        )
+        fig_linha.update_traces(fill='tozeroy', fillcolor='rgba(99,102,241,0.12)')
+        st.plotly_chart(fig_linha, use_container_width=True)
+
+        # ── Tabela detalhada ─────────────────────────────────────────────────
+        with st.expander("📋 Ver registros detalhados"):
+            cols_disp = [c for c in ['usuario', 'motivo', 'detalhes', 'inicio', 'duracao_min'] if c in df_view.columns]
+            df_exib = df_view[cols_disp].copy()
+            df_exib.columns = ['Usuário', 'Motivo', 'Detalhes', 'Início', 'Duração (min)'][:len(cols_disp)]
+            df_exib['Duração (min)'] = df_exib['Duração (min)'].apply(lambda x: f"{x:.1f}")
+            st.dataframe(df_exib, use_container_width=True, hide_index=True)
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # USUÁRIOS
+    # ══════════════════════════════════════════════════════════════════════════
     elif menu == "👥 USUÁRIOS":
         st.subheader("Gestão de Colaboradores")
         with st.expander("➕ Novo Colaborador"):
             with st.form("f_user"):
-                u_id = st.text_input("ID Login")
-                u_nome = st.text_input("Nome")
+                u_id    = st.text_input("ID Login")
+                u_nome  = st.text_input("Nome Completo")
                 u_cargo = st.selectbox("Cargo", ["ADM", "OPERACIONAL", "GERÊNCIA"])
                 u_depto = st.selectbox("Departamento", departamentos)
-                if st.form_submit_button("Salvar"):
-                    db.salvar_usuario(u_id, {"nome": u_nome, "role": u_cargo, "depto": u_depto, "modulos": [], "ativo": True})
-                    st.success("Criado!"); st.rerun()
-        
+                if st.form_submit_button("💾 Salvar"):
+                    db.salvar_usuario(u_id, {
+                        "nome": u_nome, "role": u_cargo,
+                        "depto": u_depto, "modulos": [], "ativo": True
+                    })
+                    st.success("Colaborador criado!")
+                    st.rerun()
+
+        st.divider()
         for uid, info in usuarios_dict.items():
             with st.container(border=True):
-                c_u1, c_u2 = st.columns([4, 1])
-                c_u1.write(f"**{info['nome']}** ({uid}) - {info['role']}")
-                if c_u2.button("🗑️", key=f"del_u_{uid}"):
-                    st.info("Exclusão lógica: Desative no banco.")
+                c1, c2, c3 = st.columns([5, 1, 1])
+                c1.write(f"**{info['nome']}** ({uid}) — {info.get('role','?')} | {info.get('depto','S/D')}")
+                
+                editar_key = f"editar_{uid}"
+                if editar_key not in st.session_state:
+                    st.session_state[editar_key] = False
+        
+                if c2.button("✏️", key=f"btn_edit_{uid}", help="Editar usuário"):
+                    st.session_state[editar_key] = not st.session_state[editar_key]
+        
+                if c3.button("🗑️", key=f"del_u_{uid}"):
+                    st.info("Exclusão lógica: desative o usuário diretamente no banco.")
+        
+                if st.session_state[editar_key]:
+                    with st.form(key=f"form_edit_{uid}"):
+                        st.markdown(f"**Editando: {info['nome']}**")
+                        e1, e2 = st.columns(2)
+                        novo_login = e1.text_input("Login (ID)", value=uid)
+                        novo_nome  = e2.text_input("Nome Completo", value=info.get('nome', ''))
+                        
+                        e3, e4 = st.columns(2)
+                        novo_role  = e3.selectbox(
+                            "Tipo de Usuário",
+                            ["ADM", "OPERACIONAL", "GERÊNCIA", "SUPERVISOR"],
+                            index=["ADM", "OPERACIONAL", "GERÊNCIA", "SUPERVISOR"].index(info.get('role', 'OPERACIONAL'))
+                                  if info.get('role') in ["ADM", "OPERACIONAL", "GERÊNCIA", "SUPERVISOR"] else 1
+                        )
+                        novo_depto = e4.selectbox(
+                            "Departamento",
+                            departamentos,
+                            index=departamentos.index(info.get('depto')) if info.get('depto') in departamentos else 0
+                        )
+                        nova_senha = st.text_input("Nova Senha (deixe em branco para não alterar)", type="password")
+        
+                        if st.form_submit_button("💾 Salvar Alterações", use_container_width=True):
+                            dados_atualizados = {
+                                "nome":    novo_nome,
+                                "role":    novo_role,
+                                "depto":   novo_depto,
+                                "modulos": info.get('modulos', []),
+                                "ativo":   info.get('ativo', True)
+                            }
+                            if nova_senha.strip():
+                                dados_atualizados["senha"] = nova_senha.strip()
+                            
+                            # Se mudou o login (uid), recria o documento com novo ID
+                            if novo_login.strip() != uid:
+                                db.salvar_usuario(novo_login.strip(), dados_atualizados)
+                                db.deletar_usuario(uid)   # ← precisa existir no seu db.py
+                            else:
+                                db.salvar_usuario(uid, dados_atualizados)
+                            
+                            st.session_state[editar_key] = False
+                            st.success(f"✅ Usuário **{novo_nome}** atualizado!")
+                            st.rerun()
 
-    # --- SEÇÃO 5: DEPTOS ---
+    # ══════════════════════════════════════════════════════════════════════════
+    # DEPARTAMENTOS
+    # ══════════════════════════════════════════════════════════════════════════
     elif menu == "🏢 DEPTOS":
         st.subheader("Departamentos")
-        novo_d = st.text_input("Novo Setor")
-        if st.button("Adicionar"):
-            departamentos.append(novo_d.upper())
-            db.salvar_departamentos(list(set(departamentos)))
-            st.rerun()
+        col_nd1, col_nd2 = st.columns([4, 1])
+        novo_d = col_nd1.text_input("Novo Setor", label_visibility="collapsed", placeholder="Nome do setor...")
+        if col_nd2.button("➕ Adicionar", use_container_width=True):
+            if novo_d.strip():
+                departamentos.append(novo_d.upper().strip())
+                db.salvar_departamentos(list(set(departamentos)))
+                st.success(f"Setor '{novo_d.upper()}' adicionado!")
+                st.rerun()
+        st.divider()
         st.write(sorted(departamentos))
 
-    # --- SEÇÃO 6: MOTIVOS ---
+    # ══════════════════════════════════════════════════════════════════════════
+    # MOTIVOS
+    # ══════════════════════════════════════════════════════════════════════════
     elif menu == "⚙️ MOTIVOS":
         st.subheader("Motivos Globais")
-        novo_m = st.text_input("Nova Categoria")
-        if st.button("Salvar Motivo"):
-            motivos.append(novo_m.upper())
-            db.salvar_motivos(list(set(motivos)))
-            st.rerun()
-        st.table(pd.DataFrame({"Motivos Habilitados": motivos}))
+
+        with st.container(border=True):
+            col_nm1, col_nm2 = st.columns([4, 1])
+            novo_m = col_nm1.text_input("Nova categoria", label_visibility="collapsed", placeholder="Nome do motivo...")
+            if col_nm2.button("➕ Adicionar", type="primary", use_container_width=True):
+                if novo_m.strip():
+                    motivos_att = list(set(motivos + [novo_m.upper().strip()]))
+                    db.salvar_motivos(motivos_att)
+                    st.success(f"Motivo '{novo_m.upper()}' adicionado!")
+                    st.rerun()
+
+        st.divider()
+        st.markdown("#### 📋 Motivos Cadastrados")
+
+        if motivos:
+            # ✅ FIX 4: deletar motivo individualmente
+            for idx, motivo in enumerate(sorted(motivos)):
+                col_m1, col_m2 = st.columns([5, 1])
+                col_m1.markdown(f"▸ **{motivo}**")
+                if col_m2.button("🗑️", key=f"del_mot_{idx}_{motivo}", help=f"Remover '{motivo}'"):
+                    motivos_att = [m for m in motivos if m != motivo]
+                    db.salvar_motivos(motivos_att)
+                    st.success(f"Motivo '{motivo}' removido.")
+                    st.rerun()
+        else:
+            st.info("Nenhum motivo cadastrado ainda.")
