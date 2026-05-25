@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+from modulos.utils_tempo import agora_br, agora_iso, parse_dt_safe
 from modulos import database as db
 
 def formatar_duracao_h_min(minutos):
@@ -12,19 +13,14 @@ def formatar_duracao_h_min(minutos):
 def finalizar_atividade_atual(nome_usuario):
     logs = db.carregar_esforco()
     mudou = False
-    agora = datetime.now()
+    agora = agora_br()
     for idx, act in enumerate(logs):
         if act['usuario'] == nome_usuario and act['status'] == 'Em andamento':
             logs[idx]['fim'] = agora.isoformat()
             logs[idx]['status'] = 'Finalizado'
-            inicio_str = act.get('inicio')
-            if inicio_str:
-                try:
-                    # Garantindo que a comparação de tempo ignore fusos horários se necessário
-                    inicio_dt = datetime.fromisoformat(inicio_str).replace(tzinfo=None)
-                    duracao = (agora - inicio_dt).total_seconds() / 60
-                    logs[idx]['duracao_min'] = round(duracao, 2)
-                except: logs[idx]['duracao_min'] = 0
+            inicio_dt = parse_dt_safe(act.get('inicio'))
+            duracao = (agora - inicio_dt).total_seconds() / 60
+            logs[idx]['duracao_min'] = round(duracao, 2)
             mudou = True
     if mudou:
         db.salvar_esforco(logs)
@@ -43,18 +39,22 @@ def exibir(user_info):
         .status-tag { font-size: 0.75rem; font-weight: 800; text-transform: uppercase; }
         </style>
     """, unsafe_allow_html=True)
-
-    st.title(f"Olá, {user_info['nome']}! 👋")
     
+    st.title(f"Olá, {user_info['nome']}! 👋")
+        
     # Carga de dados
     projs = db.carregar_projetos()
     diario = db.carregar_diario()
     atividades_log = db.carregar_esforco()
     motivos_gestao = db.carregar_motivos()
     hoje_dt = datetime.now().date()
-
-    tab_esforco, tab_pendentes, tab_agenda, tab_novo = st.tabs([
-        "⚡ Esforço Hoje", "🚀 Pendências", "📅 Agenda", "➕ Novo"
+    
+    tab_esforco, tab_pendentes, tab_agenda, tab_novo, tab_perfil = st.tabs([
+        "⚡ Esforço Hoje",
+        "🚀 Pendências",
+        "📅 Agenda",
+        "➕ Novo",
+        "👤 Perfil"
     ])
 
     # --- ABA 1: ESFORÇO ---
@@ -65,12 +65,18 @@ def exibir(user_info):
         with c1:
             if atv_ativa:
                 st.info(f"🚀 **Ativo agora:**\n\n**{atv_ativa['motivo']}**")
+        
                 try:
-                    inicio_dt = datetime.fromisoformat(atv_ativa['inicio']).replace(tzinfo=None)
-                    decorrido = (datetime.now() - inicio_dt).seconds // 60
-                    st.caption(f"Iniciado às {inicio_dt.strftime('%H:%M')} ({decorrido} min decorridos)")
-                except: st.caption("Iniciado agora")
-                
+                    inicio_dt = parse_dt_safe(atv_ativa.get('inicio'))
+                    if inicio_dt:
+                        decorrido = int((agora_br() - inicio_dt).total_seconds() // 60)
+                        st.caption(f"Iniciado às {inicio_dt.strftime('%H:%M')} ({decorrido} min decorridos)")
+                    else:
+                        st.caption("Iniciado agora")
+        
+                except Exception as e:
+                    st.caption("Erro ao calcular tempo da atividade")
+        
                 if st.button("🏁 FINALIZAR TAREFA", type="secondary", use_container_width=True):
                     finalizar_atividade_atual(user_info['nome'])
                     st.rerun()
@@ -80,12 +86,30 @@ def exibir(user_info):
         with c2:
             with st.expander("Iniciar nova atividade", expanded=not atv_ativa):
                 motivo_sel = st.selectbox("Categoria:", motivos_gestao)
-                detalhes = st.text_input("Observação ou Ticket:")
+                detalhes   = st.text_input("Observação ou Ticket:")
+            
+                usar_horario_manual = st.checkbox("⏰ Ajustar horário de início manualmente")
+                if usar_horario_manual:
+                    col_h, col_m = st.columns(2)
+                    hora_manual = col_h.number_input("Hora", 0, 23, value=agora_br().hour)
+                    min_manual  = col_m.number_input("Minuto", 0, 59, value=agora_br().minute)
+            
                 if st.button("INICIAR AGORA ⚡", type="primary", use_container_width=True):
                     finalizar_atividade_atual(user_info['nome'])
+            
+                    if usar_horario_manual:
+                        inicio_ref = agora_br().replace(hour=int(hora_manual), minute=int(min_manual), second=0)
+                    else:
+                        inicio_ref = agora_br()
+            
                     atividades_log.append({
-                        "usuario": user_info['nome'], "motivo": motivo_sel, "detalhes": detalhes, 
-                        "inicio": datetime.now().isoformat(), "fim": None, "status": "Em andamento", "duracao_min": 0
+                        "usuario":     user_info['nome'],
+                        "motivo":      motivo_sel,
+                        "detalhes":    detalhes,
+                        "inicio":      inicio_ref.isoformat(),
+                        "fim":         None,
+                        "status":      "Em andamento",
+                        "duracao_min": 0
                     })
                     db.salvar_esforco(atividades_log)
                     st.rerun()
@@ -94,8 +118,10 @@ def exibir(user_info):
         meu_hist = [a for a in atividades_log if a['usuario'] == user_info['nome']]
         if meu_hist:
             df_meu = pd.DataFrame(meu_hist)
-            df_meu['inicio_dt'] = pd.to_datetime(df_meu['inicio'], errors='coerce')
-            df_meu = df_meu[df_meu['inicio_dt'].dt.date == hoje_dt].sort_values('inicio_dt', ascending=False)
+            df_meu['inicio_dt'] = df_meu['inicio'].apply(parse_dt_safe)
+            df_meu = df_meu[df_meu['inicio_dt'].apply(
+                lambda x: x.date() == hoje_dt if x is not None else False
+            )].sort_values('inicio_dt', ascending=False)
             
             if not df_meu.empty:
                 df_meu['Hora'] = df_meu['inicio_dt'].dt.strftime('%H:%M')
@@ -235,3 +261,29 @@ def exibir(user_info):
                     
                     st.success(f"Tarefa agendada para {data_f}!")
                     st.rerun()
+
+
+    # --- ABA 5: PERFIL ---
+    with tab_perfil:
+
+        st.subheader("👤 Meu Perfil")
+
+        foto = st.file_uploader(
+            "Escolha uma foto",
+            type=["png", "jpg", "jpeg"]
+        )
+
+        if foto is not None:
+
+            caminho = f"fotos/{user_info['nome']}.png"
+
+            with open(caminho, "wb") as f:
+                f.write(foto.getbuffer())
+
+            st.success("Foto salva com sucesso!")
+
+        # Mostrar foto atual
+        try:
+            st.image(f"fotos/{user_info['nome']}.png", width=150)
+        except:
+            st.info("Você ainda não possui foto.")
