@@ -36,6 +36,7 @@ st.markdown("""
 # ─── Auth ─────────────────────────────────────────────────────────────────────
 from auth import login, tem_modulo, usuario_atual, logout, bootstrap_admin
 
+bootstrap_admin()
 usuario = login()   # bloqueia execução se não autenticado
 
 # ─── Sidebar ──────────────────────────────────────────────────────────────────
