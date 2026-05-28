@@ -1,142 +1,141 @@
 import streamlit as st
-import configuracao as config
-from modulos import database as db
-from views import home, login
-from datetime import datetime
+import pandas as pd
 
-# --- 1. FUNÇÃO DE CACHE ---
-# Otimizado: agora o cache limpa automaticamente se houver erro, evitando travar o app
-@st.cache_data(ttl=600)
-def obter_usuarios_cache():
-    try:
-        return db.carregar_usuarios_firebase()
-    except Exception as e:
-        st.error(f"Erro ao conectar com o banco de dados: {e}")
-        return {}
+# ─── Configuração da página (DEVE ser o primeiro comando Streamlit) ────────────
+st.set_page_config(
+    page_title="Admin Parque Aliança",
+    layout="wide",
+    page_icon="📊",
+)
 
-# --- 2. CONFIGURAÇÃO INICIAL E ESTILO ---
-config.configurar_pagina()
-
-# CSS de Alta Prioridade - Mantida sua estilização Azul e Dourado
+# ─── CSS global ───────────────────────────────────────────────────────────────
 st.markdown("""
     <style>
-        [data-testid="stSidebar"] {
-            background-color: #4682B4 !important;
-            background-image: linear-gradient(180deg, #4682B4 0%, #2c5270 100%) !important;
-        }
-        [data-testid="stSidebar"] > div:first-child,
-        [data-testid="stSidebar"] [data-testid="stVerticalBlock"],
-        [data-testid="stSidebarNav"] {
-            background-color: transparent !important;
-        }
-        [data-testid="stSidebar"] .stText, [data-testid="stSidebar"] label, 
-        [data-testid="stSidebar"] p, [data-testid="stSidebar"] span {
-            color: #FFFFFF !important;
-        }
-        [data-testid="stSidebar"] svg { fill: #FFD700 !important; }
-        
-        [data-testid="stSidebarNavItems"] a {
-            background-color: rgba(255, 255, 255, 0.05) !important;
-            border-radius: 8px !important;
-            margin: 4px 0px !important;
-            border: 1px solid rgba(255, 215, 0, 0.1) !important;
-            transition: all 0.3s ease;
-        }
-        [data-testid="stSidebarNavItems"] a[aria-current="page"] {
-            background-color: #B8860B !important;
-            color: #FFFFFF !important;
-            border: 1px solid #FFD700 !important;
-            font-weight: bold !important;
-        }
-        header[data-testid="stHeader"] { background-color: rgba(0,0,0,0) !important; }
+    .card {
+        background-color: #ffffff; padding: 15px; border-radius: 10px;
+        margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        border-left: 5px solid #002366;
+    }
+    .card-header { font-weight: bold; font-size: 1rem; color: #1e293b; }
+    .stTabs [data-baseweb="tab-list"] { gap: 8px; }
+    .stTabs [data-baseweb="tab"] {
+        height: 45px; background-color: #f0f2f6;
+        border-radius: 10px 10px 0px 0px; padding: 0px 20px;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #002366 !important; color: white !important;
+    }
+    div[data-testid="metric-container"] {
+        background-color: white; border: 1px solid #e6e9ef;
+        padding: 15px; border-radius: 12px;
+        box-shadow: 2px 2px 10px rgba(0,0,0,0.05);
+    }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. INICIALIZAÇÃO DO SESSION STATE ---
-# Centralizado para garantir que variáveis essenciais sempre existam
-for key, default in {
-    "autenticado": False, 
-    "user_info": None, 
-    "user_id": None,
-    "pagina_atual": "Home"
-}.items():
-    if key not in st.session_state:
-        st.session_state[key] = default
+# ─── Auth ─────────────────────────────────────────────────────────────────────
+from auth import login, tem_modulo, usuario_atual, logout
 
-# --- 4. CARREGAMENTO DE USUÁRIOS ---
-usuarios = obter_usuarios_cache()
+usuario = login()   # bloqueia execução se não autenticado
 
-# --- 5. LÓGICA DE LOGIN ---
-if not st.session_state.autenticado:
-    if not usuarios:
-        st.error("Sistema offline. Verifique a conexão com Firebase.")
-        st.stop()
-    login.exibir_login(usuarios)
-    st.stop() 
+# ─── Sidebar ──────────────────────────────────────────────────────────────────
+with st.sidebar:
+    u = usuario_atual()
+    from auth import ROLES
+    role_info = ROLES.get(u.get("role", "viewer"), ROLES["viewer"])
+    st.markdown(f"**{role_info['icon']} {u.get('nome', u.get('email', ''))}**")
+    st.caption(f"{u.get('email', '')} · {role_info['label']}")
+    st.divider()
+    if st.button("🚪 Sair", use_container_width=True):
+        logout()
 
-# --- 6. RECUPERAÇÃO SEGURA DO PERFIL ---
-user_id = st.session_state.user_id
-user_info = st.session_state.user_info
+# ─── Dados globais ────────────────────────────────────────────────────────────
+from db import carregar_membros, carregar_relatorios
+from utils.normalizacao import normalizar_nome_no_banco, obter_mes_atual_str
 
-# Revalidação de segurança caso o cache expire ou mude
-if not user_info and user_id in usuarios:
-    user_info = usuarios.get(user_id)
-    st.session_state.user_info = user_info
+membros_db      = carregar_membros()
+relatorios_brutos = carregar_relatorios()
 
-if not user_info:
-    st.warning("⚠️ Perfil não identificado. Por favor, refaça o login.")
-    if st.button("Sair"):
-        st.session_state.autenticado = False
-        st.rerun()
-    st.stop()
+df = pd.DataFrame(relatorios_brutos) if relatorios_brutos else pd.DataFrame()
+if not df.empty:
+    df["horas"] = pd.to_numeric(df["horas"], errors="coerce").fillna(0)
+    df["estudos_biblicos"] = pd.to_numeric(
+        df.get("estudos_biblicos", 0), errors="coerce"
+    ).fillna(0)
 
-# Definição de permissões
-user_role = user_info.get('role', 'OPERACIONAL')
-is_adm = (user_role == "ADM")
-permissoes = user_info.get('modulos', [])
+    def _validar_envio(row):
+        nome_oficial = normalizar_nome_no_banco(row["nome"], membros_db.keys())
+        if nome_oficial:
+            dados_m     = membros_db[nome_oficial]
+            cat_original = dados_m.get("categoria", "PUBLICADOR")
+            cat_final    = (
+                "PIONEIRO AUXILIAR"
+                if cat_original == "PUBLICADOR" and row["horas"] >= 15
+                else cat_original
+            )
+            return pd.Series([nome_oficial, cat_final, "IDENTIFICADO"])
+        return pd.Series([row["nome"], "DESCONHECIDO", "TRIAGEM"])
 
-# --- 7. MONTAGEM DINÂMICA DO MENU ---
-menu_options = ["Home"]
-# Usa o MAPA_MODULOS_MESTRE definido no seu config.py
-for label, id_modulo in getattr(config, 'MAPA_MODULOS_MESTRE', {}).items():
-    if is_adm or id_modulo in permissoes:
-        menu_options.append(label)
+    df[["nome_oficial", "cat_oficial", "status_validacao"]] = df.apply(
+        _validar_envio, axis=1
+    )
+    df["mes_referencia"] = df["mes_referencia"].str.upper()
 
-if is_adm: 
-    menu_options.append("Central de Comando")
+meses_disponiveis = (
+    sorted(df["mes_referencia"].unique()) if not df.empty else [obter_mes_atual_str()]
+)
+mes_sel = st.sidebar.selectbox(
+    "📅 Mês de Análise",
+    meses_disponiveis,
+    index=len(meses_disponiveis) - 1,
+)
+df_mes = df[df["mes_referencia"] == mes_sel] if not df.empty else pd.DataFrame()
 
-# Renderização da Sidebar e captura da escolha
-escolha = config.desenhar_sidebar(user_info, menu_options)
+# ─── Título ───────────────────────────────────────────────────────────────────
+st.title("📊 Gestão Parque Aliança")
 
-# --- 8. ROTEADOR CENTRAL ---
-# Encapsulado para capturar erros específicos de cada módulo
-try:
-    if escolha == "Home":
-        home.exibir(user_info)
-        
-    elif "Manutenção" in escolha:
-        from modulos import mod_manutencao
-        mod_manutencao.main()
-        
-    elif "Minha Spin" in escolha:
-        from modulos import mod_spin
-        # Passando user_info para manter a personalização do SpinGenius
-        mod_spin.exibir_tamagotchi(user_info)
-        
-    elif "RH Docs" in escolha or "Cartas" in escolha:
-        from views import mod_cartas
-        mod_cartas.exibir(user_role)
-        
-    elif "Processos" in escolha:
-        from views import mod_processos
-        mod_processos.exibir(user_role=user_role)
-        
-    elif "Central de Comando" in escolha:
-        from views import central
-        central.exibir(is_adm)
+# ─── Abas principais ──────────────────────────────────────────────────────────
+nomes_abas = [
+    "📋 RELATÓRIOS",
+    "⚠️ TRIAGEM",
+    "📈 CONSOLIDADO",
+    "📢 ANÚNCIOS",
+    "⚙️ CONFIGURAÇÃO",
+]
+if tem_modulo("passagens"):
+    nomes_abas.append("🚌 PASSAGENS")
 
-except Exception as e:
-    st.error(f"Ocorreu um erro ao carregar o módulo: {escolha}")
-    st.info("Tente atualizar a página ou contatar o administrador.")
-    # Log interno para debug
-    print(f"DEBUG: Erro no módulo {escolha}: {e}")
+tabs = st.tabs(nomes_abas)
+
+# ── Aba 0: Relatórios ──────────────────────────────────────────────────────────
+with tabs[0]:
+    from modules import relatorios
+    relatorios.render(df, membros_db, mes_sel)
+
+# ── Aba 1: Triagem ─────────────────────────────────────────────────────────────
+with tabs[1]:
+    from modules import triagem
+    triagem.render(df, df_mes, membros_db)
+
+# ── Aba 2: Consolidado ─────────────────────────────────────────────────────────
+with tabs[2]:
+    from modules import consolidado
+    consolidado.render(df, membros_db)
+
+# ── Aba 3: Anúncios ────────────────────────────────────────────────────────────
+with tabs[3]:
+    from modules import anuncios
+    anuncios.render()
+
+# ── Aba 4: Configuração ────────────────────────────────────────────────────────
+with tabs[4]:
+    from modules import configuracao
+    configuracao.render(df, membros_db, mes_sel)
+
+# ── Aba 5: Passagens (condicional) ─────────────────────────────────────────────
+if tem_modulo("passagens"):
+    with tabs[5]:
+        from modules import passagens
+        passagens.render()
+
+st.caption("v5.0.0 | Parque Aliança | Gestão Modular")
