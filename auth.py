@@ -2,6 +2,28 @@ import streamlit as st
 import hashlib
 from db import inicializar_db, salvar_usuario, carregar_usuarios, deletar_usuario
 
+# No topo de auth.py, adicione esta função:
+
+def bootstrap_admin():
+    """
+    Cria o admin inicial se não existir nenhum usuário no banco.
+    REMOVA esta chamada após o primeiro acesso.
+    """
+    BOOTSTRAP_EMAIL = "wendley@admin.com"   # ← troque
+    BOOTSTRAP_SENHA = "admin123"             # ← troque
+    
+    db = inicializar_db()
+    if not db:
+        return
+    
+    usuarios = list(db.collection("usuarios").limit(1).stream())
+    if not usuarios:  # só cria se o banco estiver vazio
+        db.collection("usuarios").document(BOOTSTRAP_EMAIL).set({
+            "nome":  "Administrador",
+            "role":  "admin",
+            "senha": _hash_senha(BOOTSTRAP_SENHA),
+        })
+
 # ─── DEFINIÇÃO DE ROLES ────────────────────────────────────────────────────────
 # Cada role define:
 #   can_edit      → pode editar algo
