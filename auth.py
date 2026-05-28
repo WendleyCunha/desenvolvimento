@@ -2,34 +2,7 @@ import streamlit as st
 import hashlib
 from db import inicializar_db, salvar_usuario, carregar_usuarios, deletar_usuario
 
-# No topo de auth.py, adicione esta função:
-
-def bootstrap_admin():
-    """
-    Cria o admin inicial se não existir nenhum usuário no banco.
-    REMOVA esta chamada após o primeiro acesso.
-    """
-    BOOTSTRAP_EMAIL = "wendley@admin.com"   # ← troque
-    BOOTSTRAP_SENHA = "admin123"             # ← troque
-    
-    db = inicializar_db()
-    if not db:
-        return
-    
-    usuarios = list(db.collection("usuarios").limit(1).stream())
-    if not usuarios:  # só cria se o banco estiver vazio
-        db.collection("usuarios").document(BOOTSTRAP_EMAIL).set({
-            "nome":  "Administrador",
-            "role":  "admin",
-            "senha": _hash_senha(BOOTSTRAP_SENHA),
-        })
-
 # ─── DEFINIÇÃO DE ROLES ────────────────────────────────────────────────────────
-# Cada role define:
-#   can_edit      → pode editar algo
-#   abas_edit     → lista de abas editáveis ("*" = todas)
-#   modulos       → módulos acessíveis além do painel principal
-
 ROLES = {
     "admin": {
         "label":     "Administrador",
@@ -69,16 +42,35 @@ ROLES = {
 }
 
 
-# ─── HASH DE SENHA ─────────────────────────────────────────────────────────────
+# ─── HASH DE SENHA (deve vir antes de bootstrap_admin) ────────────────────────
 
 def _hash_senha(senha: str) -> str:
     return hashlib.sha256(senha.encode()).hexdigest()
 
 
+# ─── BOOTSTRAP: cria admin inicial se banco estiver vazio ─────────────────────
+# REMOVA a chamada bootstrap_admin() do main.py após o primeiro login.
+
+def bootstrap_admin():
+    BOOTSTRAP_EMAIL = "wendley@admin.com"
+    BOOTSTRAP_SENHA = "admin123"
+
+    db = inicializar_db()
+    if not db:
+        return
+
+    usuarios = list(db.collection("usuarios").limit(1).stream())
+    if not usuarios:
+        db.collection("usuarios").document(BOOTSTRAP_EMAIL).set({
+            "nome":  "Administrador",
+            "role":  "admin",
+            "senha": _hash_senha(BOOTSTRAP_SENHA),
+        })
+
+
 # ─── LOGIN / LOGOUT ────────────────────────────────────────────────────────────
 
 def login():
-    """Exibe tela de login se não autenticado. Retorna dict do usuário logado."""
     if "usuario" in st.session_state:
         return st.session_state.usuario
 
@@ -94,8 +86,8 @@ def login():
     st.divider()
 
     with st.form("form_login"):
-        email = st.text_input("E-mail", placeholder="seu@email.com")
-        senha = st.text_input("Senha", type="password")
+        email  = st.text_input("E-mail", placeholder="seu@email.com")
+        senha  = st.text_input("Senha", type="password")
         entrar = st.form_submit_button("Entrar", use_container_width=True, type="primary")
 
     if entrar:
@@ -113,11 +105,9 @@ def login():
             st.error("Usuário não encontrado.")
             st.stop()
 
-        dados = doc.to_dict()
-
-        # Suporte a senha em hash ou texto puro (migração)
+        dados            = doc.to_dict()
         senha_armazenada = dados.get("senha", "")
-        senha_ok = (
+        senha_ok         = (
             senha_armazenada == _hash_senha(senha)
             or senha_armazenada == senha  # legado texto puro
         )
@@ -126,13 +116,13 @@ def login():
             st.error("Senha incorreta.")
             st.stop()
 
-        role = dados.get("role", "viewer")
+        role        = dados.get("role", "viewer")
         role_config = ROLES.get(role, ROLES["viewer"])
 
         st.session_state.usuario = {
-            "email":     email,
-            "nome":      dados.get("nome", email),
-            "role":      role,
+            "email": email,
+            "nome":  dados.get("nome", email),
+            "role":  role,
             **role_config,
         }
         st.rerun()
@@ -154,7 +144,7 @@ def usuario_atual() -> dict:
 
 
 def pode_editar(aba: str = None) -> bool:
-    u = usuario_atual()
+    u    = usuario_atual()
     if not u.get("can_edit"):
         return False
     abas = u.get("abas_edit", [])
@@ -177,14 +167,13 @@ def is_admin() -> bool:
 
 
 def bloquear_edicao(aba: str = None):
-    """Exibe aviso e retorna True se o usuário NÃO pode editar."""
     if not pode_editar(aba):
         st.info("🔒 Você tem acesso **somente leitura** nesta aba.")
         return True
     return False
 
 
-# ─── PAINEL DE GESTÃO DE USUÁRIOS (apenas admin) ───────────────────────────────
+# ─── PAINEL DE GESTÃO DE USUÁRIOS (apenas admin) ──────────────────────────────
 
 def render_gestao_usuarios():
     if not is_admin():
@@ -192,10 +181,8 @@ def render_gestao_usuarios():
         return
 
     st.subheader("👥 Gerenciar Usuários do Sistema")
-
     usuarios = carregar_usuarios()
 
-    # Lista de usuários existentes
     if usuarios:
         st.caption(f"{len(usuarios)} usuário(s) cadastrado(s)")
         for email, u in usuarios.items():
@@ -203,7 +190,7 @@ def render_gestao_usuarios():
             with st.expander(
                 f"{role_info['icon']} **{u.get('nome', email)}** — {email} — {role_info['label']}"
             ):
-                c1, c2 = st.columns(2)
+                c1, c2    = st.columns(2)
                 novo_nome = c1.text_input("Nome", value=u.get("nome", ""), key=f"un_{email}")
                 novo_role = c2.selectbox(
                     "Permissão",
@@ -239,11 +226,11 @@ def render_gestao_usuarios():
     st.markdown("##### ➕ Novo Usuário")
 
     with st.form("form_novo_usuario", clear_on_submit=True):
-        c1, c2 = st.columns(2)
-        novo_email = c1.text_input("E-mail *")
-        novo_nome_f = c2.text_input("Nome completo *")
-        c3, c4 = st.columns(2)
-        novo_role_f = c3.selectbox(
+        c1, c2       = st.columns(2)
+        novo_email   = c1.text_input("E-mail *")
+        novo_nome_f  = c2.text_input("Nome completo *")
+        c3, c4       = st.columns(2)
+        novo_role_f  = c3.selectbox(
             "Permissão *",
             list(ROLES.keys()),
             format_func=lambda r: f"{ROLES[r]['icon']} {ROLES[r]['label']}",
@@ -270,13 +257,11 @@ def _render_role_info(role: str):
     info = ROLES.get(role, ROLES["viewer"])
     abas = info["abas_edit"]
     mods = info["modulos"]
-
     if "*" in abas:
         st.markdown("✅ Edita **todas** as abas e módulos")
     elif abas:
         st.markdown(f"✅ Edita: `{'`, `'.join(abas)}`")
     else:
         st.markdown("🔒 Somente leitura (sem edição)")
-
     if mods:
         st.markdown(f"📦 Módulos: `{'`, `'.join(mods)}`")
