@@ -1,14 +1,12 @@
 import streamlit as st
 import pandas as pd
 
-# ─── Configuração da página (DEVE ser o primeiro comando Streamlit) ────────────
 st.set_page_config(
     page_title="Admin Parque Aliança",
     layout="wide",
     page_icon="📊",
 )
 
-# ─── CSS global ───────────────────────────────────────────────────────────────
 st.markdown("""
     <style>
     .card {
@@ -34,15 +32,15 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ─── Auth ─────────────────────────────────────────────────────────────────────
-from auth import login, tem_modulo, usuario_atual, logout, bootstrap_admin
+from auth import login, tem_modulo, usuario_atual, logout, bootstrap_admin, ROLES
 
-bootstrap_admin()
-usuario = login()   # bloqueia execução se não autenticado
+bootstrap_admin()   # ← REMOVA esta linha após o primeiro login bem-sucedido
+
+usuario = login()
 
 # ─── Sidebar ──────────────────────────────────────────────────────────────────
 with st.sidebar:
-    u = usuario_atual()
-    from auth import ROLES
+    u         = usuario_atual()
     role_info = ROLES.get(u.get("role", "viewer"), ROLES["viewer"])
     st.markdown(f"**{role_info['icon']} {u.get('nome', u.get('email', ''))}**")
     st.caption(f"{u.get('email', '')} · {role_info['label']}")
@@ -54,7 +52,7 @@ with st.sidebar:
 from db import carregar_membros, carregar_relatorios
 from utils.normalizacao import normalizar_nome_no_banco, obter_mes_atual_str
 
-membros_db      = carregar_membros()
+membros_db        = carregar_membros()
 relatorios_brutos = carregar_relatorios()
 
 df = pd.DataFrame(relatorios_brutos) if relatorios_brutos else pd.DataFrame()
@@ -67,7 +65,7 @@ if not df.empty:
     def _validar_envio(row):
         nome_oficial = normalizar_nome_no_banco(row["nome"], membros_db.keys())
         if nome_oficial:
-            dados_m     = membros_db[nome_oficial]
+            dados_m      = membros_db[nome_oficial]
             cat_original = dados_m.get("categoria", "PUBLICADOR")
             cat_final    = (
                 "PIONEIRO AUXILIAR"
@@ -108,32 +106,26 @@ if tem_modulo("passagens"):
 
 tabs = st.tabs(nomes_abas)
 
-# ── Aba 0: Relatórios ──────────────────────────────────────────────────────────
 with tabs[0]:
     from modules import relatorios
     relatorios.render(df, membros_db, mes_sel)
 
-# ── Aba 1: Triagem ─────────────────────────────────────────────────────────────
 with tabs[1]:
     from modules import triagem
     triagem.render(df, df_mes, membros_db)
 
-# ── Aba 2: Consolidado ─────────────────────────────────────────────────────────
 with tabs[2]:
     from modules import consolidado
     consolidado.render(df, membros_db)
 
-# ── Aba 3: Anúncios ────────────────────────────────────────────────────────────
 with tabs[3]:
     from modules import anuncios
     anuncios.render()
 
-# ── Aba 4: Configuração ────────────────────────────────────────────────────────
 with tabs[4]:
     from modules import configuracao
     configuracao.render(df, membros_db, mes_sel)
 
-# ── Aba 5: Passagens (condicional) ─────────────────────────────────────────────
 if tem_modulo("passagens"):
     with tabs[5]:
         from modules import passagens
