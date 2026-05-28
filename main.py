@@ -34,7 +34,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ─── Auth ─────────────────────────────────────────────────────────────────────
-from auth import login, tem_modulo, usuario_atual, logout
+from auth import login, tem_modulo, usuario_atual, logout, bootstrap_admin
 
 usuario = login()   # bloqueia execução se não autenticado
 
