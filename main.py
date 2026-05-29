@@ -1,13 +1,6 @@
 import streamlit as st
 import pandas as pd
 
-# --- IMPORTAÇÃO DOS MÓDULOS (Necessário!) ---
-from modules import relatorios, triagem, consolidado, anuncios, configuracao
-try:
-    from modules import passagens
-except ImportError:
-    pass
-    
 st.set_page_config(
     page_title="Admin Parque Aliança",
     layout="wide",
