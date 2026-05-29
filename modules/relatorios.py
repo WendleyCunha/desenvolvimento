@@ -76,4 +76,4 @@ def render(df: pd.DataFrame, membros_db: dict, mes_sel: str):
                             if c4.button("Dar Baixa", key=f"btn_man_{p}_{mes_sel}"):
                                 salvar_baixa_manual(p, mes_sel, h_manual, e_manual)
                         else:
-                            st.write(f"• {p}")relatorios
+                            st.write(f"• {p}")
