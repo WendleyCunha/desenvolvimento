@@ -1,11 +1,11 @@
 import streamlit as st
 import pandas as pd
+from db import carregar_membros, carregar_relatorios
+from utils.normalizacao import normalizar_nome_no_banco, obter_mes_atual_str
+from modules import relatorios, triagem, consolidado, anuncios, configuracao, passagens
 
-st.set_page_config(
-    page_title="Admin Parque Aliança",
-    layout="wide",
-    page_icon="📊",
-)
+# ─── Página ───────────────────────────────────────────────────────────────────
+st.set_page_config(page_title="Admin Parque Aliança", layout="wide", page_icon="📊")
 
 st.markdown("""
     <style>
@@ -49,10 +49,6 @@ with st.sidebar:
         logout()
 
 # ─── Dados globais ────────────────────────────────────────────────────────────
-from db import carregar_membros, carregar_relatorios
-from utils.normalizacao import normalizar_nome_no_banco, obter_mes_atual_str
-from modules import relatorios, triagem, consolidado, anuncios, configuracao, passagens
-
 membros_db        = carregar_membros()
 relatorios_brutos = carregar_relatorios()
 
@@ -94,7 +90,7 @@ df_mes = df[df["mes_referencia"] == mes_sel] if not df.empty else pd.DataFrame()
 # ─── Título ───────────────────────────────────────────────────────────────────
 st.title("📊 Gestão Parque Aliança")
 
-# ─── Abas principais ──────────────────────────────────────────────────────────
+# ─── Abas ─────────────────────────────────────────────────────────────────────
 nomes_abas = [
     "📋 RELATÓRIOS",
     "⚠️ TRIAGEM",
@@ -107,29 +103,14 @@ if tem_modulo("passagens"):
 
 tabs = st.tabs(nomes_abas)
 
-with tabs[0]:
-    from modules import relatorios
-    relatorios.render(df, membros_db, mes_sel)
-
-with tabs[1]:
-    from modules import triagem
-    triagem.render(df, df_mes, membros_db)
-
-with tabs[2]:
-    from modules import consolidado
-    consolidado.render(df, membros_db)
-
-with tabs[3]:
-    from modules import anuncios
-    anuncios.render()
-
-with tabs[4]:
-    from modules import configuracao
-    configuracao.render(df, membros_db, mes_sel)
+with tabs[0]: relatorios.render(df, membros_db, mes_sel)
+with tabs[1]: triagem.render(df, df_mes, membros_db)
+with tabs[2]: consolidado.render(df, membros_db)
+with tabs[3]: anuncios.render()
+with tabs[4]: configuracao.render(df, membros_db, mes_sel)
 
 if tem_modulo("passagens"):
     with tabs[5]:
-        from modules import passagens
         passagens.render()
 
 st.caption("v5.0.0 | Parque Aliança | Gestão Modular")
