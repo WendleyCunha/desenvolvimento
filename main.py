@@ -107,28 +107,22 @@ if tem_modulo("passagens"):
 tabs = st.tabs(nomes_abas)
 
 with tabs[0]:
-    from modules import relatorios
     relatorios.render(df, membros_db, mes_sel)
 
 with tabs[1]:
-    from modules import triagem
     triagem.render(df, df_mes, membros_db)
 
 with tabs[2]:
-    from modules import consolidado
     consolidado.render(df, membros_db)
 
 with tabs[3]:
-    from modules import anuncios
     anuncios.render()
 
 with tabs[4]:
-    from modules import configuracao
     configuracao.render(df, membros_db, mes_sel)
 
 if tem_modulo("passagens"):
     with tabs[5]:
-        from modules import passagens
         passagens.render()
-
+        
 st.caption("v5.0.0 | Parque Aliança | Gestão Modular")
