@@ -1,10 +1,5 @@
 import streamlit as st
 import pandas as pd
-from modules import relatorios, triagem, consolidado, anuncios, configuracao
-try:
-    from modules import passagens
-except ImportError:
-    pass # Caso o módulo passagens não exista ou seja opcional
     
 st.set_page_config(
     page_title="Admin Parque Aliança",
