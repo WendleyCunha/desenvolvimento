@@ -1,4 +1,3 @@
-cat > /home/claude/main.py << 'ENDOFFILE'
 import streamlit as st
 import pandas as pd
 import sqlite3
@@ -2171,5 +2170,3 @@ with aba_conf:
                 st.error("❌ Senha incorreta. Exclusão não realizada.")
 
 st.caption("v8.1.0 | Lila Closet Atelier | Sistema de Gestão Completo")
-ENDOFFILE
-echo "Done, lines: $(wc -l < /home/claude/main.py)"
