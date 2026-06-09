@@ -69,7 +69,7 @@ def tela_login():
     with col_c:
         st.markdown("""
         <div class="login-box">
-          <div class="login-icon">🧵</div>
+          <div class="login-icon">👗</div>
           <div class="login-title">Lila Closet Atelier</div>
           <div class="login-sub">Acesso Restrito</div>
         </div>
@@ -579,7 +579,7 @@ def gerar_pdf_contrato(enc: dict, cpf: str, rg: str) -> bytes:
         logo_img = RLImage(LOGO_PATH, width=2.4*cm, height=2.4*cm)
         logo_cell = logo_img
     else:
-        logo_cell = Paragraph("🧵", ParagraphStyle("lc", fontName="Helvetica-Bold",
+        logo_cell = Paragraph("👗", ParagraphStyle("lc", fontName="Helvetica-Bold",
             fontSize=28, textColor=colors.HexColor("#c9a227"), alignment=TA_CENTER))
 
     nome_empresa_cell = Table([
@@ -791,7 +791,7 @@ def gerar_pdf_contrato(enc: dict, cpf: str, rg: str) -> bytes:
 # ══════════════════════════════════════════════════════════════════════════════
 logo_b64 = get_logo_base64()
 logo_html = (f'<img src="data:image/png;base64,{logo_b64}" class="hero-logo" alt="Lila Logo">'
-             if logo_b64 else '<div class="hero-icon">🧵</div>')
+             if logo_b64 else '<div class="hero-icon">👗</div>')
 
 st.markdown(f"""
 <div class="hero-header">
@@ -988,7 +988,7 @@ with aba_enc:
             precisa_tecido = 1 if "Sim" in tem_tecido else 0
 
             with st.form("novo_pedido", clear_on_submit=False):
-                st.markdown("#### 🧵 Dados da Peça")
+                st.markdown("#### 👗 Dados da Peça")
                 col_p1, col_p2 = st.columns([2, 3])
                 cli_sel  = col_p1.selectbox("Cliente *", clis)
                 peca     = col_p2.text_input("Peça / Serviço *", placeholder="Ex: Vestido de festa, Calça social…")
