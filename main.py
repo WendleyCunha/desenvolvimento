@@ -7,6 +7,7 @@ import calendar
 import io
 import hashlib
 import time
+import base64
 
 # PDF
 from reportlab.lib.pagesizes import A4
@@ -15,9 +16,10 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm, mm
 from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
-    HRFlowable, KeepTogether
+    HRFlowable, KeepTogether, Image as RLImage
 )
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT, TA_JUSTIFY
+from reportlab.lib.utils import ImageReader
 
 # Excel
 import xlsxwriter
@@ -32,8 +34,18 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+# ── Logo helper ──────────────────────────────────────────────────────────────
+LOGO_PATH = "lila.png"
+
+def get_logo_base64() -> str | None:
+    """Retorna a logo em base64 se o arquivo existir."""
+    if os.path.exists(LOGO_PATH):
+        with open(LOGO_PATH, "rb") as f:
+            return base64.b64encode(f.read()).decode()
+    return None
+
 # ══════════════════════════════════════════════════════════════════════════════
-# CSS — visual inspirado no portal King Star (dark sidebar + light content)
+# CSS
 # ══════════════════════════════════════════════════════════════════════════════
 st.markdown("""
 <style>
@@ -58,17 +70,18 @@ html, body, [data-testid="stAppViewContainer"] {
 /* ── Hero header ── */
 .hero-header {
   background: linear-gradient(135deg, #1a0f0a 0%, #3d1f10 50%, #6b3a22 100%);
-  border-radius: 16px; padding: 1.75rem 2.25rem;
+  border-radius: 16px; padding: 1.5rem 2.25rem;
   margin-bottom: 1.5rem; display: flex; align-items: center; gap: 1.5rem;
   box-shadow: 0 8px 32px rgba(0,0,0,0.22);
 }
+.hero-logo { height: 68px; width: auto; border-radius: 10px; object-fit: contain; }
+.hero-icon { font-size: 3rem; }
 .hero-title {
   font-family: 'Playfair Display', serif; font-size: 1.9rem;
   font-weight: 700; color: #f5e6d3; margin: 0; line-height: 1.2;
 }
 .hero-subtitle { font-size: 0.8rem; color: #c9a882; letter-spacing: 2px;
   text-transform: uppercase; margin-top: 5px; }
-.hero-icon { font-size: 3rem; }
 
 /* ── Abas ── */
 [data-testid="stTabs"] [data-baseweb="tab-list"] {
@@ -154,6 +167,12 @@ div[data-testid="metric-container"] {
   padding: 10px 14px; font-size: 0.82rem; color: #1e5e22; margin: 6px 0;
 }
 
+/* ── Danger zone (deletar pedido) ── */
+.danger-zone {
+  background: #fff0f0; border: 2px solid #e53935; border-radius: 12px;
+  padding: 1.2rem 1.4rem; margin-top: 0.5rem;
+}
+
 /* ── Inputs ── */
 [data-baseweb="input"] input, [data-baseweb="textarea"] textarea {
   border-radius: 10px !important; border-color: #e0d5c9 !important;
@@ -226,6 +245,8 @@ MESES_PT = [
     "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro",
 ]
 
+SENHA_DELETE = "Qmerd@10"
+
 # ══════════════════════════════════════════════════════════════════════════════
 # HELPERS
 # ══════════════════════════════════════════════════════════════════════════════
@@ -268,7 +289,6 @@ def get_conn():
 def init_db():
     with get_conn() as conn:
         c = conn.cursor()
-        # ── Clientes ──────────────────────────────────────────────────────────
         c.execute("""
             CREATE TABLE IF NOT EXISTS clientes (
                 nome TEXT, modelo_base TEXT,
@@ -279,12 +299,10 @@ def init_db():
                 coxa REAL, gancho REAL, colarinho REAL, outro TEXT
             )
         """)
-        # novas colunas retrocompatíveis
         for col in ["telefone TEXT DEFAULT ''", "email TEXT DEFAULT ''", "cpf TEXT DEFAULT ''"]:
             try: c.execute(f"ALTER TABLE clientes ADD COLUMN {col}")
             except: pass
 
-        # ── Encomendas ────────────────────────────────────────────────────────
         c.execute("""
             CREATE TABLE IF NOT EXISTS encomendas (
                 cliente TEXT, peca TEXT, descricao TEXT DEFAULT '',
@@ -309,7 +327,6 @@ def init_db():
             try: c.execute(f"ALTER TABLE encomendas ADD COLUMN {col}")
             except: pass
 
-        # ── Gastos ────────────────────────────────────────────────────────────
         c.execute("""
             CREATE TABLE IF NOT EXISTS gastos (
                 encomenda_id INTEGER DEFAULT NULL,
@@ -323,7 +340,6 @@ def init_db():
             try: c.execute(f"ALTER TABLE gastos ADD COLUMN {col}")
             except: pass
 
-        # ── Cronograma ───────────────────────────────────────────────────────
         c.execute("""
             CREATE TABLE IF NOT EXISTS cronograma (
                 tarefa TEXT, categoria TEXT, horas REAL, data TEXT,
@@ -332,13 +348,11 @@ def init_db():
             )
         """)
 
-        # ── Configurações ────────────────────────────────────────────────────
         c.execute("""
             CREATE TABLE IF NOT EXISTS config (
                 chave TEXT PRIMARY KEY, valor TEXT
             )
         """)
-        # defaults
         defaults = [
             ("meta_faturamento", "5000"),
             ("meta_pedidos_mes", "8"),
@@ -370,7 +384,48 @@ def cfg_set(chave: str, valor: str):
         conn.commit()
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PDF — CONTRATO MELHORADO
+# DELETE PEDIDO — apaga tudo do banco (encomenda + cronograma + gastos vinculados)
+# ══════════════════════════════════════════════════════════════════════════════
+def deletar_pedido_completo(enc_rowid: int):
+    """Remove pedido, todas as tarefas de agenda e gastos vinculados."""
+    with get_conn() as conn:
+        conn.execute("DELETE FROM encomendas WHERE rowid=?",  (enc_rowid,))
+        conn.execute("DELETE FROM cronograma  WHERE encomenda_id=?", (enc_rowid,))
+        conn.execute("DELETE FROM gastos      WHERE encomenda_id=?", (enc_rowid,))
+        conn.commit()
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CANCELAR PEDIDO — mantém o registro mas limpa agenda, valores e datas
+# ══════════════════════════════════════════════════════════════════════════════
+def cancelar_pedido(enc_rowid: int):
+    """
+    Marca como cancelado e:
+    - zera valores financeiros (recebido, sinal)
+    - limpa datas intermediárias
+    - remove todas as tarefas de cronograma vinculadas
+    - remove gastos ainda não pagos vinculados ao pedido
+    """
+    with get_conn() as conn:
+        conn.execute("""
+            UPDATE encomendas SET
+                cancelado        = 1,
+                etapa            = 1,
+                sinal            = 0,
+                valor_recebido   = 0,
+                data_tecido      = NULL,
+                data_confeccao   = NULL,
+                data_prova       = NULL,
+                data_entrega     = NULL
+            WHERE rowid = ?
+        """, (enc_rowid,))
+        # Remove tarefas de agenda geradas automaticamente para esse pedido
+        conn.execute("DELETE FROM cronograma WHERE encomenda_id=?", (enc_rowid,))
+        # Remove gastos em aberto (não pagos) vinculados ao pedido
+        conn.execute("DELETE FROM gastos WHERE encomenda_id=? AND pago=0", (enc_rowid,))
+        conn.commit()
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PDF — CONTRATO MELHORADO (cabeçalho corrigido + logo)
 # ══════════════════════════════════════════════════════════════════════════════
 def _marrom():  return colors.HexColor("#3d1f10")
 def _bege():    return colors.HexColor("#fdf6ee")
@@ -382,14 +437,14 @@ def gerar_pdf_contrato(enc: dict, cpf: str, rg: str) -> bytes:
     styles = getSampleStyleSheet()
 
     s_titulo = ParagraphStyle("titulo", parent=styles["Normal"],
-        fontName="Helvetica-Bold", fontSize=16, textColor=_marrom(),
-        alignment=TA_CENTER, spaceAfter=4)
+        fontName="Helvetica-Bold", fontSize=15, textColor=_marrom(),
+        alignment=TA_CENTER, spaceAfter=3)
     s_subtit = ParagraphStyle("subtit", parent=styles["Normal"],
-        fontName="Helvetica", fontSize=8.5, textColor=_dourado(),
-        alignment=TA_CENTER, spaceAfter=12, leading=13)
+        fontName="Helvetica", fontSize=8, textColor=_dourado(),
+        alignment=TA_CENTER, spaceAfter=10, leading=12)
     s_cls_tit = ParagraphStyle("clt", parent=styles["Normal"],
         fontName="Helvetica-Bold", fontSize=10, textColor=_marrom(),
-        spaceBefore=12, spaceAfter=3, leading=14)
+        spaceBefore=10, spaceAfter=3, leading=13)
     s_body = ParagraphStyle("body", parent=styles["Normal"],
         fontName="Helvetica", fontSize=9.5, textColor=colors.HexColor("#2d1f14"),
         leading=15, spaceAfter=5, alignment=TA_JUSTIFY)
@@ -416,53 +471,93 @@ def gerar_pdf_contrato(enc: dict, cpf: str, rg: str) -> bytes:
     descricao     = enc.get("descricao", "") or ""
     obs           = enc.get("observacoes", "") or ""
 
-    doc = SimpleDocTemplate(buf, pagesize=A4,
-        rightMargin=2.2*cm, leftMargin=2.2*cm,
-        topMargin=2.5*cm,   bottomMargin=2.5*cm)
-    story = []
-
-    # ── Cabeçalho ──────────────────────────────────────────────────────────
-    s_hdr_w = ParagraphStyle("hw", fontName="Helvetica-Bold", fontSize=15,
-        textColor=colors.white, alignment=TA_LEFT)
-    s_hdr_r = ParagraphStyle("hr2", fontName="Helvetica", fontSize=8.5,
-        textColor=colors.HexColor("#f5e6d3"), alignment=TA_RIGHT, leading=13)
     cnpj_val  = cfg_get("cnpj")
     tel_val   = cfg_get("telefone")
     end_val   = cfg_get("endereco")
-    hdr_data = [[
-        Paragraph("<b>LILA CLOSET ATELIER</b>", s_hdr_w),
-        Paragraph(f"CNPJ: {cnpj_val}<br/>{end_val}<br/>{tel_val}", s_hdr_r),
-    ]]
-    hdr_table = Table(hdr_data, colWidths=["58%","42%"])
+
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+        rightMargin=2.0*cm, leftMargin=2.0*cm,
+        topMargin=2.2*cm,   bottomMargin=2.2*cm)
+    story = []
+
+    # ── Cabeçalho com logo ────────────────────────────────────────────────
+    # Estilos internos do cabeçalho
+    s_hdr_empresa = ParagraphStyle("hdr_emp", fontName="Helvetica-Bold", fontSize=14,
+        textColor=colors.white, alignment=TA_LEFT, leading=18)
+    s_hdr_slogan = ParagraphStyle("hdr_slo", fontName="Helvetica", fontSize=8,
+        textColor=colors.HexColor("#f5e6d3"), alignment=TA_LEFT, leading=11, spaceBefore=2)
+    s_hdr_info = ParagraphStyle("hdr_inf", fontName="Helvetica", fontSize=8,
+        textColor=colors.HexColor("#f5dfc0"), alignment=TA_RIGHT, leading=12)
+
+    # Coluna esquerda: logo + nome
+    if os.path.exists(LOGO_PATH):
+        logo_img = RLImage(LOGO_PATH, width=2.4*cm, height=2.4*cm)
+        logo_cell = logo_img
+    else:
+        logo_cell = Paragraph("🧵", ParagraphStyle("lc", fontName="Helvetica-Bold",
+            fontSize=28, textColor=colors.HexColor("#c9a227"), alignment=TA_CENTER))
+
+    nome_empresa_cell = Table([
+        [Paragraph("LILA CLOSET ATELIER", s_hdr_empresa)],
+        [Paragraph("Costura sob medida com excelência", s_hdr_slogan)],
+    ], colWidths=["100%"])
+    nome_empresa_cell.setStyle(TableStyle([
+        ("TOPPADDING",    (0,0),(-1,-1), 0),
+        ("BOTTOMPADDING", (0,0),(-1,-1), 1),
+        ("LEFTPADDING",   (0,0),(-1,-1), 0),
+        ("RIGHTPADDING",  (0,0),(-1,-1), 0),
+    ]))
+
+    left_cell = Table([[logo_cell, nome_empresa_cell]], colWidths=[2.8*cm, "100%"])
+    left_cell.setStyle(TableStyle([
+        ("VALIGN",        (0,0),(-1,-1), "MIDDLE"),
+        ("TOPPADDING",    (0,0),(-1,-1), 0),
+        ("BOTTOMPADDING", (0,0),(-1,-1), 0),
+        ("LEFTPADDING",   (0,0),(-1,-1), 0),
+        ("RIGHTPADDING",  (0,0),(0,-1),  8),
+        ("RIGHTPADDING",  (1,0),(1,-1),  0),
+    ]))
+
+    # Coluna direita: dados da empresa
+    right_cell = Paragraph(
+        f"CNPJ: {cnpj_val}<br/>"
+        f"{end_val}<br/>"
+        f"Tel.: {tel_val}",
+        s_hdr_info,
+    )
+
+    hdr_data = [[left_cell, right_cell]]
+    hdr_table = Table(hdr_data, colWidths=["60%", "40%"])
     hdr_table.setStyle(TableStyle([
-        ("BACKGROUND", (0,0),(-1,-1), _marrom()),
-        ("TOPPADDING",  (0,0),(-1,-1), 14),
-        ("BOTTOMPADDING",(0,0),(-1,-1), 14),
-        ("LEFTPADDING", (0,0),(-1,-1), 16),
-        ("RIGHTPADDING",(0,0),(-1,-1), 16),
-        ("VALIGN",      (0,0),(-1,-1), "MIDDLE"),
+        ("BACKGROUND",    (0,0),(-1,-1), _marrom()),
+        ("TOPPADDING",    (0,0),(-1,-1), 14),
+        ("BOTTOMPADDING", (0,0),(-1,-1), 14),
+        ("LEFTPADDING",   (0,0),(-1,-1), 16),
+        ("RIGHTPADDING",  (0,0),(-1,-1), 16),
+        ("VALIGN",        (0,0),(-1,-1), "MIDDLE"),
     ]))
     story.append(hdr_table)
-    story.append(Spacer(1, 14))
+    story.append(Spacer(1, 12))
 
     # ── Título ────────────────────────────────────────────────────────────
     story.append(Paragraph("CONTRATO DE PRESTAÇÃO DE SERVIÇOS DE COSTURA SOB MEDIDA", s_titulo))
     story.append(Paragraph(
-        f"Contrato N.º <b>{num_contrato}</b> &nbsp;|&nbsp; Emitido em: <b>{hoje_br}</b> "
-        f"&nbsp;|&nbsp; Válido como documento legal nos termos do Art. 421 do CC/2002",
+        f"Contrato N.º <b>{num_contrato}</b> &nbsp;&nbsp;|&nbsp;&nbsp; "
+        f"Emitido em: <b>{hoje_br}</b> &nbsp;&nbsp;|&nbsp;&nbsp; "
+        f"Validade jurídica: Art. 421 CC/2002 e MP 2.200-2/2001",
         s_subtit))
     story.append(HRFlowable(width="100%", thickness=1.5, color=_dourado()))
-    story.append(Spacer(1, 8))
+    story.append(Spacer(1, 6))
 
     # ── PARTES ────────────────────────────────────────────────────────────
     story.append(Paragraph("CLÁUSULA 1ª – IDENTIFICAÇÃO DAS PARTES", s_cls_tit))
     s_ptab = ParagraphStyle("pt", fontName="Helvetica", fontSize=9, leading=14,
         textColor=colors.HexColor("#2d1f14"))
+    s_ptab_hdr = ParagraphStyle("pth", fontName="Helvetica-Bold", fontSize=9,
+        textColor=colors.white, alignment=TA_CENTER)
     partes_data = [
-        [Paragraph("<b>CONTRATADA</b>", ParagraphStyle("ph",fontName="Helvetica-Bold",fontSize=9,
-            textColor=colors.white, alignment=TA_CENTER)),
-         Paragraph("<b>CONTRATANTE</b>", ParagraphStyle("ph2",fontName="Helvetica-Bold",fontSize=9,
-            textColor=colors.white, alignment=TA_CENTER))],
+        [Paragraph("<b>CONTRATADA</b>", s_ptab_hdr),
+         Paragraph("<b>CONTRATANTE</b>", s_ptab_hdr)],
         [
             Paragraph(
                 f"<b>LILA CLOSET ATELIER</b><br/>"
@@ -489,7 +584,7 @@ def gerar_pdf_contrato(enc: dict, cpf: str, rg: str) -> bytes:
         ("VALIGN",       (0,1),(-1,1), "TOP"),
     ]))
     story.append(partes_t)
-    story.append(Spacer(1, 8))
+    story.append(Spacer(1, 6))
 
     # ── OBJETO ────────────────────────────────────────────────────────────
     story.append(Paragraph("CLÁUSULA 2ª – DO OBJETO DO CONTRATO", s_cls_tit))
@@ -509,57 +604,53 @@ def gerar_pdf_contrato(enc: dict, cpf: str, rg: str) -> bytes:
     story.append(Paragraph("CLÁUSULA 3ª – DOS PRAZOS E CRONOGRAMA", s_cls_tit))
     story.append(Paragraph(
         "O início da produção fica condicionado ao recebimento do <b>sinal acordado</b>. "
-        "Os prazos abaixo são estimativas e podem ser ajustados por mútuo acordo, "
-        "especialmente em caso de atraso na entrega de materiais.",
+        "Os prazos abaixo são estimativas e podem ser ajustados por mútuo acordo.",
         s_body))
 
+    s_et_hdr = ParagraphStyle("eth", fontName="Helvetica-Bold", fontSize=8.5,
+        textColor=colors.white, alignment=TA_CENTER)
     etapas_rows = [
-        [Paragraph("<b>Etapa</b>", ParagraphStyle("et",fontName="Helvetica-Bold",fontSize=8.5,
-            textColor=colors.white,alignment=TA_CENTER)),
-         Paragraph("<b>Descrição</b>", ParagraphStyle("ed",fontName="Helvetica-Bold",fontSize=8.5,
-            textColor=colors.white,alignment=TA_CENTER)),
-         Paragraph("<b>Data Prevista</b>", ParagraphStyle("edd",fontName="Helvetica-Bold",fontSize=8.5,
-            textColor=colors.white,alignment=TA_CENTER))],
+        [Paragraph("<b>Etapa</b>", s_et_hdr),
+         Paragraph("<b>Descrição</b>", s_et_hdr),
+         Paragraph("<b>Data Prevista</b>", s_et_hdr)],
         ["🤝 Visita",    "Tomada de medidas, briefing e validação do modelo",             dt_visita],
         ["🛍️ Tecidos",  "Compra e separação dos tecidos e aviamentos",                   dt_tecido],
         ["🪡 Confecção", "Início da produção da peça na medida solicitada",               dt_confec],
         ["👗 Prova",     "Prova com a cliente para ajustes finos e acabamentos",          dt_prova],
         ["🎁 Entrega",   "Entrega final da peça pronta e devidamente embalada",           dt_entrega],
     ]
-    cron_t = Table(etapas_rows, colWidths=["20%","50%","30%"])
+    cron_t = Table(etapas_rows, colWidths=["22%","48%","30%"])
     cron_t.setStyle(TableStyle([
         ("BACKGROUND",   (0,0),(-1,0), _marrom()),
-        ("TEXTCOLOR",    (0,0),(-1,0), colors.white),
-        ("FONTNAME",     (0,0),(-1,0), "Helvetica-Bold"),
-        ("FONTSIZE",     (0,0),(-1,0), 8.5),
-        ("ALIGN",        (0,0),(-1,0), "CENTER"),
         ("FONTSIZE",     (0,1),(-1,-1), 9),
         ("FONTNAME",     (0,1),(-1,-1), "Helvetica"),
         ("ALIGN",        (2,1),(2,-1), "CENTER"),
         ("ROWBACKGROUNDS",(0,1),(-1,-1), [colors.white, _bege()]),
-        ("TOPPADDING",   (0,0),(-1,-1), 8), ("BOTTOMPADDING",(0,0),(-1,-1), 8),
+        ("TOPPADDING",   (0,0),(-1,-1), 7), ("BOTTOMPADDING",(0,0),(-1,-1), 7),
         ("LEFTPADDING",  (0,0),(-1,-1), 10), ("RIGHTPADDING",(0,0),(-1,-1), 10),
         ("BOX",          (0,0),(-1,-1), 1, _dourado()),
         ("INNERGRID",    (0,0),(-1,-1), 0.5, colors.HexColor("#e0d5c9")),
         ("VALIGN",       (0,0),(-1,-1), "MIDDLE"),
     ]))
     story.append(cron_t)
-    story.append(Spacer(1, 8))
+    story.append(Spacer(1, 6))
 
     # ── VALORES ───────────────────────────────────────────────────────────
     story.append(Paragraph("CLÁUSULA 4ª – DO VALOR E FORMA DE PAGAMENTO", s_cls_tit))
     story.append(Paragraph(
-        f"O valor total acordado para a execução dos serviços é de <b>{brl(valor_total)}</b>, "
-        f"a ser pago da seguinte forma: <b>{brl(sinal)}</b> como sinal no ato da contratação "
-        f"e o saldo de <b>{brl(restante)}</b> na entrega da peça. "
+        f"O valor total acordado é de <b>{brl(valor_total)}</b>, "
+        f"sendo <b>{brl(sinal)}</b> como sinal no ato da contratação "
+        f"e o saldo de <b>{brl(restante)}</b> na entrega. "
         f"Forma de pagamento: <b>{forma_pag}</b>.",
         s_body))
 
+    s_fin_hdr = ParagraphStyle("fnh", fontName="Helvetica-Bold", fontSize=9,
+        textColor=colors.white)
+    s_fin_hdr_r = ParagraphStyle("fnhr", fontName="Helvetica-Bold", fontSize=9,
+        textColor=colors.white, alignment=TA_RIGHT)
     fin_rows = [
-        [Paragraph("<b>Descrição</b>", ParagraphStyle("fd",fontName="Helvetica-Bold",fontSize=9,
-            textColor=colors.white)),
-         Paragraph("<b>Valor</b>",     ParagraphStyle("fv",fontName="Helvetica-Bold",fontSize=9,
-            textColor=colors.white, alignment=TA_RIGHT))],
+        [Paragraph("<b>Descrição</b>", s_fin_hdr),
+         Paragraph("<b>Valor</b>", s_fin_hdr_r)],
         ["Valor Total do Serviço",           brl(valor_total)],
         ["Sinal / Entrada (pago no ato)",    brl(sinal)],
         ["Saldo Restante (pago na entrega)", brl(restante)],
@@ -569,21 +660,20 @@ def gerar_pdf_contrato(enc: dict, cpf: str, rg: str) -> bytes:
     fin_t = Table(fin_rows, colWidths=["65%","35%"])
     fin_t.setStyle(TableStyle([
         ("BACKGROUND",   (0,0),(-1,0), _marrom()),
-        ("TEXTCOLOR",    (0,0),(-1,0), colors.white),
         ("ALIGN",        (1,0),(1,-1), "RIGHT"),
         ("FONTSIZE",     (0,1),(-1,-1), 9.5),
         ("FONTNAME",     (1,1),(1,-2), "Helvetica-Bold"),
         ("TEXTCOLOR",    (1,2),(1,2),  colors.HexColor("#c9a227")),
         ("TEXTCOLOR",    (1,3),(1,3),  colors.HexColor("#1b5e20")),
         ("ROWBACKGROUNDS",(0,1),(-1,-1), [colors.white, _bege()]),
-        ("TOPPADDING",   (0,0),(-1,-1), 8), ("BOTTOMPADDING",(0,0),(-1,-1), 8),
+        ("TOPPADDING",   (0,0),(-1,-1), 7), ("BOTTOMPADDING",(0,0),(-1,-1), 7),
         ("LEFTPADDING",  (0,0),(-1,-1), 12), ("RIGHTPADDING",(0,0),(-1,-1), 12),
         ("BOX",          (0,0),(-1,-1), 1, _dourado()),
         ("INNERGRID",    (0,0),(-1,-1), 0.5, colors.HexColor("#e0d5c9")),
         ("SPAN",         (0,4),(1,4)),
     ]))
     story.append(fin_t)
-    story.append(Spacer(1, 8))
+    story.append(Spacer(1, 6))
 
     # ── CANCELAMENTO ─────────────────────────────────────────────────────
     story.append(Paragraph("CLÁUSULA 5ª – DO CANCELAMENTO E DESISTÊNCIA", s_cls_tit))
@@ -597,26 +687,24 @@ def gerar_pdf_contrato(enc: dict, cpf: str, rg: str) -> bytes:
     # ── GARANTIA ─────────────────────────────────────────────────────────
     story.append(Paragraph("CLÁUSULA 6ª – DA GARANTIA DE SERVIÇO", s_cls_tit))
     story.append(Paragraph(
-        "A CONTRATADA garante à CONTRATANTE o <b>prazo de 30 dias</b> a contar da entrega "
-        "para identificação de defeitos de costura ou acabamento, obrigando-se à correção sem custo. "
-        "Avarias causadas por uso inadequado ou lavagem em desacordo com as orientações fornecidas "
-        "estão excluídas desta garantia.",
+        "A CONTRATADA garante <b>30 dias</b> a partir da entrega para identificação de defeitos "
+        "de costura ou acabamento, obrigando-se à correção sem custo. "
+        "Avarias por uso inadequado ou lavagem incorreta estão excluídas desta garantia.",
         s_body))
 
     # ── LGPD ─────────────────────────────────────────────────────────────
     story.append(Paragraph("CLÁUSULA 7ª – PROTEÇÃO DE DADOS (LGPD – Lei 13.709/2018)", s_cls_tit))
     story.append(Paragraph(
         "Os dados pessoais coletados (nome, CPF, RG, medidas) são utilizados exclusivamente "
-        "para execução dos serviços contratados. A CONTRATADA compromete-se a não compartilhar "
-        "estas informações com terceiros sem anuência expressa da CONTRATANTE.",
+        "para execução dos serviços contratados e não serão compartilhados com terceiros.",
         s_body))
 
     # ── FORO ─────────────────────────────────────────────────────────────
     story.append(Paragraph("CLÁUSULA 8ª – DO FORO E ASSINATURA DIGITAL", s_cls_tit))
     story.append(Paragraph(
-        "Fica eleito o foro da Comarca de Embu das Artes – SP para dirimir controvérsias. "
+        "Fica eleito o foro da Comarca de Embu das Artes – SP. "
         "Este instrumento pode ser assinado digitalmente via <b>GOV.BR</b> "
-        "(assinador.iti.br), com validade jurídica pela Medida Provisória 2.200-2/2001.",
+        "(assinador.iti.br), com validade jurídica pela MP 2.200-2/2001.",
         s_body))
 
     if obs:
@@ -624,9 +712,9 @@ def gerar_pdf_contrato(enc: dict, cpf: str, rg: str) -> bytes:
         story.append(Paragraph(obs, s_body))
 
     # ── GOV.BR aviso ─────────────────────────────────────────────────────
-    story.append(Spacer(1, 14))
+    story.append(Spacer(1, 12))
     story.append(HRFlowable(width="100%", thickness=0.8, color=colors.HexColor("#e0d5c9")))
-    story.append(Spacer(1, 10))
+    story.append(Spacer(1, 8))
     gov_data = [[Paragraph(
         "✅ <b>ASSINAR DIGITALMENTE VIA GOV.BR — assinador.iti.br/assinatura/index.xhtml</b>",
         ParagraphStyle("gov", fontName="Helvetica-Bold", fontSize=8.5,
@@ -639,7 +727,7 @@ def gerar_pdf_contrato(enc: dict, cpf: str, rg: str) -> bytes:
         ("LEFTPADDING", (0,0),(-1,-1), 14), ("RIGHTPADDING",(0,0),(-1,-1), 14),
     ]))
     story.append(gov_t)
-    story.append(Spacer(1, 16))
+    story.append(Spacer(1, 14))
 
     # ── Assinaturas ───────────────────────────────────────────────────────
     s_asn = ParagraphStyle("asn", fontName="Helvetica", fontSize=9,
@@ -659,7 +747,7 @@ def gerar_pdf_contrato(enc: dict, cpf: str, rg: str) -> bytes:
         ("LINEAFTER",     (0,0),(0,-1),  0.5, colors.HexColor("#e0d5c9")),
     ]))
     story.append(asn_t)
-    story.append(Spacer(1, 18))
+    story.append(Spacer(1, 16))
     story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#e0d5c9")))
     story.append(Spacer(1, 5))
     story.append(Paragraph(
@@ -670,11 +758,17 @@ def gerar_pdf_contrato(enc: dict, cpf: str, rg: str) -> bytes:
     return buf.getvalue()
 
 # ══════════════════════════════════════════════════════════════════════════════
-# CABEÇALHO
+# CABEÇALHO DO SISTEMA
 # ══════════════════════════════════════════════════════════════════════════════
-st.markdown("""
+logo_b64 = get_logo_base64()
+if logo_b64:
+    logo_html = f'<img src="data:image/png;base64,{logo_b64}" class="hero-logo" alt="Lila Logo">'
+else:
+    logo_html = '<div class="hero-icon">🧵</div>'
+
+st.markdown(f"""
 <div class="hero-header">
-  <div class="hero-icon">🧵</div>
+  {logo_html}
   <div>
     <div class="hero-title">Lila Closet Atelier</div>
     <div class="hero-subtitle">Sistema de Gestão Profissional · Costura sob medida</div>
@@ -771,7 +865,7 @@ with aba_hoje:
                             ).fetchone()
                             if res:
                                 prox = res[0] + 1
-                                if prox == 2: prox = 3  # sinal não é etapa de tarefa
+                                if prox == 2: prox = 3
                                 if prox == 3 and res[1] == 0: prox = 4
                                 if prox <= 7:
                                     conn.execute(
@@ -830,7 +924,6 @@ with aba_enc:
                 else:
                     st.error("Informe o nome da cliente.")
 
-        # Lista de clientes
         st.markdown("---")
         st.markdown("#### 👥 Clientes Cadastradas")
         with get_conn() as conn:
@@ -924,7 +1017,6 @@ with aba_enc:
                         e_id = cur.lastrowid
                         desc = f"{peca.strip()} ({cli_sel})"
 
-                        # Cronograma automático
                         tarefas_auto = [
                             (f"🤝 Visita: {desc}",    "Costura",  1.0, d_visita.isoformat()),
                             (f"🪡 Confecção: {desc}", "Costura",  3.0, d_conf.isoformat()),
@@ -1012,7 +1104,6 @@ with aba_enc:
     with t_gerenciar:
         st.markdown("### 📋 Todos os Pedidos")
 
-        # Filtros rápidos
         col_f1, col_f2 = st.columns([2,1])
         filtro_status = col_f1.radio(
             "Filtrar:",
@@ -1045,7 +1136,6 @@ with aba_enc:
                 cancelado = bool(enc.get("cancelado", 0))
 
                 restante_enc = float(enc.get("valor_total", 0) or 0) - float(enc.get("valor_recebido", 0) or 0)
-                badge_cor = "badge-red" if cancelado else ("badge-green" if etapa_num == 7 else "badge-gold")
                 badge_txt = "❌ Cancelado" if cancelado else status_label
 
                 with st.expander(
@@ -1053,7 +1143,6 @@ with aba_enc:
                     f"  |  {badge_txt}"
                     f"  |  💰 {brl(float(enc.get('valor_total',0) or 0))}"
                 ):
-                    # Stepper visual
                     if not cancelado:
                         steps_html = '<div class="step-bar">'
                         for i in range(1, 8):
@@ -1064,14 +1153,12 @@ with aba_enc:
                         st.markdown(steps_html, unsafe_allow_html=True)
                         st.markdown("")
 
-                    # Info rápida
                     col_inf1, col_inf2, col_inf3, col_inf4 = st.columns(4)
                     col_inf1.metric("Valor Total",    brl(float(enc.get("valor_total",0) or 0)))
                     col_inf2.metric("Recebido",       brl(float(enc.get("valor_recebido",0) or 0)))
                     col_inf3.metric("Saldo Restante", brl(max(restante_enc, 0)))
                     col_inf4.metric("Entrega",        formatar_data_br(enc.get("data_entrega","")))
 
-                    # Contrato
                     st.markdown("##### 📄 Contrato")
                     col_cpf, col_rg = st.columns(2)
                     cpf_s = str(enc.get("cpf_cliente") or "")
@@ -1106,7 +1193,6 @@ with aba_enc:
                     else:
                         st.info("💡 Preencha CPF e RG para habilitar o contrato.")
 
-                    # Edição
                     st.markdown("##### ✏️ Editar Pedido")
                     with st.form(f"edit_{enc['rowid']}"):
                         ed_peca  = st.text_input("Peça", value=str(enc.get("peca") or ""))
@@ -1155,9 +1241,7 @@ with aba_enc:
                                 st.rerun()
 
                             if col_b3.form_submit_button("❌ Cancelar Pedido", use_container_width=True):
-                                with get_conn() as conn:
-                                    conn.execute("UPDATE encomendas SET cancelado=1 WHERE rowid=?", (enc["rowid"],))
-                                    conn.commit()
+                                cancelar_pedido(int(enc["rowid"]))
                                 st.rerun()
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1309,7 +1393,6 @@ with aba_fin:
         df_enc_fin  = pd.read_sql_query("SELECT rowid, * FROM encomendas WHERE cancelado=0", conn)
         df_g_fin    = pd.read_sql_query("SELECT rowid, * FROM gastos", conn)
 
-    # ── Métricas consolidadas ─────────────────────────────────────────────
     receita_total   = float(df_enc_fin["valor_recebido"].sum() or 0)
     receita_prevista= float(df_enc_fin[df_enc_fin["etapa"] < 7]["valor_total"].sum() or 0)
     gastos_pagos    = float(df_g_fin[df_g_fin["pago"] == 1]["valor"].sum() or 0)
@@ -1317,18 +1400,15 @@ with aba_fin:
     lucro_real      = receita_total - gastos_pagos
     lucro_previsto  = (receita_total + receita_prevista) - (gastos_pagos + gastos_previstos)
 
-    # Parâmetros de saúde (vindos de config)
     pct_reserva   = int(cfg_get("reserva_emergencia_meses") or 3)
     pct_capital   = float(cfg_get("capital_giro_pct") or 20) / 100
     margem_min    = float(cfg_get("margem_minima_pct") or 30) / 100
     meta_fat_fin  = float(cfg_get("meta_faturamento") or 5000)
 
-    # Sugestões automáticas
     reserva_sugerida = gastos_pagos * pct_reserva / 12 if gastos_pagos > 0 else gastos_previstos * pct_reserva
     capital_giro_sug = receita_total * pct_capital
     teto_gasto_mens  = (receita_total + receita_prevista) * (1 - margem_min) if (receita_total + receita_prevista) > 0 else 0
 
-    # Dashboard
     col_f1, col_f2, col_f3, col_f4 = st.columns(4)
     col_f1.metric("💰 Receita Recebida",  brl(receita_total))
     col_f2.metric("📉 Gastos Pagos",      brl(gastos_pagos))
@@ -1338,7 +1418,6 @@ with aba_fin:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Indicadores de saúde
     col_h1, col_h2, col_h3 = st.columns(3)
 
     with col_h1:
@@ -1385,7 +1464,6 @@ with aba_fin:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Sub-abas financeiras
     f_dash, f_gastos, f_pedidos, f_relat = st.tabs([
         "📊 Dashboard",
         "📝 Lançar Gastos",
@@ -1393,7 +1471,6 @@ with aba_fin:
         "📋 Relatório Mensal",
     ])
 
-    # ── Dashboard visual ──────────────────────────────────────────────────
     with f_dash:
         st.markdown("#### 📊 Visão Financeira Geral")
 
@@ -1418,7 +1495,6 @@ with aba_fin:
             else:
                 st.info("Nenhum gasto lançado.")
 
-        # Fluxo de caixa simplificado
         st.markdown("---")
         st.markdown("**🔄 Fluxo de Caixa – Pedidos Ativos**")
         pedidos_ativos = df_enc_fin[df_enc_fin["etapa"] < 7].copy()
@@ -1434,7 +1510,6 @@ with aba_fin:
             df_fluxo["A Receber"]  = df_fluxo["A Receber"].apply(lambda x: brl(float(x)))
             st.dataframe(df_fluxo, use_container_width=True, hide_index=True)
 
-        # Próximas contas a pagar
         st.markdown("---")
         st.markdown("**📆 Contas a Pagar (em aberto)**")
         df_cp = df_g_fin[df_g_fin["pago"] == 0].copy()
@@ -1448,7 +1523,6 @@ with aba_fin:
             st.dataframe(df_cp_show, use_container_width=True, hide_index=True)
             st.markdown(f'<div class="fin-alerta">Total em aberto: <b>{brl(float(df_cp["valor"].sum()))}</b></div>', unsafe_allow_html=True)
 
-    # ── Lançar Gastos ─────────────────────────────────────────────────────
     with f_gastos:
         st.markdown("#### 📝 Lançar Gasto ou Previsão")
 
@@ -1467,7 +1541,6 @@ with aba_fin:
                 g_pago = c5.checkbox("Já foi pago?", value=True)
                 g_recor = c6.checkbox("Gasto recorrente (mensal)?")
 
-                # Vincular a encomenda (opcional)
                 with get_conn() as conn:
                     enc_opts = pd.read_sql_query(
                         "SELECT rowid, cliente, peca FROM encomendas WHERE cancelado=0 AND etapa<7 ORDER BY rowid DESC",
@@ -1508,7 +1581,6 @@ with aba_fin:
             else:
                 st.info("Nenhum gasto registrado.")
 
-        # Lista de gastos com quitação
         st.markdown("---")
         st.markdown("#### 📋 Todos os Gastos")
         if df_g_fin.empty:
@@ -1542,7 +1614,6 @@ with aba_fin:
                                 conn.commit()
                             st.rerun()
 
-    # ── Pagamentos por Pedido ─────────────────────────────────────────────
     with f_pedidos:
         st.markdown("#### 💳 Gestão de Pagamentos por Pedido")
 
@@ -1554,13 +1625,10 @@ with aba_fin:
                 v_recebido = float(enc.get("valor_recebido", 0) or 0)
                 v_restante = v_total_e - v_recebido
 
-                # Gastos vinculados
                 gasto_enc  = float(df_g_fin[df_g_fin["encomenda_id"] == enc["rowid"]]["valor"].sum() or 0)
                 lucro_enc  = v_recebido - gasto_enc
                 margem_enc = lucro_enc / v_recebido * 100 if v_recebido > 0 else 0
                 margem_min_val = float(cfg_get("margem_minima_pct") or 30)
-
-                badge_margem = "badge-green" if margem_enc >= margem_min_val else "badge-red"
 
                 with st.expander(
                     f"👗 {enc['cliente']} – {enc['peca']}  |  "
@@ -1573,7 +1641,6 @@ with aba_fin:
                     col_pm3.metric("A Receber",    brl(max(v_restante, 0)))
                     col_pm4.metric("Custo Direto", brl(gasto_enc))
 
-                    # Indicador de margem
                     if margem_enc >= margem_min_val:
                         st.markdown(
                             f'<div class="fin-ok">✅ Margem de <b>{margem_enc:.1f}%</b> — saudável (mínimo: {margem_min_val:.0f}%)</div>',
@@ -1585,7 +1652,6 @@ with aba_fin:
                             unsafe_allow_html=True,
                         )
 
-                    # Registrar recebimento
                     if v_restante > 0.01:
                         st.markdown("**Registrar recebimento:**")
                         col_rec1, col_rec2, col_rec3 = st.columns([2, 2, 1])
@@ -1608,7 +1674,6 @@ with aba_fin:
                     else:
                         st.markdown('<div class="fin-ok">✅ Pedido totalmente pago.</div>', unsafe_allow_html=True)
 
-                    # Botão quitar tudo
                     if v_restante > 0.01:
                         if st.button(f"💰 Quitar saldo total ({brl(v_restante)})", key=f"quit_total_{enc['rowid']}"):
                             with get_conn() as conn:
@@ -1619,7 +1684,6 @@ with aba_fin:
                                 conn.commit()
                             st.rerun()
 
-    # ── Relatório Mensal ──────────────────────────────────────────────────
     with f_relat:
         st.markdown("#### 📋 Relatório Financeiro Mensal")
 
@@ -1655,7 +1719,6 @@ with aba_fin:
         col_r3.metric("Lucro Líquido",   brl(lucro_mes))
         col_r4.metric("Margem",          f"{margem_mes:.1f}%")
 
-        # Alertas do mês
         meta_fat_f = float(cfg_get("meta_faturamento") or 5000)
         if rec_mes >= meta_fat_f:
             st.markdown(f'<div class="fin-ok">🏆 Meta de faturamento de {brl(meta_fat_f)} atingida!</div>', unsafe_allow_html=True)
@@ -1691,18 +1754,15 @@ with aba_fin:
                 df_g_show["Pago?"]  = df_g_show["Pago?"].apply(lambda x: "✅" if x else "⏳")
                 st.dataframe(df_g_show, use_container_width=True, hide_index=True)
 
-        # Exportar Excel
         st.markdown("---")
         if st.button("📥 Exportar Relatório Mensal (Excel)", use_container_width=True):
             buf_xl = io.BytesIO()
             wb     = xlsxwriter.Workbook(buf_xl)
 
-            # Formatos
             fmt_h  = wb.add_format({"bold": True, "bg_color": "#3d1f10", "font_color": "white", "border": 1})
             fmt_brl = wb.add_format({"num_format": 'R$ #,##0.00', "border": 1})
             fmt_n  = wb.add_format({"border": 1})
 
-            # Aba receitas
             ws1 = wb.add_worksheet("Receitas")
             headers1 = ["Cliente","Peça","Total","Recebido","A Receber","Entrega"]
             for ci, h in enumerate(headers1):
@@ -1715,7 +1775,6 @@ with aba_fin:
                 ws1.write(ri, 4, float(row.get("valor_total",0) or 0) - float(row.get("valor_recebido",0) or 0), fmt_brl)
                 ws1.write(ri, 5, str(row.get("data_entrega","")), fmt_n)
 
-            # Aba gastos
             ws2 = wb.add_worksheet("Gastos")
             headers2 = ["Data","Descrição","Categoria","Valor","Pago?"]
             for ci, h in enumerate(headers2):
@@ -1727,7 +1786,6 @@ with aba_fin:
                 ws2.write(ri, 3, float(row.get("valor",0) or 0), fmt_brl)
                 ws2.write(ri, 4, "Sim" if row.get("pago") else "Não", fmt_n)
 
-            # Aba resumo
             ws3 = wb.add_worksheet("Resumo")
             fmt_titulo = wb.add_format({"bold": True, "font_size": 14, "font_color": "#3d1f10"})
             fmt_key    = wb.add_format({"bold": True})
@@ -1824,6 +1882,8 @@ with aba_conf:
     """)
 
     st.markdown("---")
+
+    # ── Backup ────────────────────────────────────────────────────────────
     col_back1, col_back2 = st.columns(2)
     with col_back1:
         st.markdown("#### 💾 Backup do Banco de Dados")
@@ -1848,4 +1908,89 @@ with aba_conf:
                 st.success("Gastos pagos removidos.")
                 st.rerun()
 
-st.caption("v6.0.0 | Lila Closet Atelier | Sistema de Gestão Completo")
+    # ════════════════════════════════════════════════════════════════════════
+    # ZONA DE PERIGO — DELETAR PEDIDO (senha obrigatória)
+    # ════════════════════════════════════════════════════════════════════════
+    st.markdown("---")
+    st.markdown("#### 🔐 Exclusão Permanente de Pedido")
+    st.markdown(
+        "<div class='danger-zone'>"
+        "<b>⚠️ ATENÇÃO:</b> Esta operação apaga o pedido, todas as tarefas de agenda e todos "
+        "os gastos vinculados de forma <b>permanente e irreversível</b>. "
+        "É necessária a senha de administrador para confirmar."
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("")
+
+    with get_conn() as conn:
+        df_todos_pedidos = pd.read_sql_query(
+            "SELECT rowid, cliente, peca, cancelado, etapa FROM encomendas ORDER BY rowid DESC",
+            conn,
+        )
+
+    if df_todos_pedidos.empty:
+        st.info("Nenhum pedido cadastrado.")
+    else:
+        # Monta lista de opções legíveis
+        opcoes_pedidos = {
+            f"#{row['rowid']} – {row['cliente']} | {row['peca']}"
+            f" {'[CANCELADO]' if row['cancelado'] else ''}"
+            f" [Etapa {row['etapa']}]": row["rowid"]
+            for _, row in df_todos_pedidos.iterrows()
+        }
+
+        pedido_sel_label = st.selectbox(
+            "Selecione o pedido para DELETAR permanentemente:",
+            list(opcoes_pedidos.keys()),
+            key="del_pedido_sel",
+        )
+        pedido_sel_id = opcoes_pedidos[pedido_sel_label]
+
+        # Mostra resumo do pedido selecionado
+        row_sel = df_todos_pedidos[df_todos_pedidos["rowid"] == pedido_sel_id].iloc[0]
+        with get_conn() as conn:
+            n_tarefas = conn.execute(
+                "SELECT COUNT(*) FROM cronograma WHERE encomenda_id=?", (pedido_sel_id,)
+            ).fetchone()[0]
+            n_gastos = conn.execute(
+                "SELECT COUNT(*) FROM gastos WHERE encomenda_id=?", (pedido_sel_id,)
+            ).fetchone()[0]
+
+        st.markdown(
+            f"**Pedido selecionado:** #{pedido_sel_id} — {row_sel['cliente']} | {row_sel['peca']}  \n"
+            f"Serão removidos também: **{n_tarefas} tarefa(s)** na agenda e **{n_gastos} gasto(s)** vinculado(s).",
+        )
+
+        col_senha, col_btn_del = st.columns([3, 1])
+        senha_digitada = col_senha.text_input(
+            "🔑 Senha de administrador:",
+            type="password",
+            placeholder="Digite a senha para liberar a exclusão",
+            key="senha_del_pedido",
+        )
+
+        with col_btn_del:
+            st.write("")  # alinhamento vertical
+            st.write("")
+            btn_deletar = st.button(
+                "🗑️ DELETAR AGORA",
+                use_container_width=True,
+                key="btn_deletar_pedido",
+            )
+
+        if btn_deletar:
+            if senha_digitada == SENHA_DELETE:
+                deletar_pedido_completo(int(pedido_sel_id))
+                st.success(
+                    f"✅ Pedido #{pedido_sel_id} ({row_sel['cliente']} – {row_sel['peca']}) "
+                    f"e todos os registros vinculados foram removidos permanentemente."
+                )
+                st.rerun()
+            elif senha_digitada == "":
+                st.error("❌ Digite a senha de administrador para confirmar a exclusão.")
+            else:
+                st.error("❌ Senha incorreta. Exclusão não realizada.")
+
+st.caption("v7.0.0 | Lila Closet Atelier | Sistema de Gestão Completo")
