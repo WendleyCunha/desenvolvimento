@@ -1,3 +1,4 @@
+cat > /home/claude/main.py << 'ENDOFFILE'
 import streamlit as st
 import pandas as pd
 import sqlite3
@@ -29,7 +30,7 @@ import xlsxwriter
 # ══════════════════════════════════════════════════════════════════════════════
 st.set_page_config(
     page_title="Lila Closet Atelier",
-    page_icon="👗",
+    page_icon="🧵",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
@@ -69,7 +70,7 @@ def tela_login():
     with col_c:
         st.markdown("""
         <div class="login-box">
-          <div class="login-icon">👗</div>
+          <div class="login-icon">🧵</div>
           <div class="login-title">Lila Closet Atelier</div>
           <div class="login-sub">Acesso Restrito</div>
         </div>
@@ -435,7 +436,6 @@ def init_db():
         """)
 
         # ── Serviço de campo ─────────────────────────────────────────────
-        # Armazena lançamentos mensais de horas no serviço de campo
         c.execute("""
             CREATE TABLE IF NOT EXISTS campo_horas (
                 data TEXT NOT NULL,
@@ -579,7 +579,7 @@ def gerar_pdf_contrato(enc: dict, cpf: str, rg: str) -> bytes:
         logo_img = RLImage(LOGO_PATH, width=2.4*cm, height=2.4*cm)
         logo_cell = logo_img
     else:
-        logo_cell = Paragraph("👗", ParagraphStyle("lc", fontName="Helvetica-Bold",
+        logo_cell = Paragraph("🧵", ParagraphStyle("lc", fontName="Helvetica-Bold",
             fontSize=28, textColor=colors.HexColor("#c9a227"), alignment=TA_CENTER))
 
     nome_empresa_cell = Table([
@@ -791,7 +791,7 @@ def gerar_pdf_contrato(enc: dict, cpf: str, rg: str) -> bytes:
 # ══════════════════════════════════════════════════════════════════════════════
 logo_b64 = get_logo_base64()
 logo_html = (f'<img src="data:image/png;base64,{logo_b64}" class="hero-logo" alt="Lila Logo">'
-             if logo_b64 else '<div class="hero-icon">👗</div>')
+             if logo_b64 else '<div class="hero-icon">🧵</div>')
 
 st.markdown(f"""
 <div class="hero-header">
@@ -813,7 +813,7 @@ with col_logout_btn:
         st.rerun()
 
 # ══════════════════════════════════════════════════════════════════════════════
-# MÉTRICAS DO TOPO
+# MÉTRICAS DO TOPO — apenas pedidos ativos e meta de pedidos
 # ══════════════════════════════════════════════════════════════════════════════
 hoje_dt = date.today()
 mes_ini = hoje_dt.replace(day=1).isoformat()
@@ -822,20 +822,13 @@ with get_conn() as conn:
     df_enc_all = pd.read_sql_query("SELECT * FROM encomendas WHERE cancelado=0", conn)
     df_g_all   = pd.read_sql_query("SELECT * FROM gastos", conn)
 
-enc_ativas   = len(df_enc_all[df_enc_all["etapa"] < 7])
-faturado_mes = float(df_enc_all.get("valor_recebido", pd.Series([0])).sum() or 0)
+enc_ativas = len(df_enc_all[df_enc_all["etapa"] < 7])
+meta_ped   = int(cfg_get("meta_pedidos_mes") or 8)
 
-meta_fat = float(cfg_get("meta_faturamento") or 5000)
-meta_ped = int(cfg_get("meta_pedidos_mes") or 8)
+col_m1, col_m2 = st.columns(2)
+col_m1.metric("🛍️ Pedidos Ativos",     enc_ativas)
+col_m2.metric("📋 Meta de Pedidos/mês", meta_ped)
 
-col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-col_m1.metric("🛍️ Pedidos Ativos",      enc_ativas)
-col_m2.metric("💰 Faturado (acumulado)", brl(faturado_mes))
-col_m3.metric("🎯 Meta de Faturamento",  brl(meta_fat))
-col_m4.metric("📋 Meta de Pedidos/mês",  meta_ped)
-
-prog_fat = min(faturado_mes / meta_fat, 1.0) if meta_fat > 0 else 0
-st.progress(prog_fat, text=f"Faturamento: {brl(faturado_mes)} / {brl(meta_fat)}")
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -850,7 +843,7 @@ aba_hoje, aba_enc, aba_agenda, aba_fin, aba_conf = st.tabs([
 ])
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ABA 1 – O QUE FAZER AGORA
+# ABA 1 – O QUE FAZER AGORA  +  VIDA PESSOAL (ocultável)
 # ══════════════════════════════════════════════════════════════════════════════
 with aba_hoje:
     st.markdown("### ⚡ Tarefas para Hoje e Atrasadas")
@@ -925,6 +918,235 @@ with aba_hoje:
         for _, r in df_ent_hoje.iterrows():
             st.success(f"🎁 **{r['cliente']}** – {r['peca']} | {brl(r['valor_total'])}")
 
+    # ══════════════════════════════════════════════════════════════════════
+    # VIDA PESSOAL — ocultável, dentro da aba HOJE
+    # ══════════════════════════════════════════════════════════════════════
+    st.divider()
+    mostrar_vida_pessoal = st.toggle("🏠 Mostrar Vida Pessoal", value=False, key="tog_vida_pessoal_hoje")
+
+    if mostrar_vida_pessoal:
+        st.markdown("### 🏠 Vida Pessoal")
+
+        col_add, col_list = st.columns(2)
+
+        with col_add:
+            st.markdown("#### ➕ Nova Atividade")
+            with st.form("form_pessoal_hoje", clear_on_submit=True):
+                desc_p  = st.text_input("O que precisa fazer?", key="desc_p_hoje")
+                cat_p   = st.selectbox("Categoria", [
+                    "Saúde/Médico","Exercícios","Atividades Domésticas",
+                    "Compras","Lazer","Família","Outros"
+                ], key="cat_p_hoje")
+                data_p  = st.date_input("Data", date.today(), key="data_p_hoje")
+                horas_p = st.number_input("Duração (h)", 0.5, 12.0, 1.0, step=0.5, key="horas_p_hoje")
+                if st.form_submit_button("🗓️ Agendar", use_container_width=True):
+                    if desc_p.strip():
+                        with get_conn() as conn:
+                            conn.execute(
+                                "INSERT INTO cronograma (tarefa,categoria,horas,data,frequencia,concluida,tipo_agenda) VALUES (?,?,?,?,?,0,?)",
+                                (desc_p.strip(), cat_p, horas_p, data_p.isoformat(), "Pontual", "Pessoal"),
+                            )
+                            conn.commit()
+                        st.success("Agendado!")
+                        st.rerun()
+
+        with col_list:
+            st.markdown("#### ⏳ Pendentes")
+            with get_conn() as conn:
+                df_p = pd.read_sql_query(
+                    "SELECT rowid, data, tarefa, categoria FROM cronograma WHERE tipo_agenda='Pessoal' AND concluida=0 ORDER BY data ASC",
+                    conn,
+                )
+            if df_p.empty:
+                st.info("Tudo em dia! ✅")
+            else:
+                for _, row in df_p.iterrows():
+                    col_tx, col_bt = st.columns([4,1])
+                    col_tx.markdown(
+                        f"**{formatar_data_br(row['data'])}** – {row['tarefa']} *(_{row['categoria']}_)*"
+                    )
+                    if col_bt.button("✅", key=f"pess_hoje_{row['rowid']}"):
+                        with get_conn() as conn:
+                            conn.execute("UPDATE cronograma SET concluida=1 WHERE rowid=?", (row["rowid"],))
+                            conn.commit()
+                        st.rerun()
+
+        st.markdown('<div class="sep-pessoal"></div>', unsafe_allow_html=True)
+
+        col_tog1, col_tog2 = st.columns(2)
+        mostrar_campo = col_tog1.toggle("📖 Mostrar Serviço de Campo", value=True, key="tog_campo_hoje")
+        mostrar_peso  = col_tog2.toggle("⚖️ Mostrar Progresso de Peso",  value=True, key="tog_peso_hoje")
+
+        # ── SERVIÇO DE CAMPO ─────────────────────────────────────────────
+        if mostrar_campo:
+            st.markdown("#### 📖 Serviço de Campo — Horas de Pregação")
+            st.caption(f"Meta mensal: **{META_HORAS_CAMPO:.0f} horas**")
+
+            col_cm1, col_cm2, _ = st.columns([2, 2, 4])
+            mes_campo = col_cm1.selectbox(
+                "Mês", list(range(1,13)),
+                format_func=lambda x: MESES_PT[x-1],
+                index=hoje_dt.month - 1,
+                key="mes_campo_sel_hoje",
+            )
+            ano_campo = col_cm2.number_input("Ano", min_value=2020, max_value=2035,
+                                              value=hoje_dt.year, key="ano_campo_sel_hoje")
+            mes_ano_campo = f"{ano_campo}-{mes_campo:02d}"
+
+            with st.form("form_campo_horas_hoje", clear_on_submit=True):
+                cc1, cc2, cc3 = st.columns([2, 1, 3])
+                c_data  = cc1.date_input("Data da saída", date.today(), key="c_data_hoje")
+                c_horas = cc2.number_input("Horas", 0.5, 24.0, 1.0, step=0.5, key="c_horas_hoje")
+                c_desc  = cc3.text_input("Observação (opcional)", placeholder="Ex: Território 5, porta a porta…", key="c_desc_hoje")
+                if st.form_submit_button("➕ Lançar Horas", use_container_width=True):
+                    with get_conn() as conn:
+                        conn.execute(
+                            "INSERT INTO campo_horas (data, horas, descricao, mes_ano) VALUES (?,?,?,?)",
+                            (c_data.isoformat(), c_horas, c_desc.strip(),
+                             f"{c_data.year}-{c_data.month:02d}"),
+                        )
+                        conn.commit()
+                    st.success(f"✅ {c_horas}h registradas para {formatar_data_br(c_data)}!")
+                    st.rerun()
+
+            with get_conn() as conn:
+                df_campo = pd.read_sql_query(
+                    "SELECT * FROM campo_horas WHERE mes_ano=? ORDER BY data ASC",
+                    conn, params=(mes_ano_campo,),
+                )
+            horas_mes = float(df_campo["horas"].sum()) if not df_campo.empty else 0.0
+            pct_campo = min(horas_mes / META_HORAS_CAMPO, 1.0) if META_HORAS_CAMPO > 0 else 0
+            faltam    = max(META_HORAS_CAMPO - horas_mes, 0)
+
+            st.markdown(f"""
+            <div class="campo-card">
+              <div class="campo-title">📖 {MESES_PT[mes_campo-1]} {ano_campo}</div>
+              <div style="display:flex;align-items:flex-end;gap:12px;margin-top:8px;">
+                <div><div class="campo-num">{horas_mes:.1f}h</div><div class="campo-sub">realizadas</div></div>
+                <div><div class="campo-num" style="font-size:1.4rem;color:#bbdefb">/ {META_HORAS_CAMPO:.0f}h</div><div class="campo-sub">meta</div></div>
+                <div><div class="campo-num" style="font-size:1.4rem;color:#ffe0b2">{faltam:.1f}h</div><div class="campo-sub">faltam</div></div>
+              </div>
+            </div>
+            """, unsafe_allow_html=True)
+            st.progress(pct_campo, text=f"{horas_mes:.1f}h de {META_HORAS_CAMPO:.0f}h — {pct_campo*100:.0f}%")
+
+            with get_conn() as conn:
+                df_campo_hist = pd.read_sql_query(
+                    "SELECT mes_ano, SUM(horas) as total FROM campo_horas GROUP BY mes_ano ORDER BY mes_ano DESC",
+                    conn,
+                )
+
+            if not df_campo_hist.empty:
+                st.markdown("**📊 Histórico de horas por mês:**")
+                df_campo_hist["Mês"] = df_campo_hist["mes_ano"].apply(
+                    lambda m: f"{MESES_PT[int(m[5:7])-1]} {m[:4]}"
+                )
+                df_campo_hist["Total"] = df_campo_hist["total"].apply(lambda h: f"{h:.1f}h")
+                df_campo_hist["✅ Meta?"] = df_campo_hist["total"].apply(
+                    lambda h: "🏆 Sim" if h >= META_HORAS_CAMPO else f"⏳ Faltaram {META_HORAS_CAMPO-h:.1f}h"
+                )
+                st.dataframe(
+                    df_campo_hist[["Mês","Total","✅ Meta?"]],
+                    use_container_width=True, hide_index=True,
+                )
+
+            if not df_campo.empty:
+                with st.expander(f"📋 Lançamentos de {MESES_PT[mes_campo-1]} {ano_campo}"):
+                    for _, row in df_campo.iterrows():
+                        col_d, col_h, col_ds, col_del = st.columns([2, 1, 4, 1])
+                        col_d.markdown(f"**{formatar_data_br(row['data'])}**")
+                        col_h.markdown(f"⏱️ {row['horas']}h")
+                        col_ds.markdown(row["descricao"] or "—")
+                        if col_del.button("🗑️", key=f"del_campo_hoje_{row['rowid']}"):
+                            with get_conn() as conn:
+                                conn.execute("DELETE FROM campo_horas WHERE rowid=?", (row["rowid"],))
+                                conn.commit()
+                            st.rerun()
+
+        # ── EMAGRECIMENTO ─────────────────────────────────────────────────
+        if mostrar_peso:
+            st.markdown("#### ⚖️ Acompanhamento de Emagrecimento")
+            st.caption(f"Meta: chegar a **{META_PESO_KG} kg** · Peso inicial: **{PESO_INICIAL_KG} kg**")
+
+            col_pm1, col_pm2 = st.columns([3, 2])
+            with col_pm1:
+                with st.form("form_peso_hoje", clear_on_submit=True):
+                    pc1, pc2 = st.columns(2)
+                    p_data = pc1.date_input("Data da pesagem", date.today(), key="p_data_hoje")
+                    p_peso = pc2.number_input("Peso atual (kg)", min_value=30.0, max_value=200.0,
+                                               value=70.0, step=0.1, format="%.1f", key="p_peso_hoje")
+                    if st.form_submit_button("📝 Registrar Peso", use_container_width=True):
+                        mes_ano_p = f"{p_data.year}-{p_data.month:02d}"
+                        with get_conn() as conn:
+                            existing = conn.execute(
+                                "SELECT rowid FROM peso_registro WHERE mes_ano=?", (mes_ano_p,)
+                            ).fetchone()
+                            if existing:
+                                conn.execute(
+                                    "UPDATE peso_registro SET data=?, peso_kg=? WHERE rowid=?",
+                                    (p_data.isoformat(), p_peso, existing[0]),
+                                )
+                            else:
+                                conn.execute(
+                                    "INSERT INTO peso_registro (data, peso_kg, mes_ano) VALUES (?,?,?)",
+                                    (p_data.isoformat(), p_peso, mes_ano_p),
+                                )
+                            conn.commit()
+                        st.success(f"✅ Peso {p_peso:.1f} kg registrado!")
+                        st.rerun()
+
+            with get_conn() as conn:
+                df_peso = pd.read_sql_query(
+                    "SELECT * FROM peso_registro ORDER BY mes_ano ASC", conn)
+
+            with col_pm2:
+                if not df_peso.empty:
+                    peso_atual = float(df_peso.iloc[-1]["peso_kg"])
+                    perdido    = PESO_INICIAL_KG - peso_atual
+                    falta_peso = max(peso_atual - META_PESO_KG, 0)
+                    total_perder = PESO_INICIAL_KG - META_PESO_KG
+                    pct_peso   = min(perdido / total_perder, 1.0) if total_perder > 0 else 0
+
+                    st.markdown(f"""
+                    <div class="peso-card">
+                      <div class="peso-title">⚖️ Progresso de Peso</div>
+                      <div style="display:flex;align-items:flex-end;gap:12px;margin-top:8px;">
+                        <div><div class="peso-num">{peso_atual:.1f}</div><div class="peso-sub">kg atual</div></div>
+                        <div><div class="peso-num" style="font-size:1.4rem;color:#c8e6c9">-{perdido:.1f}</div><div class="peso-sub">kg perdidos</div></div>
+                        <div><div class="peso-num" style="font-size:1.4rem;color:#a5d6a7">{falta_peso:.1f}</div><div class="peso-sub">kg até a meta</div></div>
+                      </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    st.progress(pct_peso, text=f"Meta: {META_PESO_KG} kg · {pct_peso*100:.0f}% do caminho")
+                else:
+                    st.info("Nenhum peso registrado ainda. Faça o primeiro lançamento!")
+
+            if not df_peso.empty:
+                st.markdown("**📈 Evolução mensal do peso:**")
+                df_peso["Mês"] = df_peso["mes_ano"].apply(
+                    lambda m: f"{MESES_PT[int(m[5:7])-1]}/{m[:4]}"
+                )
+                df_peso["Peso (kg)"] = df_peso["peso_kg"]
+                df_chart = df_peso[["Mês","Peso (kg)"]].set_index("Mês")
+                st.line_chart(df_chart, height=180)
+
+                # Tabela — FIX: mantém mes_ano como coluna separada para sort
+                df_peso_show = df_peso.copy()
+                df_peso_show["Variação"] = df_peso_show["peso_kg"].diff().apply(
+                    lambda x: (f"▼ {abs(x):.1f} kg" if x < 0 else (f"▲ {x:.1f} kg" if x > 0 else "—"))
+                    if pd.notna(x) else "—"
+                )
+                df_peso_show["Mês/Ano"] = df_peso_show["mes_ano"].apply(
+                    lambda m: f"{MESES_PT[int(m[5:7])-1]} {m[:4]}"
+                )
+                df_peso_show["Data"]    = df_peso_show["data"].apply(formatar_data_br)
+                df_peso_show["Peso"]    = df_peso_show["peso_kg"].apply(lambda x: f"{x:.1f} kg")
+                df_peso_show_sorted = df_peso_show.sort_values("mes_ano", ascending=False)
+                st.dataframe(
+                    df_peso_show_sorted[["Mês/Ano","Data","Peso","Variação"]],
+                    use_container_width=True, hide_index=True,
+                )
+
 # ══════════════════════════════════════════════════════════════════════════════
 # ABA 2 – ENCOMENDAS
 # ══════════════════════════════════════════════════════════════════════════════
@@ -988,7 +1210,7 @@ with aba_enc:
             precisa_tecido = 1 if "Sim" in tem_tecido else 0
 
             with st.form("novo_pedido", clear_on_submit=False):
-                st.markdown("#### 👗 Dados da Peça")
+                st.markdown("#### 🧵 Dados da Peça")
                 col_p1, col_p2 = st.columns([2, 3])
                 cli_sel  = col_p1.selectbox("Cliente *", clis)
                 peca     = col_p2.text_input("Peça / Serviço *", placeholder="Ex: Vestido de festa, Calça social…")
@@ -1273,8 +1495,8 @@ with aba_enc:
 # ABA 3 – AGENDA
 # ══════════════════════════════════════════════════════════════════════════════
 with aba_agenda:
-    sub_trabalho, sub_cal, sub_pessoal = st.tabs([
-        "🛠️ Trabalho", "📅 Calendário", "🏠 Vida Pessoal",
+    sub_trabalho, sub_cal = st.tabs([
+        "🛠️ Trabalho", "📅 Calendário",
     ])
 
     with sub_trabalho:
@@ -1297,7 +1519,7 @@ with aba_agenda:
             df_show.columns = ["Data","Tarefa","Categoria","Horas","Cliente","Atrasada?"]
             st.dataframe(df_show, use_container_width=True, hide_index=True)
 
-    # ── Calendário — com nome do cliente e etapa ─────────────────────────
+    # ── Calendário — nome COMPLETO do cliente ────────────────────────────
     with sub_cal:
         if "data_ref" not in st.session_state:
             st.session_state.data_ref = date.today()
@@ -1347,29 +1569,20 @@ with aba_agenda:
                 fundo   = "#fdf6ee" if is_hoje else "white"
                 borda   = "2px solid #c9a227" if is_hoje else "1px solid #ede3d8"
 
-                # Monta as tarefas com nome do cliente + etapa identificada no título
                 tarefas_html = ""
                 for _, r in tasks.iterrows():
-                    tarefa_txt = r["tarefa"]
+                    tarefa_txt  = r["tarefa"]
+                    # Nome COMPLETO do cliente (sem cortar)
                     cliente_cal = r["cliente"]
 
-                    # Extrai o emoji da etapa do início do título (ex: "🤝 Visita: ...")
-                    etapa_emoji = ""
-                    for ic, _ in ETAPAS.values():
-                        if tarefa_txt.startswith(ic):
-                            etapa_emoji = ic + " "
-                            break
-
-                    # Nome curto do cliente (primeiro nome)
-                    nome_curto = cliente_cal.split()[0] if cliente_cal else ""
                     # Tipo de tarefa (antes dos ":")
-                    tipo_tarefa = tarefa_txt.split(":")[0].strip() if ":" in tarefa_txt else tarefa_txt[:14]
+                    tipo_tarefa = tarefa_txt.split(":")[0].strip() if ":" in tarefa_txt else tarefa_txt[:16]
 
                     tarefas_html += (
                         f"<div style='font-size:0.6rem;color:#1565c0;margin-top:2px;"
                         f"background:#e3f2fd;border-radius:4px;padding:1px 4px;'>"
                         f"{tipo_tarefa}"
-                        f"{'<br><span style=\"color:#3d1f10;font-weight:700\">' + nome_curto + '</span>' if nome_curto else ''}"
+                        f"{'<br><span style=\"color:#3d1f10;font-weight:700;font-size:0.58rem\">' + cliente_cal + '</span>' if cliente_cal else ''}"
                         f"</div>"
                     )
 
@@ -1379,244 +1592,6 @@ with aba_agenda:
                     f"<b style='color:#3d1f10;font-size:0.8rem'>{dia}</b>"
                     f"{tarefas_html}</div>",
                     unsafe_allow_html=True,
-                )
-
-    # ── Vida Pessoal — atividades + campo + peso ─────────────────────────
-    with sub_pessoal:
-        st.markdown("### 🏠 Vida Pessoal")
-
-        col_add, col_list = st.columns(2)
-
-        with col_add:
-            st.markdown("#### ➕ Nova Atividade")
-            with st.form("form_pessoal", clear_on_submit=True):
-                desc_p  = st.text_input("O que precisa fazer?")
-                cat_p   = st.selectbox("Categoria", [
-                    "Saúde/Médico","Exercícios","Atividades Domésticas",
-                    "Compras","Lazer","Família","Outros"
-                ])
-                data_p  = st.date_input("Data", date.today())
-                horas_p = st.number_input("Duração (h)", 0.5, 12.0, 1.0, step=0.5)
-                if st.form_submit_button("🗓️ Agendar", use_container_width=True):
-                    if desc_p.strip():
-                        with get_conn() as conn:
-                            conn.execute(
-                                "INSERT INTO cronograma (tarefa,categoria,horas,data,frequencia,concluida,tipo_agenda) VALUES (?,?,?,?,?,0,?)",
-                                (desc_p.strip(), cat_p, horas_p, data_p.isoformat(), "Pontual", "Pessoal"),
-                            )
-                            conn.commit()
-                        st.success("Agendado!")
-                        st.rerun()
-
-        with col_list:
-            st.markdown("#### ⏳ Pendentes")
-            with get_conn() as conn:
-                df_p = pd.read_sql_query(
-                    "SELECT rowid, data, tarefa, categoria FROM cronograma WHERE tipo_agenda='Pessoal' AND concluida=0 ORDER BY data ASC",
-                    conn,
-                )
-            if df_p.empty:
-                st.info("Tudo em dia! ✅")
-            else:
-                for _, row in df_p.iterrows():
-                    col_tx, col_bt = st.columns([4,1])
-                    col_tx.markdown(
-                        f"**{formatar_data_br(row['data'])}** – {row['tarefa']} *(_{row['categoria']}_)*"
-                    )
-                    if col_bt.button("✅", key=f"pess_{row['rowid']}"):
-                        with get_conn() as conn:
-                            conn.execute("UPDATE cronograma SET concluida=1 WHERE rowid=?", (row["rowid"],))
-                            conn.commit()
-                        st.rerun()
-
-        # ══ SEPARADOR VISUAL ══
-        st.markdown('<div class="sep-pessoal"></div>', unsafe_allow_html=True)
-
-        # ── Controles de visibilidade ────────────────────────────────────
-        col_tog1, col_tog2 = st.columns(2)
-        mostrar_campo = col_tog1.toggle("📖 Mostrar Serviço de Campo", value=True, key="tog_campo")
-        mostrar_peso  = col_tog2.toggle("⚖️ Mostrar Progresso de Peso",  value=True, key="tog_peso")
-
-        # ════════════════════════════════════════════════════════════════
-        # BLOCO: SERVIÇO DE CAMPO
-        # ════════════════════════════════════════════════════════════════
-        if mostrar_campo:
-            st.markdown("#### 📖 Serviço de Campo — Horas de Pregação")
-            st.caption(f"Meta mensal: **{META_HORAS_CAMPO:.0f} horas**")
-
-            # Mês de referência
-            col_cm1, col_cm2, _ = st.columns([2, 2, 4])
-            mes_campo = col_cm1.selectbox(
-                "Mês", list(range(1,13)),
-                format_func=lambda x: MESES_PT[x-1],
-                index=hoje_dt.month - 1,
-                key="mes_campo_sel",
-            )
-            ano_campo = col_cm2.number_input("Ano", min_value=2020, max_value=2035,
-                                              value=hoje_dt.year, key="ano_campo_sel")
-            mes_ano_campo = f"{ano_campo}-{mes_campo:02d}"
-
-            # Lançar horas
-            with st.form("form_campo_horas", clear_on_submit=True):
-                cc1, cc2, cc3 = st.columns([2, 1, 3])
-                c_data  = cc1.date_input("Data da saída",   date.today(), key="c_data")
-                c_horas = cc2.number_input("Horas", 0.5, 24.0, 1.0, step=0.5, key="c_horas")
-                c_desc  = cc3.text_input("Observação (opcional)", placeholder="Ex: Território 5, porta a porta…")
-                if st.form_submit_button("➕ Lançar Horas", use_container_width=True):
-                    with get_conn() as conn:
-                        conn.execute(
-                            "INSERT INTO campo_horas (data, horas, descricao, mes_ano) VALUES (?,?,?,?)",
-                            (c_data.isoformat(), c_horas, c_desc.strip(),
-                             f"{c_data.year}-{c_data.month:02d}"),
-                        )
-                        conn.commit()
-                    st.success(f"✅ {c_horas}h registradas para {formatar_data_br(c_data)}!")
-                    st.rerun()
-
-            # Horas do mês selecionado
-            with get_conn() as conn:
-                df_campo = pd.read_sql_query(
-                    "SELECT * FROM campo_horas WHERE mes_ano=? ORDER BY data ASC",
-                    conn, params=(mes_ano_campo,),
-                )
-            horas_mes = float(df_campo["horas"].sum()) if not df_campo.empty else 0.0
-            pct_campo = min(horas_mes / META_HORAS_CAMPO, 1.0) if META_HORAS_CAMPO > 0 else 0
-            faltam    = max(META_HORAS_CAMPO - horas_mes, 0)
-
-            st.markdown(f"""
-            <div class="campo-card">
-              <div class="campo-title">📖 {MESES_PT[mes_campo-1]} {ano_campo}</div>
-              <div style="display:flex;align-items:flex-end;gap:12px;margin-top:8px;">
-                <div><div class="campo-num">{horas_mes:.1f}h</div><div class="campo-sub">realizadas</div></div>
-                <div><div class="campo-num" style="font-size:1.4rem;color:#bbdefb">/ {META_HORAS_CAMPO:.0f}h</div><div class="campo-sub">meta</div></div>
-                <div><div class="campo-num" style="font-size:1.4rem;color:#ffe0b2">{faltam:.1f}h</div><div class="campo-sub">faltam</div></div>
-              </div>
-            </div>
-            """, unsafe_allow_html=True)
-            st.progress(pct_campo, text=f"{horas_mes:.1f}h de {META_HORAS_CAMPO:.0f}h — {pct_campo*100:.0f}%")
-
-            # Histórico mensal do campo (todos os meses com lançamentos)
-            with get_conn() as conn:
-                df_campo_hist = pd.read_sql_query(
-                    "SELECT mes_ano, SUM(horas) as total FROM campo_horas GROUP BY mes_ano ORDER BY mes_ano DESC",
-                    conn,
-                )
-
-            if not df_campo_hist.empty:
-                st.markdown("**📊 Histórico de horas por mês:**")
-                df_campo_hist["Mês"] = df_campo_hist["mes_ano"].apply(
-                    lambda m: f"{MESES_PT[int(m[5:7])-1]} {m[:4]}"
-                )
-                df_campo_hist["Total"] = df_campo_hist["total"].apply(lambda h: f"{h:.1f}h")
-                df_campo_hist["✅ Meta?"] = df_campo_hist["total"].apply(
-                    lambda h: "🏆 Sim" if h >= META_HORAS_CAMPO else f"⏳ Faltaram {META_HORAS_CAMPO-h:.1f}h"
-                )
-                st.dataframe(
-                    df_campo_hist[["Mês","Total","✅ Meta?"]],
-                    use_container_width=True, hide_index=True,
-                )
-
-            # Detalhamento do mês selecionado
-            if not df_campo.empty:
-                with st.expander(f"📋 Lançamentos de {MESES_PT[mes_campo-1]} {ano_campo}"):
-                    for _, row in df_campo.iterrows():
-                        col_d, col_h, col_ds, col_del = st.columns([2, 1, 4, 1])
-                        col_d.markdown(f"**{formatar_data_br(row['data'])}**")
-                        col_h.markdown(f"⏱️ {row['horas']}h")
-                        col_ds.markdown(row["descricao"] or "—")
-                        if col_del.button("🗑️", key=f"del_campo_{row['rowid']}"):
-                            with get_conn() as conn:
-                                conn.execute("DELETE FROM campo_horas WHERE rowid=?", (row["rowid"],))
-                                conn.commit()
-                            st.rerun()
-
-        # ════════════════════════════════════════════════════════════════
-        # BLOCO: EMAGRECIMENTO
-        # ════════════════════════════════════════════════════════════════
-        if mostrar_peso:
-            st.markdown("#### ⚖️ Acompanhamento de Emagrecimento")
-            st.caption(f"Meta: chegar a **{META_PESO_KG} kg** · Peso inicial: **{PESO_INICIAL_KG} kg**")
-
-            # Lançar peso do mês
-            col_pm1, col_pm2 = st.columns([3, 2])
-            with col_pm1:
-                with st.form("form_peso", clear_on_submit=True):
-                    pc1, pc2 = st.columns(2)
-                    p_data = pc1.date_input("Data da pesagem", date.today(), key="p_data")
-                    p_peso = pc2.number_input("Peso atual (kg)", min_value=30.0, max_value=200.0,
-                                               value=70.0, step=0.1, format="%.1f", key="p_peso")
-                    if st.form_submit_button("📝 Registrar Peso", use_container_width=True):
-                        mes_ano_p = f"{p_data.year}-{p_data.month:02d}"
-                        with get_conn() as conn:
-                            # Substitui registro do mês se já existir, senão insere
-                            existing = conn.execute(
-                                "SELECT rowid FROM peso_registro WHERE mes_ano=?", (mes_ano_p,)
-                            ).fetchone()
-                            if existing:
-                                conn.execute(
-                                    "UPDATE peso_registro SET data=?, peso_kg=? WHERE rowid=?",
-                                    (p_data.isoformat(), p_peso, existing[0]),
-                                )
-                            else:
-                                conn.execute(
-                                    "INSERT INTO peso_registro (data, peso_kg, mes_ano) VALUES (?,?,?)",
-                                    (p_data.isoformat(), p_peso, mes_ano_p),
-                                )
-                            conn.commit()
-                        st.success(f"✅ Peso {p_peso:.1f} kg registrado!")
-                        st.rerun()
-
-            # Lê histórico de pesos
-            with get_conn() as conn:
-                df_peso = pd.read_sql_query(
-                    "SELECT * FROM peso_registro ORDER BY mes_ano ASC", conn)
-
-            with col_pm2:
-                if not df_peso.empty:
-                    peso_atual = float(df_peso.iloc[-1]["peso_kg"])
-                    perdido    = PESO_INICIAL_KG - peso_atual
-                    falta_peso = max(peso_atual - META_PESO_KG, 0)
-                    total_perder = PESO_INICIAL_KG - META_PESO_KG  # = 13 kg
-                    pct_peso   = min(perdido / total_perder, 1.0) if total_perder > 0 else 0
-
-                    st.markdown(f"""
-                    <div class="peso-card">
-                      <div class="peso-title">⚖️ Progresso de Peso</div>
-                      <div style="display:flex;align-items:flex-end;gap:12px;margin-top:8px;">
-                        <div><div class="peso-num">{peso_atual:.1f}</div><div class="peso-sub">kg atual</div></div>
-                        <div><div class="peso-num" style="font-size:1.4rem;color:#c8e6c9">-{perdido:.1f}</div><div class="peso-sub">kg perdidos</div></div>
-                        <div><div class="peso-num" style="font-size:1.4rem;color:#a5d6a7">{falta_peso:.1f}</div><div class="peso-sub">kg até a meta</div></div>
-                      </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    st.progress(pct_peso, text=f"Meta: {META_PESO_KG} kg · {pct_peso*100:.0f}% do caminho")
-                else:
-                    st.info("Nenhum peso registrado ainda. Faça o primeiro lançamento!")
-
-            # Gráfico/histórico de pesos
-            if not df_peso.empty:
-                st.markdown("**📈 Evolução mensal do peso:**")
-                df_peso["Mês"] = df_peso["mes_ano"].apply(
-                    lambda m: f"{MESES_PT[int(m[5:7])-1]}/{m[:4]}"
-                )
-                df_peso["Peso (kg)"] = df_peso["peso_kg"]
-                df_chart = df_peso[["Mês","Peso (kg)"]].set_index("Mês")
-                st.line_chart(df_chart, height=180)
-
-                # Tabela resumida
-                df_peso_show = df_peso.copy()
-                df_peso_show["Variação"] = df_peso_show["peso_kg"].diff().apply(
-                    lambda x: (f"▼ {abs(x):.1f} kg" if x < 0 else (f"▲ {x:.1f} kg" if x > 0 else "—"))
-                    if x == x else "—"
-                )
-                df_peso_show["Mês/Ano"] = df_peso_show["mes_ano"].apply(
-                    lambda m: f"{MESES_PT[int(m[5:7])-1]} {m[:4]}"
-                )
-                df_peso_show["Data"]    = df_peso_show["data"].apply(formatar_data_br)
-                df_peso_show["Peso"]    = df_peso_show["peso_kg"].apply(lambda x: f"{x:.1f} kg")
-                st.dataframe(
-                    df_peso_show[["Mês/Ano","Data","Peso","Variação"]].sort_values("mes_ano", ascending=False),
-                    use_container_width=True, hide_index=True,
                 )
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1645,12 +1620,17 @@ with aba_fin:
     capital_giro_sug = receita_total * pct_capital
     teto_gasto_mens  = (receita_total + receita_prevista) * (1 - margem_min) if (receita_total + receita_prevista) > 0 else 0
 
+    # Métricas financeiras completas na aba financeiro
     col_f1, col_f2, col_f3, col_f4 = st.columns(4)
     col_f1.metric("💰 Receita Recebida",  brl(receita_total))
     col_f2.metric("📉 Gastos Pagos",      brl(gastos_pagos))
     col_f3.metric("✅ Lucro Real",         brl(lucro_real),
                   delta=f"{pct_str(lucro_real, receita_total)} de margem" if receita_total > 0 else "")
     col_f4.metric("🔮 Lucro Previsto",    brl(lucro_previsto))
+
+    # Barra de meta de faturamento
+    prog_fat = min(receita_total / meta_fat_fin, 1.0) if meta_fat_fin > 0 else 0
+    st.progress(prog_fat, text=f"Faturamento: {brl(receita_total)} / {brl(meta_fat_fin)} (meta)")
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -2190,4 +2170,6 @@ with aba_conf:
             else:
                 st.error("❌ Senha incorreta. Exclusão não realizada.")
 
-st.caption("v8.0.0 | Lila Closet Atelier | Sistema de Gestão Completo")
+st.caption("v8.1.0 | Lila Closet Atelier | Sistema de Gestão Completo")
+ENDOFFILE
+echo "Done, lines: $(wc -l < /home/claude/main.py)"
