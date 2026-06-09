@@ -540,7 +540,7 @@ def gerar_pdf_contrato(enc: dict, cpf: str, rg: str) -> bytes:
     story.append(Spacer(1, 12))
 
     # ── Título ────────────────────────────────────────────────────────────
-    story.append(Paragraph("CONTRATO DE PRESTAÇÃO DE SERVIÇOS DE COSTURA SOB MEDIDA", s_titulo)) <p>
+    story.append(Paragraph("CONTRATO DE PRESTAÇÃO DE SERVIÇOS DE COSTURA SOB MEDIDA", s_titulo))
     story.append(Paragraph(
         f"Contrato N.º <b>{num_contrato}</b> &nbsp;&nbsp;|&nbsp;&nbsp; "
         f"Emitido em: <b>{hoje_br}</b> &nbsp;&nbsp;|&nbsp;&nbsp; "
