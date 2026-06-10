@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import sqlite3
 from datetime import datetime, date, timedelta
 import os
 import calendar
@@ -13,16 +12,29 @@ import base64
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import cm, mm
+from reportlab.lib.units import cm
 from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
-    HRFlowable, KeepTogether, Image as RLImage
+    HRFlowable, Image as RLImage
 )
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT, TA_JUSTIFY
 from reportlab.lib.utils import ImageReader
 
 # Excel
 import xlsxwriter
+
+# ── Banco de dados Firestore ──────────────────────────────────────────────────
+from database import (
+    init_db, cfg_get, cfg_set,
+    clientes_listar, clientes_inserir, clientes_atualizar,
+    encomendas_listar, encomendas_inserir, encomendas_atualizar,
+    encomendas_buscar, encomendas_cancelar, encomendas_deletar_completo,
+    gastos_listar, gastos_inserir, gastos_atualizar, gastos_deletar, gastos_deletar_pagos,
+    cronograma_listar, cronograma_inserir, cronograma_atualizar,
+    cronograma_deletar, cronograma_com_cliente,
+    campo_horas_listar, campo_horas_historico, campo_horas_inserir, campo_horas_deletar,
+    peso_listar, peso_upsert,
+)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # CONFIGURAÇÃO
@@ -33,78 +45,6 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed",
 )
-
-# ══════════════════════════════════════════════════════════════════════════════
-# LOGIN — AUTENTICAÇÃO SIMPLES
-# ══════════════════════════════════════════════════════════════════════════════
-USUARIOS_VALIDOS = {"Selma": "2061"}
-
-def tela_login():
-    st.markdown("""
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Inter:wght@300;400;500;600&display=swap');
-    html, body, [data-testid="stAppViewContainer"] {
-        background: linear-gradient(135deg, #1a0f0a 0%, #3d1f10 50%, #6b3a22 100%) !important;
-        font-family: 'Inter', sans-serif;
-    }
-    [data-testid="stHeader"] { background: transparent !important; }
-    .login-box {
-        background: rgba(255,255,255,0.97); border-radius: 20px;
-        padding: 2.8rem 2.5rem; max-width: 420px; margin: 80px auto 0;
-        box-shadow: 0 24px 64px rgba(0,0,0,0.4);
-    }
-    .login-title {
-        font-family: 'Playfair Display', serif; font-size: 1.9rem;
-        font-weight: 700; color: #1a0f0a; text-align: center; margin-bottom: 4px;
-    }
-    .login-sub {
-        font-size: 0.78rem; color: #c9a227; text-align: center;
-        letter-spacing: 2px; text-transform: uppercase; margin-bottom: 2rem;
-    }
-    .login-icon { text-align: center; font-size: 3rem; margin-bottom: 0.5rem; }
-    </style>
-    """, unsafe_allow_html=True)
-
-    col_l, col_c, col_r = st.columns([1, 2, 1])
-    with col_c:
-        st.markdown("""
-        <div class="login-box">
-          <div class="login-icon">🧵</div>
-          <div class="login-title">Lila Closet Atelier</div>
-          <div class="login-sub">Acesso Restrito</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        with st.container():
-            st.markdown("<div style='max-width:420px;margin:0 auto;margin-top:-2rem;background:rgba(255,255,255,0.97);border-radius:0 0 20px 20px;padding:0 2.5rem 2.5rem;'>", unsafe_allow_html=True)
-            usuario = st.text_input("👤 Usuário", placeholder="Digite seu usuário")
-            senha   = st.text_input("🔑 Senha",   placeholder="Digite sua senha", type="password")
-
-            if st.button("Entrar →", use_container_width=True, type="primary"):
-                if usuario in USUARIOS_VALIDOS and USUARIOS_VALIDOS[usuario] == senha:
-                    st.session_state["autenticado"] = True
-                    st.session_state["usuario"]     = usuario
-                    st.rerun()
-                else:
-                    st.error("❌ Usuário ou senha incorretos.")
-            st.markdown("</div>", unsafe_allow_html=True)
-
-# Verificação de autenticação
-if "autenticado" not in st.session_state:
-    st.session_state["autenticado"] = False
-
-if not st.session_state["autenticado"]:
-    tela_login()
-    st.stop()
-
-# ── Logo helper ──────────────────────────────────────────────────────────────
-LOGO_PATH = "lila.png"
-
-def get_logo_base64() -> str | None:
-    if os.path.exists(LOGO_PATH):
-        with open(LOGO_PATH, "rb") as f:
-            return base64.b64encode(f.read()).decode()
-    return None
 
 # ══════════════════════════════════════════════════════════════════════════════
 # CSS GLOBAL
@@ -144,7 +84,6 @@ html, body, [data-testid="stAppViewContainer"] {
 }
 .hero-subtitle { font-size: 0.8rem; color: #c9a882; letter-spacing: 2px;
   text-transform: uppercase; margin-top: 5px; }
-.hero-user { font-size: 0.75rem; color: #f0d090; margin-top: 8px; }
 
 /* ── Abas ── */
 [data-testid="stTabs"] [data-baseweb="tab-list"] {
@@ -324,9 +263,16 @@ MESES_PT = [
 
 SENHA_DELETE = "Qmerd@10"
 
-META_HORAS_CAMPO  = 50.0   # meta mensal de horas no serviço de campo
-META_PESO_KG      = 57.0   # peso alvo
-PESO_INICIAL_KG   = 70.0   # peso de partida
+META_HORAS_CAMPO = 50.0
+META_PESO_KG     = 57.0
+PESO_INICIAL_KG  = 70.0
+
+LOGO_PATH = "lila.png"
+
+# ══════════════════════════════════════════════════════════════════════════════
+# INICIALIZAÇÃO DO BANCO
+# ══════════════════════════════════════════════════════════════════════════════
+init_db()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # HELPERS
@@ -359,158 +305,11 @@ def pct_str(valor: float, total: float) -> str:
         return "0%"
     return f"{(valor/total*100):.1f}%"
 
-# ══════════════════════════════════════════════════════════════════════════════
-# BANCO DE DADOS
-# ══════════════════════════════════════════════════════════════════════════════
-DB_PATH = "lila_closet.db"
-
-def get_conn():
-    return sqlite3.connect(DB_PATH, check_same_thread=False)
-
-def init_db():
-    with get_conn() as conn:
-        c = conn.cursor()
-
-        # ── Clientes ─────────────────────────────────────────────────────
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS clientes (
-                nome TEXT, modelo_base TEXT,
-                telefone TEXT DEFAULT '', email TEXT DEFAULT '', cpf TEXT DEFAULT '',
-                ombros REAL, costas REAL, alt_busto REAL, alt_frente REAL,
-                busto REAL, cintura REAL, quadril REAL, larg_braco REAL,
-                comp_braco REAL, comprimento REAL, comp_perna REAL,
-                coxa REAL, gancho REAL, colarinho REAL, outro TEXT
-            )
-        """)
-        for col in ["telefone TEXT DEFAULT ''", "email TEXT DEFAULT ''", "cpf TEXT DEFAULT ''"]:
-            try: c.execute(f"ALTER TABLE clientes ADD COLUMN {col}")
-            except: pass
-
-        # ── Encomendas ───────────────────────────────────────────────────
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS encomendas (
-                cliente TEXT, peca TEXT, descricao TEXT DEFAULT '',
-                valor_total REAL DEFAULT 0, sinal REAL DEFAULT 0,
-                valor_recebido REAL DEFAULT 0,
-                data_visita TEXT, data_tecido TEXT, data_confeccao TEXT,
-                data_prova TEXT, data_entrega TEXT,
-                etapa INTEGER DEFAULT 1,
-                precisa_tecido INTEGER DEFAULT 0,
-                cpf_cliente TEXT DEFAULT '', rg_cliente TEXT DEFAULT '',
-                forma_pagamento TEXT DEFAULT 'A combinar',
-                observacoes TEXT DEFAULT '',
-                cancelado INTEGER DEFAULT 0
-            )
-        """)
-        for col in [
-            "descricao TEXT DEFAULT ''",
-            "forma_pagamento TEXT DEFAULT 'A combinar'",
-            "observacoes TEXT DEFAULT ''",
-            "cancelado INTEGER DEFAULT 0",
-        ]:
-            try: c.execute(f"ALTER TABLE encomendas ADD COLUMN {col}")
-            except: pass
-
-        # ── Gastos ───────────────────────────────────────────────────────
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS gastos (
-                encomenda_id INTEGER DEFAULT NULL,
-                descricao TEXT, valor REAL, data TEXT,
-                categoria TEXT, pago INTEGER DEFAULT 0,
-                recorrente INTEGER DEFAULT 0,
-                dia_vencimento INTEGER DEFAULT NULL
-            )
-        """)
-        for col in ["recorrente INTEGER DEFAULT 0", "dia_vencimento INTEGER DEFAULT NULL"]:
-            try: c.execute(f"ALTER TABLE gastos ADD COLUMN {col}")
-            except: pass
-
-        # ── Cronograma / Agenda ──────────────────────────────────────────
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS cronograma (
-                tarefa TEXT, categoria TEXT, horas REAL, data TEXT,
-                frequencia TEXT, concluida INTEGER DEFAULT 0,
-                encomenda_id INTEGER DEFAULT NULL, tipo_agenda TEXT DEFAULT 'Trabalho'
-            )
-        """)
-
-        # ── Serviço de campo ─────────────────────────────────────────────
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS campo_horas (
-                data TEXT NOT NULL,
-                horas REAL NOT NULL,
-                descricao TEXT DEFAULT '',
-                mes_ano TEXT NOT NULL
-            )
-        """)
-
-        # ── Registro de peso ─────────────────────────────────────────────
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS peso_registro (
-                data TEXT NOT NULL,
-                peso_kg REAL NOT NULL,
-                mes_ano TEXT NOT NULL
-            )
-        """)
-
-        # ── Config ───────────────────────────────────────────────────────
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS config (
-                chave TEXT PRIMARY KEY, valor TEXT
-            )
-        """)
-        defaults = [
-            ("meta_faturamento", "5000"),
-            ("meta_pedidos_mes", "8"),
-            ("margem_minima_pct", "30"),
-            ("reserva_emergencia_meses", "3"),
-            ("capital_giro_pct", "20"),
-            ("cnpj", "40.717.967/0001-03"),
-            ("telefone", "(11) 94600-6761"),
-            ("endereco", "Embu das Artes – SP"),
-        ]
-        for k, v in defaults:
-            c.execute("INSERT OR IGNORE INTO config (chave, valor) VALUES (?,?)", (k, v))
-
-        conn.commit()
-
-init_db()
-
-# ══════════════════════════════════════════════════════════════════════════════
-# CONFIG helpers
-# ══════════════════════════════════════════════════════════════════════════════
-def cfg_get(chave: str) -> str:
-    with get_conn() as conn:
-        r = conn.execute("SELECT valor FROM config WHERE chave=?", (chave,)).fetchone()
-    return r[0] if r else ""
-
-def cfg_set(chave: str, valor: str):
-    with get_conn() as conn:
-        conn.execute("INSERT OR REPLACE INTO config (chave,valor) VALUES (?,?)", (chave, valor))
-        conn.commit()
-
-# ══════════════════════════════════════════════════════════════════════════════
-# DELETE / CANCELAR PEDIDO
-# ══════════════════════════════════════════════════════════════════════════════
-def deletar_pedido_completo(enc_rowid: int):
-    with get_conn() as conn:
-        conn.execute("DELETE FROM encomendas WHERE rowid=?",  (enc_rowid,))
-        conn.execute("DELETE FROM cronograma  WHERE encomenda_id=?", (enc_rowid,))
-        conn.execute("DELETE FROM gastos      WHERE encomenda_id=?", (enc_rowid,))
-        conn.commit()
-
-def cancelar_pedido(enc_rowid: int):
-    with get_conn() as conn:
-        conn.execute("""
-            UPDATE encomendas SET
-                cancelado=1, etapa=1, sinal=0, valor_recebido=0,
-                data_tecido=NULL, data_confeccao=NULL,
-                data_prova=NULL, data_entrega=NULL
-            WHERE rowid=?
-        """, (enc_rowid,))
-        conn.execute("DELETE FROM cronograma WHERE encomenda_id=?", (enc_rowid,))
-        conn.execute("DELETE FROM gastos WHERE encomenda_id=? AND pago=0", (enc_rowid,))
-        conn.commit()
+def get_logo_base64() -> str | None:
+    if os.path.exists(LOGO_PATH):
+        with open(LOGO_PATH, "rb") as f:
+            return base64.b64encode(f.read()).decode()
+    return None
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PDF — CONTRATO
@@ -558,9 +357,9 @@ def gerar_pdf_contrato(enc: dict, cpf: str, rg: str) -> bytes:
     descricao     = enc.get("descricao", "") or ""
     obs           = enc.get("observacoes", "") or ""
 
-    cnpj_val  = cfg_get("cnpj")
-    tel_val   = cfg_get("telefone")
-    end_val   = cfg_get("endereco")
+    cnpj_val = cfg_get("cnpj")
+    tel_val  = cfg_get("telefone")
+    end_val  = cfg_get("endereco")
 
     doc = SimpleDocTemplate(buf, pagesize=A4,
         rightMargin=2.0*cm, leftMargin=2.0*cm,
@@ -798,34 +597,24 @@ st.markdown(f"""
   <div>
     <div class="hero-title">Lila Closet Atelier</div>
     <div class="hero-subtitle">Sistema de Gestão Profissional · Costura sob medida</div>
-    <div class="hero-user">👤 Olá, {st.session_state.get("usuario", "")}!</div>
   </div>
 </div>
 """, unsafe_allow_html=True)
 
-# Botão de logout no canto superior
-col_logout_spacer, col_logout_btn = st.columns([6, 1])
-with col_logout_btn:
-    if st.button("🚪 Sair", key="btn_logout"):
-        st.session_state["autenticado"] = False
-        st.session_state["usuario"]     = ""
-        st.rerun()
-
 # ══════════════════════════════════════════════════════════════════════════════
-# MÉTRICAS DO TOPO — apenas pedidos ativos e meta de pedidos
+# MÉTRICAS DO TOPO
 # ══════════════════════════════════════════════════════════════════════════════
 hoje_dt = date.today()
-mes_ini = hoje_dt.replace(day=1).isoformat()
 
-with get_conn() as conn:
-    df_enc_all = pd.read_sql_query("SELECT * FROM encomendas WHERE cancelado=0", conn)
-    df_g_all   = pd.read_sql_query("SELECT * FROM gastos", conn)
+df_enc_all = encomendas_listar(cancelado=False)
+enc_ativas = 0
+if not df_enc_all.empty and "etapa" in df_enc_all.columns:
+    enc_ativas = int((df_enc_all["etapa"].astype(int) < 7).sum())
 
-enc_ativas = len(df_enc_all[df_enc_all["etapa"] < 7])
-meta_ped   = int(cfg_get("meta_pedidos_mes") or 8)
+meta_ped = int(cfg_get("meta_pedidos_mes") or 8)
 
 col_m1, col_m2 = st.columns(2)
-col_m1.metric("🛍️ Pedidos Ativos",     enc_ativas)
+col_m1.metric("🛍️ Pedidos Ativos",      enc_ativas)
 col_m2.metric("📋 Meta de Pedidos/mês", meta_ped)
 
 st.markdown("<br>", unsafe_allow_html=True)
@@ -842,20 +631,16 @@ aba_hoje, aba_enc, aba_agenda, aba_fin, aba_conf = st.tabs([
 ])
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ABA 1 – O QUE FAZER AGORA  +  VIDA PESSOAL (ocultável)
+# ABA 1 – HOJE
 # ══════════════════════════════════════════════════════════════════════════════
 with aba_hoje:
     st.markdown("### ⚡ Tarefas para Hoje e Atrasadas")
 
-    with get_conn() as conn:
-        df_hoje = pd.read_sql_query(
-            """SELECT c.rowid, c.*, e.cliente as nome_cliente
-               FROM cronograma c
-               LEFT JOIN encomendas e ON c.encomenda_id = e.rowid
-               WHERE c.data <= ? AND c.concluida = 0 AND c.tipo_agenda='Trabalho'
-               ORDER BY c.data ASC""",
-            conn, params=(hoje_dt.isoformat(),),
-        )
+    df_hoje = cronograma_com_cliente(
+        tipo_agenda="Trabalho",
+        concluida=False,
+        ate_data=hoje_dt.isoformat(),
+    )
 
     if df_hoje.empty:
         st.success("✅ Tudo em dia! Nenhuma tarefa pendente para hoje.")
@@ -868,7 +653,7 @@ with aba_hoje:
             is_atrasado = row["data"] < hoje_dt.isoformat()
             badge_cls   = "badge-red" if is_atrasado else "badge-gold"
             badge_txt   = "⚠️ ATRASADO" if is_atrasado else "🔔 Pendente"
-            cliente_txt = f" &nbsp;|&nbsp; 👤 {row['nome_cliente']}" if row.get('nome_cliente') else ""
+            cliente_txt = f" &nbsp;|&nbsp; 👤 {row['nome_cliente']}" if row.get("nome_cliente") else ""
 
             col_info, col_btn = st.columns([5, 1])
             with col_info:
@@ -885,41 +670,34 @@ with aba_hoje:
                 st.write("")
                 st.write("")
                 if st.button("✅ Feito", key=f"hoje_{row['rowid']}"):
-                    with get_conn() as conn:
-                        if row.get("encomenda_id"):
-                            res = conn.execute(
-                                "SELECT etapa, precisa_tecido FROM encomendas WHERE rowid=?",
-                                (int(row["encomenda_id"]),),
-                            ).fetchone()
-                            if res:
-                                prox = res[0] + 1
-                                if prox == 2: prox = 3
-                                if prox == 3 and res[1] == 0: prox = 4
-                                if prox <= 7:
-                                    conn.execute(
-                                        "UPDATE encomendas SET etapa=? WHERE rowid=?",
-                                        (prox, int(row["encomenda_id"])),
-                                    )
-                        conn.execute("UPDATE cronograma SET concluida=1 WHERE rowid=?", (int(row["rowid"]),))
-                        conn.commit()
+                    enc_id = row.get("encomenda_id")
+                    if enc_id:
+                        enc_data = encomendas_buscar(str(enc_id))
+                        if enc_data:
+                            prox = int(enc_data.get("etapa", 1)) + 1
+                            if prox == 2: prox = 3
+                            if prox == 3 and not enc_data.get("precisa_tecido"): prox = 4
+                            if prox <= 7:
+                                encomendas_atualizar(str(enc_id), {"etapa": prox})
+                    cronograma_atualizar(str(row["rowid"]), {"concluida": 1})
                     st.rerun()
 
     st.divider()
     st.markdown("### 📦 Pedidos Entregues Hoje")
-    with get_conn() as conn:
-        df_ent_hoje = pd.read_sql_query(
-            "SELECT * FROM encomendas WHERE data_entrega=? AND etapa>=6 AND cancelado=0",
-            conn, params=(hoje_dt.isoformat(),),
-        )
-    if df_ent_hoje.empty:
-        st.info("Nenhuma entrega programada para hoje.")
+    if not df_enc_all.empty:
+        df_ent_hoje = df_enc_all[
+            (df_enc_all.get("data_entrega", pd.Series(dtype=str)) == hoje_dt.isoformat()) &
+            (df_enc_all["etapa"].astype(int) >= 6)
+        ]
+        if df_ent_hoje.empty:
+            st.info("Nenhuma entrega programada para hoje.")
+        else:
+            for _, r in df_ent_hoje.iterrows():
+                st.success(f"🎁 **{r['cliente']}** – {r['peca']} | {brl(float(r.get('valor_total', 0) or 0))}")
     else:
-        for _, r in df_ent_hoje.iterrows():
-            st.success(f"🎁 **{r['cliente']}** – {r['peca']} | {brl(r['valor_total'])}")
+        st.info("Nenhuma entrega programada para hoje.")
 
-    # ══════════════════════════════════════════════════════════════════════
-    # VIDA PESSOAL — ocultável, dentro da aba HOJE
-    # ══════════════════════════════════════════════════════════════════════
+    # ── Vida Pessoal ──────────────────────────────────────────────────────
     st.divider()
     mostrar_vida_pessoal = st.toggle("🏠 Mostrar Vida Pessoal", value=False, key="tog_vida_pessoal_hoje")
 
@@ -940,34 +718,28 @@ with aba_hoje:
                 horas_p = st.number_input("Duração (h)", 0.5, 12.0, 1.0, step=0.5, key="horas_p_hoje")
                 if st.form_submit_button("🗓️ Agendar", use_container_width=True):
                     if desc_p.strip():
-                        with get_conn() as conn:
-                            conn.execute(
-                                "INSERT INTO cronograma (tarefa,categoria,horas,data,frequencia,concluida,tipo_agenda) VALUES (?,?,?,?,?,0,?)",
-                                (desc_p.strip(), cat_p, horas_p, data_p.isoformat(), "Pontual", "Pessoal"),
-                            )
-                            conn.commit()
+                        cronograma_inserir({
+                            "tarefa": desc_p.strip(), "categoria": cat_p,
+                            "horas": horas_p, "data": data_p.isoformat(),
+                            "frequencia": "Pontual", "concluida": 0,
+                            "tipo_agenda": "Pessoal",
+                        })
                         st.success("Agendado!")
                         st.rerun()
 
         with col_list:
             st.markdown("#### ⏳ Pendentes")
-            with get_conn() as conn:
-                df_p = pd.read_sql_query(
-                    "SELECT rowid, data, tarefa, categoria FROM cronograma WHERE tipo_agenda='Pessoal' AND concluida=0 ORDER BY data ASC",
-                    conn,
-                )
+            df_p = cronograma_listar(tipo_agenda="Pessoal", concluida=False)
             if df_p.empty:
                 st.info("Tudo em dia! ✅")
             else:
                 for _, row in df_p.iterrows():
-                    col_tx, col_bt = st.columns([4,1])
+                    col_tx, col_bt = st.columns([4, 1])
                     col_tx.markdown(
                         f"**{formatar_data_br(row['data'])}** – {row['tarefa']} *(_{row['categoria']}_)*"
                     )
                     if col_bt.button("✅", key=f"pess_hoje_{row['rowid']}"):
-                        with get_conn() as conn:
-                            conn.execute("UPDATE cronograma SET concluida=1 WHERE rowid=?", (row["rowid"],))
-                            conn.commit()
+                        cronograma_atualizar(str(row["rowid"]), {"concluida": 1})
                         st.rerun()
 
         st.markdown('<div class="sep-pessoal"></div>', unsafe_allow_html=True)
@@ -976,43 +748,39 @@ with aba_hoje:
         mostrar_campo = col_tog1.toggle("📖 Mostrar Serviço de Campo", value=True, key="tog_campo_hoje")
         mostrar_peso  = col_tog2.toggle("⚖️ Mostrar Progresso de Peso",  value=True, key="tog_peso_hoje")
 
-        # ── SERVIÇO DE CAMPO ─────────────────────────────────────────────
+        # ── Serviço de Campo ──────────────────────────────────────────────
         if mostrar_campo:
             st.markdown("#### 📖 Serviço de Campo — Horas de Pregação")
             st.caption(f"Meta mensal: **{META_HORAS_CAMPO:.0f} horas**")
 
             col_cm1, col_cm2, _ = st.columns([2, 2, 4])
             mes_campo = col_cm1.selectbox(
-                "Mês", list(range(1,13)),
+                "Mês", list(range(1, 13)),
                 format_func=lambda x: MESES_PT[x-1],
-                index=hoje_dt.month - 1,
-                key="mes_campo_sel_hoje",
+                index=hoje_dt.month - 1, key="mes_campo_sel_hoje",
             )
-            ano_campo = col_cm2.number_input("Ano", min_value=2020, max_value=2035,
-                                              value=hoje_dt.year, key="ano_campo_sel_hoje")
+            ano_campo = col_cm2.number_input(
+                "Ano", min_value=2020, max_value=2035,
+                value=hoje_dt.year, key="ano_campo_sel_hoje",
+            )
             mes_ano_campo = f"{ano_campo}-{mes_campo:02d}"
 
             with st.form("form_campo_horas_hoje", clear_on_submit=True):
                 cc1, cc2, cc3 = st.columns([2, 1, 3])
                 c_data  = cc1.date_input("Data da saída", date.today(), key="c_data_hoje")
                 c_horas = cc2.number_input("Horas", 0.5, 24.0, 1.0, step=0.5, key="c_horas_hoje")
-                c_desc  = cc3.text_input("Observação (opcional)", placeholder="Ex: Território 5, porta a porta…", key="c_desc_hoje")
+                c_desc  = cc3.text_input("Observação (opcional)", key="c_desc_hoje")
                 if st.form_submit_button("➕ Lançar Horas", use_container_width=True):
-                    with get_conn() as conn:
-                        conn.execute(
-                            "INSERT INTO campo_horas (data, horas, descricao, mes_ano) VALUES (?,?,?,?)",
-                            (c_data.isoformat(), c_horas, c_desc.strip(),
-                             f"{c_data.year}-{c_data.month:02d}"),
-                        )
-                        conn.commit()
-                    st.success(f"✅ {c_horas}h registradas para {formatar_data_br(c_data)}!")
+                    campo_horas_inserir({
+                        "data": c_data.isoformat(),
+                        "horas": c_horas,
+                        "descricao": c_desc.strip(),
+                        "mes_ano": f"{c_data.year}-{c_data.month:02d}",
+                    })
+                    st.success(f"✅ {c_horas}h registradas!")
                     st.rerun()
 
-            with get_conn() as conn:
-                df_campo = pd.read_sql_query(
-                    "SELECT * FROM campo_horas WHERE mes_ano=? ORDER BY data ASC",
-                    conn, params=(mes_ano_campo,),
-                )
+            df_campo = campo_horas_listar(mes_ano=mes_ano_campo)
             horas_mes = float(df_campo["horas"].sum()) if not df_campo.empty else 0.0
             pct_campo = min(horas_mes / META_HORAS_CAMPO, 1.0) if META_HORAS_CAMPO > 0 else 0
             faltam    = max(META_HORAS_CAMPO - horas_mes, 0)
@@ -1029,25 +797,17 @@ with aba_hoje:
             """, unsafe_allow_html=True)
             st.progress(pct_campo, text=f"{horas_mes:.1f}h de {META_HORAS_CAMPO:.0f}h — {pct_campo*100:.0f}%")
 
-            with get_conn() as conn:
-                df_campo_hist = pd.read_sql_query(
-                    "SELECT mes_ano, SUM(horas) as total FROM campo_horas GROUP BY mes_ano ORDER BY mes_ano DESC",
-                    conn,
-                )
-
+            df_campo_hist = campo_horas_historico()
             if not df_campo_hist.empty:
                 st.markdown("**📊 Histórico de horas por mês:**")
                 df_campo_hist["Mês"] = df_campo_hist["mes_ano"].apply(
                     lambda m: f"{MESES_PT[int(m[5:7])-1]} {m[:4]}"
                 )
-                df_campo_hist["Total"] = df_campo_hist["total"].apply(lambda h: f"{h:.1f}h")
+                df_campo_hist["Total"]  = df_campo_hist["total"].apply(lambda h: f"{h:.1f}h")
                 df_campo_hist["✅ Meta?"] = df_campo_hist["total"].apply(
                     lambda h: "🏆 Sim" if h >= META_HORAS_CAMPO else f"⏳ Faltaram {META_HORAS_CAMPO-h:.1f}h"
                 )
-                st.dataframe(
-                    df_campo_hist[["Mês","Total","✅ Meta?"]],
-                    use_container_width=True, hide_index=True,
-                )
+                st.dataframe(df_campo_hist[["Mês","Total","✅ Meta?"]], use_container_width=True, hide_index=True)
 
             if not df_campo.empty:
                 with st.expander(f"📋 Lançamentos de {MESES_PT[mes_campo-1]} {ano_campo}"):
@@ -1056,13 +816,11 @@ with aba_hoje:
                         col_d.markdown(f"**{formatar_data_br(row['data'])}**")
                         col_h.markdown(f"⏱️ {row['horas']}h")
                         col_ds.markdown(row["descricao"] or "—")
-                        if col_del.button("🗑️", key=f"del_campo_hoje_{row['rowid']}"):
-                            with get_conn() as conn:
-                                conn.execute("DELETE FROM campo_horas WHERE rowid=?", (row["rowid"],))
-                                conn.commit()
+                        if col_del.button("🗑️", key=f"del_campo_{row['rowid']}"):
+                            campo_horas_deletar(str(row["rowid"]))
                             st.rerun()
 
-        # ── EMAGRECIMENTO ─────────────────────────────────────────────────
+        # ── Emagrecimento ─────────────────────────────────────────────────
         if mostrar_peso:
             st.markdown("#### ⚖️ Acompanhamento de Emagrecimento")
             st.caption(f"Meta: chegar a **{META_PESO_KG} kg** · Peso inicial: **{PESO_INICIAL_KG} kg**")
@@ -1076,35 +834,19 @@ with aba_hoje:
                                                value=70.0, step=0.1, format="%.1f", key="p_peso_hoje")
                     if st.form_submit_button("📝 Registrar Peso", use_container_width=True):
                         mes_ano_p = f"{p_data.year}-{p_data.month:02d}"
-                        with get_conn() as conn:
-                            existing = conn.execute(
-                                "SELECT rowid FROM peso_registro WHERE mes_ano=?", (mes_ano_p,)
-                            ).fetchone()
-                            if existing:
-                                conn.execute(
-                                    "UPDATE peso_registro SET data=?, peso_kg=? WHERE rowid=?",
-                                    (p_data.isoformat(), p_peso, existing[0]),
-                                )
-                            else:
-                                conn.execute(
-                                    "INSERT INTO peso_registro (data, peso_kg, mes_ano) VALUES (?,?,?)",
-                                    (p_data.isoformat(), p_peso, mes_ano_p),
-                                )
-                            conn.commit()
+                        peso_upsert(mes_ano_p, p_data.isoformat(), p_peso)
                         st.success(f"✅ Peso {p_peso:.1f} kg registrado!")
                         st.rerun()
 
-            with get_conn() as conn:
-                df_peso = pd.read_sql_query(
-                    "SELECT * FROM peso_registro ORDER BY mes_ano ASC", conn)
+            df_peso = peso_listar()
 
             with col_pm2:
                 if not df_peso.empty:
-                    peso_atual = float(df_peso.iloc[-1]["peso_kg"])
-                    perdido    = PESO_INICIAL_KG - peso_atual
-                    falta_peso = max(peso_atual - META_PESO_KG, 0)
+                    peso_atual  = float(df_peso.iloc[-1]["peso_kg"])
+                    perdido     = PESO_INICIAL_KG - peso_atual
+                    falta_peso  = max(peso_atual - META_PESO_KG, 0)
                     total_perder = PESO_INICIAL_KG - META_PESO_KG
-                    pct_peso   = min(perdido / total_perder, 1.0) if total_perder > 0 else 0
+                    pct_peso    = min(perdido / total_perder, 1.0) if total_perder > 0 else 0
 
                     st.markdown(f"""
                     <div class="peso-card">
@@ -1118,18 +860,15 @@ with aba_hoje:
                     """, unsafe_allow_html=True)
                     st.progress(pct_peso, text=f"Meta: {META_PESO_KG} kg · {pct_peso*100:.0f}% do caminho")
                 else:
-                    st.info("Nenhum peso registrado ainda. Faça o primeiro lançamento!")
+                    st.info("Nenhum peso registrado ainda.")
 
             if not df_peso.empty:
                 st.markdown("**📈 Evolução mensal do peso:**")
                 df_peso["Mês"] = df_peso["mes_ano"].apply(
                     lambda m: f"{MESES_PT[int(m[5:7])-1]}/{m[:4]}"
                 )
-                df_peso["Peso (kg)"] = df_peso["peso_kg"]
-                df_chart = df_peso[["Mês","Peso (kg)"]].set_index("Mês")
-                st.line_chart(df_chart, height=180)
+                st.line_chart(df_peso.set_index("Mês")[["peso_kg"]].rename(columns={"peso_kg": "Peso (kg)"}), height=180)
 
-                # Tabela — FIX: mantém mes_ano como coluna separada para sort
                 df_peso_show = df_peso.copy()
                 df_peso_show["Variação"] = df_peso_show["peso_kg"].diff().apply(
                     lambda x: (f"▼ {abs(x):.1f} kg" if x < 0 else (f"▲ {x:.1f} kg" if x > 0 else "—"))
@@ -1138,11 +877,10 @@ with aba_hoje:
                 df_peso_show["Mês/Ano"] = df_peso_show["mes_ano"].apply(
                     lambda m: f"{MESES_PT[int(m[5:7])-1]} {m[:4]}"
                 )
-                df_peso_show["Data"]    = df_peso_show["data"].apply(formatar_data_br)
-                df_peso_show["Peso"]    = df_peso_show["peso_kg"].apply(lambda x: f"{x:.1f} kg")
-                df_peso_show_sorted = df_peso_show.sort_values("mes_ano", ascending=False)
+                df_peso_show["Data"]  = df_peso_show["data"].apply(formatar_data_br)
+                df_peso_show["Peso"]  = df_peso_show["peso_kg"].apply(lambda x: f"{x:.1f} kg")
                 st.dataframe(
-                    df_peso_show_sorted[["Mês/Ano","Data","Peso","Variação"]],
+                    df_peso_show.sort_values("mes_ano", ascending=False)[["Mês/Ano","Data","Peso","Variação"]],
                     use_container_width=True, hide_index=True,
                 )
 
@@ -1170,12 +908,11 @@ with aba_enc:
             nc_cpf   = col_e.text_input("CPF")
             if st.form_submit_button("💾 Salvar Cliente", use_container_width=True):
                 if nc_nome.strip():
-                    with get_conn() as conn:
-                        conn.execute(
-                            "INSERT INTO clientes (nome, modelo_base, telefone, email, cpf) VALUES (?,?,?,?,?)",
-                            (nc_nome.strip(), nc_mod.strip(), nc_tel.strip(), nc_email.strip(), nc_cpf.strip()),
-                        )
-                        conn.commit()
+                    clientes_inserir({
+                        "nome": nc_nome.strip(), "modelo_base": nc_mod.strip(),
+                        "telefone": nc_tel.strip(), "email": nc_email.strip(),
+                        "cpf": nc_cpf.strip(),
+                    })
                     st.success(f"✅ Cliente **{nc_nome}** cadastrada!")
                     st.rerun()
                 else:
@@ -1183,20 +920,20 @@ with aba_enc:
 
         st.markdown("---")
         st.markdown("#### 👥 Clientes Cadastradas")
-        with get_conn() as conn:
-            df_clis_lista = pd.read_sql_query(
-                "SELECT rowid, nome, telefone, email, modelo_base FROM clientes ORDER BY nome", conn)
+        df_clis_lista = clientes_listar()
         if not df_clis_lista.empty:
-            df_clis_lista.columns = ["ID","Nome","Telefone","E-mail","Modelo Base"]
-            st.dataframe(df_clis_lista.drop(columns=["ID"]), use_container_width=True, hide_index=True)
+            cols_show = [c for c in ["nome","telefone","email","modelo_base"] if c in df_clis_lista.columns]
+            df_show = df_clis_lista[cols_show].copy()
+            df_show.columns = ["Nome","Telefone","E-mail","Modelo Base"][:len(cols_show)]
+            st.dataframe(df_show, use_container_width=True, hide_index=True)
         else:
             st.info("Nenhuma cliente cadastrada ainda.")
 
     # ── Novo Pedido ──────────────────────────────────────────────────────
     with t_novo_ped:
         st.markdown("### 🛍️ Registrar Nova Encomenda")
-        with get_conn() as conn:
-            clis = pd.read_sql_query("SELECT nome FROM clientes ORDER BY nome", conn)["nome"].tolist()
+        df_clis = clientes_listar()
+        clis = df_clis["nome"].tolist() if not df_clis.empty else []
 
         if not clis:
             st.info("Cadastre uma cliente primeiro na aba **👤 Nova Cliente**.")
@@ -1212,21 +949,15 @@ with aba_enc:
                 st.markdown("#### 🧵 Dados da Peça")
                 col_p1, col_p2 = st.columns([2, 3])
                 cli_sel  = col_p1.selectbox("Cliente *", clis)
-                peca     = col_p2.text_input("Peça / Serviço *", placeholder="Ex: Vestido de festa, Calça social…")
-                descricao_ped = st.text_area(
-                    "Descrição detalhada (tecido, cor, modelo, referências…)",
-                    placeholder="Vestido midi em crepe azul marinho, decote V, manga 3/4, saia evasê…",
-                    height=80,
-                )
+                peca     = col_p2.text_input("Peça / Serviço *", placeholder="Ex: Vestido de festa…")
+                descricao_ped = st.text_area("Descrição detalhada", height=80)
 
                 st.markdown("#### 💰 Valores")
                 col_v1, col_v2, col_v3 = st.columns(3)
                 v_total  = col_v1.number_input("Valor Total (R$) *", min_value=0.0, step=50.0, format="%.2f")
                 v_sinal  = col_v2.number_input("Sinal / Entrada (R$)", min_value=0.0, step=50.0, format="%.2f")
-                forma_pag = col_v3.selectbox(
-                    "Forma de Pagamento",
-                    ["PIX","Dinheiro","Cartão de Crédito","Cartão de Débito","A combinar"],
-                )
+                forma_pag = col_v3.selectbox("Forma de Pagamento",
+                    ["PIX","Dinheiro","Cartão de Crédito","Cartão de Débito","A combinar"])
 
                 st.markdown("#### 📅 Cronograma")
                 col_d1, col_d2 = st.columns(2)
@@ -1251,41 +982,37 @@ with aba_enc:
 
             if submitted:
                 if peca.strip() and cli_sel:
-                    with get_conn() as conn:
-                        cur = conn.cursor()
-                        d_tec_str = d_tec.isoformat() if d_tec else d_conf.isoformat()
-                        cur.execute(
-                            """INSERT INTO encomendas
-                               (cliente, peca, descricao, valor_total, sinal, valor_recebido,
-                                etapa, precisa_tecido, data_visita, data_tecido, data_confeccao,
-                                data_prova, data_entrega, cpf_cliente, rg_cliente,
-                                forma_pagamento, observacoes)
-                               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                            (cli_sel, peca.strip(), descricao_ped.strip(),
-                             v_total, v_sinal, v_sinal,
-                             1, precisa_tecido,
-                             d_visita.isoformat(), d_tec_str, d_conf.isoformat(),
-                             d_prova.isoformat(), d_ent.isoformat(),
-                             cpf_novo.strip(), rg_novo.strip(), forma_pag, obs_ped.strip()),
-                        )
-                        e_id = cur.lastrowid
-                        desc = f"{peca.strip()} ({cli_sel})"
-
-                        tarefas_auto = [
-                            (f"🤝 Visita: {desc}",    "Costura", 1.0, d_visita.isoformat()),
-                            (f"🪡 Confecção: {desc}", "Costura", 3.0, d_conf.isoformat()),
-                            (f"👗 Prova: {desc}",     "Costura", 1.0, d_prova.isoformat()),
-                            (f"🎁 Entrega: {desc}",   "Costura", 0.5, d_ent.isoformat()),
-                        ]
-                        if precisa_tecido and d_tec:
-                            tarefas_auto.insert(1, (f"🛍️ Tecido: {desc}", "Compras", 1.0, d_tec.isoformat()))
-
-                        for tarefa, cat, hrs, dt in tarefas_auto:
-                            conn.execute(
-                                "INSERT INTO cronograma VALUES (?,?,?,?,?,0,?,?)",
-                                (tarefa, cat, hrs, dt, "Pontual", e_id, "Trabalho"),
-                            )
-                        conn.commit()
+                    d_tec_str = d_tec.isoformat() if d_tec else d_conf.isoformat()
+                    e_id = encomendas_inserir({
+                        "cliente": cli_sel, "peca": peca.strip(),
+                        "descricao": descricao_ped.strip(),
+                        "valor_total": v_total, "sinal": v_sinal,
+                        "valor_recebido": v_sinal,
+                        "etapa": 1, "precisa_tecido": precisa_tecido,
+                        "data_visita":    d_visita.isoformat(),
+                        "data_tecido":    d_tec_str,
+                        "data_confeccao": d_conf.isoformat(),
+                        "data_prova":     d_prova.isoformat(),
+                        "data_entrega":   d_ent.isoformat(),
+                        "cpf_cliente": cpf_novo.strip(), "rg_cliente": rg_novo.strip(),
+                        "forma_pagamento": forma_pag, "observacoes": obs_ped.strip(),
+                        "cancelado": 0,
+                    })
+                    desc = f"{peca.strip()} ({cli_sel})"
+                    tarefas_auto = [
+                        (f"🤝 Visita: {desc}",    "Costura", 1.0, d_visita.isoformat()),
+                        (f"🪡 Confecção: {desc}", "Costura", 3.0, d_conf.isoformat()),
+                        (f"👗 Prova: {desc}",     "Costura", 1.0, d_prova.isoformat()),
+                        (f"🎁 Entrega: {desc}",   "Costura", 0.5, d_ent.isoformat()),
+                    ]
+                    if precisa_tecido and d_tec:
+                        tarefas_auto.insert(1, (f"🛍️ Tecido: {desc}", "Compras", 1.0, d_tec.isoformat()))
+                    for tarefa, cat, hrs, dt in tarefas_auto:
+                        cronograma_inserir({
+                            "tarefa": tarefa, "categoria": cat, "horas": hrs,
+                            "data": dt, "frequencia": "Pontual", "concluida": 0,
+                            "encomenda_id": e_id, "tipo_agenda": "Trabalho",
+                        })
 
                     st.success(f"✅ Encomenda **{peca.strip()}** registrada para **{cli_sel}**!")
 
@@ -1305,17 +1032,13 @@ with aba_enc:
                         pdf_bytes = gerar_pdf_contrato(enc_dict, cpf_novo.strip(), rg_novo.strip())
                         col_pdf, col_gov = st.columns(2)
                         col_pdf.download_button(
-                            label="📥 BAIXAR CONTRATO PDF",
-                            data=pdf_bytes,
+                            "📥 BAIXAR CONTRATO PDF", data=pdf_bytes,
                             file_name=f"Contrato_{cli_sel.replace(' ','_')}.pdf",
-                            mime="application/pdf",
-                            use_container_width=True,
+                            mime="application/pdf", use_container_width=True,
                         )
-                        col_gov.link_button(
-                            "✍️ ASSINAR VIA GOV.BR",
+                        col_gov.link_button("✍️ ASSINAR VIA GOV.BR",
                             url="https://assinador.iti.br/assinatura/index.xhtml",
-                            use_container_width=True,
-                        )
+                            use_container_width=True)
                     else:
                         st.info("💡 Preencha CPF e RG para gerar o contrato PDF.")
                 else:
@@ -1324,8 +1047,7 @@ with aba_enc:
     # ── Medidas ──────────────────────────────────────────────────────────
     with t_medidas:
         st.markdown("### 📏 Ficha de Medidas")
-        with get_conn() as conn:
-            df_c = pd.read_sql_query("SELECT rowid, * FROM clientes ORDER BY nome", conn)
+        df_c = clientes_listar()
 
         if df_c.empty:
             st.info("Nenhuma cliente cadastrada.")
@@ -1338,19 +1060,14 @@ with aba_enc:
                 novos = {}
                 for i, (label, col_db) in enumerate(DIC_MEDIDAS.items()):
                     raw = dados_cli.get(col_db, 0)
-                    val_f = float(raw) if raw not in [None, "", "nan"] else 0.0
+                    val_f = float(raw) if raw not in [None, "", "nan"] and pd.notna(raw) else 0.0
                     target = col1 if i < 5 else (col2 if i < 10 else col3)
                     novos[col_db] = target.number_input(f"{label} (cm)", value=val_f, format="%.1f", step=0.5)
                 obs = st.text_area("Observações de modelagem", value=str(dados_cli.get("outro") or ""))
 
                 if st.form_submit_button("💾 Salvar Medidas", use_container_width=True):
-                    with get_conn() as conn:
-                        set_q = ", ".join([f"{c}=?" for c in novos])
-                        conn.execute(
-                            f"UPDATE clientes SET {set_q}, outro=? WHERE rowid=?",
-                            list(novos.values()) + [obs, int(dados_cli["rowid"])],
-                        )
-                        conn.commit()
+                    update_data = {**novos, "outro": obs}
+                    clientes_atualizar(str(dados_cli["rowid"]), update_data)
                     st.success("✅ Medidas salvas!")
                     st.rerun()
 
@@ -1358,7 +1075,7 @@ with aba_enc:
     with t_gerenciar:
         st.markdown("### 📋 Todos os Pedidos")
 
-        col_f1, col_f2 = st.columns([2,1])
+        col_f1, col_f2 = st.columns([2, 1])
         filtro_status = col_f1.radio(
             "Filtrar:",
             ["Todos","Em andamento","Concluídos","Cancelados"],
@@ -1366,16 +1083,17 @@ with aba_enc:
         )
         filtro_cli = col_f2.text_input("🔍 Buscar cliente", key="busca_ger")
 
-        with get_conn() as conn:
-            df_e = pd.read_sql_query("SELECT rowid, * FROM encomendas ORDER BY rowid DESC", conn)
+        df_e = encomendas_listar()
 
         if not df_e.empty:
             if filtro_status == "Em andamento":
-                df_e = df_e[(df_e["etapa"] < 7) & (df_e["cancelado"] == 0)]
+                df_e = df_e[(df_e["etapa"].astype(int) < 7) & (df_e["cancelado"].astype(int) == 0)]
             elif filtro_status == "Concluídos":
-                df_e = df_e[(df_e["etapa"] == 7) & (df_e["cancelado"] == 0)]
+                df_e = df_e[(df_e["etapa"].astype(int) == 7) & (df_e["cancelado"].astype(int) == 0)]
             elif filtro_status == "Cancelados":
-                df_e = df_e[df_e["cancelado"] == 1]
+                df_e = df_e[df_e["cancelado"].astype(int) == 1]
+            else:
+                pass  # Todos
             if filtro_cli.strip():
                 df_e = df_e[df_e["cliente"].str.contains(filtro_cli, case=False, na=False)]
 
@@ -1383,16 +1101,14 @@ with aba_enc:
             st.info("Nenhum pedido encontrado com os filtros selecionados.")
         else:
             for _, enc in df_e.iterrows():
-                etapa_num = int(enc["etapa"])
+                etapa_num  = int(enc.get("etapa", 1))
                 etapa_ic, etapa_nm = ETAPAS.get(etapa_num, ("📦","–"))
-                status_label = etapa_ic + " " + etapa_nm
-                cancelado    = bool(enc.get("cancelado", 0))
+                cancelado  = bool(int(enc.get("cancelado", 0) or 0))
                 restante_enc = float(enc.get("valor_total", 0) or 0) - float(enc.get("valor_recebido", 0) or 0)
-                badge_txt    = "❌ Cancelado" if cancelado else status_label
+                badge_txt  = "❌ Cancelado" if cancelado else f"{etapa_ic} {etapa_nm}"
 
                 with st.expander(
-                    f"{'~~' if cancelado else ''}📦 {enc['cliente']}  —  {enc['peca']}{'~~' if cancelado else ''}"
-                    f"  |  {badge_txt}  |  💰 {brl(float(enc.get('valor_total',0) or 0))}"
+                    f"📦 {enc['cliente']}  —  {enc['peca']}  |  {badge_txt}  |  💰 {brl(float(enc.get('valor_total',0) or 0))}"
                 ):
                     if not cancelado:
                         steps_html = '<div class="step-bar">'
@@ -1418,12 +1134,7 @@ with aba_enc:
                     v_rg  = col_rg.text_input("RG",   value=rg_s,  key=f"rg_{enc['rowid']}")
 
                     if v_cpf != cpf_s or v_rg != rg_s:
-                        with get_conn() as conn:
-                            conn.execute(
-                                "UPDATE encomendas SET cpf_cliente=?, rg_cliente=? WHERE rowid=?",
-                                (v_cpf, v_rg, enc["rowid"]),
-                            )
-                            conn.commit()
+                        encomendas_atualizar(str(enc["rowid"]), {"cpf_cliente": v_cpf, "rg_cliente": v_rg})
 
                     if v_cpf.strip() and v_rg.strip():
                         pdf_bytes = gerar_pdf_contrato(dict(enc), v_cpf.strip(), v_rg.strip())
@@ -1445,80 +1156,60 @@ with aba_enc:
                         ed_peca = st.text_input("Peça", value=str(enc.get("peca") or ""))
                         ed_desc = st.text_area("Descrição", value=str(enc.get("descricao") or ""), height=60)
                         col_f1e, col_f2e = st.columns(2)
-                        ed_fpag = col_f1e.selectbox(
-                            "Forma de Pagamento",
-                            ["PIX","Dinheiro","Cartão de Crédito","Cartão de Débito","A combinar"],
-                            index=["PIX","Dinheiro","Cartão de Crédito","Cartão de Débito","A combinar"].index(
-                                enc.get("forma_pagamento","A combinar")
-                                if enc.get("forma_pagamento","") in ["PIX","Dinheiro","Cartão de Crédito","Cartão de Débito","A combinar"]
-                                else "A combinar"
-                            ),
-                        )
-                        ed_obs = col_f2e.text_area("Observações", value=str(enc.get("observacoes") or ""), height=60)
+                        fpag_opts = ["PIX","Dinheiro","Cartão de Crédito","Cartão de Débito","A combinar"]
+                        fpag_cur  = enc.get("forma_pagamento","A combinar")
+                        fpag_idx  = fpag_opts.index(fpag_cur) if fpag_cur in fpag_opts else 4
+                        ed_fpag   = col_f1e.selectbox("Forma de Pagamento", fpag_opts, index=fpag_idx)
+                        ed_obs    = col_f2e.text_area("Observações", value=str(enc.get("observacoes") or ""), height=60)
 
                         st.markdown("📅 Datas")
                         d1, d2, d3 = st.columns(3)
                         ed_vis  = d1.date_input("Visita",    value=converter_para_data(enc.get("data_visita")),    key=f"dv_{enc['rowid']}")
                         ed_tec  = d2.date_input("Tecido",    value=converter_para_data(enc.get("data_tecido")),    key=f"dt_{enc['rowid']}")
                         ed_conf = d3.date_input("Confecção", value=converter_para_data(enc.get("data_confeccao")), key=f"dc_{enc['rowid']}")
-                        d4, d5 = st.columns(2)
+                        d4, d5  = st.columns(2)
                         ed_pro  = d4.date_input("Prova",   value=converter_para_data(enc.get("data_prova")),   key=f"dp_{enc['rowid']}")
                         ed_ent  = d5.date_input("Entrega", value=converter_para_data(enc.get("data_entrega")), key=f"de_{enc['rowid']}")
 
                         col_b1, col_b2, col_b3 = st.columns(3)
                         if col_b1.form_submit_button("💾 Salvar", use_container_width=True):
-                            with get_conn() as conn:
-                                conn.execute(
-                                    """UPDATE encomendas SET peca=?, descricao=?, forma_pagamento=?,
-                                       observacoes=?, data_visita=?, data_tecido=?,
-                                       data_confeccao=?, data_prova=?, data_entrega=?
-                                       WHERE rowid=?""",
-                                    (ed_peca, ed_desc, ed_fpag, ed_obs,
-                                     ed_vis.isoformat(), ed_tec.isoformat(), ed_conf.isoformat(),
-                                     ed_pro.isoformat(), ed_ent.isoformat(), enc["rowid"]),
-                                )
-                                conn.commit()
+                            encomendas_atualizar(str(enc["rowid"]), {
+                                "peca": ed_peca, "descricao": ed_desc,
+                                "forma_pagamento": ed_fpag, "observacoes": ed_obs,
+                                "data_visita": ed_vis.isoformat(),
+                                "data_tecido": ed_tec.isoformat(),
+                                "data_confeccao": ed_conf.isoformat(),
+                                "data_prova": ed_pro.isoformat(),
+                                "data_entrega": ed_ent.isoformat(),
+                            })
                             st.rerun()
 
                         if not cancelado:
                             if col_b2.form_submit_button("✅ Marcar Concluído", use_container_width=True):
-                                with get_conn() as conn:
-                                    conn.execute("UPDATE encomendas SET etapa=7 WHERE rowid=?", (enc["rowid"],))
-                                    conn.commit()
+                                encomendas_atualizar(str(enc["rowid"]), {"etapa": 7})
                                 st.rerun()
                             if col_b3.form_submit_button("❌ Cancelar Pedido", use_container_width=True):
-                                cancelar_pedido(int(enc["rowid"]))
+                                encomendas_cancelar(str(enc["rowid"]))
                                 st.rerun()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ABA 3 – AGENDA
 # ══════════════════════════════════════════════════════════════════════════════
 with aba_agenda:
-    sub_trabalho, sub_cal = st.tabs([
-        "🛠️ Trabalho", "📅 Calendário",
-    ])
+    sub_trabalho, sub_cal = st.tabs(["🛠️ Trabalho", "📅 Calendário"])
 
     with sub_trabalho:
         st.markdown("#### 🛠️ Agenda de Trabalho Pendente")
-        with get_conn() as conn:
-            df_t = pd.read_sql_query(
-                """SELECT c.data, c.tarefa, c.categoria, c.horas, e.cliente
-                   FROM cronograma c
-                   LEFT JOIN encomendas e ON c.encomenda_id=e.rowid
-                   WHERE c.tipo_agenda='Trabalho' AND c.concluida=0
-                   ORDER BY c.data ASC""",
-                conn,
-            )
+        df_t = cronograma_com_cliente(tipo_agenda="Trabalho", concluida=False)
         if df_t.empty:
             st.success("Nenhuma tarefa pendente!")
         else:
-            df_t["Data"]     = df_t["data"].apply(formatar_data_br)
+            df_t["Data"]      = df_t["data"].apply(formatar_data_br)
             df_t["Atrasada?"] = df_t["data"].apply(lambda d: "⚠️ Sim" if d < hoje_dt.isoformat() else "Não")
-            df_show = df_t[["Data","tarefa","categoria","horas","cliente","Atrasada?"]].copy()
+            df_show = df_t[["Data","tarefa","categoria","horas","nome_cliente","Atrasada?"]].copy()
             df_show.columns = ["Data","Tarefa","Categoria","Horas","Cliente","Atrasada?"]
             st.dataframe(df_show, use_container_width=True, hide_index=True)
 
-    # ── Calendário — nome COMPLETO do cliente ────────────────────────────
     with sub_cal:
         if "data_ref" not in st.session_state:
             st.session_state.data_ref = date.today()
@@ -1540,15 +1231,7 @@ with aba_agenda:
             unsafe_allow_html=True,
         )
 
-        with get_conn() as conn:
-            df_all_cal = pd.read_sql_query(
-                """SELECT c.data, c.tarefa, c.tipo_agenda, c.horas,
-                   COALESCE(e.cliente,'') AS cliente
-                   FROM cronograma c
-                   LEFT JOIN encomendas e ON c.encomenda_id=e.rowid
-                   WHERE c.concluida=0 AND c.tipo_agenda='Trabalho'""",
-                conn,
-            )
+        df_all_cal = cronograma_com_cliente(tipo_agenda="Trabalho", concluida=False)
 
         col_heads = st.columns(7)
         for i, d in enumerate(["Seg","Ter","Qua","Qui","Sex","Sáb","Dom"]):
@@ -1563,20 +1246,15 @@ with aba_agenda:
                 if dia == 0:
                     continue
                 dt_str = f"{ref.year}-{ref.month:02d}-{dia:02d}"
-                tasks  = df_all_cal[df_all_cal["data"] == dt_str]
+                tasks  = df_all_cal[df_all_cal["data"] == dt_str] if not df_all_cal.empty else pd.DataFrame()
                 is_hoje = dt_str == date.today().isoformat()
                 fundo   = "#fdf6ee" if is_hoje else "white"
                 borda   = "2px solid #c9a227" if is_hoje else "1px solid #ede3d8"
 
                 tarefas_html = ""
                 for _, r in tasks.iterrows():
-                    tarefa_txt  = r["tarefa"]
-                    # Nome COMPLETO do cliente (sem cortar)
-                    cliente_cal = r["cliente"]
-
-                    # Tipo de tarefa (antes dos ":")
-                    tipo_tarefa = tarefa_txt.split(":")[0].strip() if ":" in tarefa_txt else tarefa_txt[:16]
-
+                    tipo_tarefa  = r["tarefa"].split(":")[0].strip() if ":" in r["tarefa"] else r["tarefa"][:16]
+                    cliente_cal  = r.get("nome_cliente", "")
                     tarefas_html += (
                         f"<div style='font-size:0.6rem;color:#1565c0;margin-top:2px;"
                         f"background:#e3f2fd;border-radius:4px;padding:1px 4px;'>"
@@ -1594,21 +1272,25 @@ with aba_agenda:
                 )
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ABA 4 – FINANCEIRO COMPLETO
+# ABA 4 – FINANCEIRO
 # ══════════════════════════════════════════════════════════════════════════════
 with aba_fin:
     st.markdown("### 💰 Controle Financeiro Profissional")
 
-    with get_conn() as conn:
-        df_enc_fin = pd.read_sql_query("SELECT rowid, * FROM encomendas WHERE cancelado=0", conn)
-        df_g_fin   = pd.read_sql_query("SELECT rowid, * FROM gastos", conn)
+    df_enc_fin = encomendas_listar(cancelado=False)
+    df_g_fin   = gastos_listar()
 
-    receita_total   = float(df_enc_fin["valor_recebido"].sum() or 0)
-    receita_prevista= float(df_enc_fin[df_enc_fin["etapa"] < 7]["valor_total"].sum() or 0)
-    gastos_pagos    = float(df_g_fin[df_g_fin["pago"] == 1]["valor"].sum() or 0)
-    gastos_previstos= float(df_g_fin[df_g_fin["pago"] == 0]["valor"].sum() or 0)
-    lucro_real      = receita_total - gastos_pagos
-    lucro_previsto  = (receita_total + receita_prevista) - (gastos_pagos + gastos_previstos)
+    def _flt(df, col, default=0.0):
+        if df.empty or col not in df.columns:
+            return default
+        return float(df[col].fillna(0).astype(float).sum())
+
+    receita_total    = _flt(df_enc_fin, "valor_recebido")
+    receita_prevista = float(df_enc_fin[df_enc_fin["etapa"].astype(int) < 7]["valor_total"].fillna(0).astype(float).sum()) if not df_enc_fin.empty else 0.0
+    gastos_pagos     = float(df_g_fin[df_g_fin["pago"].astype(int) == 1]["valor"].fillna(0).astype(float).sum()) if not df_g_fin.empty else 0.0
+    gastos_previstos = float(df_g_fin[df_g_fin["pago"].astype(int) == 0]["valor"].fillna(0).astype(float).sum()) if not df_g_fin.empty else 0.0
+    lucro_real       = receita_total - gastos_pagos
+    lucro_previsto   = (receita_total + receita_prevista) - (gastos_pagos + gastos_previstos)
 
     pct_reserva   = int(cfg_get("reserva_emergencia_meses") or 3)
     pct_capital   = float(cfg_get("capital_giro_pct") or 20) / 100
@@ -1619,91 +1301,68 @@ with aba_fin:
     capital_giro_sug = receita_total * pct_capital
     teto_gasto_mens  = (receita_total + receita_prevista) * (1 - margem_min) if (receita_total + receita_prevista) > 0 else 0
 
-    # Métricas financeiras completas na aba financeiro
     col_f1, col_f2, col_f3, col_f4 = st.columns(4)
-    col_f1.metric("💰 Receita Recebida",  brl(receita_total))
-    col_f2.metric("📉 Gastos Pagos",      brl(gastos_pagos))
-    col_f3.metric("✅ Lucro Real",         brl(lucro_real),
+    col_f1.metric("💰 Receita Recebida", brl(receita_total))
+    col_f2.metric("📉 Gastos Pagos",     brl(gastos_pagos))
+    col_f3.metric("✅ Lucro Real",        brl(lucro_real),
                   delta=f"{pct_str(lucro_real, receita_total)} de margem" if receita_total > 0 else "")
-    col_f4.metric("🔮 Lucro Previsto",    brl(lucro_previsto))
+    col_f4.metric("🔮 Lucro Previsto",   brl(lucro_previsto))
 
-    # Barra de meta de faturamento
     prog_fat = min(receita_total / meta_fat_fin, 1.0) if meta_fat_fin > 0 else 0
     st.progress(prog_fat, text=f"Faturamento: {brl(receita_total)} / {brl(meta_fat_fin)} (meta)")
-
     st.markdown("<br>", unsafe_allow_html=True)
 
     col_h1, col_h2, col_h3 = st.columns(3)
-
     with col_h1:
         st.markdown("#### 💡 Capital de Giro")
-        st.markdown(f"""
-        <div class="kcard">
-          <div class="kcard-title">{brl(capital_giro_sug)}</div>
-          <div class="kcard-sub">Sugestão: manter {int(pct_capital*100)}% da receita disponível como capital de giro para insumos e emergências.</div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(f'<div class="kcard"><div class="kcard-title">{brl(capital_giro_sug)}</div><div class="kcard-sub">Sugestão: manter {int(pct_capital*100)}% da receita disponível.</div></div>', unsafe_allow_html=True)
         saldo_capital = lucro_real - capital_giro_sug
         if saldo_capital >= 0:
-            st.markdown(f'<div class="fin-ok">✅ Capital de giro adequado. Você tem {brl(saldo_capital)} além do recomendado.</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="fin-ok">✅ Capital de giro adequado. Sobram {brl(saldo_capital)}.</div>', unsafe_allow_html=True)
         else:
-            st.markdown(f'<div class="fin-danger">⚠️ Faltam {brl(abs(saldo_capital))} para atingir o capital de giro mínimo recomendado.</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="fin-danger">⚠️ Faltam {brl(abs(saldo_capital))} para o capital mínimo.</div>', unsafe_allow_html=True)
 
     with col_h2:
         st.markdown("#### 🛡️ Reserva de Emergência")
-        st.markdown(f"""
-        <div class="kcard">
-          <div class="kcard-title">{brl(reserva_sugerida)}</div>
-          <div class="kcard-sub">Sugestão: {pct_reserva} meses de custos fixos guardados para imprevistos.</div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(f'<div class="kcard"><div class="kcard-title">{brl(reserva_sugerida)}</div><div class="kcard-sub">Sugestão: {pct_reserva} meses de custos guardados.</div></div>', unsafe_allow_html=True)
         if lucro_real >= reserva_sugerida:
-            st.markdown(f'<div class="fin-ok">✅ Reserva de emergência coberta pelo lucro acumulado.</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="fin-ok">✅ Reserva coberta pelo lucro acumulado.</div>', unsafe_allow_html=True)
         else:
             falta = reserva_sugerida - lucro_real
-            st.markdown(f'<div class="fin-alerta">⚠️ Faltam {brl(falta)} para a reserva de emergência ideal.</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="fin-alerta">⚠️ Faltam {brl(falta)} para a reserva ideal.</div>', unsafe_allow_html=True)
 
     with col_h3:
         st.markdown("#### 🎯 Teto de Gastos")
-        st.markdown(f"""
-        <div class="kcard">
-          <div class="kcard-title">{brl(teto_gasto_mens)}</div>
-          <div class="kcard-sub">Para manter margem mínima de {int(margem_min*100)}%, seus gastos totais não devem ultrapassar este valor.</div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(f'<div class="kcard"><div class="kcard-title">{brl(teto_gasto_mens)}</div><div class="kcard-sub">Para margem mínima de {int(margem_min*100)}%.</div></div>', unsafe_allow_html=True)
         if gastos_pagos <= teto_gasto_mens:
-            st.markdown(f'<div class="fin-ok">✅ Gastos dentro do limite. Sobra {brl(teto_gasto_mens - gastos_pagos)} de margem.</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="fin-ok">✅ Dentro do limite. Margem de {brl(teto_gasto_mens - gastos_pagos)}.</div>', unsafe_allow_html=True)
         else:
-            excess = gastos_pagos - teto_gasto_mens
-            st.markdown(f'<div class="fin-danger">🚨 Gastos {brl(excess)} acima do teto! Margem comprometida.</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="fin-danger">🚨 Gastos {brl(gastos_pagos - teto_gasto_mens)} acima do teto!</div>', unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
-
     f_dash, f_gastos, f_pedidos, f_relat = st.tabs([
-        "📊 Dashboard",
-        "📝 Lançar Gastos",
-        "💳 Pagamentos por Pedido",
-        "📋 Relatório Mensal",
+        "📊 Dashboard", "📝 Lançar Gastos",
+        "💳 Pagamentos por Pedido", "📋 Relatório Mensal",
     ])
 
     with f_dash:
         st.markdown("#### 📊 Visão Financeira Geral")
-
         col_d1, col_d2 = st.columns(2)
         with col_d1:
             st.markdown("**📥 Receitas por Status**")
-            rec_rec = receita_total
-            rec_prev = receita_prevista
-            rec_pendente = float(df_enc_fin[df_enc_fin["etapa"] < 7]["valor_total"].sum() or 0) - float(df_enc_fin[df_enc_fin["etapa"] < 7]["valor_recebido"].sum() or 0)
+            rec_pendente = (
+                float(df_enc_fin[df_enc_fin["etapa"].astype(int) < 7]["valor_total"].fillna(0).astype(float).sum())
+                - float(df_enc_fin[df_enc_fin["etapa"].astype(int) < 7]["valor_recebido"].fillna(0).astype(float).sum())
+            ) if not df_enc_fin.empty else 0.0
             df_rec_chart = pd.DataFrame({
                 "Categoria": ["Recebido", "Previsto (em andamento)", "A receber (saldo)"],
-                "Valor": [rec_rec, rec_prev, rec_pendente],
+                "Valor": [receita_total, receita_prevista, rec_pendente],
             })
             st.bar_chart(df_rec_chart.set_index("Categoria"))
 
         with col_d2:
             st.markdown("**📤 Gastos por Categoria**")
-            if not df_g_fin.empty:
+            if not df_g_fin.empty and "categoria" in df_g_fin.columns:
                 cat_group = df_g_fin.groupby("categoria")["valor"].sum().reset_index()
                 cat_group.columns = ["Categoria","Valor"]
                 st.bar_chart(cat_group.set_index("Categoria"))
@@ -1712,22 +1371,22 @@ with aba_fin:
 
         st.markdown("---")
         st.markdown("**🔄 Fluxo de Caixa – Pedidos Ativos**")
-        pedidos_ativos = df_enc_fin[df_enc_fin["etapa"] < 7].copy()
-        if pedidos_ativos.empty:
-            st.info("Nenhum pedido ativo.")
-        else:
-            pedidos_ativos["Saldo a Receber"] = pedidos_ativos["valor_total"].astype(float) - pedidos_ativos["valor_recebido"].astype(float)
-            pedidos_ativos["Entrega"] = pedidos_ativos["data_entrega"].apply(formatar_data_br)
-            df_fluxo = pedidos_ativos[["cliente","peca","valor_total","valor_recebido","Saldo a Receber","Entrega"]].copy()
-            df_fluxo.columns = ["Cliente","Peça","Total","Recebido","A Receber","Entrega Prevista"]
-            df_fluxo["Total"]     = df_fluxo["Total"].apply(lambda x: brl(float(x)))
-            df_fluxo["Recebido"]  = df_fluxo["Recebido"].apply(lambda x: brl(float(x)))
-            df_fluxo["A Receber"] = df_fluxo["A Receber"].apply(lambda x: brl(float(x)))
-            st.dataframe(df_fluxo, use_container_width=True, hide_index=True)
+        if not df_enc_fin.empty:
+            pedidos_ativos = df_enc_fin[df_enc_fin["etapa"].astype(int) < 7].copy()
+            if pedidos_ativos.empty:
+                st.info("Nenhum pedido ativo.")
+            else:
+                pedidos_ativos["Saldo a Receber"] = pedidos_ativos["valor_total"].astype(float) - pedidos_ativos["valor_recebido"].astype(float)
+                pedidos_ativos["Entrega"] = pedidos_ativos["data_entrega"].apply(formatar_data_br)
+                df_fluxo = pedidos_ativos[["cliente","peca","valor_total","valor_recebido","Saldo a Receber","Entrega"]].copy()
+                df_fluxo.columns = ["Cliente","Peça","Total","Recebido","A Receber","Entrega Prevista"]
+                for c in ["Total","Recebido","A Receber"]:
+                    df_fluxo[c] = df_fluxo[c].apply(lambda x: brl(float(x)))
+                st.dataframe(df_fluxo, use_container_width=True, hide_index=True)
 
         st.markdown("---")
         st.markdown("**📆 Contas a Pagar (em aberto)**")
-        df_cp = df_g_fin[df_g_fin["pago"] == 0].copy()
+        df_cp = df_g_fin[df_g_fin["pago"].astype(int) == 0].copy() if not df_g_fin.empty else pd.DataFrame()
         if df_cp.empty:
             st.success("✅ Nenhuma conta em aberto.")
         else:
@@ -1740,51 +1399,50 @@ with aba_fin:
 
     with f_gastos:
         st.markdown("#### 📝 Lançar Gasto ou Previsão")
-
         col_g1, col_g2 = st.columns([3, 2])
         with col_g1:
             with st.form("form_gasto_novo", clear_on_submit=True):
                 c1, c2 = st.columns(2)
                 g_desc = c1.text_input("Descrição do gasto *")
                 g_val  = c2.number_input("Valor (R$) *", min_value=0.01, step=10.0, format="%.2f")
-
                 c3, c4 = st.columns(2)
                 g_cat  = c3.selectbox("Categoria", CAT_GASTOS)
                 g_data = c4.date_input("Data", date.today())
-
                 c5, c6 = st.columns(2)
                 g_pago  = c5.checkbox("Já foi pago?", value=True)
                 g_recor = c6.checkbox("Gasto recorrente (mensal)?")
 
-                with get_conn() as conn:
-                    enc_opts = pd.read_sql_query(
-                        "SELECT rowid, cliente, peca FROM encomendas WHERE cancelado=0 AND etapa<7 ORDER BY rowid DESC", conn)
-                enc_list = ["— Nenhum (custo fixo/geral) —"] + [
-                    f"#{row['rowid']} – {row['cliente']}: {row['peca']}"
-                    for _, row in enc_opts.iterrows()
-                ]
-                g_enc = st.selectbox("Vincular a pedido? (opcional)", enc_list)
-                g_enc_id = None
-                if g_enc != "— Nenhum (custo fixo/geral) —":
-                    g_enc_id = int(g_enc.split("–")[0].replace("#","").strip())
+                df_enc_ativos = encomendas_listar(cancelado=False)
+                enc_ativos_list = []
+                if not df_enc_ativos.empty:
+                    enc_ativos_list = [
+                        (row["rowid"], f"#{row['rowid'][:6]} – {row['cliente']}: {row['peca']}")
+                        for _, row in df_enc_ativos[df_enc_ativos["etapa"].astype(int) < 7].iterrows()
+                    ]
+                enc_list  = ["— Nenhum (custo fixo/geral) —"] + [e[1] for e in enc_ativos_list]
+                g_enc_lbl = st.selectbox("Vincular a pedido? (opcional)", enc_list)
+                g_enc_id  = None
+                if g_enc_lbl != "— Nenhum (custo fixo/geral) —":
+                    idx = enc_list.index(g_enc_lbl) - 1
+                    g_enc_id = enc_ativos_list[idx][0]
 
                 if st.form_submit_button("💾 Lançar Gasto", use_container_width=True, type="primary"):
                     if g_desc.strip() and g_val > 0:
-                        with get_conn() as conn:
-                            conn.execute(
-                                "INSERT INTO gastos (encomenda_id, descricao, valor, data, categoria, pago, recorrente) VALUES (?,?,?,?,?,?,?)",
-                                (g_enc_id, g_desc.strip(), g_val, g_data.isoformat(),
-                                 g_cat, 1 if g_pago else 0, 1 if g_recor else 0),
-                            )
-                            conn.commit()
+                        gastos_inserir({
+                            "encomenda_id": g_enc_id,
+                            "descricao": g_desc.strip(), "valor": g_val,
+                            "data": g_data.isoformat(), "categoria": g_cat,
+                            "pago": 1 if g_pago else 0,
+                            "recorrente": 1 if g_recor else 0,
+                        })
                         st.success("✅ Gasto lançado!")
                         st.rerun()
                     else:
                         st.error("Preencha descrição e valor.")
 
         with col_g2:
-            st.markdown("**📊 Resumo de Gastos por Categoria**")
-            if not df_g_fin.empty:
+            st.markdown("**📊 Resumo por Categoria**")
+            if not df_g_fin.empty and "categoria" in df_g_fin.columns:
                 df_cat_sum = df_g_fin.groupby("categoria")["valor"].sum().reset_index()
                 df_cat_sum.columns = ["Categoria","Total"]
                 df_cat_sum = df_cat_sum.sort_values("Total", ascending=False)
@@ -1795,57 +1453,54 @@ with aba_fin:
 
         st.markdown("---")
         st.markdown("#### 📋 Todos os Gastos")
-        if df_g_fin.empty:
+        df_g_fin_fresh = gastos_listar()
+        if df_g_fin_fresh.empty:
             st.info("Nenhum gasto registrado.")
         else:
-            for _, g in df_g_fin.sort_values("data", ascending=False).iterrows():
-                status_g = "✅ Pago" if g["pago"] else "⏳ Em aberto"
-                badge_g  = "badge-green" if g["pago"] else "badge-amber"
+            for _, g in df_g_fin_fresh.iterrows():
+                status_g = "✅ Pago" if int(g.get("pago", 0) or 0) else "⏳ Em aberto"
+                badge_g  = "badge-green" if int(g.get("pago", 0) or 0) else "badge-amber"
                 col_gi, col_gb = st.columns([5, 1])
                 col_gi.markdown(f"""
                 <div class="kcard">
-                  <div class="kcard-title">{g['descricao']} — <b>{brl(float(g['valor']))}</b></div>
+                  <div class="kcard-title">{g['descricao']} — <b>{brl(float(g.get('valor',0)))}</b></div>
                   <div class="kcard-sub">
-                    📂 {g['categoria']} &nbsp;|&nbsp; 📅 {formatar_data_br(g['data'])}
+                    📂 {g.get('categoria','')} &nbsp;|&nbsp; 📅 {formatar_data_br(g.get('data',''))}
                     &nbsp;<span class="badge {badge_g}">{status_g}</span>
-                    {"&nbsp;<span class='badge badge-blue'>🔁 Recorrente</span>" if g.get('recorrente') else ""}
+                    {"&nbsp;<span class='badge badge-blue'>🔁 Recorrente</span>" if int(g.get('recorrente', 0) or 0) else ""}
                   </div>
                 </div>""", unsafe_allow_html=True)
                 with col_gb:
                     st.write("")
-                    if not g["pago"]:
+                    if not int(g.get("pago", 0) or 0):
                         if st.button("💳 Quitar", key=f"qt_{g['rowid']}"):
-                            with get_conn() as conn:
-                                conn.execute("UPDATE gastos SET pago=1 WHERE rowid=?", (g["rowid"],))
-                                conn.commit()
+                            gastos_atualizar(str(g["rowid"]), {"pago": 1})
                             st.rerun()
                     else:
-                        if st.button("🗑️", key=f"del_g_{g['rowid']}", help="Remover gasto"):
-                            with get_conn() as conn:
-                                conn.execute("DELETE FROM gastos WHERE rowid=?", (g["rowid"],))
-                                conn.commit()
+                        if st.button("🗑️", key=f"del_g_{g['rowid']}", help="Remover"):
+                            gastos_deletar(str(g["rowid"]))
                             st.rerun()
 
     with f_pedidos:
         st.markdown("#### 💳 Gestão de Pagamentos por Pedido")
-
         if df_enc_fin.empty:
             st.info("Nenhum pedido cadastrado.")
         else:
-            for _, enc in df_enc_fin.sort_values("rowid", ascending=False).iterrows():
+            for _, enc in df_enc_fin.iterrows():
                 v_total_e  = float(enc.get("valor_total", 0) or 0)
                 v_recebido = float(enc.get("valor_recebido", 0) or 0)
                 v_restante = v_total_e - v_recebido
 
-                gasto_enc  = float(df_g_fin[df_g_fin["encomenda_id"] == enc["rowid"]]["valor"].sum() or 0)
+                gasto_enc = 0.0
+                if not df_g_fin.empty and "encomenda_id" in df_g_fin.columns:
+                    gasto_enc = float(df_g_fin[df_g_fin["encomenda_id"] == enc["rowid"]]["valor"].fillna(0).astype(float).sum())
                 lucro_enc  = v_recebido - gasto_enc
                 margem_enc = lucro_enc / v_recebido * 100 if v_recebido > 0 else 0
                 margem_min_val = float(cfg_get("margem_minima_pct") or 30)
 
                 with st.expander(
                     f"👗 {enc['cliente']} – {enc['peca']}  |  "
-                    f"Recebido: {brl(v_recebido)} / {brl(v_total_e)}  |  "
-                    f"Margem: {margem_enc:.0f}%"
+                    f"Recebido: {brl(v_recebido)} / {brl(v_total_e)}  |  Margem: {margem_enc:.0f}%"
                 ):
                     col_pm1, col_pm2, col_pm3, col_pm4 = st.columns(4)
                     col_pm1.metric("Valor Total",  brl(v_total_e))
@@ -1859,7 +1514,6 @@ with aba_fin:
                         st.markdown(f'<div class="fin-danger">🚨 Margem de <b>{margem_enc:.1f}%</b> abaixo do mínimo ({margem_min_val:.0f}%).</div>', unsafe_allow_html=True)
 
                     if v_restante > 0.01:
-                        st.markdown("**Registrar recebimento:**")
                         col_rec1, col_rec2, col_rec3 = st.columns([2, 2, 1])
                         novo_val = col_rec1.number_input(
                             "Valor recebido (R$)",
@@ -1869,141 +1523,111 @@ with aba_fin:
                         )
                         col_rec2.metric("Saldo após:", brl(v_restante - novo_val))
                         if col_rec3.button("✅ Confirmar", key=f"rec_btn_{enc['rowid']}"):
-                            with get_conn() as conn:
-                                conn.execute(
-                                    "UPDATE encomendas SET valor_recebido = valor_recebido + ? WHERE rowid=?",
-                                    (novo_val, enc["rowid"]),
-                                )
-                                conn.commit()
+                            novo_total = v_recebido + novo_val
+                            encomendas_atualizar(str(enc["rowid"]), {"valor_recebido": novo_total})
                             st.success(f"✅ {brl(novo_val)} registrado!")
+                            st.rerun()
+
+                        if st.button(f"💰 Quitar saldo total ({brl(v_restante)})", key=f"quit_total_{enc['rowid']}"):
+                            encomendas_atualizar(str(enc["rowid"]), {"valor_recebido": v_total_e})
                             st.rerun()
                     else:
                         st.markdown('<div class="fin-ok">✅ Pedido totalmente pago.</div>', unsafe_allow_html=True)
 
-                    if v_restante > 0.01:
-                        if st.button(f"💰 Quitar saldo total ({brl(v_restante)})", key=f"quit_total_{enc['rowid']}"):
-                            with get_conn() as conn:
-                                conn.execute(
-                                    "UPDATE encomendas SET valor_recebido=valor_total WHERE rowid=?",
-                                    (enc["rowid"],),
-                                )
-                                conn.commit()
-                            st.rerun()
-
     with f_relat:
         st.markdown("#### 📋 Relatório Financeiro Mensal")
-
         col_rm1, col_rm2 = st.columns(2)
-        mes_sel_fin = col_rm1.selectbox(
-            "Mês", list(range(1,13)),
-            format_func=lambda x: MESES_PT[x-1],
-            index=hoje_dt.month - 1, key="mes_rel_fin",
-        )
+        mes_sel_fin = col_rm1.selectbox("Mês", list(range(1,13)),
+            format_func=lambda x: MESES_PT[x-1], index=hoje_dt.month-1, key="mes_rel_fin")
         ano_sel_fin = col_rm2.number_input("Ano", min_value=2020, max_value=2030, value=hoje_dt.year)
 
         mes_str = f"{ano_sel_fin}-{mes_sel_fin:02d}"
-        with get_conn() as conn:
-            df_enc_mes = pd.read_sql_query(
-                "SELECT * FROM encomendas WHERE data_entrega LIKE ? AND cancelado=0",
-                conn, params=(f"{mes_str}%",),
-            )
-            df_g_mes = pd.read_sql_query(
-                "SELECT * FROM gastos WHERE data LIKE ?",
-                conn, params=(f"{mes_str}%",),
-            )
 
-        rec_mes   = float(df_enc_mes["valor_recebido"].sum() or 0)
-        gasto_mes = float(df_g_mes["valor"].sum() or 0)
+        df_enc_mes = pd.DataFrame()
+        if not df_enc_fin.empty and "data_entrega" in df_enc_fin.columns:
+            df_enc_mes = df_enc_fin[df_enc_fin["data_entrega"].fillna("").str.startswith(mes_str)]
+
+        df_g_mes = pd.DataFrame()
+        if not df_g_fin.empty and "data" in df_g_fin.columns:
+            df_g_mes = df_g_fin[df_g_fin["data"].fillna("").str.startswith(mes_str)]
+
+        rec_mes   = float(df_enc_mes["valor_recebido"].fillna(0).astype(float).sum()) if not df_enc_mes.empty else 0.0
+        gasto_mes = float(df_g_mes["valor"].fillna(0).astype(float).sum()) if not df_g_mes.empty else 0.0
         lucro_mes = rec_mes - gasto_mes
         margem_mes = lucro_mes / rec_mes * 100 if rec_mes > 0 else 0
 
         col_r1, col_r2, col_r3, col_r4 = st.columns(4)
-        col_r1.metric("Receita do Mês",  brl(rec_mes))
-        col_r2.metric("Gastos do Mês",   brl(gasto_mes))
-        col_r3.metric("Lucro Líquido",   brl(lucro_mes))
-        col_r4.metric("Margem",          f"{margem_mes:.1f}%")
+        col_r1.metric("Receita do Mês", brl(rec_mes))
+        col_r2.metric("Gastos do Mês",  brl(gasto_mes))
+        col_r3.metric("Lucro Líquido",  brl(lucro_mes))
+        col_r4.metric("Margem",         f"{margem_mes:.1f}%")
 
         meta_fat_f = float(cfg_get("meta_faturamento") or 5000)
         if rec_mes >= meta_fat_f:
-            st.markdown(f'<div class="fin-ok">🏆 Meta de faturamento de {brl(meta_fat_f)} atingida!</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="fin-ok">🏆 Meta de {brl(meta_fat_f)} atingida!</div>', unsafe_allow_html=True)
         else:
-            falta_meta = meta_fat_f - rec_mes
-            st.markdown(f'<div class="fin-alerta">📌 Faltam {brl(falta_meta)} para a meta de {brl(meta_fat_f)} em {MESES_PT[mes_sel_fin-1]}.</div>', unsafe_allow_html=True)
-
-        if margem_mes > 0 and margem_mes < float(cfg_get("margem_minima_pct") or 30):
-            st.markdown(f'<div class="fin-danger">⚠️ Margem do mês ({margem_mes:.1f}%) abaixo do mínimo recomendado ({cfg_get("margem_minima_pct")}%).</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="fin-alerta">📌 Faltam {brl(meta_fat_f - rec_mes)} para a meta de {brl(meta_fat_f)}.</div>', unsafe_allow_html=True)
 
         st.markdown("---")
         col_rt1, col_rt2 = st.columns(2)
-
         with col_rt1:
             st.markdown("**Pedidos do mês**")
             if df_enc_mes.empty:
                 st.info("Nenhum pedido com entrega neste mês.")
             else:
-                df_enc_show = df_enc_mes[["cliente","peca","valor_recebido","valor_total"]].copy()
-                df_enc_show.columns = ["Cliente","Peça","Recebido","Total"]
-                df_enc_show["Recebido"] = df_enc_show["Recebido"].apply(lambda x: brl(float(x)))
-                df_enc_show["Total"]    = df_enc_show["Total"].apply(lambda x: brl(float(x)))
-                st.dataframe(df_enc_show, use_container_width=True, hide_index=True)
+                df_em = df_enc_mes[["cliente","peca","valor_recebido","valor_total"]].copy()
+                df_em.columns = ["Cliente","Peça","Recebido","Total"]
+                df_em["Recebido"] = df_em["Recebido"].apply(lambda x: brl(float(x)))
+                df_em["Total"]    = df_em["Total"].apply(lambda x: brl(float(x)))
+                st.dataframe(df_em, use_container_width=True, hide_index=True)
 
         with col_rt2:
             st.markdown("**Gastos do mês**")
             if df_g_mes.empty:
                 st.info("Nenhum gasto registrado neste mês.")
             else:
-                df_g_show = df_g_mes[["descricao","categoria","valor","pago"]].copy()
-                df_g_show.columns = ["Descrição","Categoria","Valor","Pago?"]
-                df_g_show["Valor"] = df_g_show["Valor"].apply(lambda x: brl(float(x)))
-                df_g_show["Pago?"] = df_g_show["Pago?"].apply(lambda x: "✅" if x else "⏳")
-                st.dataframe(df_g_show, use_container_width=True, hide_index=True)
+                df_gm = df_g_mes[["descricao","categoria","valor","pago"]].copy()
+                df_gm.columns = ["Descrição","Categoria","Valor","Pago?"]
+                df_gm["Valor"] = df_gm["Valor"].apply(lambda x: brl(float(x)))
+                df_gm["Pago?"] = df_gm["Pago?"].apply(lambda x: "✅" if int(x or 0) else "⏳")
+                st.dataframe(df_gm, use_container_width=True, hide_index=True)
 
         st.markdown("---")
         if st.button("📥 Exportar Relatório Mensal (Excel)", use_container_width=True):
             buf_xl = io.BytesIO()
             wb     = xlsxwriter.Workbook(buf_xl)
-
             fmt_h   = wb.add_format({"bold":True,"bg_color":"#3d1f10","font_color":"white","border":1})
             fmt_brl = wb.add_format({"num_format":"R$ #,##0.00","border":1})
             fmt_n   = wb.add_format({"border":1})
 
             ws1 = wb.add_worksheet("Receitas")
-            headers1 = ["Cliente","Peça","Total","Recebido","A Receber","Entrega"]
-            for ci, h in enumerate(headers1): ws1.write(0, ci, h, fmt_h)
-            for ri, (_, row) in enumerate(df_enc_mes.iterrows(), start=1):
-                ws1.write(ri, 0, row["cliente"], fmt_n)
-                ws1.write(ri, 1, row["peca"], fmt_n)
+            for ci, h in enumerate(["Cliente","Peça","Total","Recebido","A Receber","Entrega"]):
+                ws1.write(0, ci, h, fmt_h)
+            for ri, (_, row) in enumerate(df_enc_mes.iterrows(), 1):
+                ws1.write(ri, 0, row.get("cliente",""), fmt_n)
+                ws1.write(ri, 1, row.get("peca",""), fmt_n)
                 ws1.write(ri, 2, float(row.get("valor_total",0) or 0), fmt_brl)
                 ws1.write(ri, 3, float(row.get("valor_recebido",0) or 0), fmt_brl)
                 ws1.write(ri, 4, float(row.get("valor_total",0) or 0) - float(row.get("valor_recebido",0) or 0), fmt_brl)
                 ws1.write(ri, 5, str(row.get("data_entrega","")), fmt_n)
 
             ws2 = wb.add_worksheet("Gastos")
-            headers2 = ["Data","Descrição","Categoria","Valor","Pago?"]
-            for ci, h in enumerate(headers2): ws2.write(0, ci, h, fmt_h)
-            for ri, (_, row) in enumerate(df_g_mes.iterrows(), start=1):
+            for ci, h in enumerate(["Data","Descrição","Categoria","Valor","Pago?"]):
+                ws2.write(0, ci, h, fmt_h)
+            for ri, (_, row) in enumerate(df_g_mes.iterrows(), 1):
                 ws2.write(ri, 0, str(row.get("data","")), fmt_n)
-                ws2.write(ri, 1, row["descricao"], fmt_n)
-                ws2.write(ri, 2, row["categoria"], fmt_n)
+                ws2.write(ri, 1, row.get("descricao",""), fmt_n)
+                ws2.write(ri, 2, row.get("categoria",""), fmt_n)
                 ws2.write(ri, 3, float(row.get("valor",0) or 0), fmt_brl)
-                ws2.write(ri, 4, "Sim" if row.get("pago") else "Não", fmt_n)
+                ws2.write(ri, 4, "Sim" if int(row.get("pago",0) or 0) else "Não", fmt_n)
 
             ws3 = wb.add_worksheet("Resumo")
-            fmt_titulo = wb.add_format({"bold":True,"font_size":14,"font_color":"#3d1f10"})
-            fmt_key    = wb.add_format({"bold":True})
-            ws3.write(0, 0, f"Relatório – {MESES_PT[mes_sel_fin-1]} {ano_sel_fin}", fmt_titulo)
-            resumo = [
-                ("Receita Total", rec_mes),
-                ("Gastos Totais", gasto_mes),
-                ("Lucro Líquido", lucro_mes),
-                (f"Margem ({margem_mes:.1f}%)", margem_mes / 100 if rec_mes > 0 else 0),
-            ]
-            for ri, (k, v) in enumerate(resumo, start=2):
+            ws3.write(0, 0, f"Relatório – {MESES_PT[mes_sel_fin-1]} {ano_sel_fin}",
+                      wb.add_format({"bold":True,"font_size":14,"font_color":"#3d1f10"}))
+            fmt_key = wb.add_format({"bold":True})
+            for ri, (k, v) in enumerate([("Receita Total", rec_mes),("Gastos Totais", gasto_mes),("Lucro Líquido", lucro_mes)], 2):
                 ws3.write(ri, 0, k, fmt_key)
-                if ri < 5:
-                    ws3.write(ri, 1, v, fmt_brl)
-                else:
-                    ws3.write(ri, 1, v, wb.add_format({"num_format":"0.00%","border":1}))
+                ws3.write(ri, 1, v, fmt_brl)
 
             wb.close()
             buf_xl.seek(0)
@@ -2038,93 +1662,64 @@ with aba_conf:
     with col_cfg2:
         st.markdown("#### 🎯 Metas e Parâmetros Financeiros")
         with st.form("form_metas"):
-            cfg_meta_fat = st.number_input(
-                "Meta de Faturamento Mensal (R$)",
-                min_value=0.0, value=float(cfg_get("meta_faturamento") or 5000),
-                step=500.0, format="%.2f",
-            )
-            cfg_meta_ped = st.number_input(
-                "Meta de Pedidos por Mês", min_value=1, value=int(cfg_get("meta_pedidos_mes") or 8))
-            cfg_margem = st.slider(
-                "Margem Mínima Desejada (%)", min_value=10, max_value=80,
-                value=int(cfg_get("margem_minima_pct") or 30))
-            cfg_reserva = st.slider(
-                "Meses de Reserva de Emergência", min_value=1, max_value=12,
-                value=int(cfg_get("reserva_emergencia_meses") or 3))
-            cfg_capital = st.slider(
-                "Capital de Giro (% da Receita)", min_value=5, max_value=50,
-                value=int(cfg_get("capital_giro_pct") or 20))
+            cfg_meta_fat = st.number_input("Meta de Faturamento Mensal (R$)",
+                min_value=0.0, value=float(cfg_get("meta_faturamento") or 5000), step=500.0, format="%.2f")
+            cfg_meta_ped = st.number_input("Meta de Pedidos por Mês",
+                min_value=1, value=int(cfg_get("meta_pedidos_mes") or 8))
+            cfg_margem   = st.slider("Margem Mínima Desejada (%)",
+                min_value=10, max_value=80, value=int(cfg_get("margem_minima_pct") or 30))
+            cfg_reserva  = st.slider("Meses de Reserva de Emergência",
+                min_value=1, max_value=12, value=int(cfg_get("reserva_emergencia_meses") or 3))
+            cfg_capital  = st.slider("Capital de Giro (% da Receita)",
+                min_value=5, max_value=50, value=int(cfg_get("capital_giro_pct") or 20))
             if st.form_submit_button("💾 Salvar Parâmetros"):
-                cfg_set("meta_faturamento",         str(cfg_meta_fat))
-                cfg_set("meta_pedidos_mes",         str(cfg_meta_ped))
-                cfg_set("margem_minima_pct",        str(cfg_margem))
-                cfg_set("reserva_emergencia_meses", str(cfg_reserva))
-                cfg_set("capital_giro_pct",         str(cfg_capital))
-                st.success("✅ Parâmetros salvos! As sugestões financeiras foram atualizadas.")
+                cfg_set("meta_faturamento",        str(cfg_meta_fat))
+                cfg_set("meta_pedidos_mes",        str(cfg_meta_ped))
+                cfg_set("margem_minima_pct",       str(cfg_margem))
+                cfg_set("reserva_emergencia_meses",str(cfg_reserva))
+                cfg_set("capital_giro_pct",        str(cfg_capital))
+                st.success("✅ Parâmetros salvos!")
                 st.rerun()
 
     st.markdown("---")
-    st.markdown("#### ℹ️ Explicação dos Parâmetros Financeiros")
+    st.markdown("#### ℹ️ Parâmetros Financeiros")
     st.markdown("""
-    | Parâmetro | O que é | Referência |
-    |---|---|---|
-    | **Meta de Faturamento** | Quanto você quer receber por mês | Definida por você |
-    | **Margem Mínima** | % do preço que deve sobrar após os custos | 30-40% é saudável para costura |
-    | **Capital de Giro** | Dinheiro disponível para manter o negócio rodando | 15-25% da receita |
-    | **Reserva de Emergência** | Meses de custos guardados para imprevistos | Mínimo 3 meses recomendado |
-    | **Teto de Gastos** | Calculado automaticamente pela margem mínima | Gerado pelo sistema |
-    """)
+| Parâmetro | O que é | Referência |
+|---|---|---|
+| **Meta de Faturamento** | Quanto você quer receber por mês | Definida por você |
+| **Margem Mínima** | % do preço que deve sobrar após os custos | 30-40% é saudável |
+| **Capital de Giro** | Dinheiro disponível para manter o negócio | 15-25% da receita |
+| **Reserva de Emergência** | Meses de custos guardados para imprevistos | Mínimo 3 meses |
+""")
 
     st.markdown("---")
+    st.markdown("#### 🗑️ Limpeza (Cuidado!)")
+    if st.checkbox("Confirmar exclusão de todos os gastos pagos"):
+        if st.button("🗑️ Excluir gastos pagos", use_container_width=True):
+            gastos_deletar_pagos()
+            st.success("Gastos pagos removidos.")
+            st.rerun()
 
-    col_back1, col_back2 = st.columns(2)
-    with col_back1:
-        st.markdown("#### 💾 Backup do Banco de Dados")
-        if st.button("📥 Gerar Backup", use_container_width=True):
-            with open(DB_PATH, "rb") as f:
-                db_bytes = f.read()
-            st.download_button(
-                "⬇️ Baixar lila_closet.db",
-                data=db_bytes,
-                file_name=f"backup_lila_{date.today().isoformat()}.db",
-                mime="application/octet-stream",
-                use_container_width=True,
-            )
-
-    with col_back2:
-        st.markdown("#### 🗑️ Limpeza (Cuidado!)")
-        if st.checkbox("Confirmar exclusão de todos os gastos pagos"):
-            if st.button("🗑️ Excluir gastos pagos (arquivar)", use_container_width=True):
-                with get_conn() as conn:
-                    conn.execute("DELETE FROM gastos WHERE pago=1")
-                    conn.commit()
-                st.success("Gastos pagos removidos.")
-                st.rerun()
-
-    # ── Zona de perigo: deletar pedido ───────────────────────────────────
+    # ── Exclusão Permanente de Pedido ─────────────────────────────────────
     st.markdown("---")
     st.markdown("#### 🔐 Exclusão Permanente de Pedido")
     st.markdown(
         "<div class='danger-zone'>"
-        "<b>⚠️ ATENÇÃO:</b> Esta operação apaga o pedido, todas as tarefas de agenda e todos "
-        "os gastos vinculados de forma <b>permanente e irreversível</b>. "
-        "É necessária a senha de administrador para confirmar."
-        "</div>",
-        unsafe_allow_html=True,
+        "<b>⚠️ ATENÇÃO:</b> Esta operação apaga o pedido, todas as tarefas e gastos vinculados "
+        "de forma <b>permanente e irreversível</b>. Necessária senha de administrador."
+        "</div>", unsafe_allow_html=True,
     )
     st.markdown("")
 
-    with get_conn() as conn:
-        df_todos_pedidos = pd.read_sql_query(
-            "SELECT rowid, cliente, peca, cancelado, etapa FROM encomendas ORDER BY rowid DESC", conn)
+    df_todos_pedidos = encomendas_listar()
 
     if df_todos_pedidos.empty:
         st.info("Nenhum pedido cadastrado.")
     else:
         opcoes_pedidos = {
-            f"#{row['rowid']} – {row['cliente']} | {row['peca']}"
-            f" {'[CANCELADO]' if row['cancelado'] else ''}"
-            f" [Etapa {row['etapa']}]": row["rowid"]
+            f"#{row['rowid'][:6]} – {row['cliente']} | {row['peca']}"
+            f" {'[CANCELADO]' if int(row.get('cancelado',0) or 0) else ''}"
+            f" [Etapa {row.get('etapa',1)}]": row["rowid"]
             for _, row in df_todos_pedidos.iterrows()
         }
 
@@ -2133,15 +1728,10 @@ with aba_conf:
             list(opcoes_pedidos.keys()), key="del_pedido_sel",
         )
         pedido_sel_id = opcoes_pedidos[pedido_sel_label]
-
         row_sel = df_todos_pedidos[df_todos_pedidos["rowid"] == pedido_sel_id].iloc[0]
-        with get_conn() as conn:
-            n_tarefas = conn.execute("SELECT COUNT(*) FROM cronograma WHERE encomenda_id=?", (pedido_sel_id,)).fetchone()[0]
-            n_gastos  = conn.execute("SELECT COUNT(*) FROM gastos WHERE encomenda_id=?",    (pedido_sel_id,)).fetchone()[0]
 
         st.markdown(
-            f"**Pedido selecionado:** #{pedido_sel_id} — {row_sel['cliente']} | {row_sel['peca']}  \n"
-            f"Serão removidos também: **{n_tarefas} tarefa(s)** na agenda e **{n_gastos} gasto(s)** vinculado(s)."
+            f"**Pedido selecionado:** {row_sel['cliente']} | {row_sel['peca']}"
         )
 
         col_senha, col_btn_del = st.columns([3, 1])
@@ -2150,7 +1740,6 @@ with aba_conf:
             placeholder="Digite a senha para liberar a exclusão",
             key="senha_del_pedido",
         )
-
         with col_btn_del:
             st.write("")
             st.write("")
@@ -2158,15 +1747,12 @@ with aba_conf:
 
         if btn_deletar:
             if senha_digitada == SENHA_DELETE:
-                deletar_pedido_completo(int(pedido_sel_id))
-                st.success(
-                    f"✅ Pedido #{pedido_sel_id} ({row_sel['cliente']} – {row_sel['peca']}) "
-                    f"e todos os registros vinculados foram removidos permanentemente."
-                )
+                encomendas_deletar_completo(str(pedido_sel_id))
+                st.success(f"✅ Pedido removido permanentemente.")
                 st.rerun()
             elif senha_digitada == "":
-                st.error("❌ Digite a senha de administrador para confirmar a exclusão.")
+                st.error("❌ Digite a senha de administrador.")
             else:
-                st.error("❌ Senha incorreta. Exclusão não realizada.")
+                st.error("❌ Senha incorreta.")
 
-st.caption("v8.1.0 | Lila Closet Atelier | Sistema de Gestão Completo")
+st.caption("v9.0.0 | Lila Closet Atelier | Firestore · wendleydesenvolvimento")
