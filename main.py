@@ -85,19 +85,42 @@ html, body, [data-testid="stAppViewContainer"] {
 .hero-subtitle { font-size: 0.8rem; color: #c9a882; letter-spacing: 2px;
   text-transform: uppercase; margin-top: 5px; }
 
-/* ── Abas ── */
+/* ── Abas (nível 1 e 2) ── */
 [data-testid="stTabs"] [data-baseweb="tab-list"] {
-  background: white; border-radius: 12px; padding: 4px;
-  gap: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  background: white;
+  border-radius: 14px;
+  padding: 6px;
+  gap: 6px;
+  box-shadow: 0 4px 16px rgba(61,31,16,0.08);
+  border: 1px solid #f0e6d8;
+  flex-wrap: wrap;
 }
 [data-testid="stTabs"] [data-baseweb="tab"] {
-  border-radius: 10px !important; font-weight: 500; font-size: 0.82rem;
-  padding: 8px 14px !important; color: #6b5744;
+  border-radius: 10px !important;
+  font-weight: 600;
+  font-size: 0.85rem;
+  padding: 10px 18px !important;
+  color: #8b7355;
+  transition: all 0.2s ease;
+  border: 1px solid transparent !important;
+}
+[data-testid="stTabs"] [data-baseweb="tab"]:hover {
+  background: #faf5ec;
+  color: #6b3a22;
+  border: 1px solid #f0e2ca !important;
 }
 [data-testid="stTabs"] [aria-selected="true"] {
   background: linear-gradient(135deg, #3d1f10, #6b3a22) !important;
   color: white !important;
+  box-shadow: 0 3px 10px rgba(61,31,16,0.28);
 }
+[data-testid="stTabs"] [aria-selected="true"]:hover {
+  color: white !important;
+  border: 1px solid transparent !important;
+}
+[data-testid="stTabs"] [data-baseweb="tab-highlight"] { display: none; }
+[data-testid="stTabs"] [data-baseweb="tab-border"] { display: none; }
+[data-testid="stTabs"] [data-baseweb="tab-panel"] { padding-top: 1.1rem; }
 
 /* ── Cards ── */
 .kcard {
@@ -214,6 +237,22 @@ div[data-testid="metric-container"] {
   text-decoration: none !important; display: block; text-align: center; padding: 8px 16px;
 }
 
+/* ── Botão "+" do calendário ── */
+.cal-add-btn button {
+  padding: 2px 0 !important;
+  min-height: 26px !important;
+  font-size: 0.7rem !important;
+  background: #faf5ec !important;
+  color: #6b3a22 !important;
+  border: 1px dashed #d8c3a5 !important;
+  margin-top: 3px !important;
+}
+.cal-add-btn button:hover {
+  background: #c9a227 !important;
+  color: white !important;
+  border: 1px solid #c9a227 !important;
+}
+
 hr { border-color: #e8dfd5 !important; }
 [data-testid="stSuccess"], [data-testid="stInfo"],
 [data-testid="stWarning"], [data-testid="stError"] { border-radius: 10px !important; }
@@ -310,6 +349,103 @@ def get_logo_base64() -> str | None:
         with open(LOGO_PATH, "rb") as f:
             return base64.b64encode(f.read()).decode()
     return None
+
+# ══════════════════════════════════════════════════════════════════════════════
+# POPUP — NOVA ENCOMENDA RÁPIDA (a partir do calendário)
+# ══════════════════════════════════════════════════════════════════════════════
+@st.dialog("🛍️ Nova Encomenda Rápida")
+def dialog_nova_encomenda(data_pre: date | None = None):
+    d_base = data_pre or date.today()
+    st.caption(f"📅 Data de referência: **{formatar_data_br(d_base)}**")
+
+    df_clis_dlg = clientes_listar()
+    clis_dlg = df_clis_dlg["nome"].tolist() if not df_clis_dlg.empty else []
+
+    modo_cli = st.radio(
+        "Cliente", ["Selecionar existente", "Cadastrar nova"],
+        horizontal=True, key="dlg_modo_cli",
+        index=0 if clis_dlg else 1,
+    )
+
+    cli_tel_dlg = ""
+    if modo_cli == "Selecionar existente" and clis_dlg:
+        cli_sel_dlg = st.selectbox("Cliente *", clis_dlg, key="dlg_cli_sel")
+    else:
+        cli_sel_dlg = st.text_input("Nome da nova cliente *", key="dlg_cli_novo")
+        cli_tel_dlg = st.text_input("Telefone / WhatsApp", key="dlg_cli_tel")
+
+    peca_dlg = st.text_input("Peça / Serviço *", placeholder="Ex: Vestido de festa…", key="dlg_peca")
+
+    col_v1, col_v2 = st.columns(2)
+    v_total_dlg = col_v1.number_input("Valor Total (R$)", min_value=0.0, step=50.0, format="%.2f", key="dlg_valor")
+    v_sinal_dlg = col_v2.number_input("Sinal / Entrada (R$)", min_value=0.0, step=50.0, format="%.2f", key="dlg_sinal")
+
+    col_d1, col_d2 = st.columns(2)
+    d_visita_dlg  = col_d1.date_input("🤝 Visita / Medidas", value=d_base, key="dlg_visita")
+    d_entrega_dlg = col_d2.date_input("🎁 Entrega", value=d_base + timedelta(days=30), key="dlg_entrega")
+
+    precisa_tecido_dlg = st.checkbox("Precisa comprar tecido?", key="dlg_tecido")
+    d_tecido_dlg = d_visita_dlg + timedelta(days=3)
+    if precisa_tecido_dlg:
+        d_tecido_dlg = st.date_input("🛍️ Compra do Tecido", value=d_tecido_dlg, key="dlg_data_tecido")
+
+    d_confeccao_dlg = d_visita_dlg + timedelta(days=7)
+    d_prova_dlg     = d_entrega_dlg - timedelta(days=5)
+
+    st.markdown("")
+    col_ok, col_cancel = st.columns(2)
+
+    if col_ok.button("✅ Criar Encomenda", use_container_width=True, type="primary", key="dlg_btn_ok"):
+        nome_final = cli_sel_dlg.strip() if isinstance(cli_sel_dlg, str) else cli_sel_dlg
+
+        if not nome_final:
+            st.error("Informe o nome da cliente.")
+            return
+        if not peca_dlg.strip():
+            st.error("Informe a peça / serviço.")
+            return
+
+        if modo_cli != "Selecionar existente":
+            clientes_inserir({"nome": nome_final, "telefone": cli_tel_dlg.strip()})
+
+        e_id = encomendas_inserir({
+            "cliente": nome_final, "peca": peca_dlg.strip(),
+            "descricao": "", "valor_total": v_total_dlg, "sinal": v_sinal_dlg,
+            "valor_recebido": v_sinal_dlg,
+            "etapa": 1, "precisa_tecido": 1 if precisa_tecido_dlg else 0,
+            "data_visita":    d_visita_dlg.isoformat(),
+            "data_tecido":    d_tecido_dlg.isoformat(),
+            "data_confeccao": d_confeccao_dlg.isoformat(),
+            "data_prova":     d_prova_dlg.isoformat(),
+            "data_entrega":   d_entrega_dlg.isoformat(),
+            "cpf_cliente": "", "rg_cliente": "",
+            "forma_pagamento": "A combinar", "observacoes": "",
+            "cancelado": 0,
+        })
+
+        desc_dlg = f"{peca_dlg.strip()} ({nome_final})"
+        tarefas_auto_dlg = [
+            (f"🤝 Visita: {desc_dlg}",    "Costura", 1.0, d_visita_dlg.isoformat()),
+            (f"🪡 Confecção: {desc_dlg}", "Costura", 3.0, d_confeccao_dlg.isoformat()),
+            (f"👗 Prova: {desc_dlg}",     "Costura", 1.0, d_prova_dlg.isoformat()),
+            (f"🎁 Entrega: {desc_dlg}",   "Costura", 0.5, d_entrega_dlg.isoformat()),
+        ]
+        if precisa_tecido_dlg:
+            tarefas_auto_dlg.insert(1, (f"🛍️ Tecido: {desc_dlg}", "Compras", 1.0, d_tecido_dlg.isoformat()))
+
+        for tarefa_a, cat_a, hrs_a, dt_a in tarefas_auto_dlg:
+            cronograma_inserir({
+                "tarefa": tarefa_a, "categoria": cat_a, "horas": hrs_a,
+                "data": dt_a, "frequencia": "Pontual", "concluida": 0,
+                "encomenda_id": e_id, "tipo_agenda": "Trabalho",
+            })
+
+        st.success(f"✅ Encomenda **{peca_dlg.strip()}** criada para **{nome_final}**!")
+        time.sleep(1.1)
+        st.rerun()
+
+    if col_cancel.button("❌ Cancelar", use_container_width=True, key="dlg_btn_cancel"):
+        st.rerun()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PDF — CONTRATO
@@ -1211,6 +1347,11 @@ with aba_agenda:
             st.dataframe(df_show, use_container_width=True, hide_index=True)
 
     with sub_cal:
+        col_cal_hdr1, col_cal_hdr2 = st.columns([4, 2])
+        col_cal_hdr1.caption("💡 Clique no **➕** de qualquer dia para criar uma encomenda com aquela data.")
+        if col_cal_hdr2.button("➕ Nova Encomenda Rápida", use_container_width=True, type="primary", key="btn_add_geral"):
+            dialog_nova_encomenda()
+
         if "data_ref" not in st.session_state:
             st.session_state.data_ref = date.today()
 
@@ -1246,6 +1387,7 @@ with aba_agenda:
                 if dia == 0:
                     continue
                 dt_str = f"{ref.year}-{ref.month:02d}-{dia:02d}"
+                dt_obj_cal = date(ref.year, ref.month, dia)
                 tasks  = df_all_cal[df_all_cal["data"] == dt_str] if not df_all_cal.empty else pd.DataFrame()
                 is_hoje = dt_str == date.today().isoformat()
                 fundo   = "#fdf6ee" if is_hoje else "white"
@@ -1263,13 +1405,19 @@ with aba_agenda:
                         f"</div>"
                     )
 
-                cols_s[i].markdown(
-                    f"<div style='background:{fundo};border:{borda};border-radius:8px;"
-                    f"padding:6px;min-height:76px;'>"
-                    f"<b style='color:#3d1f10;font-size:0.8rem'>{dia}</b>"
-                    f"{tarefas_html}</div>",
-                    unsafe_allow_html=True,
-                )
+                with cols_s[i]:
+                    st.markdown(
+                        f"<div style='background:{fundo};border:{borda};border-radius:8px 8px 0 0;"
+                        f"border-bottom:none;padding:6px;min-height:70px;'>"
+                        f"<b style='color:#3d1f10;font-size:0.8rem'>{dia}</b>"
+                        f"{tarefas_html}</div>",
+                        unsafe_allow_html=True,
+                    )
+                    st.markdown('<div class="cal-add-btn">', unsafe_allow_html=True)
+                    if st.button("➕", key=f"add_cal_{dt_str}", use_container_width=True,
+                                 help=f"Nova encomenda em {formatar_data_br(dt_str)}"):
+                        dialog_nova_encomenda(dt_obj_cal)
+                    st.markdown('</div>', unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ABA 4 – FINANCEIRO
@@ -1755,4 +1903,4 @@ with aba_conf:
             else:
                 st.error("❌ Senha incorreta.")
 
-st.caption("v9.0.0 | Lila Closet Atelier | Firestore · wendleydesenvolvimento")
+st.caption("v9.1.0 | Lila Closet Atelier | Firestore · wendleydesenvolvimento")
