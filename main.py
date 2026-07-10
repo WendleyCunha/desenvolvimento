@@ -301,6 +301,38 @@ div[class*="st-key-pedcard_"] button:hover {
 .lila-bar { background: #f0e6d8; border-radius: 4px; height: 6px; margin: 6px 0 3px; }
 .lila-bar > div { background: linear-gradient(90deg,#c9a227,#6b3a22); height: 6px; border-radius: 4px; }
 
+/* ── KPI Cards (topo do sistema) ── */
+.kpi-card {
+  border-radius: 16px; padding: 18px 20px; margin-bottom: 4px;
+  box-shadow: 0 6px 20px rgba(61,31,16,0.10);
+  transition: transform .15s, box-shadow .15s;
+}
+.kpi-card:hover { transform: translateY(-2px); box-shadow: 0 10px 26px rgba(61,31,16,0.16); }
+.kpi-label {
+  font-size: 0.74rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.6px; opacity: 0.88;
+}
+.kpi-value { font-size: 2.1rem; font-weight: 800; line-height: 1.15; margin-top: 4px; }
+.kpi-sub { font-size: 0.74rem; opacity: 0.85; margin-top: 5px; }
+.kpi-bar { background: rgba(0,0,0,0.08); border-radius: 4px; height: 7px; margin: 8px 0 2px; }
+.kpi-bar > div {
+  background: linear-gradient(90deg,#c9a227,#6b3a22);
+  height: 7px; border-radius: 4px; transition: width .3s ease;
+}
+
+.kpi-brown { background: linear-gradient(135deg,#3d1f10 0%,#6b3a22 100%); color: #f5e6d3; }
+.kpi-brown .kpi-label, .kpi-brown .kpi-sub { color: #e8d4bc; }
+.kpi-gold  { background: linear-gradient(135deg,#c9a227 0%,#8a6200 100%); color: #fff8e8; }
+.kpi-gold  .kpi-label, .kpi-gold .kpi-sub { color: #fdf1d6; }
+.kpi-cream { background: #fdf6ee; color: #3d1f10; border: 1px solid #ecdfc9;
+  box-shadow: 0 2px 12px rgba(61,31,16,0.06); }
+.kpi-cream .kpi-label, .kpi-cream .kpi-sub { color: #8b7355; }
+.kpi-cream .kpi-bar { background: #f0e6d8; }
+.kpi-green { background: linear-gradient(135deg,#1b5e20 0%,#2e7d32 100%); color: #e8f5e9; }
+.kpi-green .kpi-label, .kpi-green .kpi-sub { color: #d4ecd6; }
+.kpi-red   { background: linear-gradient(135deg,#7a1a1a 0%,#c0392b 100%); color: #ffeeee; }
+.kpi-red   .kpi-label, .kpi-red .kpi-sub { color: #ffd9d9; }
+
 hr { border-color: #e8dfd5 !important; }
 [data-testid="stSuccess"], [data-testid="stInfo"],
 [data-testid="stWarning"], [data-testid="stError"] { border-radius: 10px !important; }
@@ -431,17 +463,39 @@ def get_logo_base64() -> str | None:
 # ══════════════════════════════════════════════════════════════════════════════
 # POPUP — NOVA ENCOMENDA RÁPIDA (a partir do calendário)
 # ══════════════════════════════════════════════════════════════════════════════
-@st.dialog("🛍️ Nova Encomenda Rápida")
+@st.dialog("🛍️ Nova Encomenda Rápida", width="large")
 def dialog_nova_encomenda(data_pre: date | None = None):
+    # ── Estado "encomenda recém-criada" — mostra o resultado/contrato SEM fechar o popup ──
+    resultado = st.session_state.get("_dlg_enc_resultado")
+    if resultado:
+        st.success(f"✅ Encomenda **{resultado['peca']}** criada para **{resultado['cliente']}**!")
+        if resultado.get("pdf_bytes"):
+            col_pdf, col_gov = st.columns(2)
+            col_pdf.download_button(
+                "📥 BAIXAR CONTRATO PDF", data=resultado["pdf_bytes"],
+                file_name=f"Contrato_{resultado['cliente'].replace(' ','_')}.pdf",
+                mime="application/pdf", use_container_width=True, key="dlg_dl_pdf_resultado",
+            )
+            col_gov.link_button("✍️ ASSINAR VIA GOV.BR",
+                url="https://assinador.iti.br/assinatura/index.xhtml",
+                use_container_width=True)
+        else:
+            st.info("💡 Preencha CPF e RG (seção Dados para Contrato) para gerar o contrato automaticamente.")
+        if st.button("✅ Fechar", use_container_width=True, type="primary", key="dlg_btn_fechar_resultado"):
+            del st.session_state["_dlg_enc_resultado"]
+            st.rerun()
+        return
+
     d_base = data_pre or hoje_brasilia()
     st.caption(f"📅 Data de referência: **{formatar_data_br(d_base)}**")
 
     df_clis_dlg = clientes_listar()
     clis_dlg = df_clis_dlg["nome"].tolist() if not df_clis_dlg.empty else []
 
+    st.markdown("##### 👤 Cliente")
     modo_cli = st.radio(
         "Cliente", ["Selecionar existente", "Cadastrar nova"],
-        horizontal=True, key="dlg_modo_cli",
+        horizontal=True, key="dlg_modo_cli", label_visibility="collapsed",
         index=0 if clis_dlg else 1,
     )
 
@@ -449,14 +503,20 @@ def dialog_nova_encomenda(data_pre: date | None = None):
     if modo_cli == "Selecionar existente" and clis_dlg:
         cli_sel_dlg = st.selectbox("Cliente *", clis_dlg, key="dlg_cli_sel")
     else:
-        cli_sel_dlg = st.text_input("Nome da nova cliente *", key="dlg_cli_novo")
-        cli_tel_dlg = st.text_input("Telefone / WhatsApp", key="dlg_cli_tel")
+        col_cn1, col_cn2 = st.columns(2)
+        cli_sel_dlg = col_cn1.text_input("Nome da nova cliente *", key="dlg_cli_novo")
+        cli_tel_dlg = col_cn2.text_input("Telefone / WhatsApp", key="dlg_cli_tel")
 
+    st.markdown("##### 🧵 Peça / Serviço")
     peca_dlg = st.text_input("Peça / Serviço *", placeholder="Ex: Vestido de festa…", key="dlg_peca")
+    descricao_dlg = st.text_area("Descrição detalhada", key="dlg_descricao", height=70)
 
-    col_v1, col_v2 = st.columns(2)
+    st.markdown("##### 💰 Valores")
+    col_v1, col_v2, col_v3 = st.columns(3)
     v_total_dlg = col_v1.number_input("Valor Total (R$)", min_value=0.0, step=50.0, format="%.2f", key="dlg_valor")
     v_sinal_dlg = col_v2.number_input("Sinal / Entrada (R$)", min_value=0.0, step=50.0, format="%.2f", key="dlg_sinal")
+    forma_pag_dlg = col_v3.selectbox("Forma de Pagamento",
+        ["PIX","Dinheiro","Cartão de Crédito","Cartão de Débito","A combinar"], key="dlg_forma_pag")
 
     st.markdown("##### 📅 Datas")
 
@@ -491,6 +551,13 @@ def dialog_nova_encomenda(data_pre: date | None = None):
 
     d_confeccao_dlg = d_visita_dlg + timedelta(days=7)
 
+    st.markdown("##### 📄 Dados para Contrato")
+    st.caption("Preencha CPF e RG para o contrato ser gerado automaticamente assim que a encomenda for criada.")
+    col_c1, col_c2 = st.columns(2)
+    cpf_dlg = col_c1.text_input("CPF da cliente", placeholder="000.000.000-00", key="dlg_cpf")
+    rg_dlg  = col_c2.text_input("RG da cliente",  placeholder="00.000.000-0", key="dlg_rg")
+    obs_dlg = st.text_area("Observações", key="dlg_obs", height=68)
+
     st.markdown("")
     col_ok, col_cancel = st.columns(2)
 
@@ -512,7 +579,7 @@ def dialog_nova_encomenda(data_pre: date | None = None):
 
         e_id = encomendas_inserir({
             "cliente": nome_final, "peca": peca_dlg.strip(),
-            "descricao": "", "valor_total": v_total_dlg, "sinal": v_sinal_dlg,
+            "descricao": descricao_dlg.strip(), "valor_total": v_total_dlg, "sinal": v_sinal_dlg,
             "valor_recebido": v_sinal_dlg,
             "etapa": 1, "precisa_tecido": 1 if precisa_tecido_dlg else 0,
             "data_encomenda": d_encomenda_dlg.isoformat(),
@@ -523,8 +590,8 @@ def dialog_nova_encomenda(data_pre: date | None = None):
             "tem_prova2":     1 if tem_prova2_dlg else 0,
             "data_prova2":    d_prova2_dlg.isoformat() if d_prova2_dlg else "",
             "data_entrega":   d_entrega_dlg.isoformat(),
-            "cpf_cliente": "", "rg_cliente": "",
-            "forma_pagamento": "A combinar", "observacoes": "",
+            "cpf_cliente": cpf_dlg.strip(), "rg_cliente": rg_dlg.strip(),
+            "forma_pagamento": forma_pag_dlg, "observacoes": obs_dlg.strip(),
             "cancelado": 0,
             "criado_em": agora_br().isoformat(),
         })
@@ -548,9 +615,44 @@ def dialog_nova_encomenda(data_pre: date | None = None):
                 "encomenda_id": e_id, "tipo_agenda": "Trabalho",
             })
 
+        pdf_bytes_dlg = None
+        if cpf_dlg.strip() and rg_dlg.strip():
+            enc_dict_pdf = {
+                "cliente": nome_final, "peca": peca_dlg.strip(),
+                "descricao": descricao_dlg.strip(), "valor_total": v_total_dlg,
+                "sinal": v_sinal_dlg, "forma_pagamento": forma_pag_dlg,
+                "data_encomenda": d_encomenda_dlg.isoformat(),
+                "data_visita": d_visita_dlg.isoformat(),
+                "data_tecido": d_tecido_dlg.isoformat() if precisa_tecido_dlg else "",
+                "data_confeccao": d_confeccao_dlg.isoformat(),
+                "data_prova": d_prova_dlg.isoformat(),
+                "data_prova2": d_prova2_dlg.isoformat() if d_prova2_dlg else "",
+                "data_entrega": d_entrega_dlg.isoformat(),
+                "precisa_tecido": 1 if precisa_tecido_dlg else 0,
+                "observacoes": obs_dlg.strip(),
+            }
+            pdf_bytes_dlg = gerar_pdf_contrato(enc_dict_pdf, cpf_dlg.strip(), rg_dlg.strip())
+
+        st.session_state["_dlg_enc_resultado"] = {
+            "cliente": nome_final, "peca": peca_dlg.strip(), "pdf_bytes": pdf_bytes_dlg,
+        }
         st.success(f"✅ Encomenda **{peca_dlg.strip()}** criada para **{nome_final}**!")
-        time.sleep(1.1)
-        st.rerun()
+        if pdf_bytes_dlg:
+            col_pdf, col_gov = st.columns(2)
+            col_pdf.download_button(
+                "📥 BAIXAR CONTRATO PDF", data=pdf_bytes_dlg,
+                file_name=f"Contrato_{nome_final.replace(' ','_')}.pdf",
+                mime="application/pdf", use_container_width=True, key="dlg_dl_pdf_imediato",
+            )
+            col_gov.link_button("✍️ ASSINAR VIA GOV.BR",
+                url="https://assinador.iti.br/assinatura/index.xhtml",
+                use_container_width=True)
+        else:
+            st.info("💡 Preencha CPF e RG para gerar o contrato automaticamente.")
+        if st.button("✅ Fechar", use_container_width=True, type="primary", key="dlg_btn_fechar_imediato"):
+            del st.session_state["_dlg_enc_resultado"]
+            st.rerun()
+        return
 
     if col_cancel.button("❌ Cancelar", use_container_width=True, key="dlg_btn_cancel"):
         st.rerun()
@@ -1025,9 +1127,36 @@ if not df_enc_all.empty and "etapa" in df_enc_all.columns:
 
 meta_ped = int(cfg_get("meta_pedidos_mes") or 8)
 
-col_m1, col_m2 = st.columns(2)
-col_m1.metric("🛍️ Pedidos Ativos",      enc_ativas)
-col_m2.metric("📋 Meta de Pedidos/mês", meta_ped)
+mes_atual_str = hoje_dt.strftime("%Y-%m")
+pedidos_mes = 0
+if not df_enc_all.empty:
+    col_data_ref = "data_encomenda" if "data_encomenda" in df_enc_all.columns else "criado_em"
+    if col_data_ref in df_enc_all.columns:
+        pedidos_mes = int(df_enc_all[col_data_ref].fillna("").astype(str).str.startswith(mes_atual_str).sum())
+pct_meta = min(pedidos_mes / meta_ped * 100, 100) if meta_ped > 0 else 0
+
+col_m1, col_m2, col_m3 = st.columns(3)
+col_m1.markdown(f"""
+<div class="kpi-card kpi-brown">
+    <div class="kpi-label">🛍️ Pedidos Ativos</div>
+    <div class="kpi-value">{enc_ativas}</div>
+    <div class="kpi-sub">Em andamento agora</div>
+</div>""", unsafe_allow_html=True)
+
+col_m2.markdown(f"""
+<div class="kpi-card kpi-gold">
+    <div class="kpi-label">📋 Meta de Pedidos/mês</div>
+    <div class="kpi-value">{meta_ped}</div>
+    <div class="kpi-sub">Definida em Configurações</div>
+</div>""", unsafe_allow_html=True)
+
+col_m3.markdown(f"""
+<div class="kpi-card kpi-cream">
+    <div class="kpi-label">📊 Progresso da Meta</div>
+    <div class="kpi-value">{pedidos_mes}<span style="font-size:1.1rem;color:#8b7355;"> / {meta_ped}</span></div>
+    <div class="kpi-bar"><div style="width:{pct_meta:.0f}%;"></div></div>
+    <div class="kpi-sub">{pct_meta:.0f}% da meta deste mês</div>
+</div>""", unsafe_allow_html=True)
 
 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -1301,39 +1430,16 @@ with aba_hoje:
 # ABA 2 – ENCOMENDAS
 # ══════════════════════════════════════════════════════════════════════════════
 with aba_enc:
-    t_nova_cli, t_novo_ped, t_medidas, t_gerenciar = st.tabs([
-        "👤 Nova Cliente",
-        "🛍️ Novo Pedido",
-        "📏 Medidas",
+    t_medidas, t_gerenciar = st.tabs([
+        "📏 Medidas & Clientes",
         "📋 Gerenciar Pedidos",
     ])
 
-    # ── Nova Cliente ─────────────────────────────────────────────────────
-    with t_nova_cli:
-        st.markdown("### 👤 Cadastro de Nova Cliente")
-        with st.form("cad_cliente", clear_on_submit=True):
-            col_a, col_b = st.columns(2)
-            nc_nome = col_a.text_input("Nome completo *")
-            nc_mod  = col_b.text_input("Modelo de referência")
-            col_c, col_d, col_e = st.columns(3)
-            nc_tel   = col_c.text_input("Telefone / WhatsApp")
-            nc_email = col_d.text_input("E-mail")
-            nc_cpf   = col_e.text_input("CPF")
-            if st.form_submit_button("💾 Salvar Cliente", use_container_width=True):
-                if nc_nome.strip():
-                    clientes_inserir({
-                        "nome": nc_nome.strip(), "modelo_base": nc_mod.strip(),
-                        "telefone": nc_tel.strip(), "email": nc_email.strip(),
-                        "cpf": nc_cpf.strip(),
-                        "criado_em": agora_br().isoformat(),
-                    })
-                    st.success(f"✅ Cliente **{nc_nome}** cadastrada!")
-                    st.rerun()
-                else:
-                    st.error("Informe o nome da cliente.")
-
-        st.markdown("---")
-        st.markdown("#### 👥 Clientes Cadastradas")
+    # ── Medidas & Clientes ─────────────────────────────────────────────────
+    with t_medidas:
+        st.markdown("### 👥 Clientes Cadastradas")
+        st.caption("Novas clientes são cadastradas direto na hora de criar uma encomenda "
+                   "(botão **➕ Nova Encomenda**, disponível na aba Agenda ou em Gerenciar Pedidos).")
         df_clis_lista = clientes_listar()
         if not df_clis_lista.empty:
             cols_show = [c for c in ["nome","telefone","email","modelo_base"] if c in df_clis_lista.columns]
@@ -1345,143 +1451,7 @@ with aba_enc:
         else:
             st.info("Nenhuma cliente cadastrada ainda.")
 
-    # ── Novo Pedido ──────────────────────────────────────────────────────
-    with t_novo_ped:
-        st.markdown("### 🛍️ Registrar Nova Encomenda")
-        df_clis = clientes_listar()
-        clis = df_clis["nome"].tolist() if not df_clis.empty else []
-
-        if not clis:
-            st.info("Cadastre uma cliente primeiro na aba **👤 Nova Cliente**.")
-        else:
-            tem_tecido = st.radio(
-                "Precisa comprar tecido?",
-                ["Não – tecido já disponível", "Sim – precisa comprar"],
-                horizontal=True,
-            )
-            precisa_tecido = 1 if "Sim" in tem_tecido else 0
-
-            tem_prova2 = st.checkbox("Precisa de uma segunda prova?", key="np_tem_prova2")
-
-            with st.form("novo_pedido", clear_on_submit=False):
-                st.markdown("#### 🧵 Dados da Peça")
-                col_p1, col_p2 = st.columns([2, 3])
-                cli_sel  = col_p1.selectbox("Cliente *", clis)
-                peca     = col_p2.text_input("Peça / Serviço *", placeholder="Ex: Vestido de festa…")
-                descricao_ped = st.text_area("Descrição detalhada", height=80)
-
-                st.markdown("#### 💰 Valores")
-                col_v1, col_v2, col_v3 = st.columns(3)
-                v_total  = col_v1.number_input("Valor Total (R$) *", min_value=0.0, step=50.0, format="%.2f")
-                v_sinal  = col_v2.number_input("Sinal / Entrada (R$)", min_value=0.0, step=50.0, format="%.2f")
-                forma_pag = col_v3.selectbox("Forma de Pagamento",
-                    ["PIX","Dinheiro","Cartão de Crédito","Cartão de Débito","A combinar"])
-
-                st.markdown("#### 📅 Datas")
-                col_d0, col_d1 = st.columns(2)
-                d_encomenda = col_d0.date_input("🗓️ Data da Encomenda", value=hoje_brasilia(), format="DD/MM/YYYY")
-                d_visita    = col_d1.date_input("📏 Data Medidas",      value=hoje_brasilia(), format="DD/MM/YYYY")
-
-                col_d2, col_d3 = st.columns(2)
-                d_prova  = col_d2.date_input("👗 Data da Prova", value=hoje_brasilia() + timedelta(days=25), format="DD/MM/YYYY")
-                d_prova2 = None
-                if tem_prova2:
-                    d_prova2 = col_d3.date_input("👗 Data da 2ª Prova", value=hoje_brasilia() + timedelta(days=32), format="DD/MM/YYYY")
-
-                col_d4, col_d5 = st.columns(2)
-                d_tec = None
-                if precisa_tecido:
-                    d_tec = col_d4.date_input("🛍️ Data Compra do Tecido", value=hoje_brasilia() + timedelta(days=3), format="DD/MM/YYYY")
-                d_ent = col_d5.date_input("🎁 Data de Entrega", value=hoje_brasilia() + timedelta(days=30), format="DD/MM/YYYY")
-
-                d_conf = hoje_brasilia() + timedelta(days=7)
-
-                st.markdown("#### 📄 Dados para Contrato")
-                col_c1, col_c2, col_c3 = st.columns(3)
-                cpf_novo = col_c1.text_input("CPF da cliente", placeholder="000.000.000-00")
-                rg_novo  = col_c2.text_input("RG da cliente",  placeholder="00.000.000-0")
-                obs_ped  = col_c3.text_area("Observações", height=68)
-
-                submitted = st.form_submit_button(
-                    "🎯 CONFIRMAR ENCOMENDA E GERAR CONTRATO",
-                    use_container_width=True, type="primary",
-                )
-
-            if submitted:
-                if peca.strip() and cli_sel:
-                    d_tec_str = d_tec.isoformat() if d_tec else d_conf.isoformat()
-                    e_id = encomendas_inserir({
-                        "cliente": cli_sel, "peca": peca.strip(),
-                        "descricao": descricao_ped.strip(),
-                        "valor_total": v_total, "sinal": v_sinal,
-                        "valor_recebido": v_sinal,
-                        "etapa": 1, "precisa_tecido": precisa_tecido,
-                        "data_encomenda": d_encomenda.isoformat(),
-                        "data_visita":    d_visita.isoformat(),
-                        "data_tecido":    d_tec_str,
-                        "data_confeccao": d_conf.isoformat(),
-                        "data_prova":     d_prova.isoformat(),
-                        "tem_prova2":     1 if tem_prova2 else 0,
-                        "data_prova2":    d_prova2.isoformat() if d_prova2 else "",
-                        "data_entrega":   d_ent.isoformat(),
-                        "cpf_cliente": cpf_novo.strip(), "rg_cliente": rg_novo.strip(),
-                        "forma_pagamento": forma_pag, "observacoes": obs_ped.strip(),
-                        "cancelado": 0,
-                        "criado_em": agora_br().isoformat(),
-                    })
-                    desc = f"{peca.strip()} ({cli_sel})"
-                    tarefas_auto = [
-                        (f"📏 Medidas: {desc}",   "Costura", 1.0, d_visita.isoformat()),
-                        (f"🪡 Confecção: {desc}", "Costura", 3.0, d_conf.isoformat()),
-                        (f"👗 Prova: {desc}",     "Costura", 1.0, d_prova.isoformat()),
-                        (f"🎁 Entrega: {desc}",   "Costura", 0.5, d_ent.isoformat()),
-                    ]
-                    if tem_prova2 and d_prova2:
-                        tarefas_auto.insert(3, (f"👗 2ª Prova: {desc}", "Costura", 1.0, d_prova2.isoformat()))
-                    if precisa_tecido and d_tec:
-                        tarefas_auto.insert(1, (f"🛍️ Tecido: {desc}", "Compras", 1.0, d_tec.isoformat()))
-                    for tarefa, cat, hrs, dt in tarefas_auto:
-                        cronograma_inserir({
-                            "tarefa": tarefa, "categoria": cat, "horas": hrs,
-                            "data": dt, "frequencia": "Pontual", "concluida": 0,
-                            "encomenda_id": e_id, "tipo_agenda": "Trabalho",
-                        })
-
-                    st.success(f"✅ Encomenda **{peca.strip()}** registrada para **{cli_sel}**!")
-
-                    if cpf_novo.strip() and rg_novo.strip():
-                        enc_dict = {
-                            "cliente": cli_sel, "peca": peca.strip(),
-                            "descricao": descricao_ped, "valor_total": v_total,
-                            "sinal": v_sinal, "forma_pagamento": forma_pag,
-                            "data_encomenda": d_encomenda.isoformat(),
-                            "data_visita": d_visita.isoformat(),
-                            "data_tecido": d_tec.isoformat() if d_tec else "",
-                            "data_confeccao": d_conf.isoformat(),
-                            "data_prova": d_prova.isoformat(),
-                            "data_prova2": d_prova2.isoformat() if d_prova2 else "",
-                            "data_entrega": d_ent.isoformat(),
-                            "precisa_tecido": precisa_tecido,
-                            "observacoes": obs_ped,
-                        }
-                        pdf_bytes = gerar_pdf_contrato(enc_dict, cpf_novo.strip(), rg_novo.strip())
-                        col_pdf, col_gov = st.columns(2)
-                        col_pdf.download_button(
-                            "📥 BAIXAR CONTRATO PDF", data=pdf_bytes,
-                            file_name=f"Contrato_{cli_sel.replace(' ','_')}.pdf",
-                            mime="application/pdf", use_container_width=True,
-                        )
-                        col_gov.link_button("✍️ ASSINAR VIA GOV.BR",
-                            url="https://assinador.iti.br/assinatura/index.xhtml",
-                            use_container_width=True)
-                    else:
-                        st.info("💡 Preencha CPF e RG para gerar o contrato PDF.")
-                else:
-                    st.error("Preencha o nome da peça e selecione a cliente.")
-
-
-    # ── Medidas ──────────────────────────────────────────────────────────
-    with t_medidas:
+        st.markdown("---")
         st.markdown("### 📏 Ficha de Medidas")
         df_c = clientes_listar()
 
@@ -1509,7 +1479,10 @@ with aba_enc:
 
     # ── Gerenciar Pedidos ────────────────────────────────────────────────
     with t_gerenciar:
-        st.markdown("### 📋 Todos os Pedidos")
+        col_tit, col_novo = st.columns([4, 1.4])
+        col_tit.markdown("### 📋 Todos os Pedidos")
+        if col_novo.button("➕ Nova Encomenda", use_container_width=True, type="primary", key="btn_add_gerpedidos"):
+            dialog_nova_encomenda()
 
         col_f1, col_f2 = st.columns([2, 1])
         filtro_status = col_f1.radio(
@@ -2115,4 +2088,4 @@ with aba_conf:
             else:
                 st.error("❌ Senha incorreta.")
 
-st.caption("v9.4.0 | Lila Closet Atelier | Firestore · Horário de Brasília · wendleydesenvolvimento")
+st.caption("v10.0.0 | Lila Closet Atelier | Firestore · Horário de Brasília · wendleydesenvolvimento")
