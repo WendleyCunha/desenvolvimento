@@ -241,21 +241,65 @@ div[data-testid="metric-container"] {
   text-decoration: none !important; display: block; text-align: center; padding: 8px 16px;
 }
 
-/* ── Botão "+" do calendário ── */
+/* ── Card do dia no calendário ── */
+.cal-day-cell {
+  background: #fff; border: 1px solid #ecdfc9; border-left: 4px solid #c9a227;
+  border-bottom: none; border-radius: 10px 10px 0 0;
+  padding: 6px; min-height: 68px;
+  box-shadow: 0 1px 4px rgba(61,31,16,0.05);
+}
+.cal-day-cell.cal-hoje {
+  background: #fdf6ee; border-left: 4px solid #6b3a22;
+  box-shadow: 0 3px 12px rgba(61,31,16,0.14);
+}
+.cal-day-num { color: #3d1f10; font-size: 0.8rem; font-weight: 700; }
+.cal-task-tag {
+  font-size: 0.6rem; color: #8a6200; margin-top: 2px;
+  background: #fff8e1; border-radius: 4px; padding: 1px 4px;
+}
+.cal-task-cliente { color: #3d1f10; font-weight: 700; font-size: 0.58rem; }
+
+/* ── Botão "+" do calendário (encaixa embaixo do card do dia) ── */
 .cal-add-btn button {
   padding: 2px 0 !important;
-  min-height: 26px !important;
+  min-height: 22px !important;
   font-size: 0.7rem !important;
-  background: #faf5ec !important;
+  background: #fff !important;
   color: #6b3a22 !important;
-  border: 1px dashed #d8c3a5 !important;
-  margin-top: 3px !important;
+  border: 1px solid #ecdfc9 !important;
+  border-left: 4px solid #c9a227 !important;
+  border-top: none !important;
+  border-radius: 0 0 10px 10px !important;
+  margin-top: 0 !important;
 }
 .cal-add-btn button:hover {
   background: #c9a227 !important;
   color: white !important;
-  border: 1px solid #c9a227 !important;
+  border-color: #c9a227 !important;
 }
+
+/* ── Cards clicáveis (pedidos) que abrem popup de detalhes ── */
+div[class*="st-key-pedcard_"] button {
+  text-align: left !important; justify-content: flex-start !important;
+  background: #fff !important; border: 1px solid #ecdfc9 !important;
+  border-bottom: none !important; border-left: 4px solid #c9a227 !important;
+  border-radius: 12px 12px 0 0 !important; color: #3d1f10 !important;
+  font-weight: 700 !important; font-size: 0.88rem !important;
+  padding: 12px 14px 8px !important; margin-bottom: 0 !important;
+  transition: background .15s, box-shadow .15s;
+}
+div[class*="st-key-pedcard_"] button:hover {
+  background: #faf5ec !important; border-color: #c9a227 !important;
+}
+.lila-cardbody {
+  background: #fff; border: 1px solid #ecdfc9; border-top: none;
+  border-left: 4px solid #c9a227; border-radius: 0 0 12px 12px;
+  padding: 6px 14px 14px; margin: -10px 0 16px;
+  box-shadow: 0 2px 10px rgba(61,31,16,0.06);
+}
+.lila-cardsub { font-size: 0.78rem; color: #8b7355; margin-bottom: 6px; }
+.lila-bar { background: #f0e6d8; border-radius: 4px; height: 6px; margin: 6px 0 3px; }
+.lila-bar > div { background: linear-gradient(90deg,#c9a227,#6b3a22); height: 6px; border-radius: 4px; }
 
 hr { border-color: #e8dfd5 !important; }
 [data-testid="stSuccess"], [data-testid="stInfo"],
@@ -757,6 +801,134 @@ def gerar_pdf_contrato(enc: dict, cpf: str, rg: str) -> bytes:
 
     doc.build(story)
     return buf.getvalue()
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CARDS DE PEDIDO — clique abre popup com todos os detalhes (estilo cards de motorista)
+# ══════════════════════════════════════════════════════════════════════════════
+def _conteudo_pedido(enc: dict, cancelado: bool):
+    etapa_num  = int(enc.get("etapa", 1))
+    restante_enc = float(enc.get("valor_total", 0) or 0) - float(enc.get("valor_recebido", 0) or 0)
+
+    st.caption(f"📝 Pedido registrado em {formatar_data_hora_br(enc.get('criado_em'))}")
+
+    if not cancelado:
+        steps_html = '<div class="step-bar">'
+        for i in range(1, 8):
+            ic, nm = ETAPAS[i]
+            cls = "done" if i < etapa_num else ("active" if i == etapa_num else "")
+            steps_html += f'<div class="step-item {cls}"><div class="step-dot">{ic}</div><div class="step-lbl">{nm}</div></div>'
+        steps_html += "</div>"
+        st.markdown(steps_html, unsafe_allow_html=True)
+        st.markdown("")
+
+    col_inf1, col_inf2, col_inf3, col_inf4 = st.columns(4)
+    col_inf1.metric("Valor Total",    brl(float(enc.get("valor_total",0) or 0)))
+    col_inf2.metric("Recebido",       brl(float(enc.get("valor_recebido",0) or 0)))
+    col_inf3.metric("Saldo Restante", brl(max(restante_enc, 0)))
+    col_inf4.metric("Entrega",        formatar_data_br(enc.get("data_entrega","")))
+
+    st.markdown("##### 📄 Contrato")
+    col_cpf, col_rg = st.columns(2)
+    cpf_s = str(enc.get("cpf_cliente") or "")
+    rg_s  = str(enc.get("rg_cliente") or "")
+    v_cpf = col_cpf.text_input("CPF", value=cpf_s, key=f"cpf_{enc['rowid']}")
+    v_rg  = col_rg.text_input("RG",   value=rg_s,  key=f"rg_{enc['rowid']}")
+
+    if v_cpf != cpf_s or v_rg != rg_s:
+        encomendas_atualizar(str(enc["rowid"]), {"cpf_cliente": v_cpf, "rg_cliente": v_rg})
+
+    if v_cpf.strip() and v_rg.strip():
+        pdf_bytes = gerar_pdf_contrato(dict(enc), v_cpf.strip(), v_rg.strip())
+        col_dl1, col_dl2 = st.columns(2)
+        col_dl1.download_button(
+            "📥 BAIXAR CONTRATO PDF", data=pdf_bytes,
+            file_name=f"Contrato_{enc['cliente'].replace(' ','_')}.pdf",
+            mime="application/pdf", key=f"dl_{enc['rowid']}",
+            use_container_width=True,
+        )
+        col_dl2.link_button("✍️ ASSINAR VIA GOV.BR",
+            url="https://assinador.iti.br/assinatura/index.xhtml",
+            use_container_width=True)
+    else:
+        st.info("💡 Preencha CPF e RG para habilitar o contrato.")
+
+    st.markdown("##### ✏️ Editar Pedido")
+    with st.form(f"edit_{enc['rowid']}"):
+        ed_peca = st.text_input("Peça", value=str(enc.get("peca") or ""))
+        ed_desc = st.text_area("Descrição", value=str(enc.get("descricao") or ""), height=60)
+        col_f1e, col_f2e = st.columns(2)
+        fpag_opts = ["PIX","Dinheiro","Cartão de Crédito","Cartão de Débito","A combinar"]
+        fpag_cur  = enc.get("forma_pagamento","A combinar")
+        fpag_idx  = fpag_opts.index(fpag_cur) if fpag_cur in fpag_opts else 4
+        ed_fpag   = col_f1e.selectbox("Forma de Pagamento", fpag_opts, index=fpag_idx)
+        ed_obs    = col_f2e.text_area("Observações", value=str(enc.get("observacoes") or ""), height=60)
+
+        st.markdown("📅 Datas")
+        d1, d2, d3 = st.columns(3)
+        ed_vis  = d1.date_input("Visita",    value=converter_para_data(enc.get("data_visita")),    key=f"dv_{enc['rowid']}")
+        ed_tec  = d2.date_input("Tecido",    value=converter_para_data(enc.get("data_tecido")),    key=f"dt_{enc['rowid']}")
+        ed_conf = d3.date_input("Confecção", value=converter_para_data(enc.get("data_confeccao")), key=f"dc_{enc['rowid']}")
+        d4, d5  = st.columns(2)
+        ed_pro  = d4.date_input("Prova",   value=converter_para_data(enc.get("data_prova")),   key=f"dp_{enc['rowid']}")
+        ed_ent  = d5.date_input("Entrega", value=converter_para_data(enc.get("data_entrega")), key=f"de_{enc['rowid']}")
+
+        col_b1, col_b2, col_b3 = st.columns(3)
+        if col_b1.form_submit_button("💾 Salvar", use_container_width=True):
+            encomendas_atualizar(str(enc["rowid"]), {
+                "peca": ed_peca, "descricao": ed_desc,
+                "forma_pagamento": ed_fpag, "observacoes": ed_obs,
+                "data_visita": ed_vis.isoformat(),
+                "data_tecido": ed_tec.isoformat(),
+                "data_confeccao": ed_conf.isoformat(),
+                "data_prova": ed_pro.isoformat(),
+                "data_entrega": ed_ent.isoformat(),
+            })
+            st.rerun()
+
+        if not cancelado:
+            if col_b2.form_submit_button("✅ Marcar Concluído", use_container_width=True):
+                encomendas_atualizar(str(enc["rowid"]), {"etapa": 7})
+                st.rerun()
+            if col_b3.form_submit_button("❌ Cancelar Pedido", use_container_width=True):
+                encomendas_cancelar(str(enc["rowid"]))
+                st.rerun()
+
+
+def _abrir_popup_pedido(enc: dict, cancelado: bool):
+    titulo = f"📦 {enc['cliente']} — {enc['peca']}"
+    @st.dialog(titulo, width="large")
+    def _p():
+        _conteudo_pedido(enc, cancelado)
+    _p()
+
+
+def _card_pedido(enc: dict, idx: int):
+    etapa_num  = int(enc.get("etapa", 1))
+    etapa_ic, etapa_nm = ETAPAS.get(etapa_num, ("📦", "–"))
+    cancelado  = bool(int(enc.get("cancelado", 0) or 0))
+    restante_enc = float(enc.get("valor_total", 0) or 0) - float(enc.get("valor_recebido", 0) or 0)
+    pct = 0 if cancelado else round(min(etapa_num / 7, 1.0) * 100)
+    badge_cls = "badge-red" if cancelado else "badge-gold"
+    badge_txt = "❌ Cancelado" if cancelado else f"{etapa_ic} {etapa_nm}"
+
+    if st.button(f"📦 {enc['cliente']} — {enc['peca']}",
+                 key=f"pedcard_{idx}_{enc['rowid']}", use_container_width=True):
+        _abrir_popup_pedido(enc, cancelado)
+
+    saldo_badge = ""
+    if not cancelado and restante_enc > 0.01:
+        saldo_badge = f'&nbsp;<span class="badge badge-amber">Saldo {brl(restante_enc)}</span>'
+
+    st.markdown(f"""
+    <div class="lila-cardbody">
+        <div class="lila-cardsub">💰 {brl(float(enc.get('valor_total',0) or 0))} &nbsp;·&nbsp; Entrega {formatar_data_br(enc.get('data_entrega',''))}</div>
+        <div class="lila-bar"><div style="width:{pct}%;"></div></div>
+        <div style="margin-top:6px;">
+            <span class="badge {badge_cls}">{badge_txt}</span>
+            &nbsp;<span class="badge badge-green">Recebido {brl(float(enc.get('valor_recebido',0) or 0))}</span>
+            {saldo_badge}
+        </div>
+    </div>""", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # CABEÇALHO DO SISTEMA
@@ -1279,99 +1451,10 @@ with aba_enc:
         if df_e.empty:
             st.info("Nenhum pedido encontrado com os filtros selecionados.")
         else:
-            for _, enc in df_e.iterrows():
-                etapa_num  = int(enc.get("etapa", 1))
-                etapa_ic, etapa_nm = ETAPAS.get(etapa_num, ("📦","–"))
-                cancelado  = bool(int(enc.get("cancelado", 0) or 0))
-                restante_enc = float(enc.get("valor_total", 0) or 0) - float(enc.get("valor_recebido", 0) or 0)
-                badge_txt  = "❌ Cancelado" if cancelado else f"{etapa_ic} {etapa_nm}"
-
-                with st.expander(
-                    f"📦 {enc['cliente']}  —  {enc['peca']}  |  {badge_txt}  |  💰 {brl(float(enc.get('valor_total',0) or 0))}"
-                ):
-                    st.caption(f"📝 Pedido registrado em {formatar_data_hora_br(enc.get('criado_em'))}")
-
-                    if not cancelado:
-                        steps_html = '<div class="step-bar">'
-                        for i in range(1, 8):
-                            ic, nm = ETAPAS[i]
-                            cls = "done" if i < etapa_num else ("active" if i == etapa_num else "")
-                            steps_html += f'<div class="step-item {cls}"><div class="step-dot">{ic}</div><div class="step-lbl">{nm}</div></div>'
-                        steps_html += "</div>"
-                        st.markdown(steps_html, unsafe_allow_html=True)
-                        st.markdown("")
-
-                    col_inf1, col_inf2, col_inf3, col_inf4 = st.columns(4)
-                    col_inf1.metric("Valor Total",    brl(float(enc.get("valor_total",0) or 0)))
-                    col_inf2.metric("Recebido",       brl(float(enc.get("valor_recebido",0) or 0)))
-                    col_inf3.metric("Saldo Restante", brl(max(restante_enc, 0)))
-                    col_inf4.metric("Entrega",        formatar_data_br(enc.get("data_entrega","")))
-
-                    st.markdown("##### 📄 Contrato")
-                    col_cpf, col_rg = st.columns(2)
-                    cpf_s = str(enc.get("cpf_cliente") or "")
-                    rg_s  = str(enc.get("rg_cliente") or "")
-                    v_cpf = col_cpf.text_input("CPF", value=cpf_s, key=f"cpf_{enc['rowid']}")
-                    v_rg  = col_rg.text_input("RG",   value=rg_s,  key=f"rg_{enc['rowid']}")
-
-                    if v_cpf != cpf_s or v_rg != rg_s:
-                        encomendas_atualizar(str(enc["rowid"]), {"cpf_cliente": v_cpf, "rg_cliente": v_rg})
-
-                    if v_cpf.strip() and v_rg.strip():
-                        pdf_bytes = gerar_pdf_contrato(dict(enc), v_cpf.strip(), v_rg.strip())
-                        col_dl1, col_dl2 = st.columns(2)
-                        col_dl1.download_button(
-                            "📥 BAIXAR CONTRATO PDF", data=pdf_bytes,
-                            file_name=f"Contrato_{enc['cliente'].replace(' ','_')}.pdf",
-                            mime="application/pdf", key=f"dl_{enc['rowid']}",
-                            use_container_width=True,
-                        )
-                        col_dl2.link_button("✍️ ASSINAR VIA GOV.BR",
-                            url="https://assinador.iti.br/assinatura/index.xhtml",
-                            use_container_width=True)
-                    else:
-                        st.info("💡 Preencha CPF e RG para habilitar o contrato.")
-
-                    st.markdown("##### ✏️ Editar Pedido")
-                    with st.form(f"edit_{enc['rowid']}"):
-                        ed_peca = st.text_input("Peça", value=str(enc.get("peca") or ""))
-                        ed_desc = st.text_area("Descrição", value=str(enc.get("descricao") or ""), height=60)
-                        col_f1e, col_f2e = st.columns(2)
-                        fpag_opts = ["PIX","Dinheiro","Cartão de Crédito","Cartão de Débito","A combinar"]
-                        fpag_cur  = enc.get("forma_pagamento","A combinar")
-                        fpag_idx  = fpag_opts.index(fpag_cur) if fpag_cur in fpag_opts else 4
-                        ed_fpag   = col_f1e.selectbox("Forma de Pagamento", fpag_opts, index=fpag_idx)
-                        ed_obs    = col_f2e.text_area("Observações", value=str(enc.get("observacoes") or ""), height=60)
-
-                        st.markdown("📅 Datas")
-                        d1, d2, d3 = st.columns(3)
-                        ed_vis  = d1.date_input("Visita",    value=converter_para_data(enc.get("data_visita")),    key=f"dv_{enc['rowid']}")
-                        ed_tec  = d2.date_input("Tecido",    value=converter_para_data(enc.get("data_tecido")),    key=f"dt_{enc['rowid']}")
-                        ed_conf = d3.date_input("Confecção", value=converter_para_data(enc.get("data_confeccao")), key=f"dc_{enc['rowid']}")
-                        d4, d5  = st.columns(2)
-                        ed_pro  = d4.date_input("Prova",   value=converter_para_data(enc.get("data_prova")),   key=f"dp_{enc['rowid']}")
-                        ed_ent  = d5.date_input("Entrega", value=converter_para_data(enc.get("data_entrega")), key=f"de_{enc['rowid']}")
-
-                        col_b1, col_b2, col_b3 = st.columns(3)
-                        if col_b1.form_submit_button("💾 Salvar", use_container_width=True):
-                            encomendas_atualizar(str(enc["rowid"]), {
-                                "peca": ed_peca, "descricao": ed_desc,
-                                "forma_pagamento": ed_fpag, "observacoes": ed_obs,
-                                "data_visita": ed_vis.isoformat(),
-                                "data_tecido": ed_tec.isoformat(),
-                                "data_confeccao": ed_conf.isoformat(),
-                                "data_prova": ed_pro.isoformat(),
-                                "data_entrega": ed_ent.isoformat(),
-                            })
-                            st.rerun()
-
-                        if not cancelado:
-                            if col_b2.form_submit_button("✅ Marcar Concluído", use_container_width=True):
-                                encomendas_atualizar(str(enc["rowid"]), {"etapa": 7})
-                                st.rerun()
-                            if col_b3.form_submit_button("❌ Cancelar Pedido", use_container_width=True):
-                                encomendas_cancelar(str(enc["rowid"]))
-                                st.rerun()
+            cols_ped = st.columns(2)
+            for idx, (_, enc) in enumerate(df_e.iterrows()):
+                with cols_ped[idx % 2]:
+                    _card_pedido(enc, idx)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ABA 3 – AGENDA
@@ -1435,26 +1518,22 @@ with aba_agenda:
                 dt_obj_cal = date(ref.year, ref.month, dia)
                 tasks  = df_all_cal[df_all_cal["data"] == dt_str] if not df_all_cal.empty else pd.DataFrame()
                 is_hoje = dt_str == hoje_brasilia().isoformat()
-                fundo   = "#fdf6ee" if is_hoje else "white"
-                borda   = "2px solid #c9a227" if is_hoje else "1px solid #ede3d8"
+                classe_dia = "cal-day-cell cal-hoje" if is_hoje else "cal-day-cell"
 
                 tarefas_html = ""
                 for _, r in tasks.iterrows():
                     tipo_tarefa  = r["tarefa"].split(":")[0].strip() if ":" in r["tarefa"] else r["tarefa"][:16]
                     cliente_cal  = r.get("nome_cliente", "")
                     tarefas_html += (
-                        f"<div style='font-size:0.6rem;color:#1565c0;margin-top:2px;"
-                        f"background:#e3f2fd;border-radius:4px;padding:1px 4px;'>"
-                        f"{tipo_tarefa}"
-                        f"{'<br><span style=\"color:#3d1f10;font-weight:700;font-size:0.58rem\">' + cliente_cal + '</span>' if cliente_cal else ''}"
+                        f"<div class='cal-task-tag'>{tipo_tarefa}"
+                        f"{'<br><span class=\"cal-task-cliente\">' + cliente_cal + '</span>' if cliente_cal else ''}"
                         f"</div>"
                     )
 
                 with cols_s[i]:
                     st.markdown(
-                        f"<div style='background:{fundo};border:{borda};border-radius:8px 8px 0 0;"
-                        f"border-bottom:none;padding:6px;min-height:70px;'>"
-                        f"<b style='color:#3d1f10;font-size:0.8rem'>{dia}</b>"
+                        f"<div class='{classe_dia}'>"
+                        f"<span class='cal-day-num'>{dia}</span>"
                         f"{tarefas_html}</div>",
                         unsafe_allow_html=True,
                     )
@@ -1951,4 +2030,4 @@ with aba_conf:
             else:
                 st.error("❌ Senha incorreta.")
 
-st.caption("v9.2.0 | Lila Closet Atelier | Firestore · Horário de Brasília · wendleydesenvolvimento")
+st.caption("v9.3.0 | Lila Closet Atelier | Firestore · Horário de Brasília · wendleydesenvolvimento")
