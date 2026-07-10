@@ -458,17 +458,38 @@ def dialog_nova_encomenda(data_pre: date | None = None):
     v_total_dlg = col_v1.number_input("Valor Total (R$)", min_value=0.0, step=50.0, format="%.2f", key="dlg_valor")
     v_sinal_dlg = col_v2.number_input("Sinal / Entrada (R$)", min_value=0.0, step=50.0, format="%.2f", key="dlg_sinal")
 
-    col_d1, col_d2 = st.columns(2)
-    d_visita_dlg  = col_d1.date_input("🤝 Visita / Medidas", value=d_base, key="dlg_visita")
-    d_entrega_dlg = col_d2.date_input("🎁 Entrega", value=d_base + timedelta(days=30), key="dlg_entrega")
+    st.markdown("##### 📅 Datas")
+
+    d_encomenda_dlg = st.date_input(
+        "🗓️ Data da Encomenda", value=d_base, key="dlg_encomenda", format="DD/MM/YYYY"
+    )
+    d_visita_dlg = st.date_input(
+        "📏 Data Medidas", value=d_base, key="dlg_visita", format="DD/MM/YYYY"
+    )
+    d_prova_dlg = st.date_input(
+        "👗 Data da Prova", value=d_base + timedelta(days=25), key="dlg_prova", format="DD/MM/YYYY"
+    )
+
+    tem_prova2_dlg = st.checkbox("Precisa de uma segunda prova?", key="dlg_tem_prova2")
+    d_prova2_dlg = None
+    if tem_prova2_dlg:
+        d_prova2_dlg = st.date_input(
+            "👗 Data da 2ª Prova", value=d_prova_dlg + timedelta(days=7),
+            key="dlg_prova2", format="DD/MM/YYYY",
+        )
 
     precisa_tecido_dlg = st.checkbox("Precisa comprar tecido?", key="dlg_tecido")
     d_tecido_dlg = d_visita_dlg + timedelta(days=3)
     if precisa_tecido_dlg:
-        d_tecido_dlg = st.date_input("🛍️ Compra do Tecido", value=d_tecido_dlg, key="dlg_data_tecido")
+        d_tecido_dlg = st.date_input(
+            "🛍️ Data Compra do Tecido", value=d_tecido_dlg, key="dlg_data_tecido", format="DD/MM/YYYY"
+        )
+
+    d_entrega_dlg = st.date_input(
+        "🎁 Data de Entrega", value=d_base + timedelta(days=30), key="dlg_entrega", format="DD/MM/YYYY"
+    )
 
     d_confeccao_dlg = d_visita_dlg + timedelta(days=7)
-    d_prova_dlg     = d_entrega_dlg - timedelta(days=5)
 
     st.markdown("")
     col_ok, col_cancel = st.columns(2)
@@ -494,10 +515,13 @@ def dialog_nova_encomenda(data_pre: date | None = None):
             "descricao": "", "valor_total": v_total_dlg, "sinal": v_sinal_dlg,
             "valor_recebido": v_sinal_dlg,
             "etapa": 1, "precisa_tecido": 1 if precisa_tecido_dlg else 0,
+            "data_encomenda": d_encomenda_dlg.isoformat(),
             "data_visita":    d_visita_dlg.isoformat(),
             "data_tecido":    d_tecido_dlg.isoformat(),
             "data_confeccao": d_confeccao_dlg.isoformat(),
             "data_prova":     d_prova_dlg.isoformat(),
+            "tem_prova2":     1 if tem_prova2_dlg else 0,
+            "data_prova2":    d_prova2_dlg.isoformat() if d_prova2_dlg else "",
             "data_entrega":   d_entrega_dlg.isoformat(),
             "cpf_cliente": "", "rg_cliente": "",
             "forma_pagamento": "A combinar", "observacoes": "",
@@ -507,11 +531,13 @@ def dialog_nova_encomenda(data_pre: date | None = None):
 
         desc_dlg = f"{peca_dlg.strip()} ({nome_final})"
         tarefas_auto_dlg = [
-            (f"🤝 Visita: {desc_dlg}",    "Costura", 1.0, d_visita_dlg.isoformat()),
+            (f"📏 Medidas: {desc_dlg}",   "Costura", 1.0, d_visita_dlg.isoformat()),
             (f"🪡 Confecção: {desc_dlg}", "Costura", 3.0, d_confeccao_dlg.isoformat()),
             (f"👗 Prova: {desc_dlg}",     "Costura", 1.0, d_prova_dlg.isoformat()),
             (f"🎁 Entrega: {desc_dlg}",   "Costura", 0.5, d_entrega_dlg.isoformat()),
         ]
+        if tem_prova2_dlg and d_prova2_dlg:
+            tarefas_auto_dlg.insert(3, (f"👗 2ª Prova: {desc_dlg}", "Costura", 1.0, d_prova2_dlg.isoformat()))
         if precisa_tecido_dlg:
             tarefas_auto_dlg.insert(1, (f"🛍️ Tecido: {desc_dlg}", "Compras", 1.0, d_tecido_dlg.isoformat()))
 
@@ -562,6 +588,8 @@ def gerar_pdf_contrato(enc: dict, cpf: str, rg: str) -> bytes:
 
     dt_visita  = formatar_data_br(enc.get("data_visita", ""))
     dt_prova   = formatar_data_br(enc.get("data_prova", ""))
+    tem_prova2 = bool(str(enc.get("data_prova2") or "").strip())
+    dt_prova2  = formatar_data_br(enc.get("data_prova2", "")) if tem_prova2 else ""
     dt_entrega = formatar_data_br(enc.get("data_entrega", ""))
     dt_tecido  = formatar_data_br(enc.get("data_tecido", "")) if enc.get("precisa_tecido") else "—"
     dt_confec  = formatar_data_br(enc.get("data_confeccao", ""))
@@ -682,8 +710,10 @@ def gerar_pdf_contrato(enc: dict, cpf: str, rg: str) -> bytes:
         ["🛍️ Tecidos",  "Compra e separação dos tecidos e aviamentos",         dt_tecido],
         ["🪡 Confecção", "Início da produção da peça na medida solicitada",     dt_confec],
         ["👗 Prova",     "Prova com a cliente para ajustes finos e acabamentos", dt_prova],
-        ["🎁 Entrega",   "Entrega final da peça pronta e devidamente embalada", dt_entrega],
     ]
+    if tem_prova2:
+        etapas_rows.append(["👗 2ª Prova", "Segunda prova para ajustes adicionais", dt_prova2])
+    etapas_rows.append(["🎁 Entrega",   "Entrega final da peça pronta e devidamente embalada", dt_entrega])
     cron_t = Table(etapas_rows, colWidths=["22%","48%","30%"])
     cron_t.setStyle(TableStyle([
         ("BACKGROUND",(0,0),(-1,0),_marrom()),("FONTSIZE",(0,1),(-1,-1),9),
@@ -827,6 +857,19 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
     col_inf3.metric("Saldo Restante", brl(max(restante_enc, 0)))
     col_inf4.metric("Entrega",        formatar_data_br(enc.get("data_entrega","")))
 
+    prova2_txt = ""
+    if str(enc.get("data_prova2") or "").strip():
+        prova2_txt = f" &nbsp;|&nbsp; 👗 2ª Prova: **{formatar_data_br(enc.get('data_prova2'))}**"
+    tecido_txt = ""
+    if enc.get("precisa_tecido") and str(enc.get("data_tecido") or "").strip():
+        tecido_txt = f" &nbsp;|&nbsp; 🛍️ Tecido: **{formatar_data_br(enc.get('data_tecido'))}**"
+    st.caption(
+        f"🗓️ Encomenda: **{formatar_data_br(enc.get('data_encomenda', enc.get('criado_em','')))}** "
+        f"&nbsp;|&nbsp; 📏 Medidas: **{formatar_data_br(enc.get('data_visita',''))}** "
+        f"&nbsp;|&nbsp; 👗 Prova: **{formatar_data_br(enc.get('data_prova',''))}**"
+        f"{prova2_txt}{tecido_txt}"
+    )
+
     st.markdown("##### 📄 Contrato")
     col_cpf, col_rg = st.columns(2)
     cpf_s = str(enc.get("cpf_cliente") or "")
@@ -853,6 +896,10 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
         st.info("💡 Preencha CPF e RG para habilitar o contrato.")
 
     st.markdown("##### ✏️ Editar Pedido")
+
+    tem_prova2_atual = bool(int(enc.get("tem_prova2", 0) or 0)) or bool(str(enc.get("data_prova2") or "").strip())
+    ed_tem_prova2 = st.checkbox("Precisa de uma segunda prova?", value=tem_prova2_atual, key=f"tp2_{enc['rowid']}")
+
     with st.form(f"edit_{enc['rowid']}"):
         ed_peca = st.text_input("Peça", value=str(enc.get("peca") or ""))
         ed_desc = st.text_area("Descrição", value=str(enc.get("descricao") or ""), height=60)
@@ -864,23 +911,42 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
         ed_obs    = col_f2e.text_area("Observações", value=str(enc.get("observacoes") or ""), height=60)
 
         st.markdown("📅 Datas")
-        d1, d2, d3 = st.columns(3)
-        ed_vis  = d1.date_input("Visita",    value=converter_para_data(enc.get("data_visita")),    key=f"dv_{enc['rowid']}")
-        ed_tec  = d2.date_input("Tecido",    value=converter_para_data(enc.get("data_tecido")),    key=f"dt_{enc['rowid']}")
-        ed_conf = d3.date_input("Confecção", value=converter_para_data(enc.get("data_confeccao")), key=f"dc_{enc['rowid']}")
-        d4, d5  = st.columns(2)
-        ed_pro  = d4.date_input("Prova",   value=converter_para_data(enc.get("data_prova")),   key=f"dp_{enc['rowid']}")
-        ed_ent  = d5.date_input("Entrega", value=converter_para_data(enc.get("data_entrega")), key=f"de_{enc['rowid']}")
+        d0, d1 = st.columns(2)
+        ed_datenc = d0.date_input("🗓️ Data da Encomenda", value=converter_para_data(enc.get("data_encomenda")),
+                                   key=f"denc_{enc['rowid']}", format="DD/MM/YYYY")
+        ed_vis    = d1.date_input("📏 Data Medidas",      value=converter_para_data(enc.get("data_visita")),
+                                   key=f"dv_{enc['rowid']}", format="DD/MM/YYYY")
+
+        d2, d3 = st.columns(2)
+        ed_pro = d2.date_input("👗 Data da Prova", value=converter_para_data(enc.get("data_prova")),
+                                key=f"dp_{enc['rowid']}", format="DD/MM/YYYY")
+        ed_pro2 = None
+        if ed_tem_prova2:
+            ed_pro2 = d3.date_input(
+                "👗 Data da 2ª Prova",
+                value=converter_para_data(enc.get("data_prova2")) if enc.get("data_prova2") else ed_pro + timedelta(days=7),
+                key=f"dp2_{enc['rowid']}", format="DD/MM/YYYY",
+            )
+
+        d4, d5 = st.columns(2)
+        ed_tec  = d4.date_input("🛍️ Data Compra do Tecido", value=converter_para_data(enc.get("data_tecido")),
+                                 key=f"dt_{enc['rowid']}", format="DD/MM/YYYY")
+        ed_ent  = d5.date_input("🎁 Data de Entrega", value=converter_para_data(enc.get("data_entrega")),
+                                 key=f"de_{enc['rowid']}", format="DD/MM/YYYY")
+        ed_conf = converter_para_data(enc.get("data_confeccao"))
 
         col_b1, col_b2, col_b3 = st.columns(3)
         if col_b1.form_submit_button("💾 Salvar", use_container_width=True):
             encomendas_atualizar(str(enc["rowid"]), {
                 "peca": ed_peca, "descricao": ed_desc,
                 "forma_pagamento": ed_fpag, "observacoes": ed_obs,
+                "data_encomenda": ed_datenc.isoformat(),
                 "data_visita": ed_vis.isoformat(),
                 "data_tecido": ed_tec.isoformat(),
                 "data_confeccao": ed_conf.isoformat(),
                 "data_prova": ed_pro.isoformat(),
+                "tem_prova2": 1 if ed_tem_prova2 else 0,
+                "data_prova2": ed_pro2.isoformat() if ed_pro2 else "",
                 "data_entrega": ed_ent.isoformat(),
             })
             st.rerun()
@@ -1060,7 +1126,7 @@ with aba_hoje:
                     "Saúde/Médico","Exercícios","Atividades Domésticas",
                     "Compras","Lazer","Família","Outros"
                 ], key="cat_p_hoje")
-                data_p  = st.date_input("Data", hoje_brasilia(), key="data_p_hoje")
+                data_p  = st.date_input("Data", hoje_brasilia(), key="data_p_hoje", format="DD/MM/YYYY")
                 horas_p = st.number_input("Duração (h)", 0.5, 12.0, 1.0, step=0.5, key="horas_p_hoje")
                 if st.form_submit_button("🗓️ Agendar", use_container_width=True):
                     if desc_p.strip():
@@ -1113,7 +1179,7 @@ with aba_hoje:
 
             with st.form("form_campo_horas_hoje", clear_on_submit=True):
                 cc1, cc2, cc3 = st.columns([2, 1, 3])
-                c_data  = cc1.date_input("Data da saída", hoje_brasilia(), key="c_data_hoje")
+                c_data  = cc1.date_input("Data da saída", hoje_brasilia(), key="c_data_hoje", format="DD/MM/YYYY")
                 c_horas = cc2.number_input("Horas", 0.5, 24.0, 1.0, step=0.5, key="c_horas_hoje")
                 c_desc  = cc3.text_input("Observação (opcional)", key="c_desc_hoje")
                 if st.form_submit_button("➕ Lançar Horas", use_container_width=True):
@@ -1176,7 +1242,7 @@ with aba_hoje:
             with col_pm1:
                 with st.form("form_peso_hoje", clear_on_submit=True):
                     pc1, pc2 = st.columns(2)
-                    p_data = pc1.date_input("Data da pesagem", hoje_brasilia(), key="p_data_hoje")
+                    p_data = pc1.date_input("Data da pesagem", hoje_brasilia(), key="p_data_hoje", format="DD/MM/YYYY")
                     p_peso = pc2.number_input("Peso atual (kg)", min_value=30.0, max_value=200.0,
                                                value=70.0, step=0.1, format="%.1f", key="p_peso_hoje")
                     if st.form_submit_button("📝 Registrar Peso", use_container_width=True):
@@ -1295,6 +1361,8 @@ with aba_enc:
             )
             precisa_tecido = 1 if "Sim" in tem_tecido else 0
 
+            tem_prova2 = st.checkbox("Precisa de uma segunda prova?", key="np_tem_prova2")
+
             with st.form("novo_pedido", clear_on_submit=False):
                 st.markdown("#### 🧵 Dados da Peça")
                 col_p1, col_p2 = st.columns([2, 3])
@@ -1309,15 +1377,24 @@ with aba_enc:
                 forma_pag = col_v3.selectbox("Forma de Pagamento",
                     ["PIX","Dinheiro","Cartão de Crédito","Cartão de Débito","A combinar"])
 
-                st.markdown("#### 📅 Cronograma")
-                col_d1, col_d2 = st.columns(2)
-                d_visita = col_d1.date_input("🤝 Visita / Medidas", value=hoje_brasilia())
-                d_tec    = col_d2.date_input("🛍️ Compra do Tecido", value=hoje_brasilia() + timedelta(days=3)) if precisa_tecido else None
+                st.markdown("#### 📅 Datas")
+                col_d0, col_d1 = st.columns(2)
+                d_encomenda = col_d0.date_input("🗓️ Data da Encomenda", value=hoje_brasilia(), format="DD/MM/YYYY")
+                d_visita    = col_d1.date_input("📏 Data Medidas",      value=hoje_brasilia(), format="DD/MM/YYYY")
 
-                col_d3, col_d4, col_d5 = st.columns(3)
-                d_conf  = col_d3.date_input("🪡 Confecção",   value=hoje_brasilia() + timedelta(days=7))
-                d_prova = col_d4.date_input("👗 Prova",        value=hoje_brasilia() + timedelta(days=25))
-                d_ent   = col_d5.date_input("🎁 Entrega",      value=hoje_brasilia() + timedelta(days=30))
+                col_d2, col_d3 = st.columns(2)
+                d_prova  = col_d2.date_input("👗 Data da Prova", value=hoje_brasilia() + timedelta(days=25), format="DD/MM/YYYY")
+                d_prova2 = None
+                if tem_prova2:
+                    d_prova2 = col_d3.date_input("👗 Data da 2ª Prova", value=hoje_brasilia() + timedelta(days=32), format="DD/MM/YYYY")
+
+                col_d4, col_d5 = st.columns(2)
+                d_tec = None
+                if precisa_tecido:
+                    d_tec = col_d4.date_input("🛍️ Data Compra do Tecido", value=hoje_brasilia() + timedelta(days=3), format="DD/MM/YYYY")
+                d_ent = col_d5.date_input("🎁 Data de Entrega", value=hoje_brasilia() + timedelta(days=30), format="DD/MM/YYYY")
+
+                d_conf = hoje_brasilia() + timedelta(days=7)
 
                 st.markdown("#### 📄 Dados para Contrato")
                 col_c1, col_c2, col_c3 = st.columns(3)
@@ -1339,10 +1416,13 @@ with aba_enc:
                         "valor_total": v_total, "sinal": v_sinal,
                         "valor_recebido": v_sinal,
                         "etapa": 1, "precisa_tecido": precisa_tecido,
+                        "data_encomenda": d_encomenda.isoformat(),
                         "data_visita":    d_visita.isoformat(),
                         "data_tecido":    d_tec_str,
                         "data_confeccao": d_conf.isoformat(),
                         "data_prova":     d_prova.isoformat(),
+                        "tem_prova2":     1 if tem_prova2 else 0,
+                        "data_prova2":    d_prova2.isoformat() if d_prova2 else "",
                         "data_entrega":   d_ent.isoformat(),
                         "cpf_cliente": cpf_novo.strip(), "rg_cliente": rg_novo.strip(),
                         "forma_pagamento": forma_pag, "observacoes": obs_ped.strip(),
@@ -1351,11 +1431,13 @@ with aba_enc:
                     })
                     desc = f"{peca.strip()} ({cli_sel})"
                     tarefas_auto = [
-                        (f"🤝 Visita: {desc}",    "Costura", 1.0, d_visita.isoformat()),
+                        (f"📏 Medidas: {desc}",   "Costura", 1.0, d_visita.isoformat()),
                         (f"🪡 Confecção: {desc}", "Costura", 3.0, d_conf.isoformat()),
                         (f"👗 Prova: {desc}",     "Costura", 1.0, d_prova.isoformat()),
                         (f"🎁 Entrega: {desc}",   "Costura", 0.5, d_ent.isoformat()),
                     ]
+                    if tem_prova2 and d_prova2:
+                        tarefas_auto.insert(3, (f"👗 2ª Prova: {desc}", "Costura", 1.0, d_prova2.isoformat()))
                     if precisa_tecido and d_tec:
                         tarefas_auto.insert(1, (f"🛍️ Tecido: {desc}", "Compras", 1.0, d_tec.isoformat()))
                     for tarefa, cat, hrs, dt in tarefas_auto:
@@ -1372,10 +1454,12 @@ with aba_enc:
                             "cliente": cli_sel, "peca": peca.strip(),
                             "descricao": descricao_ped, "valor_total": v_total,
                             "sinal": v_sinal, "forma_pagamento": forma_pag,
+                            "data_encomenda": d_encomenda.isoformat(),
                             "data_visita": d_visita.isoformat(),
                             "data_tecido": d_tec.isoformat() if d_tec else "",
                             "data_confeccao": d_conf.isoformat(),
                             "data_prova": d_prova.isoformat(),
+                            "data_prova2": d_prova2.isoformat() if d_prova2 else "",
                             "data_entrega": d_ent.isoformat(),
                             "precisa_tecido": precisa_tecido,
                             "observacoes": obs_ped,
@@ -1394,6 +1478,7 @@ with aba_enc:
                         st.info("💡 Preencha CPF e RG para gerar o contrato PDF.")
                 else:
                     st.error("Preencha o nome da peça e selecione a cliente.")
+
 
     # ── Medidas ──────────────────────────────────────────────────────────
     with t_medidas:
@@ -1679,7 +1764,7 @@ with aba_fin:
                 g_val  = c2.number_input("Valor (R$) *", min_value=0.01, step=10.0, format="%.2f")
                 c3, c4 = st.columns(2)
                 g_cat  = c3.selectbox("Categoria", CAT_GASTOS)
-                g_data = c4.date_input("Data", hoje_brasilia())
+                g_data = c4.date_input("Data", hoje_brasilia(), format="DD/MM/YYYY")
                 c5, c6 = st.columns(2)
                 g_pago  = c5.checkbox("Já foi pago?", value=True)
                 g_recor = c6.checkbox("Gasto recorrente (mensal)?")
@@ -2030,4 +2115,4 @@ with aba_conf:
             else:
                 st.error("❌ Senha incorreta.")
 
-st.caption("v9.3.0 | Lila Closet Atelier | Firestore · Horário de Brasília · wendleydesenvolvimento")
+st.caption("v9.4.0 | Lila Closet Atelier | Firestore · Horário de Brasília · wendleydesenvolvimento")
