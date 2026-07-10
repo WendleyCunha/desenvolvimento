@@ -1,12 +1,16 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime, date, timedelta
+from zoneinfo import ZoneInfo
 import os
 import calendar
 import io
 import hashlib
 import time
 import base64
+
+# ── Fuso horário de Brasília ──────────────────────────────────────────────────
+FUSO_BR = ZoneInfo("America/Sao_Paulo")
 
 # PDF
 from reportlab.lib.pagesizes import A4
@@ -316,23 +320,53 @@ init_db()
 # ══════════════════════════════════════════════════════════════════════════════
 # HELPERS
 # ══════════════════════════════════════════════════════════════════════════════
+def agora_br() -> datetime:
+    """Data e hora atuais no fuso horário de Brasília (America/Sao_Paulo)."""
+    return datetime.now(FUSO_BR)
+
+def hoje_brasilia() -> date:
+    """Data atual (apenas o dia) no fuso horário de Brasília."""
+    return agora_br().date()
+
 def converter_para_data(valor):
     if not valor or str(valor) in ("None", "NoneType", "", "nan"):
-        return date.today()
+        return hoje_brasilia()
     try:
         if isinstance(valor, (date, datetime)):
             return valor if isinstance(valor, date) else valor.date()
         return datetime.strptime(str(valor)[:10], "%Y-%m-%d").date()
     except Exception:
-        return date.today()
+        return hoje_brasilia()
 
 def formatar_data_br(data_iso):
+    """Formata para o padrão brasileiro dd/mm/aaaa (somente data)."""
     try:
         if isinstance(data_iso, (date, datetime)):
             return data_iso.strftime("%d/%m/%Y")
         return datetime.strptime(str(data_iso)[:10], "%Y-%m-%d").strftime("%d/%m/%Y")
     except Exception:
         return str(data_iso)
+
+def formatar_data_hora_br(valor) -> str:
+    """
+    Formata um datetime (ou string ISO com data e hora) para o padrão
+    brasileiro dd/mm/aaaa às HH:MM, sempre convertido para o horário de Brasília.
+    Retorna '—' se o valor estiver vazio/ausente (ex: registros antigos sem hora salva).
+    """
+    if valor is None or str(valor).strip() in ("", "None", "NoneType", "nan", "NaT"):
+        return "—"
+    try:
+        if isinstance(valor, datetime):
+            dt = valor
+        else:
+            dt = datetime.fromisoformat(str(valor))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=FUSO_BR)
+        else:
+            dt = dt.astimezone(FUSO_BR)
+        return dt.strftime("%d/%m/%Y às %H:%M")
+    except Exception:
+        return str(valor)
 
 def brl(valor: float) -> str:
     if valor is None:
@@ -355,7 +389,7 @@ def get_logo_base64() -> str | None:
 # ══════════════════════════════════════════════════════════════════════════════
 @st.dialog("🛍️ Nova Encomenda Rápida")
 def dialog_nova_encomenda(data_pre: date | None = None):
-    d_base = data_pre or date.today()
+    d_base = data_pre or hoje_brasilia()
     st.caption(f"📅 Data de referência: **{formatar_data_br(d_base)}**")
 
     df_clis_dlg = clientes_listar()
@@ -406,7 +440,10 @@ def dialog_nova_encomenda(data_pre: date | None = None):
             return
 
         if modo_cli != "Selecionar existente":
-            clientes_inserir({"nome": nome_final, "telefone": cli_tel_dlg.strip()})
+            clientes_inserir({
+                "nome": nome_final, "telefone": cli_tel_dlg.strip(),
+                "criado_em": agora_br().isoformat(),
+            })
 
         e_id = encomendas_inserir({
             "cliente": nome_final, "peca": peca_dlg.strip(),
@@ -421,6 +458,7 @@ def dialog_nova_encomenda(data_pre: date | None = None):
             "cpf_cliente": "", "rg_cliente": "",
             "forma_pagamento": "A combinar", "observacoes": "",
             "cancelado": 0,
+            "criado_em": agora_br().isoformat(),
         })
 
         desc_dlg = f"{peca_dlg.strip()} ({nome_final})"
@@ -476,7 +514,7 @@ def gerar_pdf_contrato(enc: dict, cpf: str, rg: str) -> bytes:
 
     seed = f"{enc.get('cliente','')}{enc.get('peca','')}{time.time()}"
     num_contrato = hashlib.md5(seed.encode()).hexdigest()[:10].upper()
-    hoje_br = date.today().strftime("%d/%m/%Y")
+    emitido_em_str = agora_br().strftime("%d/%m/%Y às %H:%M")
 
     dt_visita  = formatar_data_br(enc.get("data_visita", ""))
     dt_prova   = formatar_data_br(enc.get("data_prova", ""))
@@ -548,7 +586,7 @@ def gerar_pdf_contrato(enc: dict, cpf: str, rg: str) -> bytes:
     story.append(Paragraph("CONTRATO DE PRESTAÇÃO DE SERVIÇOS DE COSTURA SOB MEDIDA", s_titulo))
     story.append(Paragraph(
         f"Contrato N.º <b>{num_contrato}</b> &nbsp;&nbsp;|&nbsp;&nbsp; "
-        f"Emitido em: <b>{hoje_br}</b> &nbsp;&nbsp;|&nbsp;&nbsp; "
+        f"Emitido em: <b>{emitido_em_str}</b> &nbsp;&nbsp;|&nbsp;&nbsp; "
         f"Validade jurídica: Art. 421 CC/2002 e MP 2.200-2/2001", s_subtit))
     story.append(HRFlowable(width="100%", thickness=1.5, color=_dourado()))
     story.append(Spacer(1, 6))
@@ -715,7 +753,7 @@ def gerar_pdf_contrato(enc: dict, cpf: str, rg: str) -> bytes:
     story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#e0d5c9")))
     story.append(Spacer(1, 5))
     story.append(Paragraph(
-        f"Lila Closet Atelier · {tel_val} | Contrato N.º {num_contrato} · {hoje_br}", s_rodape))
+        f"Lila Closet Atelier · {tel_val} | Contrato N.º {num_contrato} · {emitido_em_str}", s_rodape))
 
     doc.build(story)
     return buf.getvalue()
@@ -740,7 +778,7 @@ st.markdown(f"""
 # ══════════════════════════════════════════════════════════════════════════════
 # MÉTRICAS DO TOPO
 # ══════════════════════════════════════════════════════════════════════════════
-hoje_dt = date.today()
+hoje_dt = hoje_brasilia()
 
 df_enc_all = encomendas_listar(cancelado=False)
 enc_ativas = 0
@@ -850,7 +888,7 @@ with aba_hoje:
                     "Saúde/Médico","Exercícios","Atividades Domésticas",
                     "Compras","Lazer","Família","Outros"
                 ], key="cat_p_hoje")
-                data_p  = st.date_input("Data", date.today(), key="data_p_hoje")
+                data_p  = st.date_input("Data", hoje_brasilia(), key="data_p_hoje")
                 horas_p = st.number_input("Duração (h)", 0.5, 12.0, 1.0, step=0.5, key="horas_p_hoje")
                 if st.form_submit_button("🗓️ Agendar", use_container_width=True):
                     if desc_p.strip():
@@ -903,7 +941,7 @@ with aba_hoje:
 
             with st.form("form_campo_horas_hoje", clear_on_submit=True):
                 cc1, cc2, cc3 = st.columns([2, 1, 3])
-                c_data  = cc1.date_input("Data da saída", date.today(), key="c_data_hoje")
+                c_data  = cc1.date_input("Data da saída", hoje_brasilia(), key="c_data_hoje")
                 c_horas = cc2.number_input("Horas", 0.5, 24.0, 1.0, step=0.5, key="c_horas_hoje")
                 c_desc  = cc3.text_input("Observação (opcional)", key="c_desc_hoje")
                 if st.form_submit_button("➕ Lançar Horas", use_container_width=True):
@@ -912,6 +950,7 @@ with aba_hoje:
                         "horas": c_horas,
                         "descricao": c_desc.strip(),
                         "mes_ano": f"{c_data.year}-{c_data.month:02d}",
+                        "criado_em": agora_br().isoformat(),
                     })
                     st.success(f"✅ {c_horas}h registradas!")
                     st.rerun()
@@ -965,7 +1004,7 @@ with aba_hoje:
             with col_pm1:
                 with st.form("form_peso_hoje", clear_on_submit=True):
                     pc1, pc2 = st.columns(2)
-                    p_data = pc1.date_input("Data da pesagem", date.today(), key="p_data_hoje")
+                    p_data = pc1.date_input("Data da pesagem", hoje_brasilia(), key="p_data_hoje")
                     p_peso = pc2.number_input("Peso atual (kg)", min_value=30.0, max_value=200.0,
                                                value=70.0, step=0.1, format="%.1f", key="p_peso_hoje")
                     if st.form_submit_button("📝 Registrar Peso", use_container_width=True):
@@ -1048,6 +1087,7 @@ with aba_enc:
                         "nome": nc_nome.strip(), "modelo_base": nc_mod.strip(),
                         "telefone": nc_tel.strip(), "email": nc_email.strip(),
                         "cpf": nc_cpf.strip(),
+                        "criado_em": agora_br().isoformat(),
                     })
                     st.success(f"✅ Cliente **{nc_nome}** cadastrada!")
                     st.rerun()
@@ -1061,6 +1101,8 @@ with aba_enc:
             cols_show = [c for c in ["nome","telefone","email","modelo_base"] if c in df_clis_lista.columns]
             df_show = df_clis_lista[cols_show].copy()
             df_show.columns = ["Nome","Telefone","E-mail","Modelo Base"][:len(cols_show)]
+            if "criado_em" in df_clis_lista.columns:
+                df_show["Cadastrada em"] = df_clis_lista["criado_em"].apply(formatar_data_hora_br)
             st.dataframe(df_show, use_container_width=True, hide_index=True)
         else:
             st.info("Nenhuma cliente cadastrada ainda.")
@@ -1097,13 +1139,13 @@ with aba_enc:
 
                 st.markdown("#### 📅 Cronograma")
                 col_d1, col_d2 = st.columns(2)
-                d_visita = col_d1.date_input("🤝 Visita / Medidas", value=date.today())
-                d_tec    = col_d2.date_input("🛍️ Compra do Tecido", value=date.today() + timedelta(days=3)) if precisa_tecido else None
+                d_visita = col_d1.date_input("🤝 Visita / Medidas", value=hoje_brasilia())
+                d_tec    = col_d2.date_input("🛍️ Compra do Tecido", value=hoje_brasilia() + timedelta(days=3)) if precisa_tecido else None
 
                 col_d3, col_d4, col_d5 = st.columns(3)
-                d_conf  = col_d3.date_input("🪡 Confecção",   value=date.today() + timedelta(days=7))
-                d_prova = col_d4.date_input("👗 Prova",        value=date.today() + timedelta(days=25))
-                d_ent   = col_d5.date_input("🎁 Entrega",      value=date.today() + timedelta(days=30))
+                d_conf  = col_d3.date_input("🪡 Confecção",   value=hoje_brasilia() + timedelta(days=7))
+                d_prova = col_d4.date_input("👗 Prova",        value=hoje_brasilia() + timedelta(days=25))
+                d_ent   = col_d5.date_input("🎁 Entrega",      value=hoje_brasilia() + timedelta(days=30))
 
                 st.markdown("#### 📄 Dados para Contrato")
                 col_c1, col_c2, col_c3 = st.columns(3)
@@ -1133,6 +1175,7 @@ with aba_enc:
                         "cpf_cliente": cpf_novo.strip(), "rg_cliente": rg_novo.strip(),
                         "forma_pagamento": forma_pag, "observacoes": obs_ped.strip(),
                         "cancelado": 0,
+                        "criado_em": agora_br().isoformat(),
                     })
                     desc = f"{peca.strip()} ({cli_sel})"
                     tarefas_auto = [
@@ -1246,6 +1289,8 @@ with aba_enc:
                 with st.expander(
                     f"📦 {enc['cliente']}  —  {enc['peca']}  |  {badge_txt}  |  💰 {brl(float(enc.get('valor_total',0) or 0))}"
                 ):
+                    st.caption(f"📝 Pedido registrado em {formatar_data_hora_br(enc.get('criado_em'))}")
+
                     if not cancelado:
                         steps_html = '<div class="step-bar">'
                         for i in range(1, 8):
@@ -1353,7 +1398,7 @@ with aba_agenda:
             dialog_nova_encomenda()
 
         if "data_ref" not in st.session_state:
-            st.session_state.data_ref = date.today()
+            st.session_state.data_ref = hoje_brasilia()
 
         nav1, nav_title, nav2 = st.columns([1, 4, 1])
         if nav1.button("◀ Anterior"):
@@ -1389,7 +1434,7 @@ with aba_agenda:
                 dt_str = f"{ref.year}-{ref.month:02d}-{dia:02d}"
                 dt_obj_cal = date(ref.year, ref.month, dia)
                 tasks  = df_all_cal[df_all_cal["data"] == dt_str] if not df_all_cal.empty else pd.DataFrame()
-                is_hoje = dt_str == date.today().isoformat()
+                is_hoje = dt_str == hoje_brasilia().isoformat()
                 fundo   = "#fdf6ee" if is_hoje else "white"
                 borda   = "2px solid #c9a227" if is_hoje else "1px solid #ede3d8"
 
@@ -1555,7 +1600,7 @@ with aba_fin:
                 g_val  = c2.number_input("Valor (R$) *", min_value=0.01, step=10.0, format="%.2f")
                 c3, c4 = st.columns(2)
                 g_cat  = c3.selectbox("Categoria", CAT_GASTOS)
-                g_data = c4.date_input("Data", date.today())
+                g_data = c4.date_input("Data", hoje_brasilia())
                 c5, c6 = st.columns(2)
                 g_pago  = c5.checkbox("Já foi pago?", value=True)
                 g_recor = c6.checkbox("Gasto recorrente (mensal)?")
@@ -1582,6 +1627,7 @@ with aba_fin:
                             "data": g_data.isoformat(), "categoria": g_cat,
                             "pago": 1 if g_pago else 0,
                             "recorrente": 1 if g_recor else 0,
+                            "criado_em": agora_br().isoformat(),
                         })
                         st.success("✅ Gasto lançado!")
                         st.rerun()
@@ -1608,12 +1654,14 @@ with aba_fin:
             for _, g in df_g_fin_fresh.iterrows():
                 status_g = "✅ Pago" if int(g.get("pago", 0) or 0) else "⏳ Em aberto"
                 badge_g  = "badge-green" if int(g.get("pago", 0) or 0) else "badge-amber"
+                lancado_em = g.get("criado_em")
+                lancado_html = f" &nbsp;|&nbsp; 🕐 lançado em {formatar_data_hora_br(lancado_em)}" if lancado_em else ""
                 col_gi, col_gb = st.columns([5, 1])
                 col_gi.markdown(f"""
                 <div class="kcard">
                   <div class="kcard-title">{g['descricao']} — <b>{brl(float(g.get('valor',0)))}</b></div>
                   <div class="kcard-sub">
-                    📂 {g.get('categoria','')} &nbsp;|&nbsp; 📅 {formatar_data_br(g.get('data',''))}
+                    📂 {g.get('categoria','')} &nbsp;|&nbsp; 📅 {formatar_data_br(g.get('data',''))}{lancado_html}
                     &nbsp;<span class="badge {badge_g}">{status_g}</span>
                     {"&nbsp;<span class='badge badge-blue'>🔁 Recorrente</span>" if int(g.get('recorrente', 0) or 0) else ""}
                   </div>
@@ -1903,4 +1951,4 @@ with aba_conf:
             else:
                 st.error("❌ Senha incorreta.")
 
-st.caption("v9.1.0 | Lila Closet Atelier | Firestore · wendleydesenvolvimento")
+st.caption("v9.2.0 | Lila Closet Atelier | Firestore · Horário de Brasília · wendleydesenvolvimento")
