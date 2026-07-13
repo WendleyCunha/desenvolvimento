@@ -658,6 +658,187 @@ def dialog_nova_encomenda(data_pre: date | None = None):
         st.rerun()
 
 # ══════════════════════════════════════════════════════════════════════════════
+# SEÇÃO FIXA — NOVA ENCOMENDA (visível direto na aba ENCOMENDAS, sem popup)
+# ══════════════════════════════════════════════════════════════════════════════
+def secao_nova_encomenda_inline():
+    """
+    Mesma lógica do dialog_nova_encomenda, mas renderizada direto na página
+    (sem st.dialog). Isso evita que o formulário "suma" no celular quando o
+    usuário troca de aba/app e o Streamlit reconecta a sessão.
+    """
+    resultado = st.session_state.get("_ne_resultado")
+    if resultado:
+        st.success(f"✅ Encomenda **{resultado['peca']}** criada para **{resultado['cliente']}**!")
+        if resultado.get("pdf_bytes"):
+            col_pdf, col_gov = st.columns(2)
+            col_pdf.download_button(
+                "📥 BAIXAR CONTRATO PDF", data=resultado["pdf_bytes"],
+                file_name=f"Contrato_{resultado['cliente'].replace(' ','_')}.pdf",
+                mime="application/pdf", use_container_width=True, key="ne_dl_pdf_resultado",
+            )
+            col_gov.link_button("✍️ ASSINAR VIA GOV.BR",
+                url="https://assinador.iti.br/assinatura/index.xhtml",
+                use_container_width=True)
+        else:
+            st.info("💡 Preencha CPF e RG (seção Dados para Contrato) para gerar o contrato automaticamente.")
+        if st.button("➕ Cadastrar Outra Encomenda", use_container_width=True, type="primary", key="ne_btn_outra"):
+            for k in list(st.session_state.keys()):
+                if k.startswith("ne_"):
+                    del st.session_state[k]
+            del st.session_state["_ne_resultado"]
+            st.rerun()
+        return
+
+    d_base = hoje_brasilia()
+
+    df_clis_dlg = clientes_listar()
+    clis_dlg = df_clis_dlg["nome"].tolist() if not df_clis_dlg.empty else []
+
+    st.markdown("##### 👤 Cliente")
+    modo_cli = st.radio(
+        "Cliente", ["Selecionar existente", "Cadastrar nova"],
+        horizontal=True, key="ne_modo_cli", label_visibility="collapsed",
+        index=0 if clis_dlg else 1,
+    )
+
+    cli_tel_dlg = ""
+    if modo_cli == "Selecionar existente" and clis_dlg:
+        cli_sel_dlg = st.selectbox("Cliente *", clis_dlg, key="ne_cli_sel")
+    else:
+        col_cn1, col_cn2 = st.columns(2)
+        cli_sel_dlg = col_cn1.text_input("Nome da nova cliente *", key="ne_cli_novo")
+        cli_tel_dlg = col_cn2.text_input("Telefone / WhatsApp", key="ne_cli_tel")
+
+    st.markdown("##### 🧵 Peça / Serviço")
+    peca_dlg = st.text_input("Peça / Serviço *", placeholder="Ex: Vestido de festa…", key="ne_peca")
+    descricao_dlg = st.text_area("Descrição detalhada", key="ne_descricao", height=70)
+
+    st.markdown("##### 💰 Valores")
+    col_v1, col_v2, col_v3 = st.columns(3)
+    v_total_dlg = col_v1.number_input("Valor Total (R$)", min_value=0.0, step=50.0, format="%.2f", key="ne_valor")
+    v_sinal_dlg = col_v2.number_input("Sinal / Entrada (R$)", min_value=0.0, step=50.0, format="%.2f", key="ne_sinal")
+    forma_pag_dlg = col_v3.selectbox("Forma de Pagamento",
+        ["PIX","Dinheiro","Cartão de Crédito","Cartão de Débito","A combinar"], key="ne_forma_pag")
+
+    st.markdown("##### 📅 Datas")
+
+    d_encomenda_dlg = st.date_input(
+        "🗓️ Data da Encomenda", value=d_base, key="ne_encomenda", format="DD/MM/YYYY"
+    )
+    d_visita_dlg = st.date_input(
+        "📏 Data Medidas", value=d_base, key="ne_visita", format="DD/MM/YYYY"
+    )
+    d_prova_dlg = st.date_input(
+        "👗 Data da Prova", value=d_base + timedelta(days=25), key="ne_prova", format="DD/MM/YYYY"
+    )
+
+    tem_prova2_dlg = st.checkbox("Precisa de uma segunda prova?", key="ne_tem_prova2")
+    d_prova2_dlg = None
+    if tem_prova2_dlg:
+        d_prova2_dlg = st.date_input(
+            "👗 Data da 2ª Prova", value=d_prova_dlg + timedelta(days=7),
+            key="ne_prova2", format="DD/MM/YYYY",
+        )
+
+    precisa_tecido_dlg = st.checkbox("Precisa comprar tecido?", key="ne_tecido")
+    d_tecido_dlg = d_visita_dlg + timedelta(days=3)
+    if precisa_tecido_dlg:
+        d_tecido_dlg = st.date_input(
+            "🛍️ Data Compra do Tecido", value=d_tecido_dlg, key="ne_data_tecido", format="DD/MM/YYYY"
+        )
+
+    d_entrega_dlg = st.date_input(
+        "🎁 Data de Entrega", value=d_base + timedelta(days=30), key="ne_entrega", format="DD/MM/YYYY"
+    )
+
+    d_confeccao_dlg = d_visita_dlg + timedelta(days=7)
+
+    st.markdown("##### 📄 Dados para Contrato")
+    st.caption("Preencha CPF e RG para o contrato ser gerado automaticamente assim que a encomenda for criada.")
+    col_c1, col_c2 = st.columns(2)
+    cpf_dlg = col_c1.text_input("CPF da cliente", placeholder="000.000.000-00", key="ne_cpf")
+    rg_dlg  = col_c2.text_input("RG da cliente",  placeholder="00.000.000-0", key="ne_rg")
+    obs_dlg = st.text_area("Observações", key="ne_obs", height=68)
+
+    st.markdown("")
+    if st.button("✅ Criar Encomenda", use_container_width=True, type="primary", key="ne_btn_ok"):
+        nome_final = cli_sel_dlg.strip() if isinstance(cli_sel_dlg, str) else cli_sel_dlg
+
+        if not nome_final:
+            st.error("Informe o nome da cliente.")
+            return
+        if not peca_dlg.strip():
+            st.error("Informe a peça / serviço.")
+            return
+
+        if modo_cli != "Selecionar existente":
+            clientes_inserir({
+                "nome": nome_final, "telefone": cli_tel_dlg.strip(),
+                "criado_em": agora_br().isoformat(),
+            })
+
+        e_id = encomendas_inserir({
+            "cliente": nome_final, "peca": peca_dlg.strip(),
+            "descricao": descricao_dlg.strip(), "valor_total": v_total_dlg, "sinal": v_sinal_dlg,
+            "valor_recebido": v_sinal_dlg,
+            "etapa": 1, "precisa_tecido": 1 if precisa_tecido_dlg else 0,
+            "data_encomenda": d_encomenda_dlg.isoformat(),
+            "data_visita":    d_visita_dlg.isoformat(),
+            "data_tecido":    d_tecido_dlg.isoformat(),
+            "data_confeccao": d_confeccao_dlg.isoformat(),
+            "data_prova":     d_prova_dlg.isoformat(),
+            "tem_prova2":     1 if tem_prova2_dlg else 0,
+            "data_prova2":    d_prova2_dlg.isoformat() if d_prova2_dlg else "",
+            "data_entrega":   d_entrega_dlg.isoformat(),
+            "cpf_cliente": cpf_dlg.strip(), "rg_cliente": rg_dlg.strip(),
+            "forma_pagamento": forma_pag_dlg, "observacoes": obs_dlg.strip(),
+            "cancelado": 0,
+            "criado_em": agora_br().isoformat(),
+        })
+
+        desc_dlg = f"{peca_dlg.strip()} ({nome_final})"
+        tarefas_auto_dlg = [
+            (f"📏 Medidas: {desc_dlg}",   "Costura", 1.0, d_visita_dlg.isoformat()),
+            (f"🪡 Confecção: {desc_dlg}", "Costura", 3.0, d_confeccao_dlg.isoformat()),
+            (f"👗 Prova: {desc_dlg}",     "Costura", 1.0, d_prova_dlg.isoformat()),
+            (f"🎁 Entrega: {desc_dlg}",   "Costura", 0.5, d_entrega_dlg.isoformat()),
+        ]
+        if tem_prova2_dlg and d_prova2_dlg:
+            tarefas_auto_dlg.insert(3, (f"👗 2ª Prova: {desc_dlg}", "Costura", 1.0, d_prova2_dlg.isoformat()))
+        if precisa_tecido_dlg:
+            tarefas_auto_dlg.insert(1, (f"🛍️ Tecido: {desc_dlg}", "Compras", 1.0, d_tecido_dlg.isoformat()))
+
+        for tarefa_a, cat_a, hrs_a, dt_a in tarefas_auto_dlg:
+            cronograma_inserir({
+                "tarefa": tarefa_a, "categoria": cat_a, "horas": hrs_a,
+                "data": dt_a, "frequencia": "Pontual", "concluida": 0,
+                "encomenda_id": e_id, "tipo_agenda": "Trabalho",
+            })
+
+        pdf_bytes_dlg = None
+        if cpf_dlg.strip() and rg_dlg.strip():
+            enc_dict_pdf = {
+                "cliente": nome_final, "peca": peca_dlg.strip(),
+                "descricao": descricao_dlg.strip(), "valor_total": v_total_dlg,
+                "sinal": v_sinal_dlg, "forma_pagamento": forma_pag_dlg,
+                "data_encomenda": d_encomenda_dlg.isoformat(),
+                "data_visita": d_visita_dlg.isoformat(),
+                "data_tecido": d_tecido_dlg.isoformat() if precisa_tecido_dlg else "",
+                "data_confeccao": d_confeccao_dlg.isoformat(),
+                "data_prova": d_prova_dlg.isoformat(),
+                "data_prova2": d_prova2_dlg.isoformat() if d_prova2_dlg else "",
+                "data_entrega": d_entrega_dlg.isoformat(),
+                "precisa_tecido": 1 if precisa_tecido_dlg else 0,
+                "observacoes": obs_dlg.strip(),
+            }
+            pdf_bytes_dlg = gerar_pdf_contrato(enc_dict_pdf, cpf_dlg.strip(), rg_dlg.strip())
+
+        st.session_state["_ne_resultado"] = {
+            "cliente": nome_final, "peca": peca_dlg.strip(), "pdf_bytes": pdf_bytes_dlg,
+        }
+        st.rerun()
+
+# ══════════════════════════════════════════════════════════════════════════════
 # PDF — CONTRATO
 # ══════════════════════════════════════════════════════════════════════════════
 def _marrom():  return colors.HexColor("#3d1f10")
@@ -1163,9 +1344,9 @@ st.markdown("<br>", unsafe_allow_html=True)
 # ══════════════════════════════════════════════════════════════════════════════
 # ABAS PRINCIPAIS
 # ══════════════════════════════════════════════════════════════════════════════
-aba_hoje, aba_enc, aba_agenda, aba_fin, aba_conf = st.tabs([
-    "⚡ HOJE",
+aba_enc, aba_hoje, aba_agenda, aba_fin, aba_conf = st.tabs([
     "🛍️ ENCOMENDAS",
+    "⚡ HOJE",
     "📅 AGENDA",
     "💰 FINANCEIRO",
     "⚙️ CONFIGURAÇÕES",
@@ -1430,6 +1611,17 @@ with aba_hoje:
 # ABA 2 – ENCOMENDAS
 # ══════════════════════════════════════════════════════════════════════════════
 with aba_enc:
+    st.markdown("### 🆕 Nova Encomenda")
+    st.caption(
+        "Preencha os dados abaixo para cadastrar uma nova encomenda. "
+        "Este formulário fica sempre visível nesta tela — inclusive se você trocar "
+        "de aba ou de aplicativo no celular, os dados já digitados permanecem aqui."
+    )
+    with st.container(border=True):
+        secao_nova_encomenda_inline()
+
+    st.divider()
+
     t_medidas, t_gerenciar = st.tabs([
         "📏 Medidas & Clientes",
         "📋 Gerenciar Pedidos",
@@ -1439,7 +1631,7 @@ with aba_enc:
     with t_medidas:
         st.markdown("### 👥 Clientes Cadastradas")
         st.caption("Novas clientes são cadastradas direto na hora de criar uma encomenda "
-                   "(botão **➕ Nova Encomenda**, disponível na aba Agenda ou em Gerenciar Pedidos).")
+                   "(seção **🆕 Nova Encomenda**, no topo desta aba).")
         df_clis_lista = clientes_listar()
         if not df_clis_lista.empty:
             cols_show = [c for c in ["nome","telefone","email","modelo_base"] if c in df_clis_lista.columns]
@@ -2088,4 +2280,4 @@ with aba_conf:
             else:
                 st.error("❌ Senha incorreta.")
 
-st.caption("v10.0.0 | Lila Closet Atelier | Firestore · Horário de Brasília · wendleydesenvolvimento")
+st.caption("v10.0.1 | Lila Closet Atelier | Firestore · Horário de Brasília · wendleydesenvolvimento")
