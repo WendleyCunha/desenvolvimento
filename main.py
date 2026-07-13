@@ -241,41 +241,53 @@ div[data-testid="metric-container"] {
   text-decoration: none !important; display: block; text-align: center; padding: 8px 16px;
 }
 
-/* ── Card do dia no calendário ── */
-.cal-day-cell {
-  background: #fff; border: 1px solid #ecdfc9; border-left: 4px solid #c9a227;
-  border-bottom: none; border-radius: 10px 10px 0 0;
-  padding: 6px; min-height: 68px;
-  box-shadow: 0 1px 4px rgba(61,31,16,0.05);
+/* ── Card do dia no calendário (card único e integrado) ── */
+div[class*="st-key-calcell_"] {
+  background: #fff;
+  border: 1px solid #ecdfc9;
+  border-left: 4px solid #c9a227;
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(61,31,16,0.07);
+  padding: 8px 8px 4px;
+  margin-bottom: 10px;
+  transition: box-shadow .15s ease, transform .15s ease;
 }
-.cal-day-cell.cal-hoje {
-  background: #fdf6ee; border-left: 4px solid #6b3a22;
-  box-shadow: 0 3px 12px rgba(61,31,16,0.14);
+div[class*="st-key-calcell_"]:hover {
+  box-shadow: 0 8px 20px rgba(61,31,16,0.15);
+  transform: translateY(-2px);
 }
-.cal-day-num { color: #3d1f10; font-size: 0.8rem; font-weight: 700; }
+div[class*="st-key-calcell_hoje_"] {
+  background: #fdf6ee;
+  border-left: 4px solid #6b3a22;
+  box-shadow: 0 4px 16px rgba(61,31,16,0.16);
+}
+.cal-day-inner { min-height: 58px; }
+.cal-day-num { color: #3d1f10; font-size: 0.82rem; font-weight: 700; }
 .cal-task-tag {
-  font-size: 0.6rem; color: #8a6200; margin-top: 2px;
-  background: #fff8e1; border-radius: 4px; padding: 1px 4px;
+  font-size: 0.6rem; color: #8a6200; margin-top: 3px;
+  background: #fff8e1; border-radius: 5px; padding: 2px 5px;
 }
 .cal-task-cliente { color: #3d1f10; font-weight: 700; font-size: 0.58rem; }
 
-/* ── Botão "+" do calendário (encaixa embaixo do card do dia) ── */
-.cal-add-btn button {
-  padding: 2px 0 !important;
-  min-height: 22px !important;
-  font-size: 0.7rem !important;
-  background: #fff !important;
-  color: #6b3a22 !important;
-  border: 1px solid #ecdfc9 !important;
-  border-left: 4px solid #c9a227 !important;
-  border-top: none !important;
-  border-radius: 0 0 10px 10px !important;
-  margin-top: 0 !important;
+/* Botão "+" agora vive DENTRO do mesmo card, sem bordas próprias — parece um só elemento */
+div[class*="st-key-calcell_"] div[data-testid="stButton"] {
+  margin-top: 4px;
 }
-.cal-add-btn button:hover {
-  background: #c9a227 !important;
-  color: white !important;
-  border-color: #c9a227 !important;
+div[class*="st-key-calcell_"] div[data-testid="stButton"] button {
+  padding: 2px 0 !important;
+  min-height: 20px !important;
+  font-size: 0.72rem !important;
+  background: transparent !important;
+  color: #8b7355 !important;
+  border: none !important;
+  border-top: 1px dashed #ecdfc9 !important;
+  border-radius: 0 !important;
+  margin-top: 2px !important;
+  box-shadow: none !important;
+}
+div[class*="st-key-calcell_"] div[data-testid="stButton"] button:hover {
+  color: #c9a227 !important;
+  background: transparent !important;
 }
 
 /* ── Cards clicáveis (pedidos) que abrem popup de detalhes ── */
@@ -1344,19 +1356,19 @@ st.markdown("<br>", unsafe_allow_html=True)
 # ══════════════════════════════════════════════════════════════════════════════
 # ABAS PRINCIPAIS
 # ══════════════════════════════════════════════════════════════════════════════
-aba_enc, aba_hoje, aba_agenda, aba_fin, aba_conf = st.tabs([
+aba_enc, aba_agenda, aba_fin, aba_conf = st.tabs([
     "🛍️ ENCOMENDAS",
-    "⚡ HOJE",
     "📅 AGENDA",
     "💰 FINANCEIRO",
     "⚙️ CONFIGURAÇÕES",
 ])
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ABA 1 – HOJE
+# CONTEÚDO REAPROVEITADO DA ANTIGA ABA "HOJE"
+# (agora vive dentro de AGENDA ▸ Calendário — topo e rodapé)
 # ══════════════════════════════════════════════════════════════════════════════
-with aba_hoje:
-    st.markdown("### ⚡ Tarefas para Hoje e Atrasadas")
+def _secao_tarefas_e_entregas_hoje():
+    st.markdown("### ⚡ Tarefas para Hoje")
 
     df_hoje = cronograma_com_cliente(
         tipo_agenda="Trabalho",
@@ -1405,7 +1417,7 @@ with aba_hoje:
                     st.rerun()
 
     st.divider()
-    st.markdown("### 📦 Pedidos Entregues Hoje")
+    st.markdown("### 🎁 Entregas de Hoje")
     if not df_enc_all.empty:
         df_ent_hoje = df_enc_all[
             (df_enc_all.get("data_entrega", pd.Series(dtype=str)) == hoje_dt.isoformat()) &
@@ -1419,8 +1431,9 @@ with aba_hoje:
     else:
         st.info("Nenhuma entrega programada para hoje.")
 
-    # ── Vida Pessoal ──────────────────────────────────────────────────────
-    st.divider()
+
+def _secao_vida_pessoal():
+    st.markdown('<div class="sep-pessoal"></div>', unsafe_allow_html=True)
     mostrar_vida_pessoal = st.toggle("🏠 Mostrar Vida Pessoal", value=False, key="tog_vida_pessoal_hoje")
 
     if mostrar_vida_pessoal:
@@ -1710,7 +1723,7 @@ with aba_enc:
 # ABA 3 – AGENDA
 # ══════════════════════════════════════════════════════════════════════════════
 with aba_agenda:
-    sub_trabalho, sub_cal = st.tabs(["🛠️ Trabalho", "📅 Calendário"])
+    sub_cal, sub_trabalho = st.tabs(["📅 Calendário", "🛠️ Trabalho"])
 
     with sub_trabalho:
         st.markdown("#### 🛠️ Agenda de Trabalho Pendente")
@@ -1725,6 +1738,11 @@ with aba_agenda:
             st.dataframe(df_show, use_container_width=True, hide_index=True)
 
     with sub_cal:
+        _secao_tarefas_e_entregas_hoje()
+
+        st.divider()
+        st.markdown("### 📅 Calendário")
+
         col_cal_hdr1, col_cal_hdr2 = st.columns([4, 2])
         col_cal_hdr1.caption("💡 Clique no **➕** de qualquer dia para criar uma encomenda com aquela data.")
         if col_cal_hdr2.button("➕ Nova Encomenda Rápida", use_container_width=True, type="primary", key="btn_add_geral"):
@@ -1768,7 +1786,6 @@ with aba_agenda:
                 dt_obj_cal = date(ref.year, ref.month, dia)
                 tasks  = df_all_cal[df_all_cal["data"] == dt_str] if not df_all_cal.empty else pd.DataFrame()
                 is_hoje = dt_str == hoje_brasilia().isoformat()
-                classe_dia = "cal-day-cell cal-hoje" if is_hoje else "cal-day-cell"
 
                 tarefas_html = ""
                 for _, r in tasks.iterrows():
@@ -1780,18 +1797,21 @@ with aba_agenda:
                         f"</div>"
                     )
 
+                cell_key = f"calcell_hoje_{dt_str}" if is_hoje else f"calcell_{dt_str}"
+
                 with cols_s[i]:
-                    st.markdown(
-                        f"<div class='{classe_dia}'>"
-                        f"<span class='cal-day-num'>{dia}</span>"
-                        f"{tarefas_html}</div>",
-                        unsafe_allow_html=True,
-                    )
-                    st.markdown('<div class="cal-add-btn">', unsafe_allow_html=True)
-                    if st.button("➕", key=f"add_cal_{dt_str}", use_container_width=True,
-                                 help=f"Nova encomenda em {formatar_data_br(dt_str)}"):
-                        dialog_nova_encomenda(dt_obj_cal)
-                    st.markdown('</div>', unsafe_allow_html=True)
+                    with st.container(key=cell_key):
+                        st.markdown(
+                            f"<div class='cal-day-inner'>"
+                            f"<span class='cal-day-num'>{dia}</span>"
+                            f"{tarefas_html}</div>",
+                            unsafe_allow_html=True,
+                        )
+                        if st.button("➕ novo", key=f"add_cal_{dt_str}", use_container_width=True,
+                                     help=f"Nova encomenda em {formatar_data_br(dt_str)}"):
+                            dialog_nova_encomenda(dt_obj_cal)
+
+        _secao_vida_pessoal()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ABA 4 – FINANCEIRO
