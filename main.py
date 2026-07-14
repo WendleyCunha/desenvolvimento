@@ -538,6 +538,10 @@ def dialog_nova_encomenda(data_pre: date | None = None):
     d_visita_dlg = st.date_input(
         "📏 Data Medidas", value=d_base, key="dlg_visita", format="DD/MM/YYYY"
     )
+    d_confeccao_dlg = st.date_input(
+        "🪡 Data da Confecção", value=d_visita_dlg + timedelta(days=7),
+        key="dlg_confeccao", format="DD/MM/YYYY"
+    )
     d_prova_dlg = st.date_input(
         "👗 Data da Prova", value=d_base + timedelta(days=25), key="dlg_prova", format="DD/MM/YYYY"
     )
@@ -560,8 +564,6 @@ def dialog_nova_encomenda(data_pre: date | None = None):
     d_entrega_dlg = st.date_input(
         "🎁 Data de Entrega", value=d_base + timedelta(days=30), key="dlg_entrega", format="DD/MM/YYYY"
     )
-
-    d_confeccao_dlg = d_visita_dlg + timedelta(days=7)
 
     st.markdown("##### 📄 Dados para Contrato")
     st.caption("Preencha CPF e RG para o contrato ser gerado automaticamente assim que a encomenda for criada.")
@@ -610,15 +612,16 @@ def dialog_nova_encomenda(data_pre: date | None = None):
 
         desc_dlg = f"{peca_dlg.strip()} ({nome_final})"
         tarefas_auto_dlg = [
+            (f"📝 Encomenda: {desc_dlg}", "Costura", 0.5, d_encomenda_dlg.isoformat()),
             (f"📏 Medidas: {desc_dlg}",   "Costura", 1.0, d_visita_dlg.isoformat()),
-            (f"🪡 Confecção: {desc_dlg}", "Costura", 3.0, d_confeccao_dlg.isoformat()),
-            (f"👗 Prova: {desc_dlg}",     "Costura", 1.0, d_prova_dlg.isoformat()),
-            (f"🎁 Entrega: {desc_dlg}",   "Costura", 0.5, d_entrega_dlg.isoformat()),
         ]
-        if tem_prova2_dlg and d_prova2_dlg:
-            tarefas_auto_dlg.insert(3, (f"👗 2ª Prova: {desc_dlg}", "Costura", 1.0, d_prova2_dlg.isoformat()))
         if precisa_tecido_dlg:
-            tarefas_auto_dlg.insert(1, (f"🛍️ Tecido: {desc_dlg}", "Compras", 1.0, d_tecido_dlg.isoformat()))
+            tarefas_auto_dlg.append((f"🛍️ Tecido: {desc_dlg}", "Compras", 1.0, d_tecido_dlg.isoformat()))
+        tarefas_auto_dlg.append((f"🪡 Confecção: {desc_dlg}", "Costura", 3.0, d_confeccao_dlg.isoformat()))
+        tarefas_auto_dlg.append((f"👗 Prova: {desc_dlg}",     "Costura", 1.0, d_prova_dlg.isoformat()))
+        if tem_prova2_dlg and d_prova2_dlg:
+            tarefas_auto_dlg.append((f"👗 2ª Prova: {desc_dlg}", "Costura", 1.0, d_prova2_dlg.isoformat()))
+        tarefas_auto_dlg.append((f"🎁 Entrega: {desc_dlg}",   "Costura", 0.5, d_entrega_dlg.isoformat()))
 
         for tarefa_a, cat_a, hrs_a, dt_a in tarefas_auto_dlg:
             cronograma_inserir({
@@ -740,6 +743,10 @@ def secao_nova_encomenda_inline():
     d_visita_dlg = st.date_input(
         "📏 Data Medidas", value=d_base, key="ne_visita", format="DD/MM/YYYY"
     )
+    d_confeccao_dlg = st.date_input(
+        "🪡 Data da Confecção", value=d_visita_dlg + timedelta(days=7),
+        key="ne_confeccao", format="DD/MM/YYYY"
+    )
     d_prova_dlg = st.date_input(
         "👗 Data da Prova", value=d_base + timedelta(days=25), key="ne_prova", format="DD/MM/YYYY"
     )
@@ -762,8 +769,6 @@ def secao_nova_encomenda_inline():
     d_entrega_dlg = st.date_input(
         "🎁 Data de Entrega", value=d_base + timedelta(days=30), key="ne_entrega", format="DD/MM/YYYY"
     )
-
-    d_confeccao_dlg = d_visita_dlg + timedelta(days=7)
 
     st.markdown("##### 📄 Dados para Contrato")
     st.caption("Preencha CPF e RG para o contrato ser gerado automaticamente assim que a encomenda for criada.")
@@ -810,15 +815,16 @@ def secao_nova_encomenda_inline():
 
         desc_dlg = f"{peca_dlg.strip()} ({nome_final})"
         tarefas_auto_dlg = [
+            (f"📝 Encomenda: {desc_dlg}", "Costura", 0.5, d_encomenda_dlg.isoformat()),
             (f"📏 Medidas: {desc_dlg}",   "Costura", 1.0, d_visita_dlg.isoformat()),
-            (f"🪡 Confecção: {desc_dlg}", "Costura", 3.0, d_confeccao_dlg.isoformat()),
-            (f"👗 Prova: {desc_dlg}",     "Costura", 1.0, d_prova_dlg.isoformat()),
-            (f"🎁 Entrega: {desc_dlg}",   "Costura", 0.5, d_entrega_dlg.isoformat()),
         ]
-        if tem_prova2_dlg and d_prova2_dlg:
-            tarefas_auto_dlg.insert(3, (f"👗 2ª Prova: {desc_dlg}", "Costura", 1.0, d_prova2_dlg.isoformat()))
         if precisa_tecido_dlg:
-            tarefas_auto_dlg.insert(1, (f"🛍️ Tecido: {desc_dlg}", "Compras", 1.0, d_tecido_dlg.isoformat()))
+            tarefas_auto_dlg.append((f"🛍️ Tecido: {desc_dlg}", "Compras", 1.0, d_tecido_dlg.isoformat()))
+        tarefas_auto_dlg.append((f"🪡 Confecção: {desc_dlg}", "Costura", 3.0, d_confeccao_dlg.isoformat()))
+        tarefas_auto_dlg.append((f"👗 Prova: {desc_dlg}",     "Costura", 1.0, d_prova_dlg.isoformat()))
+        if tem_prova2_dlg and d_prova2_dlg:
+            tarefas_auto_dlg.append((f"👗 2ª Prova: {desc_dlg}", "Costura", 1.0, d_prova2_dlg.isoformat()))
+        tarefas_auto_dlg.append((f"🎁 Entrega: {desc_dlg}",   "Costura", 0.5, d_entrega_dlg.isoformat()))
 
         for tarefa_a, cat_a, hrs_a, dt_a in tarefas_auto_dlg:
             cronograma_inserir({
@@ -1161,6 +1167,7 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
     st.caption(
         f"🗓️ Encomenda: **{formatar_data_br(enc.get('data_encomenda', enc.get('criado_em','')))}** "
         f"&nbsp;|&nbsp; 📏 Medidas: **{formatar_data_br(enc.get('data_visita',''))}** "
+        f"&nbsp;|&nbsp; 🪡 Confecção: **{formatar_data_br(enc.get('data_confeccao',''))}** "
         f"&nbsp;|&nbsp; 👗 Prova: **{formatar_data_br(enc.get('data_prova',''))}**"
         f"{prova2_txt}{tecido_txt}"
     )
@@ -1213,22 +1220,25 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
                                    key=f"dv_{enc['rowid']}", format="DD/MM/YYYY")
 
         d2, d3 = st.columns(2)
-        ed_pro = d2.date_input("👗 Data da Prova", value=converter_para_data(enc.get("data_prova")),
+        ed_conf = d2.date_input("🪡 Data da Confecção", value=converter_para_data(enc.get("data_confeccao")),
+                                 key=f"dconf_{enc['rowid']}", format="DD/MM/YYYY")
+        ed_pro = d3.date_input("👗 Data da Prova", value=converter_para_data(enc.get("data_prova")),
                                 key=f"dp_{enc['rowid']}", format="DD/MM/YYYY")
+
+        d4, d5 = st.columns(2)
         ed_pro2 = None
         if ed_tem_prova2:
-            ed_pro2 = d3.date_input(
+            ed_pro2 = d4.date_input(
                 "👗 Data da 2ª Prova",
                 value=converter_para_data(enc.get("data_prova2")) if enc.get("data_prova2") else ed_pro + timedelta(days=7),
                 key=f"dp2_{enc['rowid']}", format="DD/MM/YYYY",
             )
 
-        d4, d5 = st.columns(2)
-        ed_tec  = d4.date_input("🛍️ Data Compra do Tecido", value=converter_para_data(enc.get("data_tecido")),
+        d6, d7 = st.columns(2)
+        ed_tec  = d6.date_input("🛍️ Data Compra do Tecido", value=converter_para_data(enc.get("data_tecido")),
                                  key=f"dt_{enc['rowid']}", format="DD/MM/YYYY")
-        ed_ent  = d5.date_input("🎁 Data de Entrega", value=converter_para_data(enc.get("data_entrega")),
+        ed_ent  = d7.date_input("🎁 Data de Entrega", value=converter_para_data(enc.get("data_entrega")),
                                  key=f"de_{enc['rowid']}", format="DD/MM/YYYY")
-        ed_conf = converter_para_data(enc.get("data_confeccao"))
 
         col_b1, col_b2, col_b3 = st.columns(3)
         if col_b1.form_submit_button("💾 Salvar", use_container_width=True):
@@ -1261,6 +1271,48 @@ def _abrir_popup_pedido(enc: dict, cancelado: bool):
     def _p():
         _conteudo_pedido(enc, cancelado)
     _p()
+
+
+def _dialog_editar_dia(dt_str: str, tasks_dia: pd.DataFrame):
+    """
+    Popup usado a partir do Calendário: mostra o(s) pedido(s) vinculados
+    às tarefas daquele dia e permite editar diretamente (mesmo formulário
+    usado em Gerenciar Pedidos), sem opção de criar nova encomenda.
+    """
+    encomenda_ids = []
+    if tasks_dia is not None and not tasks_dia.empty and "encomenda_id" in tasks_dia.columns:
+        encomenda_ids = [e for e in tasks_dia["encomenda_id"].dropna().unique().tolist() if str(e).strip()]
+
+    @st.dialog(f"✏️ Editar pedidos — {formatar_data_br(dt_str)}", width="large")
+    def _d():
+        if not encomenda_ids:
+            st.info("Nenhum pedido vinculado a esta data.")
+            return
+
+        encomendas_dia = []
+        for eid in encomenda_ids:
+            enc_d = encomendas_buscar(str(eid))
+            if enc_d:
+                encomendas_dia.append(enc_d)
+
+        if not encomendas_dia:
+            st.info("Nenhum pedido vinculado a esta data.")
+            return
+
+        if len(encomendas_dia) == 1:
+            enc_d = encomendas_dia[0]
+            cancelado_d = bool(int(enc_d.get("cancelado", 0) or 0))
+            _conteudo_pedido(enc_d, cancelado_d)
+        else:
+            labels = [f"{e['cliente']} — {e['peca']}" for e in encomendas_dia]
+            escolha = st.radio("Vários pedidos nesta data. Selecione qual editar:",
+                                labels, key=f"sel_dia_{dt_str}")
+            idx_sel = labels.index(escolha)
+            enc_d = encomendas_dia[idx_sel]
+            st.divider()
+            cancelado_d = bool(int(enc_d.get("cancelado", 0) or 0))
+            _conteudo_pedido(enc_d, cancelado_d)
+    _d()
 
 
 def _card_pedido(enc: dict, idx: int):
@@ -1731,22 +1783,39 @@ with aba_agenda:
         if df_t.empty:
             st.success("Nenhuma tarefa pendente!")
         else:
-            df_t["Data"]      = df_t["data"].apply(formatar_data_br)
-            df_t["Atrasada?"] = df_t["data"].apply(lambda d: "⚠️ Sim" if d < hoje_dt.isoformat() else "Não")
-            df_show = df_t[["Data","tarefa","categoria","horas","nome_cliente","Atrasada?"]].copy()
-            df_show.columns = ["Data","Tarefa","Categoria","Horas","Cliente","Atrasada?"]
-            st.dataframe(df_show, use_container_width=True, hide_index=True)
+            for _, row in df_t.iterrows():
+                is_atrasado = row["data"] < hoje_dt.isoformat()
+                badge_cls   = "badge-red" if is_atrasado else "badge-gold"
+                badge_txt   = "⚠️ ATRASADO" if is_atrasado else "🔔 Pendente"
+                cliente_txt = f" &nbsp;|&nbsp; 👤 {row['nome_cliente']}" if row.get("nome_cliente") else ""
+
+                col_info, col_btn = st.columns([5, 1])
+                with col_info:
+                    st.markdown(f"""
+                    <div class="kcard">
+                      <div class="kcard-title">{row['tarefa']}</div>
+                      <div class="kcard-sub">
+                        📂 {row['categoria']} &nbsp;|&nbsp; ⏱️ {row['horas']}h &nbsp;|&nbsp;
+                        📅 {formatar_data_br(row['data'])}{cliente_txt}
+                        &nbsp;<span class="badge {badge_cls}">{badge_txt}</span>
+                      </div>
+                    </div>""", unsafe_allow_html=True)
+                with col_btn:
+                    st.write("")
+                    enc_id_t = row.get("encomenda_id")
+                    if enc_id_t and str(enc_id_t).strip():
+                        if st.button("✏️ Editar", key=f"edit_trab_{row['rowid']}", use_container_width=True):
+                            enc_data_t = encomendas_buscar(str(enc_id_t))
+                            if enc_data_t:
+                                cancelado_t = bool(int(enc_data_t.get("cancelado", 0) or 0))
+                                _abrir_popup_pedido(enc_data_t, cancelado_t)
 
     with sub_cal:
         _secao_tarefas_e_entregas_hoje()
 
         st.divider()
         st.markdown("### 📅 Calendário")
-
-        col_cal_hdr1, col_cal_hdr2 = st.columns([4, 2])
-        col_cal_hdr1.caption("💡 Clique no **➕** de qualquer dia para criar uma encomenda com aquela data.")
-        if col_cal_hdr2.button("➕ Nova Encomenda Rápida", use_container_width=True, type="primary", key="btn_add_geral"):
-            dialog_nova_encomenda()
+        st.caption("💡 Clique em **✏️ editar** em qualquer dia com pedidos para abrir e editar aquela encomenda.")
 
         if "data_ref" not in st.session_state:
             st.session_state.data_ref = hoje_brasilia()
@@ -1798,6 +1867,12 @@ with aba_agenda:
                     )
 
                 cell_key = f"calcell_hoje_{dt_str}" if is_hoje else f"calcell_{dt_str}"
+                tem_pedido_dia = (
+                    not tasks.empty
+                    and "encomenda_id" in tasks.columns
+                    and tasks["encomenda_id"].notna().any()
+                    and tasks["encomenda_id"].astype(str).str.strip().ne("").any()
+                )
 
                 with cols_s[i]:
                     with st.container(key=cell_key):
@@ -1807,9 +1882,10 @@ with aba_agenda:
                             f"{tarefas_html}</div>",
                             unsafe_allow_html=True,
                         )
-                        if st.button("➕ novo", key=f"add_cal_{dt_str}", use_container_width=True,
-                                     help=f"Nova encomenda em {formatar_data_br(dt_str)}"):
-                            dialog_nova_encomenda(dt_obj_cal)
+                        if tem_pedido_dia:
+                            if st.button("✏️ editar", key=f"edit_cal_{dt_str}", use_container_width=True,
+                                         help=f"Editar pedidos de {formatar_data_br(dt_str)}"):
+                                _dialog_editar_dia(dt_str, tasks)
 
         _secao_vida_pessoal()
 
@@ -2300,4 +2376,4 @@ with aba_conf:
             else:
                 st.error("❌ Senha incorreta.")
 
-st.caption("v10.0.1 | Lila Closet Atelier | Firestore · Horário de Brasília · wendleydesenvolvimento")
+st.caption("v10.1.0 | Lila Closet Atelier | Firestore · Horário de Brasília · wendleydesenvolvimento")
