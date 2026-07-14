@@ -30,7 +30,7 @@ import xlsxwriter
 # ── Banco de dados Firestore ──────────────────────────────────────────────────
 from database import (
     init_db, cfg_get, cfg_set,
-    clientes_listar, clientes_inserir, clientes_atualizar,
+    clientes_listar, clientes_inserir, clientes_atualizar, clientes_deletar,
     encomendas_listar, encomendas_inserir, encomendas_atualizar,
     encomendas_buscar, encomendas_cancelar, encomendas_deletar_completo,
     gastos_listar, gastos_inserir, gastos_atualizar, gastos_deletar, gastos_deletar_pagos,
@@ -1134,12 +1134,79 @@ def gerar_pdf_contrato(enc: dict, cpf: str, rg: str) -> bytes:
     return buf.getvalue()
 
 # ══════════════════════════════════════════════════════════════════════════════
+# SINCRONIZAÇÃO DE LEMBRETES — mantém o cronograma/calendário alinhado
+# com as datas do pedido sempre que ele é editado
+# ══════════════════════════════════════════════════════════════════════════════
+def _sincronizar_lembretes_pedido(
+    enc_id: str, cliente: str, peca: str,
+    d_encomenda: date, d_visita: date, precisa_tecido: bool, d_tecido: date,
+    d_confeccao: date, d_prova: date, tem_prova2: bool, d_prova2,
+    d_entrega: date,
+):
+    """
+    Após editar um pedido, sincroniza as tarefas do cronograma vinculadas a
+    essa encomenda para refletir as novas datas no Calendário e na aba Trabalho:
+    - Atualiza a data (e o texto) das tarefas existentes
+    - Cria a tarefa que estiver faltando (ex: 2ª Prova ou Tecido habilitados agora)
+    - Remove a tarefa que não fizer mais sentido (ex: 2ª Prova ou Tecido desabilitados)
+    Somente tarefas ainda PENDENTES são sincronizadas; tarefas já marcadas como
+    concluídas são preservadas como histórico e não são alteradas.
+    """
+    desc = f"{peca} ({cliente})"
+
+    df_crono = cronograma_listar(tipo_agenda="Trabalho", concluida=False)
+    if df_crono is None or df_crono.empty or "encomenda_id" not in df_crono.columns:
+        df_crono = pd.DataFrame(columns=["rowid", "tarefa", "encomenda_id"])
+    else:
+        df_crono = df_crono[df_crono["encomenda_id"].astype(str) == str(enc_id)]
+
+    especificacoes = [
+        ("📝 Encomenda:",   "Costura", 0.5, d_encomenda, True),
+        ("📏 Medidas:",     "Costura", 1.0, d_visita, True),
+        ("🛍️ Tecido:",     "Compras", 1.0, d_tecido, bool(precisa_tecido)),
+        ("🪡 Confecção:",   "Costura", 3.0, d_confeccao, True),
+        ("👗 2ª Prova:",    "Costura", 1.0, d_prova2, bool(tem_prova2) and d_prova2 is not None),
+        ("👗 Prova:",       "Costura", 1.0, d_prova, True),
+        ("🎁 Entrega:",     "Costura", 0.5, d_entrega, True),
+    ]
+
+    for prefixo, categoria, horas, data_val, deve_existir in especificacoes:
+        linha_existente = None
+        if not df_crono.empty:
+            match = df_crono[df_crono["tarefa"].astype(str).str.startswith(prefixo)]
+            if not match.empty:
+                linha_existente = match.iloc[0]
+
+        if not deve_existir:
+            if linha_existente is not None:
+                cronograma_deletar(str(linha_existente["rowid"]))
+            continue
+
+        if data_val is None:
+            continue
+
+        novo_texto = f"{prefixo} {desc}"
+        if linha_existente is not None:
+            cronograma_atualizar(str(linha_existente["rowid"]), {
+                "tarefa": novo_texto,
+                "data": data_val.isoformat(),
+            })
+        else:
+            cronograma_inserir({
+                "tarefa": novo_texto, "categoria": categoria, "horas": horas,
+                "data": data_val.isoformat(), "frequencia": "Pontual", "concluida": 0,
+                "encomenda_id": enc_id, "tipo_agenda": "Trabalho",
+            })
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # CARDS DE PEDIDO — clique abre popup com todos os detalhes (estilo cards de motorista)
 # ══════════════════════════════════════════════════════════════════════════════
 def _conteudo_pedido(enc: dict, cancelado: bool):
     etapa_num  = int(enc.get("etapa", 1))
     restante_enc = float(enc.get("valor_total", 0) or 0) - float(enc.get("valor_recebido", 0) or 0)
 
+    st.markdown(f"### 👤 {enc.get('cliente','—')} &nbsp;·&nbsp; 🧵 {enc.get('peca','—')}")
     st.caption(f"📝 Pedido registrado em {formatar_data_hora_br(enc.get('criado_em'))}")
 
     if not cancelado:
@@ -1199,6 +1266,38 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
 
     st.markdown("##### ✏️ Editar Pedido")
 
+    with st.expander("📏 Ver / Editar Medidas desta Cliente"):
+        df_cli_medidas = clientes_listar()
+        cli_row_medidas = None
+        if not df_cli_medidas.empty:
+            match_cli = df_cli_medidas[df_cli_medidas["nome"] == enc.get("cliente")]
+            if not match_cli.empty:
+                cli_row_medidas = match_cli.iloc[0]
+
+        if cli_row_medidas is None:
+            st.info("Cliente não encontrada no cadastro (pode ter sido removida).")
+        else:
+            with st.form(f"form_medidas_pedido_{enc['rowid']}"):
+                colm1, colm2, colm3 = st.columns(3)
+                novas_medidas = {}
+                for i, (label, col_db) in enumerate(DIC_MEDIDAS.items()):
+                    raw = cli_row_medidas.get(col_db, 0)
+                    val_f = float(raw) if raw not in [None, "", "nan"] and pd.notna(raw) else 0.0
+                    alvo = colm1 if i < 5 else (colm2 if i < 10 else colm3)
+                    novas_medidas[col_db] = alvo.number_input(
+                        f"{label} (cm)", value=val_f, format="%.1f", step=0.5,
+                        key=f"med_{enc['rowid']}_{col_db}",
+                    )
+                obs_medidas = st.text_area(
+                    "Observações de modelagem",
+                    value=str(cli_row_medidas.get("outro") or ""),
+                    key=f"med_obs_{enc['rowid']}",
+                )
+                if st.form_submit_button("💾 Salvar Medidas", use_container_width=True):
+                    clientes_atualizar(str(cli_row_medidas["rowid"]), {**novas_medidas, "outro": obs_medidas})
+                    st.success("✅ Medidas atualizadas!")
+                    st.rerun()
+
     tem_prova2_atual = bool(int(enc.get("tem_prova2", 0) or 0)) or bool(str(enc.get("data_prova2") or "").strip())
     ed_tem_prova2 = st.checkbox("Precisa de uma segunda prova?", value=tem_prova2_atual, key=f"tp2_{enc['rowid']}")
 
@@ -1254,6 +1353,15 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
                 "data_prova2": ed_pro2.isoformat() if ed_pro2 else "",
                 "data_entrega": ed_ent.isoformat(),
             })
+            _sincronizar_lembretes_pedido(
+                enc_id=str(enc["rowid"]), cliente=enc.get("cliente",""), peca=ed_peca,
+                d_encomenda=ed_datenc, d_visita=ed_vis,
+                precisa_tecido=bool(int(enc.get("precisa_tecido", 0) or 0)), d_tecido=ed_tec,
+                d_confeccao=ed_conf, d_prova=ed_pro,
+                tem_prova2=ed_tem_prova2, d_prova2=ed_pro2,
+                d_entrega=ed_ent,
+            )
+            st.success("✅ Pedido e lembretes atualizados!")
             st.rerun()
 
         if not cancelado:
@@ -2376,4 +2484,57 @@ with aba_conf:
             else:
                 st.error("❌ Senha incorreta.")
 
-st.caption("v10.1.0 | Lila Closet Atelier | Firestore · Horário de Brasília · wendleydesenvolvimento")
+    # ── Exclusão Permanente de Cliente ────────────────────────────────────
+    st.markdown("---")
+    st.markdown("#### 🔐 Exclusão Permanente de Cadastro de Cliente")
+    st.markdown(
+        "<div class='danger-zone'>"
+        "<b>⚠️ ATENÇÃO:</b> Esta operação apaga o cadastro da cliente (dados pessoais e medidas) "
+        "de forma <b>permanente e irreversível</b>. Necessária senha de administrador. "
+        "Pedidos já criados para essa cliente <b>não são apagados</b> — eles continuam no histórico, "
+        "mas deixam de estar vinculados a uma ficha de cliente."
+        "</div>", unsafe_allow_html=True,
+    )
+    st.markdown("")
+
+    df_todas_clientes = clientes_listar()
+
+    if df_todas_clientes.empty:
+        st.info("Nenhuma cliente cadastrada.")
+    else:
+        opcoes_clientes = {
+            f"{row['nome']}" + (f" · {row['telefone']}" if str(row.get('telefone') or '').strip() else ""): row["rowid"]
+            for _, row in df_todas_clientes.iterrows()
+        }
+
+        cliente_sel_label = st.selectbox(
+            "Selecione a cliente para DELETAR permanentemente:",
+            list(opcoes_clientes.keys()), key="del_cliente_sel",
+        )
+        cliente_sel_id = opcoes_clientes[cliente_sel_label]
+        row_cli_sel = df_todas_clientes[df_todas_clientes["rowid"] == cliente_sel_id].iloc[0]
+
+        st.markdown(f"**Cliente selecionada:** {row_cli_sel['nome']}")
+
+        col_senha_c, col_btn_del_c = st.columns([3, 1])
+        senha_digitada_c = col_senha_c.text_input(
+            "🔑 Senha de administrador:", type="password",
+            placeholder="Digite a senha para liberar a exclusão",
+            key="senha_del_cliente",
+        )
+        with col_btn_del_c:
+            st.write("")
+            st.write("")
+            btn_deletar_c = st.button("🗑️ DELETAR AGORA", use_container_width=True, key="btn_deletar_cliente")
+
+        if btn_deletar_c:
+            if senha_digitada_c == SENHA_DELETE:
+                clientes_deletar(str(cliente_sel_id))
+                st.success("✅ Cadastro da cliente removido permanentemente.")
+                st.rerun()
+            elif senha_digitada_c == "":
+                st.error("❌ Digite a senha de administrador.")
+            else:
+                st.error("❌ Senha incorreta.")
+
+st.caption("v10.2.0 | Lila Closet Atelier | Firestore · Horário de Brasília · wendleydesenvolvimento")
