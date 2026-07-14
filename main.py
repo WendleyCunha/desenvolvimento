@@ -2537,4 +2537,4 @@ with aba_conf:
             else:
                 st.error("❌ Senha incorreta.")
 
-st.caption("v10.2.0 | Lila Closet Atelier | Firestore · Horário de Brasília · wendleydesenvolvimento")
+st.caption("v10.3.0 | Lila Closet Atelier | Firestore · Horário de Brasília · wendleydesenvolvimento")
