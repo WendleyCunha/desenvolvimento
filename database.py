@@ -123,6 +123,16 @@ def clientes_atualizar(rowid: str, dados: dict) -> None:
     _col("lila_clientes").document(rowid).update(dados)
 
 
+def clientes_deletar(rowid: str) -> None:
+    """
+    Apaga permanentemente o cadastro (ficha + medidas) de uma cliente.
+    Não apaga encomendas/pedidos já criados para essa cliente — eles
+    continuam no histórico normalmente, só deixam de estar vinculados
+    a uma ficha de cliente.
+    """
+    _col("lila_clientes").document(rowid).delete()
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # ENCOMENDAS
 # ──────────────────────────────────────────────────────────────────────────────
