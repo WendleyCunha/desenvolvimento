@@ -417,9 +417,23 @@ def peso_upsert(mes_ano: str, data_str: str, peso_kg: float) -> None:
 # INICIALIZAÇÃO
 # ──────────────────────────────────────────────────────────────────────────────
 
-def init_db() -> None:
+@st.cache_resource(show_spinner=False)
+def _garantir_config_inicial_uma_vez() -> bool:
     """
-    Chamada uma vez ao iniciar o app.
-    Garante que os valores de configuração padrão existam no Firestore.
+    Executa `init_config_defaults()` (8 leituras no Firestore) apenas UMA
+    ÚNICA VEZ durante todo o tempo de vida do app no servidor — não a cada
+    rerun do Streamlit. `@st.cache_resource` compartilha esse resultado entre
+    TODAS as sessões/usuários do app, então essas leituras só acontecem de
+    novo se o app reiniciar (deploy novo, sleep/wake do Streamlit Cloud etc).
     """
     init_config_defaults()
+    return True
+
+
+def init_db() -> None:
+    """
+    Chamada a cada execução do script (é assim que o Streamlit funciona),
+    mas o trabalho pesado (`init_config_defaults`) só roda de fato uma vez
+    graças ao cache acima — evita gastar cota do Firestore em todo clique.
+    """
+    _garantir_config_inicial_uma_vez()
