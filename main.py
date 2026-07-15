@@ -1262,6 +1262,15 @@ def _reverter_lembretes_por_etapa(enc_id: str, etapa_atual: int, precisa_tecido:
 # CARDS DE PEDIDO — clique abre popup com todos os detalhes (estilo cards de motorista)
 # ══════════════════════════════════════════════════════════════════════════════
 def _conteudo_pedido(enc: dict, cancelado: bool):
+    # Sempre busca a versão MAIS ATUAL do pedido direto do Firestore, em vez de
+    # confiar na "foto" (snapshot) que foi passada quando o popup foi aberto.
+    # Isso evita que o popup exiba/re-salve dados antigos quando ele permanece
+    # aberto por um tempo ou é re-renderizado internamente pelo Streamlit.
+    enc_atualizado = encomendas_buscar(str(enc["rowid"]))
+    if enc_atualizado:
+        enc = enc_atualizado
+        cancelado = bool(int(enc.get("cancelado", 0) or 0))
+
     etapa_num  = int(enc.get("etapa", 1))
     restante_enc = float(enc.get("valor_total", 0) or 0) - float(enc.get("valor_recebido", 0) or 0)
 
@@ -2627,4 +2636,4 @@ with aba_conf:
             else:
                 st.error("❌ Senha incorreta.")
 
-st.caption("v10.4.0 | Lila Closet Atelier | Firestore · Horário de Brasília · wendleydesenvolvimento")
+st.caption("v10.5.0 | Lila Closet Atelier | Firestore · Horário de Brasília · wendleydesenvolvimento")
