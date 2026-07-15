@@ -11,6 +11,22 @@ Coleções criadas:
   lila_campo_horas     → horas de serviço de campo (vida pessoal)
   lila_peso_registro   → registro mensal de peso (vida pessoal)
   lila_config          → pares chave/valor de configuração
+
+──────────────────────────────────────────────────────────────────────────────
+SOBRE O CACHE (importante para não estourar a cota gratuita do Firestore):
+
+O plano gratuito do Firestore ("Spark") libera cerca de 50.000 LEITURAS por
+dia. Como o Streamlit reexecuta o script inteiro a cada clique/digitação, sem
+cache o app pode reler os MESMOS documentos dezenas de vezes por minuto e
+estourar a cota (erro `ResourceExhausted`).
+
+Por isso, as funções de LISTAGEM/LEITURA abaixo usam `@st.cache_data` com um
+tempo de vida curto (poucos segundos). Toda função que ESCREVE (inserir,
+atualizar, deletar, cancelar) chama `.clear()` na(s) função(ões) de leitura
+correspondente(s) logo depois de gravar — assim, mesmo com o cache ativo,
+você sempre vê o dado mais atual assim que salva algo. O cache só evita
+releituras redundantes entre uma gravação e outra.
+──────────────────────────────────────────────────────────────────────────────
 """
 
 import streamlit as st
@@ -20,6 +36,13 @@ import json
 import datetime
 import pandas as pd
 from typing import Optional, Any
+
+# Tempo de vida do cache das listagens (segundos). Curto o suficiente para
+# não deixar a tela "desatualizada" por muito tempo, mas capaz de absorver
+# várias reexecuções do Streamlit em sequência sem reler o Firestore.
+_TTL_LISTAS = 20
+_TTL_DOC    = 15
+_TTL_CONFIG = 60
 
 # ──────────────────────────────────────────────────────────────────────────────
 # CONEXÃO
@@ -85,6 +108,7 @@ _CONFIG_DEFAULTS = {
     "endereco":                  "Embu das Artes – SP",
 }
 
+@st.cache_data(ttl=_TTL_CONFIG, show_spinner=False)
 def cfg_get(chave: str) -> str:
     doc = _col("lila_config").document(chave).get()
     if doc.exists:
@@ -94,6 +118,7 @@ def cfg_get(chave: str) -> str:
 
 def cfg_set(chave: str, valor: str) -> None:
     _col("lila_config").document(chave).set({"valor": valor})
+    cfg_get.clear()
 
 
 def init_config_defaults() -> None:
@@ -102,12 +127,14 @@ def init_config_defaults() -> None:
         ref = _col("lila_config").document(k)
         if not ref.get().exists:
             ref.set({"valor": v})
+    cfg_get.clear()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # CLIENTES
 # ──────────────────────────────────────────────────────────────────────────────
 
+@st.cache_data(ttl=_TTL_LISTAS, show_spinner=False)
 def clientes_listar() -> pd.DataFrame:
     docs = _col("lila_clientes").order_by("nome").stream()
     return _docs_to_df(list(docs))
@@ -116,11 +143,13 @@ def clientes_listar() -> pd.DataFrame:
 def clientes_inserir(dados: dict) -> str:
     """Insere cliente e retorna o ID gerado."""
     _, ref = _col("lila_clientes").add(dados)
+    clientes_listar.clear()
     return ref.id
 
 
 def clientes_atualizar(rowid: str, dados: dict) -> None:
     _col("lila_clientes").document(rowid).update(dados)
+    clientes_listar.clear()
 
 
 def clientes_deletar(rowid: str) -> None:
@@ -131,12 +160,14 @@ def clientes_deletar(rowid: str) -> None:
     a uma ficha de cliente.
     """
     _col("lila_clientes").document(rowid).delete()
+    clientes_listar.clear()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # ENCOMENDAS
 # ──────────────────────────────────────────────────────────────────────────────
 
+@st.cache_data(ttl=_TTL_LISTAS, show_spinner=False)
 def encomendas_listar(cancelado: Optional[bool] = None) -> pd.DataFrame:
     q = _col("lila_encomendas")
     if cancelado is not None:
@@ -156,13 +187,17 @@ def encomendas_inserir(dados: dict) -> str:
     dados.setdefault("etapa", 1)
     dados["_criado_em"] = _now_iso()
     _, ref = _col("lila_encomendas").add(dados)
+    encomendas_listar.clear()
     return ref.id
 
 
 def encomendas_atualizar(rowid: str, dados: dict) -> None:
     _col("lila_encomendas").document(rowid).update(dados)
+    encomendas_listar.clear()
+    encomendas_buscar.clear()
 
 
+@st.cache_data(ttl=_TTL_DOC, show_spinner=False)
 def encomendas_buscar(rowid: str) -> dict:
     return _doc_to_dict(_col("lila_encomendas").document(rowid).get())
 
@@ -184,6 +219,10 @@ def encomendas_cancelar(rowid: str) -> None:
     # Remove gastos não pagos vinculados
     for doc in _col("lila_gastos").where("encomenda_id", "==", rowid).where("pago", "==", 0).stream():
         doc.reference.delete()
+    encomendas_listar.clear()
+    encomendas_buscar.clear()
+    cronograma_listar.clear()
+    gastos_listar.clear()
 
 
 def encomendas_deletar_completo(rowid: str) -> None:
@@ -192,12 +231,17 @@ def encomendas_deletar_completo(rowid: str) -> None:
         doc.reference.delete()
     for doc in _col("lila_gastos").where("encomenda_id", "==", rowid).stream():
         doc.reference.delete()
+    encomendas_listar.clear()
+    encomendas_buscar.clear()
+    cronograma_listar.clear()
+    gastos_listar.clear()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # GASTOS
 # ──────────────────────────────────────────────────────────────────────────────
 
+@st.cache_data(ttl=_TTL_LISTAS, show_spinner=False)
 def gastos_listar() -> pd.DataFrame:
     docs = _col("lila_gastos").stream()
     df = _docs_to_df(list(docs))
@@ -209,26 +253,31 @@ def gastos_listar() -> pd.DataFrame:
 def gastos_inserir(dados: dict) -> str:
     dados["_criado_em"] = _now_iso()
     _, ref = _col("lila_gastos").add(dados)
+    gastos_listar.clear()
     return ref.id
 
 
 def gastos_atualizar(rowid: str, dados: dict) -> None:
     _col("lila_gastos").document(rowid).update(dados)
+    gastos_listar.clear()
 
 
 def gastos_deletar(rowid: str) -> None:
     _col("lila_gastos").document(rowid).delete()
+    gastos_listar.clear()
 
 
 def gastos_deletar_pagos() -> None:
     for doc in _col("lila_gastos").where("pago", "==", 1).stream():
         doc.reference.delete()
+    gastos_listar.clear()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # CRONOGRAMA
 # ──────────────────────────────────────────────────────────────────────────────
 
+@st.cache_data(ttl=_TTL_LISTAS, show_spinner=False)
 def cronograma_listar(
     tipo_agenda: Optional[str] = None,
     concluida: Optional[bool] = None,
@@ -254,15 +303,18 @@ def cronograma_inserir(dados: dict) -> str:
     dados.setdefault("concluida", 0)
     dados["_criado_em"] = _now_iso()
     _, ref = _col("lila_cronograma").add(dados)
+    cronograma_listar.clear()
     return ref.id
 
 
 def cronograma_atualizar(rowid: str, dados: dict) -> None:
     _col("lila_cronograma").document(rowid).update(dados)
+    cronograma_listar.clear()
 
 
 def cronograma_deletar(rowid: str) -> None:
     _col("lila_cronograma").document(rowid).delete()
+    cronograma_listar.clear()
 
 
 def cronograma_com_cliente(
@@ -272,13 +324,16 @@ def cronograma_com_cliente(
 ) -> pd.DataFrame:
     """
     Retorna cronograma com o nome do cliente da encomenda vinculada.
-    Faz o 'join' manualmente (Firestore não tem JOIN).
+    Faz o 'join' manualmente (Firestore não tem JOIN), reaproveitando o
+    cache de `encomendas_buscar` — na prática, isso significa que essa
+    função só bate no Firestore de verdade quando o cache expira ou é
+    invalidado por uma gravação, mesmo sendo chamada várias vezes por tela
+    (Hoje, aba Trabalho, Calendário).
     """
     df = cronograma_listar(tipo_agenda=tipo_agenda, concluida=concluida, ate_data=ate_data)
     if df.empty:
         return df
 
-    # Cache de encomendas para evitar leituras repetidas
     cache_enc: dict[str, str] = {}
     nomes = []
     for _, row in df.iterrows():
@@ -295,6 +350,7 @@ def cronograma_com_cliente(
 # CAMPO HORAS
 # ──────────────────────────────────────────────────────────────────────────────
 
+@st.cache_data(ttl=_TTL_LISTAS, show_spinner=False)
 def campo_horas_listar(mes_ano: Optional[str] = None) -> pd.DataFrame:
     q = _col("lila_campo_horas")
     if mes_ano:
@@ -306,6 +362,7 @@ def campo_horas_listar(mes_ano: Optional[str] = None) -> pd.DataFrame:
     return df
 
 
+@st.cache_data(ttl=_TTL_LISTAS, show_spinner=False)
 def campo_horas_historico() -> pd.DataFrame:
     docs = _col("lila_campo_horas").stream()
     df = _docs_to_df(list(docs))
@@ -318,17 +375,22 @@ def campo_horas_historico() -> pd.DataFrame:
 
 def campo_horas_inserir(dados: dict) -> str:
     _, ref = _col("lila_campo_horas").add(dados)
+    campo_horas_listar.clear()
+    campo_horas_historico.clear()
     return ref.id
 
 
 def campo_horas_deletar(rowid: str) -> None:
     _col("lila_campo_horas").document(rowid).delete()
+    campo_horas_listar.clear()
+    campo_horas_historico.clear()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # PESO REGISTRO
 # ──────────────────────────────────────────────────────────────────────────────
 
+@st.cache_data(ttl=_TTL_LISTAS, show_spinner=False)
 def peso_listar() -> pd.DataFrame:
     docs = _col("lila_peso_registro").stream()
     df = _docs_to_df(list(docs))
@@ -348,6 +410,7 @@ def peso_upsert(mes_ano: str, data_str: str, peso_kg: float) -> None:
             "data": data_str,
             "peso_kg": peso_kg,
         })
+    peso_listar.clear()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
