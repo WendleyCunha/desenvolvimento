@@ -1199,6 +1199,65 @@ def _sincronizar_lembretes_pedido(
             })
 
 
+def _calcular_etapa_maxima_por_datas(
+    hoje: date, d_visita: date, precisa_tecido: bool, d_tecido: date,
+    d_confeccao: date, d_prova: date, d_entrega: date,
+) -> int:
+    """
+    Calcula, comparando com a data de hoje, até qual etapa da régua as datas
+    do pedido já justificam. Usada para "puxar a régua de volta" quando o
+    pedido foi avançado (ou concluído) por engano, mas etapas com data
+    futura (Confecção, Prova, Entrega) ainda não aconteceram de fato.
+    Nunca retorna 7 (Concluído) — essa etapa continua sendo sempre uma
+    confirmação manual, feita pelo botão "Marcar Concluído".
+    """
+    etapa = 1
+    if hoje >= d_visita:
+        etapa = 3 if precisa_tecido else 4
+    if precisa_tecido and hoje >= d_tecido:
+        etapa = 4
+    if hoje >= d_confeccao:
+        etapa = 5
+    if hoje >= d_prova:
+        etapa = 6
+    return etapa
+
+
+def _reverter_lembretes_por_etapa(enc_id: str, etapa_atual: int, precisa_tecido: bool):
+    """
+    Mantém o cronograma coerente com a etapa atual do pedido: se a régua
+    "voltou" (por exemplo de Concluído para Confecção), marca de volta como
+    PENDENTE qualquer tarefa cuja conclusão representaria uma etapa mais
+    avançada do que a etapa_atual — ex: se voltamos para "Confecção" (4),
+    as tarefas de Prova e Entrega não podem continuar marcadas como feitas.
+    """
+    df_todas = cronograma_listar(tipo_agenda="Trabalho")
+    if df_todas is None or df_todas.empty or "encomenda_id" not in df_todas.columns:
+        return
+    df_todas = df_todas[df_todas["encomenda_id"].astype(str) == str(enc_id)]
+    if df_todas.empty:
+        return
+
+    medidas_etapa = 3 if precisa_tecido else 4
+    mapa_etapas = [
+        ("📏 Medidas:",   medidas_etapa),
+        ("🛍️ Tecido:",   4),
+        ("🪡 Confecção:", 5),
+        ("👗 Prova:",     6),
+        ("🎁 Entrega:",   7),
+    ]
+
+    for prefixo, etapa_gerada in mapa_etapas:
+        match = df_todas[df_todas["tarefa"].astype(str).str.startswith(prefixo)]
+        if match.empty:
+            continue
+        linha = match.iloc[0]
+        deve_estar_concluida = etapa_gerada <= etapa_atual
+        concluida_atual = bool(int(linha.get("concluida", 0) or 0))
+        if concluida_atual != deve_estar_concluida:
+            cronograma_atualizar(str(linha["rowid"]), {"concluida": 1 if deve_estar_concluida else 0})
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # CARDS DE PEDIDO — clique abre popup com todos os detalhes (estilo cards de motorista)
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1341,7 +1400,10 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
 
         col_b1, col_b2, col_b3 = st.columns(3)
         if col_b1.form_submit_button("💾 Salvar", use_container_width=True):
-            encomendas_atualizar(str(enc["rowid"]), {
+            precisa_tecido_enc = bool(int(enc.get("precisa_tecido", 0) or 0))
+            etapa_atual = int(enc.get("etapa", 1))
+
+            dados_salvar = {
                 "peca": ed_peca, "descricao": ed_desc,
                 "forma_pagamento": ed_fpag, "observacoes": ed_obs,
                 "data_encomenda": ed_datenc.isoformat(),
@@ -1352,16 +1414,44 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
                 "tem_prova2": 1 if ed_tem_prova2 else 0,
                 "data_prova2": ed_pro2.isoformat() if ed_pro2 else "",
                 "data_entrega": ed_ent.isoformat(),
-            })
+            }
+
+            etapa_ajustada = False
+            if not cancelado:
+                etapa_max_datas = _calcular_etapa_maxima_por_datas(
+                    hoje=hoje_brasilia(), d_visita=ed_vis,
+                    precisa_tecido=precisa_tecido_enc, d_tecido=ed_tec,
+                    d_confeccao=ed_conf, d_prova=ed_pro, d_entrega=ed_ent,
+                )
+                if etapa_max_datas < etapa_atual:
+                    dados_salvar["etapa"] = etapa_max_datas
+                    etapa_atual = etapa_max_datas
+                    etapa_ajustada = True
+
+            encomendas_atualizar(str(enc["rowid"]), dados_salvar)
+
+            if etapa_ajustada:
+                _reverter_lembretes_por_etapa(
+                    enc_id=str(enc["rowid"]), etapa_atual=etapa_atual,
+                    precisa_tecido=precisa_tecido_enc,
+                )
+
             _sincronizar_lembretes_pedido(
                 enc_id=str(enc["rowid"]), cliente=enc.get("cliente",""), peca=ed_peca,
                 d_encomenda=ed_datenc, d_visita=ed_vis,
-                precisa_tecido=bool(int(enc.get("precisa_tecido", 0) or 0)), d_tecido=ed_tec,
+                precisa_tecido=precisa_tecido_enc, d_tecido=ed_tec,
                 d_confeccao=ed_conf, d_prova=ed_pro,
                 tem_prova2=ed_tem_prova2, d_prova2=ed_pro2,
                 d_entrega=ed_ent,
             )
-            st.success("✅ Pedido e lembretes atualizados!")
+
+            if etapa_ajustada:
+                st.success(
+                    f"✅ Pedido e lembretes atualizados! A régua foi ajustada automaticamente "
+                    f"para **{ETAPAS[etapa_atual][1]}**, já que ainda há etapas com data futura."
+                )
+            else:
+                st.success("✅ Pedido e lembretes atualizados!")
             st.rerun()
 
         if not cancelado:
@@ -2537,4 +2627,4 @@ with aba_conf:
             else:
                 st.error("❌ Senha incorreta.")
 
-st.caption("v10.3.0 | Lila Closet Atelier | Firestore · Horário de Brasília · wendleydesenvolvimento")
+st.caption("v10.4.0 | Lila Closet Atelier | Firestore · Horário de Brasília · wendleydesenvolvimento")
