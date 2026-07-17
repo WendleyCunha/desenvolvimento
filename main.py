@@ -1522,6 +1522,64 @@ def _dialog_editar_dia(dt_str: str, tasks_dia: pd.DataFrame):
     _d()
 
 
+def _mapa_prefixo_campo_data():
+    """
+    Relaciona o prefixo do texto da tarefa (gerado automaticamente ao criar
+    a encomenda) com o campo de data correspondente na encomenda. Usado para
+    saber qual campo atualizar quando o usuário edita a data de UMA tarefa
+    específica, sem abrir o pedido inteiro.
+    """
+    return {
+        "📝 Encomenda:":  "data_encomenda",
+        "📏 Medidas:":    "data_visita",
+        "🛍️ Tecido:":    "data_tecido",
+        "🪡 Confecção:":  "data_confeccao",
+        "👗 2ª Prova:":   "data_prova2",
+        "👗 Prova:":      "data_prova",
+        "🎁 Entrega:":    "data_entrega",
+    }
+
+
+@st.dialog("📅 Editar Data da Tarefa", width="small")
+def _dialog_editar_data_tarefa(row):
+    """
+    Popup enxuto para alterar SOMENTE a data de uma tarefa/etapa pontual,
+    sem abrir o formulário completo do pedido. Se a tarefa estiver
+    vinculada a uma encomenda, o campo de data correspondente
+    (ex: data_prova, data_confeccao) também é atualizado, para manter
+    tudo sincronizado caso o pedido seja editado depois.
+    """
+    st.markdown(f"**{row['tarefa']}**")
+    if row.get("nome_cliente"):
+        st.caption(f"👤 {row['nome_cliente']}")
+    st.caption("Isso altera apenas a data desta etapa — o restante do pedido permanece igual.")
+
+    nova_data = st.date_input(
+        "Nova data",
+        value=converter_para_data(row["data"]),
+        key=f"nova_data_{row['rowid']}",
+        format="DD/MM/YYYY",
+    )
+
+    col_ok, col_cancel = st.columns(2)
+    if col_ok.button("💾 Salvar", use_container_width=True, type="primary", key=f"salvar_data_{row['rowid']}"):
+        cronograma_atualizar(str(row["rowid"]), {"data": nova_data.isoformat()})
+
+        enc_id = row.get("encomenda_id")
+        if enc_id and str(enc_id).strip():
+            tarefa_txt = str(row["tarefa"])
+            for prefixo, campo_data in _mapa_prefixo_campo_data().items():
+                if tarefa_txt.startswith(prefixo):
+                    encomendas_atualizar(str(enc_id), {campo_data: nova_data.isoformat()})
+                    break
+
+        st.success("✅ Data atualizada!")
+        st.rerun()
+
+    if col_cancel.button("❌ Cancelar", use_container_width=True, key=f"cancelar_data_{row['rowid']}"):
+        st.rerun()
+
+
 def _card_pedido(enc: dict, idx: int):
     etapa_num  = int(enc.get("etapa", 1))
     etapa_ic, etapa_nm = ETAPAS.get(etapa_num, ("📦", "–"))
@@ -1648,7 +1706,7 @@ def _secao_tarefas_e_entregas_hoje():
             badge_txt   = "⚠️ ATRASADO" if is_atrasado else "🔔 Pendente"
             cliente_txt = f" &nbsp;|&nbsp; 👤 {row['nome_cliente']}" if row.get("nome_cliente") else ""
 
-            col_info, col_btn = st.columns([5, 1])
+            col_info, col_btn1, col_btn2 = st.columns([4, 1, 1])
             with col_info:
                 st.markdown(f"""
                 <div class="kcard">
@@ -1659,10 +1717,10 @@ def _secao_tarefas_e_entregas_hoje():
                     &nbsp;<span class="badge {badge_cls}">{badge_txt}</span>
                   </div>
                 </div>""", unsafe_allow_html=True)
-            with col_btn:
+            with col_btn1:
                 st.write("")
                 st.write("")
-                if st.button("✅ Feito", key=f"hoje_{row['rowid']}"):
+                if st.button("✅ Feito", key=f"hoje_{row['rowid']}", use_container_width=True):
                     enc_id = row.get("encomenda_id")
                     if enc_id:
                         enc_data = encomendas_buscar(str(enc_id))
@@ -1674,6 +1732,12 @@ def _secao_tarefas_e_entregas_hoje():
                                 encomendas_atualizar(str(enc_id), {"etapa": prox})
                     cronograma_atualizar(str(row["rowid"]), {"concluida": 1})
                     st.rerun()
+            with col_btn2:
+                st.write("")
+                st.write("")
+                if st.button("📅 Data", key=f"data_hoje_{row['rowid']}", use_container_width=True,
+                             help="Editar apenas a data desta tarefa"):
+                    _dialog_editar_data_tarefa(row)
 
     st.divider()
     st.markdown("### 🎁 Entregas de Hoje")
@@ -2636,4 +2700,4 @@ with aba_conf:
             else:
                 st.error("❌ Senha incorreta.")
 
-st.caption("v10.5.0 | Lila Closet Atelier | Firestore · Horário de Brasília · wendleydesenvolvimento")
+st.caption("v10.6.0 | Lila Closet Atelier | Firestore · Horário de Brasília · wendleydesenvolvimento")
