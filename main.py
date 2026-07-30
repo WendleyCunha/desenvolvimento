@@ -5,15 +5,21 @@ ORQUESTRADOR do sistema. Monta o CSS global, a NAVEGAÇÃO LATERAL (sidebar,
 estilo "sistema de verdade" — igual ao Painel KingStar) e delega cada área
 para o seu BLOCO correspondente, todos dentro deste mesmo arquivo:
 
-    BLOCO CONTRATOS     → lista de encomendas + painel de detalhe do
-                          contrato ao lado (ver, editar, baixar PDF, GOV.BR)
-    BLOCO ENCOMENDAS    → cadastro de nova encomenda, medidas de clientes,
-                          gerenciamento geral dos pedidos (cards + popup)
-    BLOCO AGENDA        → calendário mensal + agenda de trabalho + vida
-                          pessoal (campo, peso)
-    BLOCO FINANCEIRO    → dashboard financeiro, gastos, pagamentos por
-                          pedido, relatório mensal exportável
-    BLOCO CONFIGURAÇÕES → dados da empresa, metas, exclusões permanentes
+    BLOCO NOVA ENCOMENDA    → formulário fixo de cadastro de encomenda
+    BLOCO AGENDA            → calendário mensal + agenda de trabalho + vida
+                              pessoal (campo, peso)
+    BLOCO CONTRATOS         → lista de encomendas + painel de detalhe do
+                              contrato ao lado (ver, editar, baixar PDF, GOV.BR)
+    BLOCO MEDIDAS           → cadastro/ficha de medidas das clientes
+    BLOCO GERENCIAR PEDIDOS → gerenciamento geral dos pedidos (cards + popup)
+    BLOCO FINANCEIRO        → dashboard financeiro, gastos, pagamentos por
+                              pedido, relatório mensal exportável
+    BLOCO CONFIGURAÇÕES     → dados da empresa, metas, exclusões permanentes
+
+  Ordem da sidebar (grupo "Operacional"):
+      Nova Encomenda → Agenda → Contratos → Medidas → Gerenciar Pedidos
+  Grupo "Gestão": Financeiro
+  Grupo "Administração": Configurações
 
 Histórico de versões (changelog):
 
@@ -37,6 +43,14 @@ Histórico de versões (changelog):
         já existente (mesma lógica usada nos popups de Encomendas/Agenda),
         então não há duplicação de regras de negócio — só um novo "container"
         para ela.
+
+  [v11.1] O que antes era um único bloco "Encomendas" (com Nova Encomenda no
+        topo + abas internas "Medidas & Clientes" e "Gerenciar Pedidos") virou
+        TRÊS itens próprios na sidebar: 🆕 Nova Encomenda, 📏 Medidas e
+        📋 Gerenciar Pedidos — cada um com sua função `renderizar_*` dedicada,
+        sem abas internas escondendo conteúdo. Ordem final da sidebar:
+        Nova Encomenda → Agenda → Contratos → Medidas → Gerenciar Pedidos →
+        Financeiro → Configurações.
 
   [v11] Nenhuma função de banco de dados (`database.py`) foi alterada.
         Nenhum dado é perdido: todos os campos, coleções e chaves de
@@ -1788,12 +1802,10 @@ def renderizar_contratos():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ██████████████████████████  BLOCO: ENCOMENDAS  ███████████████████████████████
+# ████████████████████████████  BLOCO: NOVA ENCOMENDA  █████████████████████████
 # ══════════════════════════════════════════════════════════════════════════════
-def renderizar_encomendas():
-    st.markdown("## 🛍️ Encomendas")
-
-    st.markdown("### 🆕 Nova Encomenda")
+def renderizar_nova_encomenda():
+    st.markdown("## 🆕 Nova Encomenda")
     st.caption(
         "Preencha os dados abaixo para cadastrar uma nova encomenda. "
         "Este formulário fica sempre visível nesta tela — inclusive se você trocar "
@@ -1802,91 +1814,92 @@ def renderizar_encomendas():
     with st.container(border=True):
         secao_nova_encomenda_inline()
 
-    st.divider()
 
-    t_medidas, t_gerenciar = st.tabs([
-        "📏 Medidas & Clientes",
-        "📋 Gerenciar Pedidos",
-    ])
+# ══════════════════════════════════════════════════════════════════════════════
+# ██████████████████████████████  BLOCO: MEDIDAS  ██████████████████████████████
+# ══════════════════════════════════════════════════════════════════════════════
+def renderizar_medidas():
+    st.markdown("## 📏 Medidas")
 
-    # ── Medidas & Clientes ─────────────────────────────────────────────────
-    with t_medidas:
-        st.markdown("### 👥 Clientes Cadastradas")
-        st.caption("Novas clientes são cadastradas direto na hora de criar uma encomenda "
-                   "(seção **🆕 Nova Encomenda**, no topo desta aba).")
-        df_clis_lista = clientes_listar()
-        if not df_clis_lista.empty:
-            cols_show = [c for c in ["nome","telefone","email","modelo_base"] if c in df_clis_lista.columns]
-            df_show = df_clis_lista[cols_show].copy()
-            df_show.columns = ["Nome","Telefone","E-mail","Modelo Base"][:len(cols_show)]
-            if "criado_em" in df_clis_lista.columns:
-                df_show["Cadastrada em"] = df_clis_lista["criado_em"].apply(formatar_data_hora_br)
-            st.dataframe(df_show, use_container_width=True, hide_index=True)
+    st.markdown("### 👥 Clientes Cadastradas")
+    st.caption("Novas clientes são cadastradas direto na hora de criar uma encomenda "
+               "(seção **🆕 Nova Encomenda**).")
+    df_clis_lista = clientes_listar()
+    if not df_clis_lista.empty:
+        cols_show = [c for c in ["nome","telefone","email","modelo_base"] if c in df_clis_lista.columns]
+        df_show = df_clis_lista[cols_show].copy()
+        df_show.columns = ["Nome","Telefone","E-mail","Modelo Base"][:len(cols_show)]
+        if "criado_em" in df_clis_lista.columns:
+            df_show["Cadastrada em"] = df_clis_lista["criado_em"].apply(formatar_data_hora_br)
+        st.dataframe(df_show, use_container_width=True, hide_index=True)
+    else:
+        st.info("Nenhuma cliente cadastrada ainda.")
+
+    st.markdown("---")
+    st.markdown("### 📏 Ficha de Medidas")
+    df_c = clientes_listar()
+
+    if df_c.empty:
+        st.info("Nenhuma cliente cadastrada.")
+    else:
+        sel_cli = st.selectbox("Selecione a cliente", df_c["nome"].tolist(), key="sel_med")
+        dados_cli = df_c[df_c["nome"] == sel_cli].iloc[0]
+
+        with st.form(f"form_med_{sel_cli}"):
+            col1, col2, col3 = st.columns(3)
+            novos = {}
+            for i, (label, col_db) in enumerate(DIC_MEDIDAS.items()):
+                raw = dados_cli.get(col_db, 0)
+                val_f = float(raw) if raw not in [None, "", "nan"] and pd.notna(raw) else 0.0
+                target = col1 if i < 5 else (col2 if i < 10 else col3)
+                novos[col_db] = target.number_input(f"{label} (cm)", value=val_f, format="%.1f", step=0.5)
+            obs = st.text_area("Observações de modelagem", value=str(dados_cli.get("outro") or ""))
+
+            if st.form_submit_button("💾 Salvar Medidas", use_container_width=True):
+                update_data = {**novos, "outro": obs}
+                clientes_atualizar(str(dados_cli["rowid"]), update_data)
+                st.success("✅ Medidas salvas!")
+                st.rerun()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ██████████████████████████  BLOCO: GERENCIAR PEDIDOS  ████████████████████████
+# ══════════════════════════════════════════════════════════════════════════════
+def renderizar_gerenciar_pedidos():
+    col_tit, col_novo = st.columns([4, 1.4])
+    col_tit.markdown("## 📋 Gerenciar Pedidos")
+    if col_novo.button("➕ Nova Encomenda", use_container_width=True, type="primary", key="btn_add_gerpedidos"):
+        dialog_nova_encomenda()
+
+    col_f1, col_f2 = st.columns([2, 1])
+    filtro_status = col_f1.radio(
+        "Filtrar:",
+        ["Todos","Em andamento","Concluídos","Cancelados"],
+        horizontal=True, key="filtro_ger",
+    )
+    filtro_cli = col_f2.text_input("🔍 Buscar cliente", key="busca_ger")
+
+    df_e = encomendas_listar()
+
+    if not df_e.empty:
+        if filtro_status == "Em andamento":
+            df_e = df_e[(df_e["etapa"].astype(int) < 7) & (df_e["cancelado"].astype(int) == 0)]
+        elif filtro_status == "Concluídos":
+            df_e = df_e[(df_e["etapa"].astype(int) == 7) & (df_e["cancelado"].astype(int) == 0)]
+        elif filtro_status == "Cancelados":
+            df_e = df_e[df_e["cancelado"].astype(int) == 1]
         else:
-            st.info("Nenhuma cliente cadastrada ainda.")
+            pass  # Todos
+        if filtro_cli.strip():
+            df_e = df_e[df_e["cliente"].str.contains(filtro_cli, case=False, na=False)]
 
-        st.markdown("---")
-        st.markdown("### 📏 Ficha de Medidas")
-        df_c = clientes_listar()
-
-        if df_c.empty:
-            st.info("Nenhuma cliente cadastrada.")
-        else:
-            sel_cli = st.selectbox("Selecione a cliente", df_c["nome"].tolist(), key="sel_med")
-            dados_cli = df_c[df_c["nome"] == sel_cli].iloc[0]
-
-            with st.form(f"form_med_{sel_cli}"):
-                col1, col2, col3 = st.columns(3)
-                novos = {}
-                for i, (label, col_db) in enumerate(DIC_MEDIDAS.items()):
-                    raw = dados_cli.get(col_db, 0)
-                    val_f = float(raw) if raw not in [None, "", "nan"] and pd.notna(raw) else 0.0
-                    target = col1 if i < 5 else (col2 if i < 10 else col3)
-                    novos[col_db] = target.number_input(f"{label} (cm)", value=val_f, format="%.1f", step=0.5)
-                obs = st.text_area("Observações de modelagem", value=str(dados_cli.get("outro") or ""))
-
-                if st.form_submit_button("💾 Salvar Medidas", use_container_width=True):
-                    update_data = {**novos, "outro": obs}
-                    clientes_atualizar(str(dados_cli["rowid"]), update_data)
-                    st.success("✅ Medidas salvas!")
-                    st.rerun()
-
-    # ── Gerenciar Pedidos ────────────────────────────────────────────────
-    with t_gerenciar:
-        col_tit, col_novo = st.columns([4, 1.4])
-        col_tit.markdown("### 📋 Todos os Pedidos")
-        if col_novo.button("➕ Nova Encomenda", use_container_width=True, type="primary", key="btn_add_gerpedidos"):
-            dialog_nova_encomenda()
-
-        col_f1, col_f2 = st.columns([2, 1])
-        filtro_status = col_f1.radio(
-            "Filtrar:",
-            ["Todos","Em andamento","Concluídos","Cancelados"],
-            horizontal=True, key="filtro_ger",
-        )
-        filtro_cli = col_f2.text_input("🔍 Buscar cliente", key="busca_ger")
-
-        df_e = encomendas_listar()
-
-        if not df_e.empty:
-            if filtro_status == "Em andamento":
-                df_e = df_e[(df_e["etapa"].astype(int) < 7) & (df_e["cancelado"].astype(int) == 0)]
-            elif filtro_status == "Concluídos":
-                df_e = df_e[(df_e["etapa"].astype(int) == 7) & (df_e["cancelado"].astype(int) == 0)]
-            elif filtro_status == "Cancelados":
-                df_e = df_e[df_e["cancelado"].astype(int) == 1]
-            else:
-                pass  # Todos
-            if filtro_cli.strip():
-                df_e = df_e[df_e["cliente"].str.contains(filtro_cli, case=False, na=False)]
-
-        if df_e.empty:
-            st.info("Nenhum pedido encontrado com os filtros selecionados.")
-        else:
-            cols_ped = st.columns(2)
-            for idx, (_, enc) in enumerate(df_e.iterrows()):
-                with cols_ped[idx % 2]:
-                    _card_pedido(enc, idx)
+    if df_e.empty:
+        st.info("Nenhum pedido encontrado com os filtros selecionados.")
+    else:
+        cols_ped = st.columns(2)
+        for idx, (_, enc) in enumerate(df_e.iterrows()):
+            with cols_ped[idx % 2]:
+                _card_pedido(enc, idx)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2876,7 +2889,7 @@ st.markdown("<br>", unsafe_allow_html=True)
 # NAVEGAÇÃO LATERAL
 # ══════════════════════════════════════════════════════════════════════════════
 if "pagina" not in st.session_state:
-    st.session_state.pagina = "contratos"
+    st.session_state.pagina = "nova_encomenda"
 
 def _nav_btn(label: str, valor: str, icone: str):
     ativo = st.session_state.pagina == valor
@@ -2897,9 +2910,11 @@ with st.sidebar:
     st.markdown('<div class="sb-subtitulo">Atelier de Costura</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="sb-secao-label">Operacional</div>', unsafe_allow_html=True)
-    _nav_btn("Contratos",  "contratos",  "📄")
-    _nav_btn("Encomendas", "encomendas", "🛍️")
-    _nav_btn("Agenda",     "agenda",     "📅")
+    _nav_btn("Nova Encomenda",    "nova_encomenda",     "🆕")
+    _nav_btn("Agenda",            "agenda",             "📅")
+    _nav_btn("Contratos",         "contratos",          "📄")
+    _nav_btn("Medidas",           "medidas",            "📏")
+    _nav_btn("Gerenciar Pedidos", "gerenciar_pedidos",  "📋")
 
     st.markdown('<div class="sb-secao-label">Gestão</div>', unsafe_allow_html=True)
     _nav_btn("Financeiro", "financeiro", "💰")
@@ -2910,12 +2925,16 @@ with st.sidebar:
 # ══════════════════════════════════════════════════════════════════════════════
 # ROTEAMENTO — renderiza o bloco selecionado na sidebar
 # ══════════════════════════════════════════════════════════════════════════════
-if st.session_state.pagina == "contratos":
-    renderizar_contratos()
-elif st.session_state.pagina == "encomendas":
-    renderizar_encomendas()
+if st.session_state.pagina == "nova_encomenda":
+    renderizar_nova_encomenda()
 elif st.session_state.pagina == "agenda":
     renderizar_agenda()
+elif st.session_state.pagina == "contratos":
+    renderizar_contratos()
+elif st.session_state.pagina == "medidas":
+    renderizar_medidas()
+elif st.session_state.pagina == "gerenciar_pedidos":
+    renderizar_gerenciar_pedidos()
 elif st.session_state.pagina == "financeiro":
     renderizar_financeiro()
 elif st.session_state.pagina == "configuracoes":
