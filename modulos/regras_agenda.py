@@ -10,11 +10,12 @@ quanto pelos de edição de pedido, sem duplicar regra nenhuma.
 Regras implementadas:
 
   1) DATA DA CONFECÇÃO — nunca dois clientes na mesma data.
-  2) DATA DA CONFECÇÃO — bloqueada se o dia já tiver o limite de provas
-     (padrão 3) marcadas, mesmo que ainda não haja confecção nesse dia.
-  3) DATA DA PROVA — no máximo `LIMITE_PROVAS_POR_DIA` provas (1ª ou 2ª)
-     no mesmo dia, somando todos os pedidos ativos.
-  4) ENTREGAS PRÓXIMAS — lista de pedidos cuja Data de Entrega caia dentro
+  2) DATA DA CONFECÇÃO — bloqueada se o dia já tiver MAIS de
+     `LIMITE_PROVAS_PARA_CONFECCAO` provas marcadas (padrão 3). As provas em
+     si NÃO têm limite nenhum — o cliente pode marcar 4, 5, 6 provas no
+     mesmo dia à vontade; o que fica bloqueado é usar esse dia para
+     Confecção.
+  3) ENTREGAS PRÓXIMAS — lista de pedidos cuja Data de Entrega caia dentro
      da janela de antecedência configurada (dias), para o alerta urgente.
 
 Em todas as funções, "pedidos ativos" = não cancelados. Ao editar um
@@ -30,7 +31,11 @@ from typing import Optional
 
 import pandas as pd
 
-LIMITE_PROVAS_POR_DIA = 3
+# Quantidade de provas que um dia AINDA PODE TER sem bloquear a Confecção.
+# Ex.: com o valor 3, um dia com 1, 2 ou 3 provas continua liberado para
+# Confecção; a partir da 4ª prova no mesmo dia, a Confecção fica bloqueada
+# nesse dia. As provas em si continuam sem nenhum limite de quantidade.
+LIMITE_PROVAS_PARA_CONFECCAO = 3
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -101,7 +106,10 @@ def validar_data_confeccao(df_enc: pd.DataFrame, data_alvo: date, excluir_id: Op
 
     Regras:
       - Nunca dois clientes com confecção no mesmo dia.
-      - Não pode ser um dia que já esteja "lotado" de provas (padrão: 3).
+      - Não pode ser um dia com MAIS de `LIMITE_PROVAS_PARA_CONFECCAO`
+        provas marcadas (padrão: mais de 3). Um dia com exatamente 3
+        provas (ou menos) continua liberado para confecção — o limite só
+        entra em ação a partir da 4ª prova no mesmo dia.
     """
     if data_alvo is None:
         return True, ""
@@ -115,22 +123,26 @@ def validar_data_confeccao(df_enc: pd.DataFrame, data_alvo: date, excluir_id: Op
         )
 
     qtd_provas = contar_provas_no_dia(df_enc, data_alvo, excluir_id)
-    if qtd_provas >= LIMITE_PROVAS_POR_DIA:
+    if qtd_provas > LIMITE_PROVAS_PARA_CONFECCAO:
         return False, (
-            f"❌ O dia {data_alvo.strftime('%d/%m/%Y')} já tem {qtd_provas} prova(s) marcada(s) "
-            f"(limite de {LIMITE_PROVAS_POR_DIA} por dia) e por isso não pode receber confecção."
+            f"❌ O dia {data_alvo.strftime('%d/%m/%Y')} já tem {qtd_provas} provas marcadas "
+            f"(mais de {LIMITE_PROVAS_PARA_CONFECCAO}) e por isso não pode receber confecção. "
+            f"Escolha outro dia para a Confecção."
         )
     return True, ""
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# REGRA 3 — DATA DA PROVA
+# CONTAGEM DE PROVAS (sem limite — usada só para decidir o bloqueio de Confecção)
 # ──────────────────────────────────────────────────────────────────────────────
 
 def contar_provas_no_dia(df_enc: pd.DataFrame, data_alvo: date, excluir_id: Optional[str] = None) -> int:
     """
     Conta quantas provas (1ª ou 2ª) já estão marcadas para `data_alvo`,
-    entre os pedidos ativos (não cancelados).
+    entre os pedidos ativos (não cancelados). Não há limite de provas por
+    dia — o cliente pode marcar quantas quiser. Esta contagem serve apenas
+    para decidir se o dia bloqueia (ou não) a Data da Confecção, em
+    `validar_data_confeccao`.
     """
     df = _pedidos_ativos(df_enc, excluir_id)
     if df.empty or data_alvo is None:
@@ -146,8 +158,13 @@ def contar_provas_no_dia(df_enc: pd.DataFrame, data_alvo: date, excluir_id: Opti
 
 
 def dias_com_provas_lotadas(df_enc: pd.DataFrame, excluir_id: Optional[str] = None,
-                             limite: int = LIMITE_PROVAS_POR_DIA) -> set:
-    """Conjunto de datas que já atingiram o limite de provas (padrão 3)."""
+                             limite: int = LIMITE_PROVAS_PARA_CONFECCAO) -> set:
+    """
+    Conjunto de datas com MAIS de `limite` provas marcadas (padrão: mais de
+    3) — dias que, por causa da quantidade de provas, ficam bloqueados para
+    receber Confecção. Um dia com exatamente `limite` provas NÃO entra
+    neste conjunto (continua liberado para confecção).
+    """
     df = _pedidos_ativos(df_enc, excluir_id)
     if df.empty:
         return set()
@@ -161,26 +178,7 @@ def dias_com_provas_lotadas(df_enc: pd.DataFrame, excluir_id: Optional[str] = No
             d2 = _to_date(row.get("data_prova2"))
             if d2:
                 contagem[d2] = contagem.get(d2, 0) + 1
-    return {d for d, qtd in contagem.items() if qtd >= limite}
-
-
-def validar_data_prova(df_enc: pd.DataFrame, data_alvo: date, excluir_id: Optional[str] = None,
-                        provas_locais: int = 0):
-    """
-    Valida se `data_alvo` pode receber mais uma prova.
-    `provas_locais` conta provas que já estão sendo agendadas no MESMO
-    formulário (ex.: 1ª e 2ª prova caindo no mesmo dia), para não deixar
-    passar um conflito que só existiria "dentro do próprio pedido novo".
-    """
-    if data_alvo is None:
-        return True, ""
-    qtd = contar_provas_no_dia(df_enc, data_alvo, excluir_id) + provas_locais
-    if qtd >= LIMITE_PROVAS_POR_DIA:
-        return False, (
-            f"❌ O dia {data_alvo.strftime('%d/%m/%Y')} já atingiu o limite de "
-            f"{LIMITE_PROVAS_POR_DIA} provas marcadas. Escolha outra data para a prova."
-        )
-    return True, ""
+    return {d for d, qtd in contagem.items() if qtd > limite}
 
 
 # ──────────────────────────────────────────────────────────────────────────────
