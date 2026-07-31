@@ -133,9 +133,9 @@ from modulos.utils import (
 # ── Módulos extraídos ─────────────────────────────────────────────────────────
 from modulos.mod_financeiro import renderizar_financeiro
 from modulos.regras_agenda import (
-    validar_data_confeccao, validar_data_prova,
+    validar_data_confeccao,
     dias_confeccao_ocupados, dias_com_provas_lotadas,
-    pedidos_com_entrega_proxima, LIMITE_PROVAS_POR_DIA,
+    pedidos_com_entrega_proxima, LIMITE_PROVAS_PARA_CONFECCAO,
 )
 
 # ── Banco de dados Firestore ──────────────────────────────────────────────────
@@ -595,8 +595,8 @@ def _render_ocupacao_confeccao(df_enc: pd.DataFrame, ano: int, mes: int, excluir
     """
     Mostra um mini-calendário do mês/ano informados, com legenda visual:
       🔴 dia já reservado para confecção de outro cliente (bloqueado)
-      🟡 dia já lotado de provas — LIMITE_PROVAS_POR_DIA provas marcadas
-         (também bloqueado para confecção)
+      🟡 dia com mais de LIMITE_PROVAS_PARA_CONFECCAO provas marcadas
+         (bloqueado para confecção, mas SEM limite de provas em si)
     Puramente informativo: a validação de verdade acontece ao salvar,
     usando as mesmas funções de `modulos/regras_agenda.py`.
     """
@@ -605,7 +605,8 @@ def _render_ocupacao_confeccao(df_enc: pd.DataFrame, ano: int, mes: int, excluir
 
     st.caption(
         f"📌 Ocupação de **{MESES_PT[mes-1]}/{ano}** para a Data da Confecção — "
-        f"🔴 já reservado por outro cliente &nbsp;·&nbsp; 🟡 dia lotado de provas (bloqueado)"
+        f"🔴 já reservado por outro cliente &nbsp;·&nbsp; "
+        f"🟡 mais de {LIMITE_PROVAS_PARA_CONFECCAO} provas nesse dia (bloqueado p/ confecção)"
     )
     cols_h = st.columns(7)
     for i, d in enumerate(["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]):
@@ -629,6 +630,43 @@ def _render_ocupacao_confeccao(df_enc: pd.DataFrame, ano: int, mes: int, excluir
                 f"<center style='font-size:0.74rem;color:#3d1f10'>{dia}{marca}</center>",
                 unsafe_allow_html=True,
             )
+
+
+def _render_ocupacao_confeccao_navegavel(
+    df_enc: pd.DataFrame, key_prefix: str, data_referencia: date, excluir_id: str | None = None,
+):
+    """
+    Mesmo mini-calendário de ocupação da Confecção, mas com botões de
+    navegação (◀ Anterior / Próximo ▶) para folhear os meses seguintes —
+    útil para checar a agenda antes de decidir a Data da Confecção.
+    O mês navegado fica guardado em session_state, então a navegação não
+    "some" a cada rerun; para voltar ao mês da data já escolhida no
+    formulário, use o botão "📍 Ir para o mês da data escolhida".
+    """
+    state_key = f"{key_prefix}_mes_ref_conf"
+    if state_key not in st.session_state:
+        st.session_state[state_key] = data_referencia.replace(day=1)
+
+    ref = st.session_state[state_key]
+
+    nav1, nav_tit, nav2, nav3 = st.columns([1, 2, 1, 2.4])
+    if nav1.button("◀", key=f"{key_prefix}_conf_prev", use_container_width=True):
+        st.session_state[state_key] = (ref.replace(day=1) - timedelta(days=1)).replace(day=1)
+        st.rerun()
+    if nav2.button("▶", key=f"{key_prefix}_conf_next", use_container_width=True):
+        st.session_state[state_key] = (ref.replace(day=28) + timedelta(days=4)).replace(day=1)
+        st.rerun()
+    if nav3.button("📍 Ir para o mês da data escolhida", key=f"{key_prefix}_conf_ir_data", use_container_width=True):
+        st.session_state[state_key] = data_referencia.replace(day=1)
+        st.rerun()
+
+    ref = st.session_state[state_key]
+    nav_tit.markdown(
+        f"<center style='color:#6b3a22;font-weight:700;'>{MESES_PT[ref.month-1]}/{ref.year}</center>",
+        unsafe_allow_html=True,
+    )
+
+    _render_ocupacao_confeccao(df_enc, ref.year, ref.month, excluir_id=excluir_id)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -976,12 +1014,15 @@ def dialog_nova_encomenda(data_pre: date | None = None):
         "🪡 Data da Confecção", value=d_visita_dlg + timedelta(days=7),
         key="dlg_confeccao", format="DD/MM/YYYY"
     )
-    _render_ocupacao_confeccao(df_enc_all, d_confeccao_dlg.year, d_confeccao_dlg.month)
+    _render_ocupacao_confeccao_navegavel(df_enc_all, key_prefix="dlg", data_referencia=d_confeccao_dlg)
 
     d_prova_dlg = st.date_input(
         "👗 Data da Prova", value=d_base + timedelta(days=25), key="dlg_prova", format="DD/MM/YYYY"
     )
-    st.caption(f"⚠️ Máximo de {LIMITE_PROVAS_POR_DIA} provas por dia (somando todos os pedidos).")
+    st.caption(
+        f"ℹ️ Não há limite de provas por dia. Mas se um dia passar de "
+        f"{LIMITE_PROVAS_PARA_CONFECCAO} provas, ele fica bloqueado para receber Confecção (veja 🟡 acima)."
+    )
 
     tem_prova2_dlg = st.checkbox("Precisa de uma segunda prova?", key="dlg_tem_prova2")
     d_prova2_dlg = None
@@ -1022,22 +1063,12 @@ def dialog_nova_encomenda(data_pre: date | None = None):
             st.error("Informe a peça / serviço.")
             return
 
-        # ── Validações de agenda (Confecção exclusiva + limite de Provas) ──
+        # ── Validação de agenda (exclusividade da Data da Confecção) ──
         df_check_dlg = encomendas_listar(cancelado=False)
         ok_conf, msg_conf = validar_data_confeccao(df_check_dlg, d_confeccao_dlg)
         if not ok_conf:
             st.error(msg_conf)
             return
-        ok_prova1, msg_prova1 = validar_data_prova(df_check_dlg, d_prova_dlg)
-        if not ok_prova1:
-            st.error(msg_prova1)
-            return
-        if tem_prova2_dlg and d_prova2_dlg:
-            locais_p2 = 1 if d_prova2_dlg == d_prova_dlg else 0
-            ok_prova2, msg_prova2 = validar_data_prova(df_check_dlg, d_prova2_dlg, provas_locais=locais_p2)
-            if not ok_prova2:
-                st.error(msg_prova2)
-                return
 
         if modo_cli != "Selecionar existente":
             clientes_inserir({
@@ -1194,12 +1225,15 @@ def secao_nova_encomenda_inline():
         "🪡 Data da Confecção", value=d_visita_dlg + timedelta(days=7),
         key="ne_confeccao", format="DD/MM/YYYY"
     )
-    _render_ocupacao_confeccao(df_enc_all, d_confeccao_dlg.year, d_confeccao_dlg.month)
+    _render_ocupacao_confeccao_navegavel(df_enc_all, key_prefix="ne", data_referencia=d_confeccao_dlg)
 
     d_prova_dlg = st.date_input(
         "👗 Data da Prova", value=d_base + timedelta(days=25), key="ne_prova", format="DD/MM/YYYY"
     )
-    st.caption(f"⚠️ Máximo de {LIMITE_PROVAS_POR_DIA} provas por dia (somando todos os pedidos).")
+    st.caption(
+        f"ℹ️ Não há limite de provas por dia. Mas se um dia passar de "
+        f"{LIMITE_PROVAS_PARA_CONFECCAO} provas, ele fica bloqueado para receber Confecção (veja 🟡 acima)."
+    )
 
     tem_prova2_dlg = st.checkbox("Precisa de uma segunda prova?", key="ne_tem_prova2")
     d_prova2_dlg = None
@@ -1238,22 +1272,12 @@ def secao_nova_encomenda_inline():
             st.error("Informe a peça / serviço.")
             return
 
-        # ── Validações de agenda (Confecção exclusiva + limite de Provas) ──
+        # ── Validação de agenda (exclusividade da Data da Confecção) ──
         df_check_ne = encomendas_listar(cancelado=False)
         ok_conf, msg_conf = validar_data_confeccao(df_check_ne, d_confeccao_dlg)
         if not ok_conf:
             st.error(msg_conf)
             return
-        ok_prova1, msg_prova1 = validar_data_prova(df_check_ne, d_prova_dlg)
-        if not ok_prova1:
-            st.error(msg_prova1)
-            return
-        if tem_prova2_dlg and d_prova2_dlg:
-            locais_p2 = 1 if d_prova2_dlg == d_prova_dlg else 0
-            ok_prova2, msg_prova2 = validar_data_prova(df_check_ne, d_prova2_dlg, provas_locais=locais_p2)
-            if not ok_prova2:
-                st.error(msg_prova2)
-                return
 
         if modo_cli != "Selecionar existente":
             clientes_inserir({
@@ -1546,11 +1570,14 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
     tem_prova2_atual = bool(int(enc.get("tem_prova2", 0) or 0)) or bool(str(enc.get("data_prova2") or "").strip())
     ed_tem_prova2 = st.checkbox("Precisa de uma segunda prova?", value=tem_prova2_atual, key=f"tp2_{enc['rowid']}")
 
-    # ── Mini-calendário de ocupação da Data da Confecção (informativo) ──────
+    # ── Mini-calendário de ocupação da Data da Confecção (informativo,
+    #    com navegação de mês — fica fora do st.form abaixo de propósito,
+    #    já que dentro de um st.form não é permitido usar st.button comum) ──
     mes_ref_conf = converter_para_data(enc.get("data_confeccao")) or hoje_brasilia()
     df_check_edicao = encomendas_listar(cancelado=False)
-    _render_ocupacao_confeccao(
-        df_check_edicao, mes_ref_conf.year, mes_ref_conf.month, excluir_id=str(enc["rowid"])
+    _render_ocupacao_confeccao_navegavel(
+        df_check_edicao, key_prefix=f"cp_{enc['rowid']}",
+        data_referencia=mes_ref_conf, excluir_id=str(enc["rowid"]),
     )
 
     with st.form(f"edit_{enc['rowid']}"):
@@ -1594,24 +1621,12 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
                 st.error("Informe o nome da cliente.")
                 return
 
-            # ── Validações de agenda (Confecção exclusiva + limite de Provas) ──
+            # ── Validação de agenda (exclusividade da Data da Confecção) ──
             df_check_save = encomendas_listar(cancelado=False)
             ok_conf, msg_conf = validar_data_confeccao(df_check_save, ed_conf, excluir_id=str(enc["rowid"]))
             if not ok_conf:
                 st.error(msg_conf)
                 return
-            ok_p1, msg_p1 = validar_data_prova(df_check_save, ed_pro, excluir_id=str(enc["rowid"]))
-            if not ok_p1:
-                st.error(msg_p1)
-                return
-            if ed_tem_prova2 and ed_pro2:
-                locais_p2 = 1 if ed_pro2 == ed_pro else 0
-                ok_p2, msg_p2 = validar_data_prova(
-                    df_check_save, ed_pro2, excluir_id=str(enc["rowid"]), provas_locais=locais_p2
-                )
-                if not ok_p2:
-                    st.error(msg_p2)
-                    return
 
             precisa_tecido_enc = bool(int(enc.get("precisa_tecido", 0) or 0))
             etapa_atual = int(enc.get("etapa", 1))
@@ -1762,20 +1777,16 @@ def _dialog_editar_data_tarefa(row):
 
     col_ok, col_cancel = st.columns(2)
     if col_ok.button("💾 Salvar", use_container_width=True, type="primary", key=f"salvar_data_{row['rowid']}"):
-        # Se a tarefa for de Confecção ou Prova, aplica as mesmas regras de agenda.
+        # Se a tarefa for de Confecção, aplica a regra de exclusividade do dia.
+        # Provas não têm limite, então não há validação para elas aqui.
         tarefa_txt_check = str(row["tarefa"])
         enc_id_check = row.get("encomenda_id")
-        df_check_tarefa = encomendas_listar(cancelado=False)
 
         if tarefa_txt_check.startswith("🪡 Confecção:"):
+            df_check_tarefa = encomendas_listar(cancelado=False)
             ok_c, msg_c = validar_data_confeccao(df_check_tarefa, nova_data, excluir_id=str(enc_id_check) if enc_id_check else None)
             if not ok_c:
                 st.error(msg_c)
-                return
-        elif tarefa_txt_check.startswith("👗 Prova:") or tarefa_txt_check.startswith("👗 2ª Prova:"):
-            ok_p, msg_p = validar_data_prova(df_check_tarefa, nova_data, excluir_id=str(enc_id_check) if enc_id_check else None)
-            if not ok_p:
-                st.error(msg_p)
                 return
 
         cronograma_atualizar(str(row["rowid"]), {"data": nova_data.isoformat()})
@@ -2517,9 +2528,11 @@ def renderizar_configuracoes():
     st.markdown("---")
     st.markdown("#### 📏 Regras Fixas da Agenda")
     st.info(
-        f"O limite de **{LIMITE_PROVAS_POR_DIA} provas por dia** e a regra de "
-        f"**nunca dois clientes com Data da Confecção no mesmo dia** são regras fixas "
-        f"do sistema e não são ajustáveis por aqui — elas garantem que a produção "
+        f"**Provas não têm limite** — você pode marcar quantas quiser no mesmo dia. "
+        f"Mas um dia com **mais de {LIMITE_PROVAS_PARA_CONFECCAO} provas** fica "
+        f"bloqueado para receber **Data da Confecção**, e a regra de "
+        f"**nunca dois clientes com Confecção no mesmo dia** também é fixa. "
+        f"Nenhuma das duas é ajustável por aqui — elas garantem que a produção "
         f"não fique sobrecarregada."
     )
 
