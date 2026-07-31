@@ -26,6 +26,12 @@ atualizar, deletar, cancelar) chama `.clear()` na(s) função(ões) de leitura
 correspondente(s) logo depois de gravar — assim, mesmo com o cache ativo,
 você sempre vê o dado mais atual assim que salva algo. O cache só evita
 releituras redundantes entre uma gravação e outra.
+
+──────────────────────────────────────────────────────────────────────────────
+[v12] Adicionado o parâmetro de configuração `alerta_entrega_dias` (default:
+      "7") — quantos dias de antecedência antes da Data de Entrega o Painel
+      deve disparar o alerta urgente de prioridade máxima. Ajustável na tela
+      de Configurações.
 ──────────────────────────────────────────────────────────────────────────────
 """
 
@@ -106,6 +112,7 @@ _CONFIG_DEFAULTS = {
     "cnpj":                      "40.717.967/0001-03",
     "telefone":                  "(11) 94600-6761",
     "endereco":                  "Embu das Artes – SP",
+    "alerta_entrega_dias":       "7",
 }
 
 @st.cache_data(ttl=_TTL_CONFIG, show_spinner=False)
@@ -420,7 +427,7 @@ def peso_upsert(mes_ano: str, data_str: str, peso_kg: float) -> None:
 @st.cache_resource(show_spinner=False)
 def _garantir_config_inicial_uma_vez() -> bool:
     """
-    Executa `init_config_defaults()` (8 leituras no Firestore) apenas UMA
+    Executa `init_config_defaults()` (leituras no Firestore) apenas UMA
     ÚNICA VEZ durante todo o tempo de vida do app no servidor — não a cada
     rerun do Streamlit. `@st.cache_resource` compartilha esse resultado entre
     TODAS as sessões/usuários do app, então essas leituras só acontecem de
