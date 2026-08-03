@@ -11,7 +11,7 @@ para o seu BLOCO correspondente, todos dentro deste mesmo arquivo:
                               urgentes
     BLOCO CONTRATOS         → lista de encomendas + painel de detalhe do
                               contrato ao lado (ver, editar, baixar PDF, GOV.BR)
-    BLOCO MEDIDAS           → cadastro/ficha de medidas das clientes
+    BLOCO MEDIDAS           → ficha de medidas das clientes (com busca)
     BLOCO GERENCIAR PEDIDOS → gerenciamento geral dos pedidos (cards + popup)
     BLOCO FINANCEIRO        → agora em modulos/mod_financeiro.py
     BLOCO CONFIGURAÇÕES     → dados da empresa, metas, alerta de entrega,
@@ -73,12 +73,14 @@ Histórico de versões (changelog):
 
         1) Removido o campo "Data da Encomenda" de todo o sistema (formulário
            de criação, edição de pedido, cronograma automático). Não é mais
-           coletado nem exibido em nenhum lugar.
+           coletado nem exibido em nenhum lugar. A "Data Medidas" é o
+           pontapé inicial de todo o fluxo.
 
-        2) Novo ALERTA DE ENTREGA URGENTE: pedidos cuja Data de Entrega esteja
-           a N dias (configurável em ⚙️ Configurações, padrão 7) aparecem em
-           destaque vermelho no topo da Agenda, com prioridade máxima —
-           visualmente diferente do aviso de "atrasado".
+        2) ALERTA DE ENTREGA URGENTE: pedidos cuja Data de Entrega esteja
+           a N dias (configurável em ⚙️ Configurações, padrão 7, mas o
+           Wendley pode ajustar para 30 etc.) aparecem em destaque vermelho
+           no topo da Agenda, com prioridade máxima — visualmente diferente
+           do aviso de "atrasado". Regra mantida intacta.
 
         3) Regra de exclusividade da Data da Confecção: o sistema nunca
            permite dois clientes com confecção na mesma data. Ao escolher a
@@ -87,18 +89,24 @@ Histórico de versões (changelog):
            (ver regra 4), que por isso também ficam bloqueados para confecção.
 
         4) Regra de limite de provas: no máximo 3 provas (1ª ou 2ª, somando
-           todos os pedidos ativos) no mesmo dia. Um dia com 3 provas marcadas
-           fica automaticamente bloqueado para receber Data da Confecção.
+           todos os pedidos ativos) no mesmo dia. Um dia com mais de 3
+           provas marcadas fica automaticamente bloqueado para receber Data
+           da Confecção.
 
         5) Campo "Cliente" agora é editável dentro do formulário de edição de
            pedido (usado por Gerenciar Pedidos, Contratos e Agenda), sem
            precisar apagar e recriar a encomenda.
 
-  [v11] Nenhuma função de banco de dados (`database.py`) não relacionada às
-        regras acima foi alterada. Nenhum dado histórico é perdido: os campos,
-        coleções e chaves de sessão anteriores continuam existindo (o campo
-        `data_encomenda` de pedidos antigos simplesmente deixa de ser
-        exibido/coletado, mas não é removido do banco).
+  [v13] MEDIDAS ENXUTO: removida a listagem "Clientes Cadastradas" da tela
+        de Medidas — agora a tela mostra direto a Ficha de Medidas, com uma
+        barra de busca por nome para localizar a cliente rapidamente.
+
+  [v13] GERENCIAR PEDIDOS: removido o botão "➕ Nova Encomenda" (a criação
+        já existe em outras telas). Filtro padrão passou a ser
+        "Em andamento" (antes era "Todos"). A busca ganhou mais destaque
+        (linha própria, full width) e passou a buscar por cliente OU peça.
+        A listagem agora é ordenada pela Data de Entrega mais próxima
+        primeiro (pedidos sem data de entrega vão para o final).
 """
 
 import streamlit as st
@@ -1943,65 +1951,64 @@ def renderizar_nova_encomenda():
 # ══════════════════════════════════════════════════════════════════════════════
 def renderizar_medidas():
     st.markdown("## 📏 Medidas")
-
-    st.markdown("### 👥 Clientes Cadastradas")
-    st.caption("Novas clientes são cadastradas direto na hora de criar uma encomenda "
-               "(seção **🆕 Nova Encomenda**).")
-    df_clis_lista = clientes_listar()
-    if not df_clis_lista.empty:
-        cols_show = [c for c in ["nome","telefone","email","modelo_base"] if c in df_clis_lista.columns]
-        df_show = df_clis_lista[cols_show].copy()
-        df_show.columns = ["Nome","Telefone","E-mail","Modelo Base"][:len(cols_show)]
-        if "criado_em" in df_clis_lista.columns:
-            df_show["Cadastrada em"] = df_clis_lista["criado_em"].apply(formatar_data_hora_br)
-        st.dataframe(df_show, use_container_width=True, hide_index=True)
-    else:
-        st.info("Nenhuma cliente cadastrada ainda.")
-
-    st.markdown("---")
     st.markdown("### 📏 Ficha de Medidas")
+
     df_c = clientes_listar()
 
     if df_c.empty:
-        st.info("Nenhuma cliente cadastrada.")
-    else:
-        sel_cli = st.selectbox("Selecione a cliente", df_c["nome"].tolist(), key="sel_med")
-        dados_cli = df_c[df_c["nome"] == sel_cli].iloc[0]
+        st.info(
+            "Nenhuma cliente cadastrada ainda. Novas clientes são cadastradas direto "
+            "na hora de criar uma encomenda (seção **🆕 Nova Encomenda**)."
+        )
+        return
 
-        with st.form(f"form_med_{sel_cli}"):
-            col1, col2, col3 = st.columns(3)
-            novos = {}
-            for i, (label, col_db) in enumerate(DIC_MEDIDAS.items()):
-                raw = dados_cli.get(col_db, 0)
-                val_f = float(raw) if raw not in [None, "", "nan"] and pd.notna(raw) else 0.0
-                target = col1 if i < 5 else (col2 if i < 10 else col3)
-                novos[col_db] = target.number_input(f"{label} (cm)", value=val_f, format="%.1f", step=0.5)
-            obs = st.text_area("Observações de modelagem", value=str(dados_cli.get("outro") or ""))
+    busca_med = st.text_input("🔍 Buscar cliente pelo nome", key="busca_med")
+    df_c_filtrado = df_c
+    if busca_med.strip():
+        df_c_filtrado = df_c[df_c["nome"].str.contains(busca_med, case=False, na=False)]
 
-            if st.form_submit_button("💾 Salvar Medidas", use_container_width=True):
-                update_data = {**novos, "outro": obs}
-                clientes_atualizar(str(dados_cli["rowid"]), update_data)
-                st.success("✅ Medidas salvas!")
-                st.rerun()
+    if df_c_filtrado.empty:
+        st.info("Nenhuma cliente encontrada para essa busca.")
+        return
+
+    sel_cli = st.selectbox("Selecione a cliente", df_c_filtrado["nome"].tolist(), key="sel_med")
+    dados_cli = df_c[df_c["nome"] == sel_cli].iloc[0]
+
+    with st.form(f"form_med_{sel_cli}"):
+        col1, col2, col3 = st.columns(3)
+        novos = {}
+        for i, (label, col_db) in enumerate(DIC_MEDIDAS.items()):
+            raw = dados_cli.get(col_db, 0)
+            val_f = float(raw) if raw not in [None, "", "nan"] and pd.notna(raw) else 0.0
+            target = col1 if i < 5 else (col2 if i < 10 else col3)
+            novos[col_db] = target.number_input(f"{label} (cm)", value=val_f, format="%.1f", step=0.5)
+        obs = st.text_area("Observações de modelagem", value=str(dados_cli.get("outro") or ""))
+
+        if st.form_submit_button("💾 Salvar Medidas", use_container_width=True):
+            update_data = {**novos, "outro": obs}
+            clientes_atualizar(str(dados_cli["rowid"]), update_data)
+            st.success("✅ Medidas salvas!")
+            st.rerun()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ██████████████████████████  BLOCO: GERENCIAR PEDIDOS  ████████████████████████
 # ══════════════════════════════════════════════════════════════════════════════
 def renderizar_gerenciar_pedidos():
-    col_tit, col_novo = st.columns([4, 1.4])
-    col_tit.markdown("## 📋 Gerenciar Pedidos")
+    st.markdown("## 📋 Gerenciar Pedidos")
     st.caption("💡 Clique em um pedido para abrir os detalhes — o nome da cliente também pode ser editado ali, na seção **✏️ Editar Pedido**.")
-    if col_novo.button("➕ Nova Encomenda", use_container_width=True, type="primary", key="btn_add_gerpedidos"):
-        dialog_nova_encomenda()
 
-    col_f1, col_f2 = st.columns([2, 1])
-    filtro_status = col_f1.radio(
-        "Filtrar:",
-        ["Todos","Em andamento","Concluídos","Cancelados"],
+    filtro_cli = st.text_input(
+        "🔍 Buscar por cliente ou peça",
+        key="busca_ger",
+        placeholder="Digite o nome da cliente ou da peça...",
+    )
+
+    filtro_status = st.radio(
+        "Filtrar por status:",
+        ["Em andamento", "Todos", "Concluídos", "Cancelados"],
         horizontal=True, key="filtro_ger",
     )
-    filtro_cli = col_f2.text_input("🔍 Buscar cliente", key="busca_ger")
 
     df_e = encomendas_listar()
 
@@ -2014,8 +2021,16 @@ def renderizar_gerenciar_pedidos():
             df_e = df_e[df_e["cancelado"].astype(int) == 1]
         else:
             pass  # Todos
+
         if filtro_cli.strip():
-            df_e = df_e[df_e["cliente"].str.contains(filtro_cli, case=False, na=False)]
+            mask_busca = (
+                df_e["cliente"].astype(str).str.contains(filtro_cli, case=False, na=False)
+                | df_e["peca"].astype(str).str.contains(filtro_cli, case=False, na=False)
+            )
+            df_e = df_e[mask_busca]
+
+        if "data_entrega" in df_e.columns:
+            df_e = df_e.sort_values("data_entrega", ascending=True, na_position="last")
 
     if df_e.empty:
         st.info("Nenhum pedido encontrado com os filtros selecionados.")
@@ -2758,4 +2773,4 @@ elif st.session_state.pagina == "financeiro":
 elif st.session_state.pagina == "configuracoes":
     renderizar_configuracoes()
 
-st.caption("v12.0.0 | Lila Closet Atelier | Firestore · Horário de Brasília · wendleydesenvolvimento")
+st.caption("v13.0.0 | Lila Closet Atelier | Firestore · Horário de Brasília · wendleydesenvolvimento")
