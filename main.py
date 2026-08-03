@@ -107,6 +107,19 @@ Histórico de versões (changelog):
         (linha própria, full width) e passou a buscar por cliente OU peça.
         A listagem agora é ordenada pela Data de Entrega mais próxima
         primeiro (pedidos sem data de entrega vão para o final).
+
+  [v14] SENHA ADM PARA CONFLITO DE CONFECÇÃO: a regra de exclusividade da
+        Data da Confecção (nunca dois clientes no mesmo dia) deixou de ser
+        um bloqueio absoluto. Agora, se houver conflito, o sistema exige a
+        senha de administrador (a mesma usada em Configurações → Exclusão
+        Permanente) para liberar o salvamento mesmo assim. Sem a senha
+        correta, o salvamento continua bloqueado. Implementado através de
+        dois helpers novos — `_checar_confeccao_com_senha` e
+        `_render_confirmacao_senha_confeccao` — reaproveitados nos 4 pontos
+        do sistema que validam a Data da Confecção: criação via popup
+        (Agenda/Calendário), criação via formulário fixo (Nova Encomenda),
+        edição de pedido existente (Contratos/Agenda/Gerenciar Pedidos) e
+        edição rápida de data de uma tarefa de Confecção no Calendário.
 """
 
 import streamlit as st
@@ -678,6 +691,99 @@ def _render_ocupacao_confeccao_navegavel(
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# SENHA ADM PARA CONFLITO DE DATA DA CONFECÇÃO  [v14]
+# ══════════════════════════════════════════════════════════════════════════════
+# A regra de exclusividade da Data da Confecção (nunca dois clientes no
+# mesmo dia — ver `modulos/regras_agenda.validar_data_confeccao`) deixou de
+# ser um bloqueio absoluto: se houver conflito, o sistema exige a senha de
+# administrador (a mesma de Configurações → Exclusão Permanente,
+# `SENHA_DELETE`) para liberar o salvamento mesmo assim.
+#
+# Os dois helpers abaixo são reaproveitados nos 4 pontos do sistema que
+# validam a Data da Confecção antes de salvar:
+#   1) dialog_nova_encomenda        (criação via popup do Calendário)
+#   2) secao_nova_encomenda_inline  (criação via formulário fixo)
+#   3) _conteudo_pedido             (edição de pedido existente)
+#   4) _dialog_editar_data_tarefa   (editar só a data de uma tarefa de Confecção)
+#
+# Padrão de uso em cada ponto de chamada:
+#
+#   if _checar_confeccao_com_senha(df_check, data_escolhida, escopo_key="algo", excluir_id=...):
+#       _fazer_o_salvamento()
+#
+#   if _render_confirmacao_senha_confeccao("algo"):
+#       _fazer_o_salvamento()
+#
+# `_checar_confeccao_com_senha` roda no momento do clique em "Salvar/Criar".
+# Se não há conflito, retorna True na hora (fluxo normal, sem qualquer
+# senha). Se há conflito, grava o aviso em st.session_state e força um
+# st.rerun() — na passada seguinte do script, `_render_confirmacao_senha_confeccao`
+# é quem mostra o aviso + campo de senha + botões de confirmar/cancelar, e
+# só retorna True no clique em que a senha correta é confirmada.
+def _checar_confeccao_com_senha(df_check: pd.DataFrame, data_confeccao: date, escopo_key: str,
+                                 excluir_id: str | None = None) -> bool:
+    """
+    Verifica a exclusividade da Data da Confecção. Sem conflito: retorna
+    True imediatamente (fluxo normal). Com conflito: grava o aviso em
+    session_state e força um st.rerun() — a tela de senha aparece na
+    passada seguinte, via `_render_confirmacao_senha_confeccao`.
+
+    `escopo_key` precisa ser único por formulário/pedido (ex: o rowid da
+    encomenda, ou um nome fixo para os formulários de criação) para não
+    misturar o estado de conflito de um pedido com o de outro.
+    """
+    ok_conf, msg_conf = validar_data_confeccao(df_check, data_confeccao, excluir_id=excluir_id)
+    pend_key = f"pend_conf_{escopo_key}"
+
+    if ok_conf:
+        st.session_state.pop(pend_key, None)
+        return True
+
+    st.session_state[pend_key] = msg_conf
+    st.rerun()
+
+
+def _render_confirmacao_senha_confeccao(escopo_key: str) -> bool:
+    """
+    Se houver um conflito de Data da Confecção pendente para `escopo_key`,
+    mostra o aviso de bloqueio + campo de senha ADM + botões de
+    confirmar/cancelar. Retorna True SOMENTE no clique em que a senha
+    correta é confirmada (sinal para o chamador prosseguir com o
+    salvamento agora). Em qualquer outro caso (sem pendência, senha ainda
+    não digitada, ou incorreta) retorna False.
+    """
+    pend_key = f"pend_conf_{escopo_key}"
+    pend_msg = st.session_state.get(pend_key)
+    if not pend_msg:
+        return False
+
+    st.error(pend_msg)
+    st.warning(
+        "🔑 Duas Confecções no mesmo dia não são permitidas sem autorização. "
+        "Informe a senha de administrador para salvar mesmo assim."
+    )
+    senha_digitada = st.text_input(
+        "Senha ADM", type="password", key=f"senha_{pend_key}",
+        placeholder="Digite a senha para liberar",
+    )
+    col_c1, col_c2 = st.columns(2)
+    confirmou = col_c1.button("✅ Confirmar com senha", key=f"btn_ok_{pend_key}", use_container_width=True)
+    cancelou  = col_c2.button("❌ Cancelar", key=f"btn_no_{pend_key}", use_container_width=True)
+
+    if cancelou:
+        st.session_state.pop(pend_key, None)
+        st.rerun()
+
+    if confirmou:
+        if senha_digitada == SENHA_DELETE:
+            st.session_state.pop(pend_key, None)
+            return True
+        else:
+            st.error("❌ Senha incorreta. Não é possível salvar com dois clientes na mesma Data da Confecção.")
+    return False
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # PDF — CONTRATO  (usado pelo BLOCO CONTRATOS e também na criação de encomendas)
 # ══════════════════════════════════════════════════════════════════════════════
 def _marrom():  return colors.HexColor("#3d1f10")
@@ -1058,26 +1164,9 @@ def dialog_nova_encomenda(data_pre: date | None = None):
     rg_dlg  = col_c2.text_input("RG da cliente",  placeholder="00.000.000-0", key="dlg_rg")
     obs_dlg = st.text_area("Observações", key="dlg_obs", height=68)
 
-    st.markdown("")
-    col_ok, col_cancel = st.columns(2)
-
-    if col_ok.button("✅ Criar Encomenda", use_container_width=True, type="primary", key="dlg_btn_ok"):
-        nome_final = cli_sel_dlg.strip() if isinstance(cli_sel_dlg, str) else cli_sel_dlg
-
-        if not nome_final:
-            st.error("Informe o nome da cliente.")
-            return
-        if not peca_dlg.strip():
-            st.error("Informe a peça / serviço.")
-            return
-
-        # ── Validação de agenda (exclusividade da Data da Confecção) ──
-        df_check_dlg = encomendas_listar(cancelado=False)
-        ok_conf, msg_conf = validar_data_confeccao(df_check_dlg, d_confeccao_dlg)
-        if not ok_conf:
-            st.error(msg_conf)
-            return
-
+    def _criar_encomenda_dlg(nome_final: str):
+        """Grava a encomenda + tarefas + PDF e mostra o resultado. Chamada tanto
+        no fluxo normal (sem conflito) quanto após confirmar a senha ADM."""
         if modo_cli != "Selecionar existente":
             clientes_inserir({
                 "nome": nome_final, "telefone": cli_tel_dlg.strip(),
@@ -1157,6 +1246,33 @@ def dialog_nova_encomenda(data_pre: date | None = None):
         if st.button("✅ Fechar", use_container_width=True, type="primary", key="dlg_btn_fechar_imediato"):
             del st.session_state["_dlg_enc_resultado"]
             st.rerun()
+
+    st.markdown("")
+    col_ok, col_cancel = st.columns(2)
+
+    if col_ok.button("✅ Criar Encomenda", use_container_width=True, type="primary", key="dlg_btn_ok"):
+        nome_final = cli_sel_dlg.strip() if isinstance(cli_sel_dlg, str) else cli_sel_dlg
+
+        if not nome_final:
+            st.error("Informe o nome da cliente.")
+            return
+        if not peca_dlg.strip():
+            st.error("Informe a peça / serviço.")
+            return
+
+        # ── Validação de agenda (exclusividade da Data da Confecção) ──
+        # Sem conflito: cria direto. Com conflito: pede senha ADM (o helper
+        # já cuida de gravar o estado e forçar o rerun necessário).
+        df_check_dlg = encomendas_listar(cancelado=False)
+        if _checar_confeccao_com_senha(df_check_dlg, d_confeccao_dlg, escopo_key="dlg_nova"):
+            _criar_encomenda_dlg(nome_final)
+        return
+
+    # ── Se há um conflito pendente desta tela, mostra o campo de senha ADM.
+    #    Só cria de fato quando a senha correta é confirmada. ──────────────
+    if _render_confirmacao_senha_confeccao("dlg_nova"):
+        nome_final_pend = cli_sel_dlg.strip() if isinstance(cli_sel_dlg, str) else cli_sel_dlg
+        _criar_encomenda_dlg(nome_final_pend)
         return
 
     if col_cancel.button("❌ Cancelar", use_container_width=True, key="dlg_btn_cancel"):
@@ -1269,24 +1385,9 @@ def secao_nova_encomenda_inline():
     rg_dlg  = col_c2.text_input("RG da cliente",  placeholder="00.000.000-0", key="ne_rg")
     obs_dlg = st.text_area("Observações", key="ne_obs", height=68)
 
-    st.markdown("")
-    if st.button("✅ Criar Encomenda", use_container_width=True, type="primary", key="ne_btn_ok"):
-        nome_final = cli_sel_dlg.strip() if isinstance(cli_sel_dlg, str) else cli_sel_dlg
-
-        if not nome_final:
-            st.error("Informe o nome da cliente.")
-            return
-        if not peca_dlg.strip():
-            st.error("Informe a peça / serviço.")
-            return
-
-        # ── Validação de agenda (exclusividade da Data da Confecção) ──
-        df_check_ne = encomendas_listar(cancelado=False)
-        ok_conf, msg_conf = validar_data_confeccao(df_check_ne, d_confeccao_dlg)
-        if not ok_conf:
-            st.error(msg_conf)
-            return
-
+    def _criar_encomenda_ne(nome_final: str):
+        """Grava a encomenda + tarefas + PDF e reinicia a tela mostrando o
+        resultado. Chamada tanto no fluxo normal quanto após a senha ADM."""
         if modo_cli != "Selecionar existente":
             clientes_inserir({
                 "nome": nome_final, "telefone": cli_tel_dlg.strip(),
@@ -1351,6 +1452,27 @@ def secao_nova_encomenda_inline():
             "cliente": nome_final, "peca": peca_dlg.strip(), "pdf_bytes": pdf_bytes_dlg,
         }
         st.rerun()
+
+    st.markdown("")
+    if st.button("✅ Criar Encomenda", use_container_width=True, type="primary", key="ne_btn_ok"):
+        nome_final = cli_sel_dlg.strip() if isinstance(cli_sel_dlg, str) else cli_sel_dlg
+
+        if not nome_final:
+            st.error("Informe o nome da cliente.")
+            return
+        if not peca_dlg.strip():
+            st.error("Informe a peça / serviço.")
+            return
+
+        # ── Validação de agenda (exclusividade da Data da Confecção) ──
+        df_check_ne = encomendas_listar(cancelado=False)
+        if _checar_confeccao_com_senha(df_check_ne, d_confeccao_dlg, escopo_key="ne_nova"):
+            _criar_encomenda_ne(nome_final)
+        return
+
+    if _render_confirmacao_senha_confeccao("ne_nova"):
+        nome_final_pend = cli_sel_dlg.strip() if isinstance(cli_sel_dlg, str) else cli_sel_dlg
+        _criar_encomenda_ne(nome_final_pend)
 
 
 # ── Sincronização de lembretes (cronograma) com as datas do pedido ────────────
@@ -1624,80 +1746,96 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
                                  key=f"de_{enc['rowid']}", format="DD/MM/YYYY")
 
         col_b1, col_b2, col_b3 = st.columns(3)
-        if col_b1.form_submit_button("💾 Salvar", use_container_width=True):
-            if not ed_cliente.strip():
-                st.error("Informe o nome da cliente.")
-                return
+        clicou_salvar = col_b1.form_submit_button("💾 Salvar", use_container_width=True)
+        clicou_concluir = False
+        clicou_cancelar_pedido = False
+        if not cancelado:
+            clicou_concluir = col_b2.form_submit_button("✅ Marcar Concluído", use_container_width=True)
+            clicou_cancelar_pedido = col_b3.form_submit_button("❌ Cancelar Pedido", use_container_width=True)
 
-            # ── Validação de agenda (exclusividade da Data da Confecção) ──
-            df_check_save = encomendas_listar(cancelado=False)
-            ok_conf, msg_conf = validar_data_confeccao(df_check_save, ed_conf, excluir_id=str(enc["rowid"]))
-            if not ok_conf:
-                st.error(msg_conf)
-                return
+    # ── Ações do formulário — processadas FORA do st.form. Isso é necessário
+    #    para o fluxo de senha ADM em caso de conflito de Data da Confecção:
+    #    os botões de confirmar/cancelar senha não podem viver dentro de um
+    #    st.form (só o botão de submit de um form dispara o processamento). ──
+    def _executar_salvamento_pedido():
+        precisa_tecido_enc = bool(int(enc.get("precisa_tecido", 0) or 0))
+        etapa_atual = int(enc.get("etapa", 1))
+        cliente_final = ed_cliente.strip()
 
-            precisa_tecido_enc = bool(int(enc.get("precisa_tecido", 0) or 0))
-            etapa_atual = int(enc.get("etapa", 1))
-            cliente_final = ed_cliente.strip()
+        dados_salvar = {
+            "cliente": cliente_final,
+            "peca": ed_peca, "descricao": ed_desc,
+            "forma_pagamento": ed_fpag, "observacoes": ed_obs,
+            "data_visita": ed_vis.isoformat(),
+            "data_tecido": ed_tec.isoformat(),
+            "data_confeccao": ed_conf.isoformat(),
+            "data_prova": ed_pro.isoformat(),
+            "tem_prova2": 1 if ed_tem_prova2 else 0,
+            "data_prova2": ed_pro2.isoformat() if ed_pro2 else "",
+            "data_entrega": ed_ent.isoformat(),
+        }
 
-            dados_salvar = {
-                "cliente": cliente_final,
-                "peca": ed_peca, "descricao": ed_desc,
-                "forma_pagamento": ed_fpag, "observacoes": ed_obs,
-                "data_visita": ed_vis.isoformat(),
-                "data_tecido": ed_tec.isoformat(),
-                "data_confeccao": ed_conf.isoformat(),
-                "data_prova": ed_pro.isoformat(),
-                "tem_prova2": 1 if ed_tem_prova2 else 0,
-                "data_prova2": ed_pro2.isoformat() if ed_pro2 else "",
-                "data_entrega": ed_ent.isoformat(),
-            }
-
-            etapa_ajustada = False
-            if not cancelado:
-                etapa_max_datas = _calcular_etapa_maxima_por_datas(
-                    hoje=hoje_brasilia(), d_visita=ed_vis,
-                    precisa_tecido=precisa_tecido_enc, d_tecido=ed_tec,
-                    d_confeccao=ed_conf, d_prova=ed_pro, d_entrega=ed_ent,
-                )
-                if etapa_max_datas < etapa_atual:
-                    dados_salvar["etapa"] = etapa_max_datas
-                    etapa_atual = etapa_max_datas
-                    etapa_ajustada = True
-
-            encomendas_atualizar(str(enc["rowid"]), dados_salvar)
-
-            if etapa_ajustada:
-                _reverter_lembretes_por_etapa(
-                    enc_id=str(enc["rowid"]), etapa_atual=etapa_atual,
-                    precisa_tecido=precisa_tecido_enc,
-                )
-
-            _sincronizar_lembretes_pedido(
-                enc_id=str(enc["rowid"]), cliente=cliente_final, peca=ed_peca,
-                d_visita=ed_vis,
+        etapa_ajustada = False
+        if not cancelado:
+            etapa_max_datas = _calcular_etapa_maxima_por_datas(
+                hoje=hoje_brasilia(), d_visita=ed_vis,
                 precisa_tecido=precisa_tecido_enc, d_tecido=ed_tec,
-                d_confeccao=ed_conf, d_prova=ed_pro,
-                tem_prova2=ed_tem_prova2, d_prova2=ed_pro2,
-                d_entrega=ed_ent,
+                d_confeccao=ed_conf, d_prova=ed_pro, d_entrega=ed_ent,
+            )
+            if etapa_max_datas < etapa_atual:
+                dados_salvar["etapa"] = etapa_max_datas
+                etapa_atual = etapa_max_datas
+                etapa_ajustada = True
+
+        encomendas_atualizar(str(enc["rowid"]), dados_salvar)
+
+        if etapa_ajustada:
+            _reverter_lembretes_por_etapa(
+                enc_id=str(enc["rowid"]), etapa_atual=etapa_atual,
+                precisa_tecido=precisa_tecido_enc,
             )
 
-            if etapa_ajustada:
-                st.success(
-                    f"✅ Pedido e lembretes atualizados! A régua foi ajustada automaticamente "
-                    f"para **{ETAPAS[etapa_atual][1]}**, já que ainda há etapas com data futura."
-                )
-            else:
-                st.success("✅ Pedido e lembretes atualizados!")
-            st.rerun()
+        _sincronizar_lembretes_pedido(
+            enc_id=str(enc["rowid"]), cliente=cliente_final, peca=ed_peca,
+            d_visita=ed_vis,
+            precisa_tecido=precisa_tecido_enc, d_tecido=ed_tec,
+            d_confeccao=ed_conf, d_prova=ed_pro,
+            tem_prova2=ed_tem_prova2, d_prova2=ed_pro2,
+            d_entrega=ed_ent,
+        )
 
-        if not cancelado:
-            if col_b2.form_submit_button("✅ Marcar Concluído", use_container_width=True):
-                encomendas_atualizar(str(enc["rowid"]), {"etapa": 7})
-                st.rerun()
-            if col_b3.form_submit_button("❌ Cancelar Pedido", use_container_width=True):
-                encomendas_cancelar(str(enc["rowid"]))
-                st.rerun()
+        if etapa_ajustada:
+            st.success(
+                f"✅ Pedido e lembretes atualizados! A régua foi ajustada automaticamente "
+                f"para **{ETAPAS[etapa_atual][1]}**, já que ainda há etapas com data futura."
+            )
+        else:
+            st.success("✅ Pedido e lembretes atualizados!")
+        st.rerun()
+
+    if clicou_salvar:
+        if not ed_cliente.strip():
+            st.error("Informe o nome da cliente.")
+        else:
+            # ── Validação de agenda (exclusividade da Data da Confecção) ──
+            df_check_save = encomendas_listar(cancelado=False)
+            if _checar_confeccao_com_senha(
+                df_check_save, ed_conf, escopo_key=f"pedido_{enc['rowid']}",
+                excluir_id=str(enc["rowid"]),
+            ):
+                _executar_salvamento_pedido()
+
+    # ── Se há um conflito pendente para este pedido, mostra o campo de
+    #    senha ADM. Só salva de fato quando a senha correta é confirmada. ──
+    if _render_confirmacao_senha_confeccao(f"pedido_{enc['rowid']}"):
+        _executar_salvamento_pedido()
+
+    if clicou_concluir:
+        encomendas_atualizar(str(enc["rowid"]), {"etapa": 7})
+        st.rerun()
+    if clicou_cancelar_pedido:
+        encomendas_cancelar(str(enc["rowid"]))
+        st.rerun()
 
 
 def _abrir_popup_pedido(enc: dict, cancelado: bool):
@@ -1783,22 +1921,11 @@ def _dialog_editar_data_tarefa(row):
         format="DD/MM/YYYY",
     )
 
-    col_ok, col_cancel = st.columns(2)
-    if col_ok.button("💾 Salvar", use_container_width=True, type="primary", key=f"salvar_data_{row['rowid']}"):
-        # Se a tarefa for de Confecção, aplica a regra de exclusividade do dia.
-        # Provas não têm limite, então não há validação para elas aqui.
-        tarefa_txt_check = str(row["tarefa"])
-        enc_id_check = row.get("encomenda_id")
-
-        if tarefa_txt_check.startswith("🪡 Confecção:"):
-            df_check_tarefa = encomendas_listar(cancelado=False)
-            ok_c, msg_c = validar_data_confeccao(df_check_tarefa, nova_data, excluir_id=str(enc_id_check) if enc_id_check else None)
-            if not ok_c:
-                st.error(msg_c)
-                return
-
+    def _salvar_data_tarefa():
         cronograma_atualizar(str(row["rowid"]), {"data": nova_data.isoformat()})
 
+        enc_id_check = row.get("encomenda_id")
+        tarefa_txt_check = str(row["tarefa"])
         if enc_id_check and str(enc_id_check).strip():
             for prefixo, campo_data in _mapa_prefixo_campo_data().items():
                 if tarefa_txt_check.startswith(prefixo):
@@ -1807,6 +1934,30 @@ def _dialog_editar_data_tarefa(row):
 
         st.success("✅ Data atualizada!")
         st.rerun()
+
+    col_ok, col_cancel = st.columns(2)
+    if col_ok.button("💾 Salvar", use_container_width=True, type="primary", key=f"salvar_data_{row['rowid']}"):
+        # Se a tarefa for de Confecção, aplica a regra de exclusividade do dia
+        # (com senha ADM em caso de conflito). Provas não têm limite, então
+        # não há validação para elas aqui.
+        tarefa_txt_check = str(row["tarefa"])
+        enc_id_check = row.get("encomenda_id")
+
+        if tarefa_txt_check.startswith("🪡 Confecção:"):
+            df_check_tarefa = encomendas_listar(cancelado=False)
+            if _checar_confeccao_com_senha(
+                df_check_tarefa, nova_data,
+                escopo_key=f"tarefa_{row['rowid']}",
+                excluir_id=str(enc_id_check) if enc_id_check else None,
+            ):
+                _salvar_data_tarefa()
+        else:
+            _salvar_data_tarefa()
+
+    # ── Se há um conflito pendente desta tarefa, mostra o campo de senha
+    #    ADM. Só salva de fato quando a senha correta é confirmada. ────────
+    if _render_confirmacao_senha_confeccao(f"tarefa_{row['rowid']}"):
+        _salvar_data_tarefa()
 
     if col_cancel.button("❌ Cancelar", use_container_width=True, key=f"cancelar_data_{row['rowid']}"):
         st.rerun()
@@ -2545,10 +2696,10 @@ def renderizar_configuracoes():
     st.info(
         f"**Provas não têm limite** — você pode marcar quantas quiser no mesmo dia. "
         f"Mas um dia com **mais de {LIMITE_PROVAS_PARA_CONFECCAO} provas** fica "
-        f"bloqueado para receber **Data da Confecção**, e a regra de "
-        f"**nunca dois clientes com Confecção no mesmo dia** também é fixa. "
-        f"Nenhuma das duas é ajustável por aqui — elas garantem que a produção "
-        f"não fique sobrecarregada."
+        f"bloqueado para receber **Data da Confecção**. A regra de **nunca dois "
+        f"clientes com Confecção no mesmo dia** também é fixa, mas pode ser liberada "
+        f"pontualmente com a senha de administrador (a mesma usada em Exclusão "
+        f"Permanente) — sem a senha correta, o sistema não deixa salvar."
     )
 
     st.markdown("---")
@@ -2773,4 +2924,4 @@ elif st.session_state.pagina == "financeiro":
 elif st.session_state.pagina == "configuracoes":
     renderizar_configuracoes()
 
-st.caption("v13.0.0 | Lila Closet Atelier | Firestore · Horário de Brasília · wendleydesenvolvimento")
+st.caption("v14.0.0 | Lila Closet Atelier | Firestore · Horário de Brasília · wendleydesenvolvimento")
