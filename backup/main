@@ -7,13 +7,15 @@ para o seu BLOCO correspondente, todos dentro deste mesmo arquivo:
 
     BLOCO NOVA ENCOMENDA    → formulário fixo de cadastro de encomenda
     BLOCO AGENDA            → calendário mensal + agenda de trabalho + vida
-                              pessoal (campo, peso)
+                              pessoal (campo, peso) + alerta de entregas
+                              urgentes
     BLOCO CONTRATOS         → lista de encomendas + painel de detalhe do
                               contrato ao lado (ver, editar, baixar PDF, GOV.BR)
     BLOCO MEDIDAS           → cadastro/ficha de medidas das clientes
     BLOCO GERENCIAR PEDIDOS → gerenciamento geral dos pedidos (cards + popup)
     BLOCO FINANCEIRO        → agora em modulos/mod_financeiro.py
-    BLOCO CONFIGURAÇÕES     → dados da empresa, metas, exclusões permanentes
+    BLOCO CONFIGURAÇÕES     → dados da empresa, metas, alerta de entrega,
+                              exclusões permanentes
 
   Ordem da sidebar (grupo "Operacional"):
       Nova Encomenda → Agenda → Contratos → Medidas → Gerenciar Pedidos
@@ -65,9 +67,38 @@ Histórico de versões (changelog):
         reaproveitados tanto pelo main.py quanto pelos novos módulos, sem
         import circular.
 
-  [v11] Nenhuma função de banco de dados (`database.py`) foi alterada.
-        Nenhum dado é perdido: todos os campos, coleções e chaves de
-        sessão continuam exatamente iguais à versão anterior.
+  [v12] SUPER AGENDA — regras novas de negócio, apoiadas por um novo módulo
+        `modulos/regras_agenda.py` (funções puras de validação, sem Firestore
+        nem Streamlit, reaproveitadas na criação E na edição de pedido):
+
+        1) Removido o campo "Data da Encomenda" de todo o sistema (formulário
+           de criação, edição de pedido, cronograma automático). Não é mais
+           coletado nem exibido em nenhum lugar.
+
+        2) Novo ALERTA DE ENTREGA URGENTE: pedidos cuja Data de Entrega esteja
+           a N dias (configurável em ⚙️ Configurações, padrão 7) aparecem em
+           destaque vermelho no topo da Agenda, com prioridade máxima —
+           visualmente diferente do aviso de "atrasado".
+
+        3) Regra de exclusividade da Data da Confecção: o sistema nunca
+           permite dois clientes com confecção na mesma data. Ao escolher a
+           Data da Confecção (criação e edição), um mini-calendário do mês
+           mostra 🔴 nos dias já ocupados e 🟡 nos dias já lotados de prova
+           (ver regra 4), que por isso também ficam bloqueados para confecção.
+
+        4) Regra de limite de provas: no máximo 3 provas (1ª ou 2ª, somando
+           todos os pedidos ativos) no mesmo dia. Um dia com 3 provas marcadas
+           fica automaticamente bloqueado para receber Data da Confecção.
+
+        5) Campo "Cliente" agora é editável dentro do formulário de edição de
+           pedido (usado por Gerenciar Pedidos, Contratos e Agenda), sem
+           precisar apagar e recriar a encomenda.
+
+  [v11] Nenhuma função de banco de dados (`database.py`) não relacionada às
+        regras acima foi alterada. Nenhum dado histórico é perdido: os campos,
+        coleções e chaves de sessão anteriores continuam existindo (o campo
+        `data_encomenda` de pedidos antigos simplesmente deixa de ser
+        exibido/coletado, mas não é removido do banco).
 """
 
 import streamlit as st
@@ -101,6 +132,11 @@ from modulos.utils import (
 
 # ── Módulos extraídos ─────────────────────────────────────────────────────────
 from modulos.mod_financeiro import renderizar_financeiro
+from modulos.regras_agenda import (
+    validar_data_confeccao,
+    dias_confeccao_ocupados, dias_com_provas_lotadas,
+    pedidos_com_entrega_proxima, LIMITE_PROVAS_PARA_CONFECCAO,
+)
 
 # ── Banco de dados Firestore ──────────────────────────────────────────────────
 from database import (
@@ -327,6 +363,12 @@ div[data-testid="metric-container"] {
   padding: 1.2rem 1.4rem; margin-top: 0.5rem;
 }
 
+/* ── Alerta urgente de entrega (prioridade máxima) ── */
+.entrega-urgente-zone {
+  background: #fff0f0; border: 2px solid #c0392b; border-radius: 12px;
+  padding: 1rem 1.3rem; margin-bottom: 0.9rem;
+}
+
 /* ── Separador pessoal ── */
 .sep-pessoal {
   background: linear-gradient(90deg, #1a3a5c, #1e5fa8, #1a3a5c);
@@ -544,6 +586,88 @@ def get_logo_base64() -> str | None:
         with open(LOGO_PATH, "rb") as f:
             return base64.b64encode(f.read()).decode()
     return None
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# MINI-CALENDÁRIO DE OCUPAÇÃO — Data da Confecção
+# ══════════════════════════════════════════════════════════════════════════════
+def _render_ocupacao_confeccao(df_enc: pd.DataFrame, ano: int, mes: int, excluir_id: str | None = None):
+    """
+    Mostra um mini-calendário do mês/ano informados, com legenda visual:
+      🔴 dia já reservado para confecção de outro cliente (bloqueado)
+      🟡 dia com mais de LIMITE_PROVAS_PARA_CONFECCAO provas marcadas
+         (bloqueado para confecção, mas SEM limite de provas em si)
+    Puramente informativo: a validação de verdade acontece ao salvar,
+    usando as mesmas funções de `modulos/regras_agenda.py`.
+    """
+    ocupados = dias_confeccao_ocupados(df_enc, excluir_id)
+    lotados_prova = dias_com_provas_lotadas(df_enc, excluir_id)
+
+    st.caption(
+        f"📌 Ocupação de **{MESES_PT[mes-1]}/{ano}** para a Data da Confecção — "
+        f"🔴 já reservado por outro cliente &nbsp;·&nbsp; "
+        f"🟡 mais de {LIMITE_PROVAS_PARA_CONFECCAO} provas nesse dia (bloqueado p/ confecção)"
+    )
+    cols_h = st.columns(7)
+    for i, d in enumerate(["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]):
+        cols_h[i].markdown(
+            f"<center style='font-size:0.65rem;color:#8b7355'><b>{d}</b></center>",
+            unsafe_allow_html=True,
+        )
+    for semana in calendar.monthcalendar(ano, mes):
+        cols_s = st.columns(7)
+        for i, dia in enumerate(semana):
+            if dia == 0:
+                cols_s[i].markdown("&nbsp;", unsafe_allow_html=True)
+                continue
+            dt_obj = date(ano, mes, dia)
+            marca = ""
+            if dt_obj in ocupados:
+                marca = " 🔴"
+            elif dt_obj in lotados_prova:
+                marca = " 🟡"
+            cols_s[i].markdown(
+                f"<center style='font-size:0.74rem;color:#3d1f10'>{dia}{marca}</center>",
+                unsafe_allow_html=True,
+            )
+
+
+def _render_ocupacao_confeccao_navegavel(
+    df_enc: pd.DataFrame, key_prefix: str, data_referencia: date, excluir_id: str | None = None,
+):
+    """
+    Mesmo mini-calendário de ocupação da Confecção, mas com botões de
+    navegação (◀ Anterior / Próximo ▶) para folhear os meses seguintes —
+    útil para checar a agenda antes de decidir a Data da Confecção.
+    O mês navegado fica guardado em session_state, então a navegação não
+    "some" a cada rerun; para voltar ao mês da data já escolhida no
+    formulário, use o botão "📍 Ir para o mês da data escolhida".
+    """
+    state_key = f"{key_prefix}_mes_ref_conf"
+    if state_key not in st.session_state:
+        st.session_state[state_key] = data_referencia.replace(day=1)
+
+    ref = st.session_state[state_key]
+
+    nav1, nav_tit, nav2, nav3 = st.columns([1, 2, 1, 2.4])
+    if nav1.button("◀", key=f"{key_prefix}_conf_prev", use_container_width=True):
+        st.session_state[state_key] = (ref.replace(day=1) - timedelta(days=1)).replace(day=1)
+        st.rerun()
+    if nav2.button("▶", key=f"{key_prefix}_conf_next", use_container_width=True):
+        st.session_state[state_key] = (ref.replace(day=28) + timedelta(days=4)).replace(day=1)
+        st.rerun()
+    if nav3.button("📍 Ir para o mês da data escolhida", key=f"{key_prefix}_conf_ir_data", use_container_width=True):
+        st.session_state[state_key] = data_referencia.replace(day=1)
+        st.rerun()
+
+    ref = st.session_state[state_key]
+    nav_tit.markdown(
+        f"<center style='color:#6b3a22;font-weight:700;'>{MESES_PT[ref.month-1]}/{ref.year}</center>",
+        unsafe_allow_html=True,
+    )
+
+    _render_ocupacao_confeccao(df_enc, ref.year, ref.month, excluir_id=excluir_id)
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PDF — CONTRATO  (usado pelo BLOCO CONTRATOS e também na criação de encomendas)
@@ -883,9 +1007,6 @@ def dialog_nova_encomenda(data_pre: date | None = None):
 
     st.markdown("##### 📅 Datas")
 
-    d_encomenda_dlg = st.date_input(
-        "🗓️ Data da Encomenda", value=d_base, key="dlg_encomenda", format="DD/MM/YYYY"
-    )
     d_visita_dlg = st.date_input(
         "📏 Data Medidas", value=d_base, key="dlg_visita", format="DD/MM/YYYY"
     )
@@ -893,8 +1014,14 @@ def dialog_nova_encomenda(data_pre: date | None = None):
         "🪡 Data da Confecção", value=d_visita_dlg + timedelta(days=7),
         key="dlg_confeccao", format="DD/MM/YYYY"
     )
+    _render_ocupacao_confeccao_navegavel(df_enc_all, key_prefix="dlg", data_referencia=d_confeccao_dlg)
+
     d_prova_dlg = st.date_input(
         "👗 Data da Prova", value=d_base + timedelta(days=25), key="dlg_prova", format="DD/MM/YYYY"
+    )
+    st.caption(
+        f"ℹ️ Não há limite de provas por dia. Mas se um dia passar de "
+        f"{LIMITE_PROVAS_PARA_CONFECCAO} provas, ele fica bloqueado para receber Confecção (veja 🟡 acima)."
     )
 
     tem_prova2_dlg = st.checkbox("Precisa de uma segunda prova?", key="dlg_tem_prova2")
@@ -936,6 +1063,13 @@ def dialog_nova_encomenda(data_pre: date | None = None):
             st.error("Informe a peça / serviço.")
             return
 
+        # ── Validação de agenda (exclusividade da Data da Confecção) ──
+        df_check_dlg = encomendas_listar(cancelado=False)
+        ok_conf, msg_conf = validar_data_confeccao(df_check_dlg, d_confeccao_dlg)
+        if not ok_conf:
+            st.error(msg_conf)
+            return
+
         if modo_cli != "Selecionar existente":
             clientes_inserir({
                 "nome": nome_final, "telefone": cli_tel_dlg.strip(),
@@ -947,7 +1081,6 @@ def dialog_nova_encomenda(data_pre: date | None = None):
             "descricao": descricao_dlg.strip(), "valor_total": v_total_dlg, "sinal": v_sinal_dlg,
             "valor_recebido": v_sinal_dlg,
             "etapa": 1, "precisa_tecido": 1 if precisa_tecido_dlg else 0,
-            "data_encomenda": d_encomenda_dlg.isoformat(),
             "data_visita":    d_visita_dlg.isoformat(),
             "data_tecido":    d_tecido_dlg.isoformat(),
             "data_confeccao": d_confeccao_dlg.isoformat(),
@@ -963,7 +1096,6 @@ def dialog_nova_encomenda(data_pre: date | None = None):
 
         desc_dlg = f"{peca_dlg.strip()} ({nome_final})"
         tarefas_auto_dlg = [
-            (f"📝 Encomenda: {desc_dlg}", "Costura", 0.5, d_encomenda_dlg.isoformat()),
             (f"📏 Medidas: {desc_dlg}",   "Costura", 1.0, d_visita_dlg.isoformat()),
         ]
         if precisa_tecido_dlg:
@@ -987,7 +1119,6 @@ def dialog_nova_encomenda(data_pre: date | None = None):
                 "cliente": nome_final, "peca": peca_dlg.strip(),
                 "descricao": descricao_dlg.strip(), "valor_total": v_total_dlg,
                 "sinal": v_sinal_dlg, "forma_pagamento": forma_pag_dlg,
-                "data_encomenda": d_encomenda_dlg.isoformat(),
                 "data_visita": d_visita_dlg.isoformat(),
                 "data_tecido": d_tecido_dlg.isoformat() if precisa_tecido_dlg else "",
                 "data_confeccao": d_confeccao_dlg.isoformat(),
@@ -1087,9 +1218,6 @@ def secao_nova_encomenda_inline():
 
     st.markdown("##### 📅 Datas")
 
-    d_encomenda_dlg = st.date_input(
-        "🗓️ Data da Encomenda", value=d_base, key="ne_encomenda", format="DD/MM/YYYY"
-    )
     d_visita_dlg = st.date_input(
         "📏 Data Medidas", value=d_base, key="ne_visita", format="DD/MM/YYYY"
     )
@@ -1097,8 +1225,14 @@ def secao_nova_encomenda_inline():
         "🪡 Data da Confecção", value=d_visita_dlg + timedelta(days=7),
         key="ne_confeccao", format="DD/MM/YYYY"
     )
+    _render_ocupacao_confeccao_navegavel(df_enc_all, key_prefix="ne", data_referencia=d_confeccao_dlg)
+
     d_prova_dlg = st.date_input(
         "👗 Data da Prova", value=d_base + timedelta(days=25), key="ne_prova", format="DD/MM/YYYY"
+    )
+    st.caption(
+        f"ℹ️ Não há limite de provas por dia. Mas se um dia passar de "
+        f"{LIMITE_PROVAS_PARA_CONFECCAO} provas, ele fica bloqueado para receber Confecção (veja 🟡 acima)."
     )
 
     tem_prova2_dlg = st.checkbox("Precisa de uma segunda prova?", key="ne_tem_prova2")
@@ -1138,6 +1272,13 @@ def secao_nova_encomenda_inline():
             st.error("Informe a peça / serviço.")
             return
 
+        # ── Validação de agenda (exclusividade da Data da Confecção) ──
+        df_check_ne = encomendas_listar(cancelado=False)
+        ok_conf, msg_conf = validar_data_confeccao(df_check_ne, d_confeccao_dlg)
+        if not ok_conf:
+            st.error(msg_conf)
+            return
+
         if modo_cli != "Selecionar existente":
             clientes_inserir({
                 "nome": nome_final, "telefone": cli_tel_dlg.strip(),
@@ -1149,7 +1290,6 @@ def secao_nova_encomenda_inline():
             "descricao": descricao_dlg.strip(), "valor_total": v_total_dlg, "sinal": v_sinal_dlg,
             "valor_recebido": v_sinal_dlg,
             "etapa": 1, "precisa_tecido": 1 if precisa_tecido_dlg else 0,
-            "data_encomenda": d_encomenda_dlg.isoformat(),
             "data_visita":    d_visita_dlg.isoformat(),
             "data_tecido":    d_tecido_dlg.isoformat(),
             "data_confeccao": d_confeccao_dlg.isoformat(),
@@ -1165,7 +1305,6 @@ def secao_nova_encomenda_inline():
 
         desc_dlg = f"{peca_dlg.strip()} ({nome_final})"
         tarefas_auto_dlg = [
-            (f"📝 Encomenda: {desc_dlg}", "Costura", 0.5, d_encomenda_dlg.isoformat()),
             (f"📏 Medidas: {desc_dlg}",   "Costura", 1.0, d_visita_dlg.isoformat()),
         ]
         if precisa_tecido_dlg:
@@ -1189,7 +1328,6 @@ def secao_nova_encomenda_inline():
                 "cliente": nome_final, "peca": peca_dlg.strip(),
                 "descricao": descricao_dlg.strip(), "valor_total": v_total_dlg,
                 "sinal": v_sinal_dlg, "forma_pagamento": forma_pag_dlg,
-                "data_encomenda": d_encomenda_dlg.isoformat(),
                 "data_visita": d_visita_dlg.isoformat(),
                 "data_tecido": d_tecido_dlg.isoformat() if precisa_tecido_dlg else "",
                 "data_confeccao": d_confeccao_dlg.isoformat(),
@@ -1210,7 +1348,7 @@ def secao_nova_encomenda_inline():
 # ── Sincronização de lembretes (cronograma) com as datas do pedido ────────────
 def _sincronizar_lembretes_pedido(
     enc_id: str, cliente: str, peca: str,
-    d_encomenda: date, d_visita: date, precisa_tecido: bool, d_tecido: date,
+    d_visita: date, precisa_tecido: bool, d_tecido: date,
     d_confeccao: date, d_prova: date, tem_prova2: bool, d_prova2,
     d_entrega: date,
 ):
@@ -1229,7 +1367,6 @@ def _sincronizar_lembretes_pedido(
         df_crono = df_crono[df_crono["encomenda_id"].astype(str) == str(enc_id)]
 
     especificacoes = [
-        ("📝 Encomenda:",   "Costura", 0.5, d_encomenda, True),
         ("📏 Medidas:",     "Costura", 1.0, d_visita, True),
         ("🛍️ Tecido:",     "Compras", 1.0, d_tecido, bool(precisa_tecido)),
         ("🪡 Confecção:",   "Costura", 3.0, d_confeccao, True),
@@ -1326,10 +1463,10 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
     """
     Renderiza o conteúdo COMPLETO de um pedido: régua de etapas, valores,
     datas, seção de contrato (CPF/RG + baixar PDF + assinar via GOV.BR),
-    medidas da cliente e formulário de edição. É o mesmo "miolo" usado tanto
-    dentro de um popup (Encomendas/Agenda) quanto dentro do painel de
-    detalhe do BLOCO CONTRATOS — a única diferença é o container que o
-    envolve por fora.
+    medidas da cliente e formulário de edição (incluindo o nome da cliente,
+    editável). É o mesmo "miolo" usado tanto dentro de um popup
+    (Encomendas/Agenda) quanto dentro do painel de detalhe do BLOCO
+    CONTRATOS — a única diferença é o container que o envolve por fora.
     """
     enc_atualizado = encomendas_buscar(str(enc["rowid"]))
     if enc_atualizado:
@@ -1365,8 +1502,7 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
     if enc.get("precisa_tecido") and str(enc.get("data_tecido") or "").strip():
         tecido_txt = f" &nbsp;|&nbsp; 🛍️ Tecido: **{formatar_data_br(enc.get('data_tecido'))}**"
     st.caption(
-        f"🗓️ Encomenda: **{formatar_data_br(enc.get('data_encomenda', enc.get('criado_em','')))}** "
-        f"&nbsp;|&nbsp; 📏 Medidas: **{formatar_data_br(enc.get('data_visita',''))}** "
+        f"📏 Medidas: **{formatar_data_br(enc.get('data_visita',''))}** "
         f"&nbsp;|&nbsp; 🪡 Confecção: **{formatar_data_br(enc.get('data_confeccao',''))}** "
         f"&nbsp;|&nbsp; 👗 Prova: **{formatar_data_br(enc.get('data_prova',''))}**"
         f"{prova2_txt}{tecido_txt}"
@@ -1434,7 +1570,18 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
     tem_prova2_atual = bool(int(enc.get("tem_prova2", 0) or 0)) or bool(str(enc.get("data_prova2") or "").strip())
     ed_tem_prova2 = st.checkbox("Precisa de uma segunda prova?", value=tem_prova2_atual, key=f"tp2_{enc['rowid']}")
 
+    # ── Mini-calendário de ocupação da Data da Confecção (informativo,
+    #    com navegação de mês — fica fora do st.form abaixo de propósito,
+    #    já que dentro de um st.form não é permitido usar st.button comum) ──
+    mes_ref_conf = converter_para_data(enc.get("data_confeccao")) or hoje_brasilia()
+    df_check_edicao = encomendas_listar(cancelado=False)
+    _render_ocupacao_confeccao_navegavel(
+        df_check_edicao, key_prefix=f"cp_{enc['rowid']}",
+        data_referencia=mes_ref_conf, excluir_id=str(enc["rowid"]),
+    )
+
     with st.form(f"edit_{enc['rowid']}"):
+        ed_cliente = st.text_input("Cliente", value=str(enc.get("cliente") or ""), key=f"cliente_{enc['rowid']}")
         ed_peca = st.text_input("Peça", value=str(enc.get("peca") or ""))
         ed_desc = st.text_area("Descrição", value=str(enc.get("descricao") or ""), height=60)
         col_f1e, col_f2e = st.columns(2)
@@ -1445,19 +1592,15 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
         ed_obs    = col_f2e.text_area("Observações", value=str(enc.get("observacoes") or ""), height=60)
 
         st.markdown("📅 Datas")
-        d0, d1 = st.columns(2)
-        ed_datenc = d0.date_input("🗓️ Data da Encomenda", value=converter_para_data(enc.get("data_encomenda")),
-                                   key=f"denc_{enc['rowid']}", format="DD/MM/YYYY")
-        ed_vis    = d1.date_input("📏 Data Medidas",      value=converter_para_data(enc.get("data_visita")),
-                                   key=f"dv_{enc['rowid']}", format="DD/MM/YYYY")
-
-        d2, d3 = st.columns(2)
+        d1, d2 = st.columns(2)
+        ed_vis  = d1.date_input("📏 Data Medidas", value=converter_para_data(enc.get("data_visita")),
+                                 key=f"dv_{enc['rowid']}", format="DD/MM/YYYY")
         ed_conf = d2.date_input("🪡 Data da Confecção", value=converter_para_data(enc.get("data_confeccao")),
                                  key=f"dconf_{enc['rowid']}", format="DD/MM/YYYY")
+
+        d3, d4 = st.columns(2)
         ed_pro = d3.date_input("👗 Data da Prova", value=converter_para_data(enc.get("data_prova")),
                                 key=f"dp_{enc['rowid']}", format="DD/MM/YYYY")
-
-        d4, d5 = st.columns(2)
         ed_pro2 = None
         if ed_tem_prova2:
             ed_pro2 = d4.date_input(
@@ -1466,21 +1609,33 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
                 key=f"dp2_{enc['rowid']}", format="DD/MM/YYYY",
             )
 
-        d6, d7 = st.columns(2)
-        ed_tec  = d6.date_input("🛍️ Data Compra do Tecido", value=converter_para_data(enc.get("data_tecido")),
+        d5, d6 = st.columns(2)
+        ed_tec  = d5.date_input("🛍️ Data Compra do Tecido", value=converter_para_data(enc.get("data_tecido")),
                                  key=f"dt_{enc['rowid']}", format="DD/MM/YYYY")
-        ed_ent  = d7.date_input("🎁 Data de Entrega", value=converter_para_data(enc.get("data_entrega")),
+        ed_ent  = d6.date_input("🎁 Data de Entrega", value=converter_para_data(enc.get("data_entrega")),
                                  key=f"de_{enc['rowid']}", format="DD/MM/YYYY")
 
         col_b1, col_b2, col_b3 = st.columns(3)
         if col_b1.form_submit_button("💾 Salvar", use_container_width=True):
+            if not ed_cliente.strip():
+                st.error("Informe o nome da cliente.")
+                return
+
+            # ── Validação de agenda (exclusividade da Data da Confecção) ──
+            df_check_save = encomendas_listar(cancelado=False)
+            ok_conf, msg_conf = validar_data_confeccao(df_check_save, ed_conf, excluir_id=str(enc["rowid"]))
+            if not ok_conf:
+                st.error(msg_conf)
+                return
+
             precisa_tecido_enc = bool(int(enc.get("precisa_tecido", 0) or 0))
             etapa_atual = int(enc.get("etapa", 1))
+            cliente_final = ed_cliente.strip()
 
             dados_salvar = {
+                "cliente": cliente_final,
                 "peca": ed_peca, "descricao": ed_desc,
                 "forma_pagamento": ed_fpag, "observacoes": ed_obs,
-                "data_encomenda": ed_datenc.isoformat(),
                 "data_visita": ed_vis.isoformat(),
                 "data_tecido": ed_tec.isoformat(),
                 "data_confeccao": ed_conf.isoformat(),
@@ -1511,8 +1666,8 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
                 )
 
             _sincronizar_lembretes_pedido(
-                enc_id=str(enc["rowid"]), cliente=enc.get("cliente",""), peca=ed_peca,
-                d_encomenda=ed_datenc, d_visita=ed_vis,
+                enc_id=str(enc["rowid"]), cliente=cliente_final, peca=ed_peca,
+                d_visita=ed_vis,
                 precisa_tecido=precisa_tecido_enc, d_tecido=ed_tec,
                 d_confeccao=ed_conf, d_prova=ed_pro,
                 tem_prova2=ed_tem_prova2, d_prova2=ed_pro2,
@@ -1593,7 +1748,6 @@ def _mapa_prefixo_campo_data():
     a encomenda) com o campo de data correspondente na encomenda.
     """
     return {
-        "📝 Encomenda:":  "data_encomenda",
         "📏 Medidas:":    "data_visita",
         "🛍️ Tecido:":    "data_tecido",
         "🪡 Confecção:":  "data_confeccao",
@@ -1623,14 +1777,24 @@ def _dialog_editar_data_tarefa(row):
 
     col_ok, col_cancel = st.columns(2)
     if col_ok.button("💾 Salvar", use_container_width=True, type="primary", key=f"salvar_data_{row['rowid']}"):
+        # Se a tarefa for de Confecção, aplica a regra de exclusividade do dia.
+        # Provas não têm limite, então não há validação para elas aqui.
+        tarefa_txt_check = str(row["tarefa"])
+        enc_id_check = row.get("encomenda_id")
+
+        if tarefa_txt_check.startswith("🪡 Confecção:"):
+            df_check_tarefa = encomendas_listar(cancelado=False)
+            ok_c, msg_c = validar_data_confeccao(df_check_tarefa, nova_data, excluir_id=str(enc_id_check) if enc_id_check else None)
+            if not ok_c:
+                st.error(msg_c)
+                return
+
         cronograma_atualizar(str(row["rowid"]), {"data": nova_data.isoformat()})
 
-        enc_id = row.get("encomenda_id")
-        if enc_id and str(enc_id).strip():
-            tarefa_txt = str(row["tarefa"])
+        if enc_id_check and str(enc_id_check).strip():
             for prefixo, campo_data in _mapa_prefixo_campo_data().items():
-                if tarefa_txt.startswith(prefixo):
-                    encomendas_atualizar(str(enc_id), {campo_data: nova_data.isoformat()})
+                if tarefa_txt_check.startswith(prefixo):
+                    encomendas_atualizar(str(enc_id_check), {campo_data: nova_data.isoformat()})
                     break
 
         st.success("✅ Data atualizada!")
@@ -1827,6 +1991,7 @@ def renderizar_medidas():
 def renderizar_gerenciar_pedidos():
     col_tit, col_novo = st.columns([4, 1.4])
     col_tit.markdown("## 📋 Gerenciar Pedidos")
+    st.caption("💡 Clique em um pedido para abrir os detalhes — o nome da cliente também pode ser editado ali, na seção **✏️ Editar Pedido**.")
     if col_novo.button("➕ Nova Encomenda", use_container_width=True, type="primary", key="btn_add_gerpedidos"):
         dialog_nova_encomenda()
 
@@ -1862,8 +2027,55 @@ def renderizar_gerenciar_pedidos():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ██████████████████████████████  BLOCO: AGENDA  ███████████████████████████████
+# ████████████████████████████  BLOCO: AGENDA  ███████████████████████████████
 # ══════════════════════════════════════════════════════════════════════════════
+def _secao_alerta_entregas_urgentes():
+    """
+    Alerta VISUALMENTE DIFERENTE do aviso normal de "atrasado": mostra os
+    pedidos cuja Data de Entrega esteja dentro da janela de antecedência
+    configurada em ⚙️ Configurações (padrão: 7 dias) — sinal de "pare tudo
+    e priorize".
+    """
+    dias_antecedencia = int(cfg_get("alerta_entrega_dias") or 7)
+    df_urgentes = pedidos_com_entrega_proxima(df_enc_all, hoje_dt, dias_antecedencia)
+
+    if df_urgentes.empty:
+        return
+
+    st.markdown(f"""
+    <div class="entrega-urgente-zone">
+        <b style="color:#7a1a1a;">🚨 ENTREGA(S) URGENTE(S) — PRIORIDADE MÁXIMA</b><br>
+        <span style="font-size:0.8rem;color:#7a1a1a;">
+        Aviso configurado para {dias_antecedencia} dia(s) de antecedência da Data de Entrega
+        (ajustável em ⚙️ Configurações). Pare o que estiver fazendo e priorize estes pedidos.
+        </span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    for _, r in df_urgentes.iterrows():
+        dias_rest = int(r["_dias_restantes"])
+        if dias_rest < 0:
+            txt_prazo = f"⚠️ ATRASADO há {abs(dias_rest)} dia(s)"
+        elif dias_rest == 0:
+            txt_prazo = "🔥 ENTREGA É HOJE"
+        else:
+            txt_prazo = f"⏳ faltam {dias_rest} dia(s)"
+
+        col_i, col_b = st.columns([4, 1])
+        with col_i:
+            st.markdown(f"""
+            <div class="fin-danger">
+                <b>{r['cliente']}</b> — {r['peca']} &nbsp;|&nbsp;
+                🎁 Entrega: {formatar_data_br(r['data_entrega'])} &nbsp;|&nbsp; <b>{txt_prazo}</b>
+            </div>""", unsafe_allow_html=True)
+        with col_b:
+            if st.button("👁️ Ver Pedido", key=f"ver_urgente_{r['rowid']}", use_container_width=True):
+                cancelado_r = bool(int(r.get("cancelado", 0) or 0))
+                _abrir_popup_pedido(dict(r), cancelado_r)
+
+    st.divider()
+
+
 def _secao_tarefas_e_entregas_hoje():
     st.markdown("### ⚡ Tarefas para Hoje")
 
@@ -2162,6 +2374,7 @@ def renderizar_agenda():
                                 _abrir_popup_pedido(enc_data_t, cancelado_t)
 
     with sub_cal:
+        _secao_alerta_entregas_urgentes()
         _secao_tarefas_e_entregas_hoje()
 
         st.divider()
@@ -2262,6 +2475,23 @@ def renderizar_configuracoes():
                 cfg_set("endereco", cfg_end)
                 st.success("✅ Dados salvos!")
 
+        st.markdown("#### 🚨 Alerta de Entrega Urgente")
+        st.caption(
+            "Quantos dias ANTES da Data de Entrega o Painel deve mostrar o alerta "
+            "vermelho de prioridade máxima na Agenda."
+        )
+        with st.form("form_alerta_entrega"):
+            cfg_alerta_dias = st.number_input(
+                "Dias de antecedência para o alerta urgente",
+                min_value=1, max_value=180,
+                value=int(cfg_get("alerta_entrega_dias") or 7),
+                help="Ex.: 7 = avisa 1 semana antes da entrega. Pode ajustar para 30, 60 etc.",
+            )
+            if st.form_submit_button("💾 Salvar Alerta de Entrega"):
+                cfg_set("alerta_entrega_dias", str(int(cfg_alerta_dias)))
+                st.success("✅ Alerta de entrega atualizado!")
+                st.rerun()
+
     with col_cfg2:
         st.markdown("#### 🎯 Metas e Parâmetros Financeiros")
         with st.form("form_metas"):
@@ -2294,6 +2524,17 @@ def renderizar_configuracoes():
 | **Capital de Giro** | Dinheiro disponível para manter o negócio | 15-25% da receita |
 | **Reserva de Emergência** | Meses de custos guardados para imprevistos | Mínimo 3 meses |
 """)
+
+    st.markdown("---")
+    st.markdown("#### 📏 Regras Fixas da Agenda")
+    st.info(
+        f"**Provas não têm limite** — você pode marcar quantas quiser no mesmo dia. "
+        f"Mas um dia com **mais de {LIMITE_PROVAS_PARA_CONFECCAO} provas** fica "
+        f"bloqueado para receber **Data da Confecção**, e a regra de "
+        f"**nunca dois clientes com Confecção no mesmo dia** também é fixa. "
+        f"Nenhuma das duas é ajustável por aqui — elas garantem que a produção "
+        f"não fique sobrecarregada."
+    )
 
     st.markdown("---")
     st.markdown("#### 🗑️ Limpeza (Cuidado!)")
@@ -2441,7 +2682,7 @@ with st.container(key="topo_fixo"):
     mes_atual_str = hoje_dt.strftime("%Y-%m")
     pedidos_mes = 0
     if not df_enc_all.empty:
-        col_data_ref = "data_encomenda" if "data_encomenda" in df_enc_all.columns else "criado_em"
+        col_data_ref = "criado_em" if "criado_em" in df_enc_all.columns else "_criado_em"
         if col_data_ref in df_enc_all.columns:
             pedidos_mes = int(df_enc_all[col_data_ref].fillna("").astype(str).str.startswith(mes_atual_str).sum())
     pct_meta = min(pedidos_mes / meta_ped * 100, 100) if meta_ped > 0 else 0
@@ -2517,4 +2758,4 @@ elif st.session_state.pagina == "financeiro":
 elif st.session_state.pagina == "configuracoes":
     renderizar_configuracoes()
 
-st.caption("v11.2.0 | Lila Closet Atelier | Firestore · Horário de Brasília · wendleydesenvolvimento")
+st.caption("v12.0.0 | Lila Closet Atelier | Firestore · Horário de Brasília · wendleydesenvolvimento")
