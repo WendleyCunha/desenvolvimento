@@ -567,7 +567,8 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
         st.markdown("##### ✏️ Extrato do mês — Entradas e Saídas")
         st.caption(
             "Edite diretamente valor, descrição, data e conciliado de cada lançamento deste mês, "
-            "conforme for conferindo com o extrato bancário. Clique em \"💾 Salvar\" para gravar as alterações."
+            "conforme for conferindo com o extrato bancário. Para EXCLUIR um lançamento, clique no "
+            "ícone de lixeira 🗑️ na linha correspondente e depois em \"💾 Salvar alterações\"."
         )
 
         col_ex1, col_ex2 = st.columns(2)
@@ -579,6 +580,11 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
             else:
                 df_r_edit_base = df_r_mes[["rowid", "data", "descricao", "valor", "conciliado"]].copy()
                 df_r_edit_base["data"] = pd.to_datetime(df_r_edit_base["data"]).dt.date
+                # BUGFIX: força float64 para evitar TypeError do pandas ao
+                # editar (colunas int64 não podem receber valor decimal
+                # sem conversão explícita — o Streamlit/pandas não faz essa
+                # conversão sozinho e lança TypeError: Invalid value ...).
+                df_r_edit_base["valor"] = pd.to_numeric(df_r_edit_base["valor"], errors="coerce").fillna(0.0).astype("float64")
                 df_r_edit_base["conciliado"] = df_r_edit_base["conciliado"].fillna(0).astype(int).astype(bool)
                 df_r_edit_base = df_r_edit_base.sort_values("data").reset_index(drop=True)
 
@@ -588,17 +594,35 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
                         "rowid": None,
                         "data": st.column_config.DateColumn("Data", format="DD/MM/YYYY"),
                         "descricao": st.column_config.TextColumn("Descrição"),
-                        "valor": st.column_config.NumberColumn("Valor (R$)", format="R$ %.2f", min_value=0.0),
+                        "valor": st.column_config.NumberColumn("Valor (R$)", format="R$ %.2f", min_value=0.0, step=0.01),
                         "conciliado": st.column_config.CheckboxColumn("Conciliado?"),
                     },
                     hide_index=True, use_container_width=True,
+                    num_rows="dynamic",  # habilita o 🗑️ para excluir linhas
                     key=f"edit_r_{mes_str}", disabled=ja_fechado,
                 )
 
                 if not ja_fechado and st.button("💾 Salvar alterações (Entradas)", key=f"salvar_r_{mes_str}", use_container_width=True):
-                    houve_mudanca_r = False
+                    # Linhas que sumiram da tabela editada = foram excluídas pelo usuário.
+                    rowids_antes = set(df_r_edit_base["rowid"].astype(str))
+                    rowids_depois = set(edited_r["rowid"].dropna().astype(str))
+                    excluidos_r = rowids_antes - rowids_depois
+
+                    for rid in excluidos_r:
+                        recebimentos_deletar(rid)
+
+                    houve_mudanca_r = bool(excluidos_r)
                     for _, row_new in edited_r.iterrows():
-                        row_old = df_r_edit_base[df_r_edit_base["rowid"] == row_new["rowid"]].iloc[0]
+                        if pd.isna(row_new["rowid"]):
+                            # Linha nova em branco criada sem querer no editor
+                            # (o modo dinâmico também permite adicionar linha).
+                            # Lançamentos novos devem ser feitos pelo formulário
+                            # "➕ Novo Lançamento" acima — esta linha é ignorada.
+                            continue
+                        match = df_r_edit_base[df_r_edit_base["rowid"] == row_new["rowid"]]
+                        if match.empty:
+                            continue
+                        row_old = match.iloc[0]
                         if (
                             float(row_new["valor"]) != float(row_old["valor"])
                             or str(row_new["descricao"]) != str(row_old["descricao"])
@@ -613,7 +637,10 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
                             })
                             houve_mudanca_r = True
                     if houve_mudanca_r:
-                        st.success("✅ Entradas atualizadas!")
+                        if excluidos_r:
+                            st.success(f"✅ Entradas atualizadas! ({len(excluidos_r)} excluída(s))")
+                        else:
+                            st.success("✅ Entradas atualizadas!")
                         st.rerun()
                     else:
                         st.info("Nenhuma alteração para salvar.")
@@ -625,6 +652,8 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
             else:
                 df_g_edit_base = df_g_mes[["rowid", "data", "descricao", "valor", "conciliado"]].copy()
                 df_g_edit_base["data"] = pd.to_datetime(df_g_edit_base["data"]).dt.date
+                # BUGFIX: mesma correção de dtype aplicada acima.
+                df_g_edit_base["valor"] = pd.to_numeric(df_g_edit_base["valor"], errors="coerce").fillna(0.0).astype("float64")
                 df_g_edit_base["conciliado"] = df_g_edit_base["conciliado"].fillna(0).astype(int).astype(bool)
                 df_g_edit_base = df_g_edit_base.sort_values("data").reset_index(drop=True)
 
@@ -634,17 +663,30 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
                         "rowid": None,
                         "data": st.column_config.DateColumn("Data", format="DD/MM/YYYY"),
                         "descricao": st.column_config.TextColumn("Descrição"),
-                        "valor": st.column_config.NumberColumn("Valor (R$)", format="R$ %.2f", min_value=0.0),
+                        "valor": st.column_config.NumberColumn("Valor (R$)", format="R$ %.2f", min_value=0.0, step=0.01),
                         "conciliado": st.column_config.CheckboxColumn("Conciliado?"),
                     },
                     hide_index=True, use_container_width=True,
+                    num_rows="dynamic",  # habilita o 🗑️ para excluir linhas
                     key=f"edit_g_{mes_str}", disabled=ja_fechado,
                 )
 
                 if not ja_fechado and st.button("💾 Salvar alterações (Saídas)", key=f"salvar_g_{mes_str}", use_container_width=True):
-                    houve_mudanca_g = False
+                    rowids_antes_g = set(df_g_edit_base["rowid"].astype(str))
+                    rowids_depois_g = set(edited_g["rowid"].dropna().astype(str))
+                    excluidos_g = rowids_antes_g - rowids_depois_g
+
+                    for rid in excluidos_g:
+                        gastos_deletar(rid)
+
+                    houve_mudanca_g = bool(excluidos_g)
                     for _, row_new in edited_g.iterrows():
-                        row_old = df_g_edit_base[df_g_edit_base["rowid"] == row_new["rowid"]].iloc[0]
+                        if pd.isna(row_new["rowid"]):
+                            continue
+                        match = df_g_edit_base[df_g_edit_base["rowid"] == row_new["rowid"]]
+                        if match.empty:
+                            continue
+                        row_old = match.iloc[0]
                         if (
                             float(row_new["valor"]) != float(row_old["valor"])
                             or str(row_new["descricao"]) != str(row_old["descricao"])
@@ -659,11 +701,13 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
                             })
                             houve_mudanca_g = True
                     if houve_mudanca_g:
-                        st.success("✅ Saídas atualizadas!")
+                        if excluidos_g:
+                            st.success(f"✅ Saídas atualizadas! ({len(excluidos_g)} excluída(s))")
+                        else:
+                            st.success("✅ Saídas atualizadas!")
                         st.rerun()
                     else:
                         st.info("Nenhuma alteração para salvar.")
-
         # ── 📊 RESUMO ANTES DE FECHAR ────────────────────────────────────
         receitas_mes = _flt(df_r_mes, "valor")
         despesas_mes = _flt(df_g_mes, "valor")
