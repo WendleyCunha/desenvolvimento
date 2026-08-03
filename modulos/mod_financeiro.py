@@ -203,6 +203,26 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
     df_r_fin   = recebimentos_listar()
     df_f_fin   = fechamentos_listar()
 
+    # ── Garantia defensiva de colunas (bugfix) ──────────────────────────
+    # O Firestore só cria uma coluna no DataFrame quando PELO MENOS UM
+    # documento tem aquele campo preenchido. Campos adicionados depois
+    # (como "conciliado") podem simplesmente não existir em nenhum
+    # documento antigo — nesse caso o DataFrame inteiro vem sem essa
+    # coluna, e qualquer acesso tipo df["conciliado"] explode com
+    # KeyError. Preenchemos aqui os valores padrão para todas as colunas
+    # opcionais usadas neste módulo, garantindo que elas sempre existam.
+    if not df_g_fin.empty:
+        for _col, _default in [
+            ("conciliado", 0), ("pago", 0), ("recorrente", 0),
+            ("grande_despesa_prevista", 0), ("encomenda_id", None),
+        ]:
+            if _col not in df_g_fin.columns:
+                df_g_fin[_col] = _default
+    if not df_r_fin.empty:
+        for _col, _default in [("conciliado", 0), ("encomenda_id", None)]:
+            if _col not in df_r_fin.columns:
+                df_r_fin[_col] = _default
+
     receita_total    = _flt(df_r_fin, "valor")
     receita_prevista = float(df_enc_fin[df_enc_fin["etapa"].astype(int) < 7]["valor_total"].fillna(0).astype(float).sum()) if not df_enc_fin.empty else 0.0
     gastos_pagos     = float(df_g_fin[df_g_fin["pago"].astype(int) == 1]["valor"].fillna(0).astype(float).sum()) if not df_g_fin.empty else 0.0
@@ -655,17 +675,41 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
         mes_ant_dt = pd.Timestamp(year=int(ano_sel), month=int(mes_sel), day=1) - pd.DateOffset(months=1)
         mes_ant_str = mes_ant_dt.strftime("%Y-%m")
         fech_ant = fechamento_buscar(mes_ant_str)
-        saldo_inicial_sugerido = float(fech_ant["saldo_final"]) if (fech_ant and int(fech_ant.get("fechado", 0) or 0) == 1) else 0.0
+        tem_fechamento_anterior = bool(fech_ant and int(fech_ant.get("fechado", 0) or 0) == 1)
 
-        if fech_existente:
-            saldo_inicial = float(fech_existente.get("saldo_inicial", saldo_inicial_sugerido))
+        # ── (a) SALDO INICIAL — regra travada ───────────────────────────
+        # Só é editável quando NÃO existe nenhum mês anterior fechado (ou
+        # seja: é o primeiríssimo mês que você está controlando no sistema,
+        # ou você reabriu este mês de propósito para corrigir). A partir do
+        # momento em que existe um mês anterior fechado, o saldo inicial
+        # SEMPRE vem transportado automaticamente dali, sem opção de edição.
+        saldo_inicial_editavel = (not ja_fechado) and (not tem_fechamento_anterior)
+
+        if tem_fechamento_anterior:
+            saldo_inicial = float(fech_ant["saldo_final"])
+        elif fech_existente:
+            saldo_inicial = float(fech_existente.get("saldo_inicial", 0.0))
         else:
-            saldo_inicial = saldo_inicial_sugerido
+            saldo_inicial = 0.0
 
-        if not fech_ant and mes_ant_str not in ("", None):
-            st.info(f"📌 Não há fechamento do mês anterior ({mes_ant_str}). Se este for o primeiro mês que você está controlando, ajuste o saldo inicial manualmente abaixo (ex: o que você tem hoje na conta/caixa).")
-
-        saldo_inicial = st.number_input("(a) Saldo inicial do mês (herdado do fechamento anterior)", value=float(saldo_inicial), step=10.0, format="%.2f", disabled=ja_fechado)
+        st.markdown("##### (a) Saldo inicial do mês")
+        if saldo_inicial_editavel:
+            st.caption(
+                "📌 Este é o primeiro mês controlado no sistema (ou o mês foi reaberto para correção). "
+                "Digite o saldo real que você tinha na conta/caixa no primeiro dia do mês. "
+                "Depois de fechar este mês, esse valor nunca mais precisa ser digitado — ele passa a "
+                "ser transportado automaticamente para o mês seguinte, sem opção de edição."
+            )
+            saldo_inicial = st.number_input(
+                "Saldo inicial do mês (R$)", value=float(saldo_inicial),
+                step=10.0, format="%.2f", key=f"saldo_ini_{mes_str}",
+            )
+        else:
+            st.markdown(
+                f'<div class="fin-ok">🔒 Saldo transportado automaticamente do fechamento de '
+                f'<b>{mes_ant_str}</b>: <b>{brl(saldo_inicial)}</b> — não editável.</div>',
+                unsafe_allow_html=True,
+            )
 
         # ── BUGFIX: quando não há NENHUM lançamento no mês, o DataFrame
         #    resultante precisa nascer com as colunas esperadas (incluindo
@@ -674,15 +718,143 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
         df_r_mes = df_r_fin[df_r_fin["data"].apply(_mes_de) == mes_str].copy() if not df_r_fin.empty else _df_vazio_receb()
         df_g_mes = df_g_fin[(df_g_fin["data"].apply(_mes_de) == mes_str) & (df_g_fin["pago"].astype(int) == 1)].copy() if not df_g_fin.empty else _df_vazio_gastos()
 
+        # ── ✏️ EXTRATO DO MÊS — Entradas e Saídas, EDITÁVEL ──────────────
+        st.markdown("---")
+        st.markdown("##### ✏️ Extrato do mês — Entradas e Saídas")
+        st.caption(
+            "Edite diretamente valor, descrição, data e conciliado de cada lançamento deste mês, "
+            "conforme for conferindo com o extrato bancário. Clique em \"💾 Salvar\" para gravar as alterações."
+        )
+
+        col_ex1, col_ex2 = st.columns(2)
+
+        with col_ex1:
+            st.markdown("**📥 Entradas**")
+            if df_r_mes.empty:
+                st.info("Nenhuma entrada neste mês.")
+            else:
+                df_r_edit_base = df_r_mes[["rowid", "data", "descricao", "valor", "conciliado"]].copy()
+                df_r_edit_base["data"] = pd.to_datetime(df_r_edit_base["data"]).dt.date
+                df_r_edit_base["conciliado"] = df_r_edit_base["conciliado"].fillna(0).astype(int).astype(bool)
+                df_r_edit_base = df_r_edit_base.sort_values("data").reset_index(drop=True)
+
+                edited_r = st.data_editor(
+                    df_r_edit_base,
+                    column_config={
+                        "rowid": None,
+                        "data": st.column_config.DateColumn("Data", format="DD/MM/YYYY"),
+                        "descricao": st.column_config.TextColumn("Descrição"),
+                        "valor": st.column_config.NumberColumn("Valor (R$)", format="R$ %.2f", min_value=0.0),
+                        "conciliado": st.column_config.CheckboxColumn("Conciliado?"),
+                    },
+                    hide_index=True, use_container_width=True,
+                    key=f"edit_r_{mes_str}", disabled=ja_fechado,
+                )
+
+                if not ja_fechado and st.button("💾 Salvar alterações (Entradas)", key=f"salvar_r_{mes_str}", use_container_width=True):
+                    houve_mudanca_r = False
+                    for _, row_new in edited_r.iterrows():
+                        row_old = df_r_edit_base[df_r_edit_base["rowid"] == row_new["rowid"]].iloc[0]
+                        if (
+                            float(row_new["valor"]) != float(row_old["valor"])
+                            or str(row_new["descricao"]) != str(row_old["descricao"])
+                            or bool(row_new["conciliado"]) != bool(row_old["conciliado"])
+                            or row_new["data"] != row_old["data"]
+                        ):
+                            recebimentos_atualizar(str(row_new["rowid"]), {
+                                "valor": float(row_new["valor"]),
+                                "descricao": str(row_new["descricao"]),
+                                "conciliado": 1 if row_new["conciliado"] else 0,
+                                "data": row_new["data"].isoformat() if hasattr(row_new["data"], "isoformat") else str(row_new["data"]),
+                            })
+                            houve_mudanca_r = True
+                    if houve_mudanca_r:
+                        st.success("✅ Entradas atualizadas!")
+                        st.rerun()
+                    else:
+                        st.info("Nenhuma alteração para salvar.")
+
+        with col_ex2:
+            st.markdown("**📤 Saídas**")
+            if df_g_mes.empty:
+                st.info("Nenhuma saída paga neste mês.")
+            else:
+                df_g_edit_base = df_g_mes[["rowid", "data", "descricao", "valor", "conciliado"]].copy()
+                df_g_edit_base["data"] = pd.to_datetime(df_g_edit_base["data"]).dt.date
+                df_g_edit_base["conciliado"] = df_g_edit_base["conciliado"].fillna(0).astype(int).astype(bool)
+                df_g_edit_base = df_g_edit_base.sort_values("data").reset_index(drop=True)
+
+                edited_g = st.data_editor(
+                    df_g_edit_base,
+                    column_config={
+                        "rowid": None,
+                        "data": st.column_config.DateColumn("Data", format="DD/MM/YYYY"),
+                        "descricao": st.column_config.TextColumn("Descrição"),
+                        "valor": st.column_config.NumberColumn("Valor (R$)", format="R$ %.2f", min_value=0.0),
+                        "conciliado": st.column_config.CheckboxColumn("Conciliado?"),
+                    },
+                    hide_index=True, use_container_width=True,
+                    key=f"edit_g_{mes_str}", disabled=ja_fechado,
+                )
+
+                if not ja_fechado and st.button("💾 Salvar alterações (Saídas)", key=f"salvar_g_{mes_str}", use_container_width=True):
+                    houve_mudanca_g = False
+                    for _, row_new in edited_g.iterrows():
+                        row_old = df_g_edit_base[df_g_edit_base["rowid"] == row_new["rowid"]].iloc[0]
+                        if (
+                            float(row_new["valor"]) != float(row_old["valor"])
+                            or str(row_new["descricao"]) != str(row_old["descricao"])
+                            or bool(row_new["conciliado"]) != bool(row_old["conciliado"])
+                            or row_new["data"] != row_old["data"]
+                        ):
+                            gastos_atualizar(str(row_new["rowid"]), {
+                                "valor": float(row_new["valor"]),
+                                "descricao": str(row_new["descricao"]),
+                                "conciliado": 1 if row_new["conciliado"] else 0,
+                                "data": row_new["data"].isoformat() if hasattr(row_new["data"], "isoformat") else str(row_new["data"]),
+                            })
+                            houve_mudanca_g = True
+                    if houve_mudanca_g:
+                        st.success("✅ Saídas atualizadas!")
+                        st.rerun()
+                    else:
+                        st.info("Nenhuma alteração para salvar.")
+
+        # ── 📊 RESUMO ANTES DE FECHAR ────────────────────────────────────
         receitas_mes = _flt(df_r_mes, "valor")
         despesas_mes = _flt(df_g_mes, "valor")
-        lucro_real_mes = receitas_mes - despesas_mes           # (h)
-        saldo_teorico = saldo_inicial + lucro_real_mes          # (i)
+        lucro_real_mes = receitas_mes - despesas_mes           # (h) resultado do mês
+        saldo_teorico = saldo_inicial + lucro_real_mes          # (i) saldo final
+
+        st.markdown("---")
+        st.markdown("##### 📊 Resumo do mês — antes de fechar")
+        col_re1, col_re2, col_re3 = st.columns(3)
+        col_re1.metric("💰 Total de Receitas (Entradas)", brl(receitas_mes))
+        col_re2.metric("📉 Total de Despesas (Saídas)", brl(despesas_mes))
+        if lucro_real_mes >= 0:
+            col_re3.metric("✅ Resultado do mês", brl(lucro_real_mes), delta="Positivo")
+        else:
+            col_re3.metric("⚠️ Resultado do mês", brl(lucro_real_mes), delta="Negativo")
+
+        if lucro_real_mes >= 0:
+            st.markdown(
+                f'<div class="fin-ok">✅ O mês fechou <b>positivo</b> em {brl(lucro_real_mes)} — esse valor '
+                f'será <b>somado</b> ao saldo inicial ({brl(saldo_inicial)}), resultando em '
+                f'<b>(i) Saldo final do mês = {brl(saldo_teorico)}</b>, que vira o saldo inicial do mês seguinte.</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                f'<div class="fin-danger">⚠️ O mês fechou <b>negativo</b> em {brl(abs(lucro_real_mes))} — esse valor '
+                f'será <b>abatido</b> do saldo inicial ({brl(saldo_inicial)}), resultando em '
+                f'<b>(i) Saldo final do mês = {brl(saldo_teorico)}</b>, que vira o saldo inicial do mês seguinte.</div>',
+                unsafe_allow_html=True,
+            )
 
         col_r1, col_r2, col_r3, col_r4 = st.columns(4)
-        col_r1.metric("(d) Entradas do mês", brl(receitas_mes))
-        col_r2.metric("(g) Saídas do mês (pagas)", brl(despesas_mes))
-        col_r3.metric("(h) = Lucro Real do mês", brl(lucro_real_mes))
+        col_r1.metric("(a) Saldo inicial", brl(saldo_inicial))
+        col_r2.metric("(d) Entradas do mês", brl(receitas_mes))
+        col_r3.metric("(g) Saídas do mês (pagas)", brl(despesas_mes))
         col_r4.metric("(i) = Saldo final do mês", brl(saldo_teorico))
         st.caption("Lucro Real (h) só conta o que já foi de fato recebido e pago neste mês — é diferente do Lucro Projetado da aba \"📈 Projeção\", que inclui o que ainda está previsto.")
 
@@ -734,8 +906,8 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
                         st.error("Preencha descrição e valor.")
 
         st.markdown("---")
-        st.markdown("##### ✅ Conferência com o extrato bancário")
-        st.caption("Marque cada lançamento conforme você for conferindo linha por linha com o extrato do banco.")
+        st.markdown("##### ✅ Progresso da conferência")
+        st.caption("Marque \"Conciliado?\" nas tabelas de Entradas/Saídas acima conforme for conferindo com o extrato do banco.")
 
         total_itens = len(df_r_mes) + len(df_g_mes)
         conc_itens = 0
@@ -744,38 +916,6 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
         if not df_g_mes.empty:
             conc_itens += int(df_g_mes["conciliado"].fillna(0).astype(int).sum())
         st.progress(conc_itens / total_itens if total_itens else 0, text=f"{conc_itens} de {total_itens} lançamentos conferidos")
-
-        col_c1, col_c2 = st.columns(2)
-        with col_c1:
-            st.markdown("**Entradas**")
-            if df_r_mes.empty:
-                st.info("Nenhuma entrada neste mês.")
-            else:
-                for _, r in df_r_mes.sort_values("data").iterrows():
-                    marcado = st.checkbox(
-                        f"{formatar_data_br(r['data'])} — {r['descricao']} — {brl(float(r['valor']))}",
-                        value=bool(int(r.get("conciliado", 0) or 0)),
-                        key=f"conc_r_{r['rowid']}",
-                        disabled=ja_fechado,
-                    )
-                    if marcado != bool(int(r.get("conciliado", 0) or 0)) and not ja_fechado:
-                        recebimentos_atualizar(str(r["rowid"]), {"conciliado": 1 if marcado else 0})
-                        st.rerun()
-        with col_c2:
-            st.markdown("**Saídas**")
-            if df_g_mes.empty:
-                st.info("Nenhuma saída paga neste mês.")
-            else:
-                for _, g in df_g_mes.sort_values("data").iterrows():
-                    marcado = st.checkbox(
-                        f"{formatar_data_br(g['data'])} — {g['descricao']} — {brl(float(g['valor']))}",
-                        value=bool(int(g.get("conciliado", 0) or 0)),
-                        key=f"conc_g_{g['rowid']}",
-                        disabled=ja_fechado,
-                    )
-                    if marcado != bool(int(g.get("conciliado", 0) or 0)) and not ja_fechado:
-                        gastos_atualizar(str(g["rowid"]), {"conciliado": 1 if marcado else 0})
-                        st.rerun()
 
         st.markdown("---")
         st.markdown("##### 🏦 Confronto final com o saldo do banco")
