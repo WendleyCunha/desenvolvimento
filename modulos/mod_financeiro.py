@@ -1,7 +1,7 @@
 """
 modulos/mod_financeiro.py — Lila Closet Atelier
 ─────────────────────────────────────────────────────────────────────────────
-BLOCO FINANCEIRO — versão 2 (reestruturação).
+BLOCO FINANCEIRO — versão 3 (reestruturação).
 
 O QUE MUDOU EM RELAÇÃO À VERSÃO ANTERIOR (v11.2):
   1. Recebimentos deixaram de ser um campo acumulado ("valor_recebido" na
@@ -34,6 +34,16 @@ O QUE MUDOU EM RELAÇÃO À VERSÃO ANTERIOR (v11.2):
      final, (j) grandes despesas previstas, (k) fundos disponíveis.
   9. Fechar o mês agora avança automaticamente para o mês seguinte (fluxo
      em esteira) e permite baixar (Excel) o fechamento de qualquer mês.
+
+[v13] BUGFIX (KeyError: "data"): quando o mês selecionado no Fechamento
+     ainda não tem NENHUM recebimento ou gasto lançado, `df_r_mes` /
+     `df_g_mes` eram criados como `pd.DataFrame()` — um DataFrame sem
+     nenhuma coluna. Mais adiante, `.sort_values("data")` (usado tanto na
+     tela quanto na exportação em Excel do fechamento) explodia com
+     `KeyError: 'data'` porque a coluna simplesmente não existia nesse
+     DataFrame vazio. Corrigido: agora, quando vazios, esses DataFrames já
+     nascem com as colunas esperadas (incluindo "data"), então
+     `.sort_values("data")` funciona normalmente e apenas não itera nada.
 
 Requisitos em database.py — todas as funções usadas aqui (recebimentos_*,
 fechamento_*, fechamentos_listar) já estão no database.py entregue
@@ -81,6 +91,20 @@ from modulos.utils import (
 CAT_RECEITAS = ["Venda de peça", "Sinal/Entrada", "Aula/Consultoria", "Reembolso recebido", "Outro"]
 FORMAS_PAGAMENTO = ["Pix", "Dinheiro", "Cartão de Débito", "Cartão de Crédito", "Transferência", "Boleto"]
 
+# Colunas esperadas nos DataFrames de recebimentos e gastos. Usadas para
+# garantir que, mesmo vazios (sem nenhum lançamento no mês), os DataFrames
+# tenham as colunas certas — evita KeyError em .sort_values() / filtros
+# mais adiante quando não há nenhum lançamento naquele período.
+_COLS_RECEBIMENTOS = [
+    "rowid", "data", "descricao", "valor", "categoria",
+    "forma_pagamento", "conciliado", "encomenda_id", "_criado_em",
+]
+_COLS_GASTOS = [
+    "rowid", "data", "descricao", "valor", "categoria", "pago",
+    "recorrente", "grande_despesa_prevista", "conciliado",
+    "encomenda_id", "_criado_em",
+]
+
 
 # ── HELPERS DE CÁLCULO ────────────────────────────────────────────────────
 
@@ -95,6 +119,16 @@ def _mes_de(data_iso: str) -> str:
     if not data_iso:
         return ""
     return str(data_iso)[:7]
+
+
+def _df_vazio_receb() -> pd.DataFrame:
+    """DataFrame vazio de recebimentos, mas já com as colunas esperadas."""
+    return pd.DataFrame(columns=_COLS_RECEBIMENTOS)
+
+
+def _df_vazio_gastos() -> pd.DataFrame:
+    """DataFrame vazio de gastos, mas já com as colunas esperadas."""
+    return pd.DataFrame(columns=_COLS_GASTOS)
 
 
 def _ultimo_fechamento(df_fech: pd.DataFrame):
@@ -122,7 +156,7 @@ def _grandes_despesas_previstas(df_gastos: pd.DataFrame) -> pd.DataFrame:
     usado como modelo: "Grandes Despesas Previstas").
     """
     if df_gastos.empty or "grande_despesa_prevista" not in df_gastos.columns:
-        return pd.DataFrame()
+        return _df_vazio_gastos()
     df = df_gastos[
         (df_gastos["pago"].astype(int) == 0)
         & (df_gastos["grande_despesa_prevista"].fillna(0).astype(int) == 1)
@@ -633,8 +667,12 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
 
         saldo_inicial = st.number_input("(a) Saldo inicial do mês (herdado do fechamento anterior)", value=float(saldo_inicial), step=10.0, format="%.2f", disabled=ja_fechado)
 
-        df_r_mes = df_r_fin[df_r_fin["data"].apply(_mes_de) == mes_str].copy() if not df_r_fin.empty else pd.DataFrame()
-        df_g_mes = df_g_fin[(df_g_fin["data"].apply(_mes_de) == mes_str) & (df_g_fin["pago"].astype(int) == 1)].copy() if not df_g_fin.empty else pd.DataFrame()
+        # ── BUGFIX: quando não há NENHUM lançamento no mês, o DataFrame
+        #    resultante precisa nascer com as colunas esperadas (incluindo
+        #    "data"), senão .sort_values("data") mais abaixo (e na exportação
+        #    em Excel) explode com KeyError: "data". ──
+        df_r_mes = df_r_fin[df_r_fin["data"].apply(_mes_de) == mes_str].copy() if not df_r_fin.empty else _df_vazio_receb()
+        df_g_mes = df_g_fin[(df_g_fin["data"].apply(_mes_de) == mes_str) & (df_g_fin["pago"].astype(int) == 1)].copy() if not df_g_fin.empty else _df_vazio_gastos()
 
         receitas_mes = _flt(df_r_mes, "valor")
         despesas_mes = _flt(df_g_mes, "valor")
@@ -872,8 +910,8 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
 
         mes_str_rel = f"{ano_sel_fin}-{mes_sel_fin:02d}"
 
-        df_r_mes_rel = df_r_fin[df_r_fin["data"].apply(_mes_de) == mes_str_rel].copy() if not df_r_fin.empty else pd.DataFrame()
-        df_g_mes_rel = df_g_fin[df_g_fin["data"].apply(_mes_de) == mes_str_rel].copy() if not df_g_fin.empty else pd.DataFrame()
+        df_r_mes_rel = df_r_fin[df_r_fin["data"].apply(_mes_de) == mes_str_rel].copy() if not df_r_fin.empty else _df_vazio_receb()
+        df_g_mes_rel = df_g_fin[df_g_fin["data"].apply(_mes_de) == mes_str_rel].copy() if not df_g_fin.empty else _df_vazio_gastos()
 
         rec_mes   = _flt(df_r_mes_rel, "valor")
         gasto_mes = float(df_g_mes_rel[df_g_mes_rel["pago"].astype(int) == 1]["valor"].fillna(0).astype(float).sum()) if not df_g_mes_rel.empty else 0.0
