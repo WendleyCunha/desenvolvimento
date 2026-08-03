@@ -1,7 +1,7 @@
 """
 modulos/mod_financeiro.py — Lila Closet Atelier
 ─────────────────────────────────────────────────────────────────────────────
-BLOCO FINANCEIRO — v14 (reescrita completa da lógica de projeção/recebíveis).
+BLOCO FINANCEIRO — v15 (adiciona o KPI "Lucro Previsto" do mês).
 
 POR QUE ESTA REESCRITA EXISTE (bugs reais encontrados e corrigidos):
 
@@ -32,6 +32,14 @@ POR QUE ESTA REESCRITA EXISTE (bugs reais encontrados e corrigidos):
      estava correto (recebimentos_inserir com encomenda_id + atualização
      do cache valor_recebido). Mantido, só ganhou selo visual de status
      (✅ Quitado / 🟡 Parcial / 🔴 Sem pagamento) e filtro.
+
+  5) [v15] NOVO KPI "🔮 Lucro Previsto (mês)" no topo: soma o Lucro Real
+     (histórico, já recebido/pago) + apenas o SALDO que ainda falta
+     receber (valor_total - valor_recebido, nunca o bruto) de pedidos com
+     Data de Entrega dentro do mês atual. Um pedido de R$300 com R$100 de
+     sinal e entrega neste mês entra com R$200 (não R$300); se a entrega
+     for daqui a 3 meses, esse saldo NÃO entra agora — só entra na conta
+     no mês em que a entrega de fato acontecer.
 
 PRINCÍPIO GERAL DESTE ARQUIVO: toda projeção lê, AO VIVO, a Data de
 Entrega dos pedidos e o vencimento das despesas em aberto. Se você mudar a
@@ -314,6 +322,13 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
     df_receber_mes_atual = _receber_do_mes(df_enc_fin, mes_atual_str)
     receber_mes_atual = float(df_receber_mes_atual["_saldo_pendente"].sum()) if not df_receber_mes_atual.empty else 0.0
 
+    # [v15] Lucro Previsto (mês) = Lucro Real (histórico, já recebido/pago)
+    # + apenas o SALDO que ainda falta receber (valor_total - valor_recebido)
+    # de pedidos com Data de Entrega dentro do mês atual. Nunca soma o valor
+    # bruto do pedido, e pedidos com entrega em outro mês não entram aqui —
+    # eles só vão entrar nesta conta no mês em que a entrega deles acontecer.
+    lucro_previsto_mes = lucro_real + receber_mes_atual
+
     df_receber_atrasado_top = _receber_atrasado(df_enc_fin, hoje_dt)
     receber_atrasado_top = float(df_receber_atrasado_top["_saldo_pendente"].sum()) if not df_receber_atrasado_top.empty else 0.0
 
@@ -387,12 +402,19 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
     col_f3.metric("✅ Lucro Real (histórico)",        brl(lucro_real),
                   delta=f"{pct_str(lucro_real, receita_total)} de margem" if receita_total > 0 else "")
 
-    col_f4, col_f5, col_f6 = st.columns(3)
-    col_f4.metric("📥 A Receber (mês atual)", brl(receber_mes_atual),
+    col_f4, col_f5, col_f6, col_f7 = st.columns(4)
+    col_f4.metric(
+        "🔮 Lucro Previsto (mês)", brl(lucro_previsto_mes),
+        help="Lucro Real (histórico) + apenas o saldo que ainda falta receber "
+             "(valor_total − valor_recebido) de pedidos com Data de Entrega "
+             "neste mês. Um pedido com entrega daqui a 3 meses NÃO entra aqui "
+             "— ele só vai aparecer nesta conta no mês em que a entrega dele acontecer.",
+    )
+    col_f5.metric("📥 A Receber (mês atual)", brl(receber_mes_atual),
                   help="Saldo pendente (valor_total - valor_recebido) de pedidos com Data de Entrega neste mês. Muda sozinho se você reagendar a entrega.")
-    col_f5.metric("📤 A Pagar (mês atual)", brl(pagar_mes_atual),
+    col_f6.metric("📤 A Pagar (mês atual)", brl(pagar_mes_atual),
                   help="Despesas em aberto com vencimento neste mês.")
-    col_f6.metric("🔮 Saldo Projetado (fim do mês)", brl(saldo_projetado_mes),
+    col_f7.metric("🔮 Saldo Projetado (fim do mês)", brl(saldo_projetado_mes),
                   help="Saldo em Caixa Atual + (A Receber do mês − A Pagar do mês). Não inclui atrasados de meses anteriores — veja o alerta acima.")
 
     prog_fat = min(receita_total / meta_fat_fin, 1.0) if meta_fat_fin > 0 else 0
