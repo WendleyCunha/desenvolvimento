@@ -298,209 +298,10 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
             st.markdown(f'<div class="fin-danger">🚨 Gastos {brl(gastos_pagos - teto_gasto_mens)} acima do teto!</div>', unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
-    f_rapido, f_dash, f_proj, f_pedidos, f_fecha, f_relat = st.tabs([
-        "🚀 Lançamento Rápido", "📊 Dashboard", "📈 Projeção",
-        "💳 Pagamentos por Pedido", "🔒 Fechamento & Conciliação", "📋 Relatório Mensal",
+    f_fecha, f_proj, f_pedidos, f_relat = st.tabs([
+        "🔒 Fechamento & Conciliação", "📈 Projeção",
+        "💳 Pagamentos por Pedido", "📋 Relatório Mensal",
     ])
-
-    # ═══════════════════════════════════════════════════════════════════
-    # ABA: LANÇAMENTO RÁPIDO
-    # ═══════════════════════════════════════════════════════════════════
-    with f_rapido:
-        st.markdown("#### 🚀 Lançar Entrada ou Saída")
-        tipo_lanc = st.radio("O que você quer lançar?", ["💰 Entrada (recebi dinheiro)", "📉 Saída (gastei dinheiro)"],
-                              horizontal=True, key="tipo_lanc_rapido")
-
-        df_enc_ativos = encomendas_listar(cancelado=False)
-        enc_ativos_list = []
-        if not df_enc_ativos.empty:
-            enc_ativos_list = [
-                (row["rowid"], f"#{row['rowid'][:6]} – {row['cliente']}: {row['peca']}")
-                for _, row in df_enc_ativos[df_enc_ativos["etapa"].astype(int) < 7].iterrows()
-            ]
-        enc_list = ["— Nenhum (avulso / custo geral) —"] + [e[1] for e in enc_ativos_list]
-
-        if tipo_lanc.startswith("💰"):
-            with st.form("form_receb_rapido", clear_on_submit=True):
-                c1, c2 = st.columns(2)
-                r_desc = c1.text_input("Descrição *", placeholder="Ex: Sinal do vestido da Ana")
-                r_val  = c2.number_input("Valor (R$) *", min_value=0.01, step=10.0, format="%.2f")
-                c3, c4 = st.columns(2)
-                r_cat  = c3.selectbox("Categoria", CAT_RECEITAS)
-                r_data = c4.date_input("Data do recebimento", hoje_brasilia(), format="DD/MM/YYYY")
-                r_forma = st.selectbox("Forma de pagamento", FORMAS_PAGAMENTO)
-                r_enc_lbl = st.selectbox("Vincular a um pedido? (opcional)", enc_list)
-                r_enc_id = None
-                if r_enc_lbl != "— Nenhum (avulso / custo geral) —":
-                    idx = enc_list.index(r_enc_lbl) - 1
-                    r_enc_id = enc_ativos_list[idx][0]
-
-                if st.form_submit_button("💾 Lançar Entrada", use_container_width=True, type="primary"):
-                    if r_desc.strip() and r_val > 0:
-                        recebimentos_inserir({
-                            "encomenda_id": r_enc_id,
-                            "descricao": r_desc.strip(),
-                            "valor": r_val,
-                            "categoria": r_cat,
-                            "data": r_data.isoformat(),
-                            "forma_pagamento": r_forma,
-                            "conciliado": 0,
-                            "criado_em": agora_br().isoformat(),
-                        })
-                        if r_enc_id:
-                            enc_atual = df_enc_ativos[df_enc_ativos["rowid"] == r_enc_id].iloc[0]
-                            novo_total_receb = float(enc_atual.get("valor_recebido", 0) or 0) + r_val
-                            encomendas_atualizar(str(r_enc_id), {"valor_recebido": novo_total_receb})
-                        st.success("✅ Entrada lançada!")
-                        st.rerun()
-                    else:
-                        st.error("Preencha descrição e valor.")
-        else:
-            with st.form("form_gasto_rapido", clear_on_submit=True):
-                c1, c2 = st.columns(2)
-                g_desc = c1.text_input("Descrição *")
-                g_val  = c2.number_input("Valor (R$) *", min_value=0.01, step=10.0, format="%.2f")
-                c3, c4 = st.columns(2)
-                g_cat  = c3.selectbox("Categoria", CAT_GASTOS)
-                g_data = c4.date_input("Data", hoje_brasilia(), format="DD/MM/YYYY")
-                c5, c6 = st.columns(2)
-                g_pago  = c5.checkbox("Já foi pago?", value=True)
-                g_recor = c6.checkbox("Gasto recorrente (mensal)?")
-                g_grande = st.checkbox(
-                    "🎯 É uma grande despesa prevista? (reservar fundos até o pagamento)",
-                    value=False,
-                    help='Use para gastos grandes já esperados mas que ainda vão acontecer (ex: aluguel de local para evento, compra de equipamento). Enquanto não for pago, ele aparece separado na aba "Fechamento" reservando parte do saldo, e continua visível mês a mês até você quitar.',
-                )
-                g_enc_lbl = st.selectbox("Vincular a pedido? (opcional)", enc_list, key="g_enc_rapido")
-                g_enc_id = None
-                if g_enc_lbl != "— Nenhum (avulso / custo geral) —":
-                    idx = enc_list.index(g_enc_lbl) - 1
-                    g_enc_id = enc_ativos_list[idx][0]
-
-                if st.form_submit_button("💾 Lançar Saída", use_container_width=True, type="primary"):
-                    if g_desc.strip() and g_val > 0:
-                        gastos_inserir({
-                            "encomenda_id": g_enc_id,
-                            "descricao": g_desc.strip(), "valor": g_val,
-                            "data": g_data.isoformat(), "categoria": g_cat,
-                            "pago": 1 if g_pago else 0,
-                            "recorrente": 1 if g_recor else 0,
-                            "grande_despesa_prevista": 1 if g_grande else 0,
-                            "conciliado": 0,
-                            "criado_em": agora_br().isoformat(),
-                        })
-                        st.success("✅ Saída lançada!")
-                        st.rerun()
-                    else:
-                        st.error("Preencha descrição e valor.")
-
-        st.markdown("---")
-        st.markdown("#### 🕘 Últimos lançamentos")
-        col_ult1, col_ult2 = st.columns(2)
-        with col_ult1:
-            st.markdown("**Entradas recentes**")
-            if df_r_fin.empty:
-                st.info("Nenhum recebimento lançado ainda.")
-            else:
-                ult_r = df_r_fin.sort_values("data", ascending=False).head(8)
-                for _, r in ult_r.iterrows():
-                    st.markdown(f"- {formatar_data_br(r['data'])} — {r['descricao']} — **{brl(float(r['valor']))}**")
-        with col_ult2:
-            st.markdown("**Saídas recentes**")
-            if df_g_fin.empty:
-                st.info("Nenhum gasto lançado ainda.")
-            else:
-                ult_g = df_g_fin.sort_values("data", ascending=False).head(8)
-                for _, g in ult_g.iterrows():
-                    st.markdown(f"- {formatar_data_br(g['data'])} — {g['descricao']} — **{brl(float(g['valor']))}**")
-
-    # ═══════════════════════════════════════════════════════════════════
-    # ABA: DASHBOARD
-    # ═══════════════════════════════════════════════════════════════════
-    with f_dash:
-        st.markdown("#### 📊 Visão Financeira Geral")
-        col_d1, col_d2 = st.columns(2)
-        with col_d1:
-            st.markdown("**📥 Receitas por Status**")
-            rec_pendente = (
-                float(df_enc_fin[df_enc_fin["etapa"].astype(int) < 7]["valor_total"].fillna(0).astype(float).sum())
-                - float(df_enc_fin[df_enc_fin["etapa"].astype(int) < 7]["valor_recebido"].fillna(0).astype(float).sum())
-            ) if not df_enc_fin.empty else 0.0
-            df_rec_chart = pd.DataFrame({
-                "Categoria": ["Recebido", "Previsto (em andamento)", "A receber (saldo)"],
-                "Valor": [receita_total, receita_prevista, rec_pendente],
-            })
-            st.bar_chart(df_rec_chart.set_index("Categoria"))
-
-        with col_d2:
-            st.markdown("**📤 Gastos por Categoria**")
-            if not df_g_fin.empty and "categoria" in df_g_fin.columns:
-                cat_group = df_g_fin.groupby("categoria")["valor"].sum().reset_index()
-                cat_group.columns = ["Categoria","Valor"]
-                st.bar_chart(cat_group.set_index("Categoria"))
-            else:
-                st.info("Nenhum gasto lançado.")
-
-        st.markdown("---")
-        st.markdown("**🔄 Fluxo de Caixa – Pedidos Ativos**")
-        if not df_enc_fin.empty:
-            pedidos_ativos = df_enc_fin[df_enc_fin["etapa"].astype(int) < 7].copy()
-            if pedidos_ativos.empty:
-                st.info("Nenhum pedido ativo.")
-            else:
-                pedidos_ativos["Saldo a Receber"] = pedidos_ativos["valor_total"].astype(float) - pedidos_ativos["valor_recebido"].astype(float)
-                pedidos_ativos["Entrega"] = pedidos_ativos["data_entrega"].apply(formatar_data_br)
-                df_fluxo = pedidos_ativos[["cliente","peca","valor_total","valor_recebido","Saldo a Receber","Entrega"]].copy()
-                df_fluxo.columns = ["Cliente","Peça","Total","Recebido","A Receber","Entrega Prevista"]
-                for c in ["Total","Recebido","A Receber"]:
-                    df_fluxo[c] = df_fluxo[c].apply(lambda x: brl(float(x)))
-                st.dataframe(df_fluxo, use_container_width=True, hide_index=True)
-
-        st.markdown("---")
-        st.markdown("**📆 Contas a Pagar (em aberto)**")
-        df_cp = df_g_fin[df_g_fin["pago"].astype(int) == 0].copy() if not df_g_fin.empty else pd.DataFrame()
-        if df_cp.empty:
-            st.success("✅ Nenhuma conta em aberto.")
-        else:
-            df_cp["Data"] = df_cp["data"].apply(formatar_data_br)
-            df_cp_show = df_cp[["Data","descricao","categoria","valor"]].copy()
-            df_cp_show.columns = ["Data","Descrição","Categoria","Valor"]
-            df_cp_show["Valor"] = df_cp_show["Valor"].apply(lambda x: brl(float(x)))
-            st.dataframe(df_cp_show, use_container_width=True, hide_index=True)
-            st.markdown(f'<div class="fin-alerta">Total em aberto: <b>{brl(float(df_cp["valor"].sum()))}</b></div>', unsafe_allow_html=True)
-
-        st.markdown("---")
-        st.markdown("#### 📋 Todos os Gastos")
-        if df_g_fin.empty:
-            st.info("Nenhum gasto registrado.")
-        else:
-            for _, g in df_g_fin.iterrows():
-                status_g = "✅ Pago" if int(g.get("pago", 0) or 0) else "⏳ Em aberto"
-                badge_g  = "badge-green" if int(g.get("pago", 0) or 0) else "badge-amber"
-                lancado_em = g.get("criado_em")
-                lancado_html = f" &nbsp;|&nbsp; 🕐 lançado em {formatar_data_hora_br(lancado_em)}" if lancado_em else ""
-                conc_badge = "&nbsp;<span class='badge badge-blue'>🔗 conciliado</span>" if int(g.get("conciliado", 0) or 0) else ""
-                col_gi, col_gb = st.columns([5, 1])
-                col_gi.markdown(f"""
-                <div class="kcard">
-                  <div class="kcard-title">{g['descricao']} — <b>{brl(float(g.get('valor',0)))}</b></div>
-                  <div class="kcard-sub">
-                    📂 {g.get('categoria','')} &nbsp;|&nbsp; 📅 {formatar_data_br(g.get('data',''))}{lancado_html}
-                    &nbsp;<span class="badge {badge_g}">{status_g}</span>
-                    {"&nbsp;<span class='badge badge-blue'>🔁 Recorrente</span>" if int(g.get('recorrente', 0) or 0) else ""}
-                    {conc_badge}
-                  </div>
-                </div>""", unsafe_allow_html=True)
-                with col_gb:
-                    st.write("")
-                    if not int(g.get("pago", 0) or 0):
-                        if st.button("💳 Quitar", key=f"qt_{g['rowid']}"):
-                            gastos_atualizar(str(g["rowid"]), {"pago": 1})
-                            st.rerun()
-                    else:
-                        if st.button("🗑️", key=f"del_g_{g['rowid']}", help="Remover"):
-                            gastos_deletar(str(g["rowid"]))
-                            st.rerun()
 
     # ═══════════════════════════════════════════════════════════════════
     # ABA: PROJEÇÃO
@@ -717,6 +518,49 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
         #    em Excel) explode com KeyError: "data". ──
         df_r_mes = df_r_fin[df_r_fin["data"].apply(_mes_de) == mes_str].copy() if not df_r_fin.empty else _df_vazio_receb()
         df_g_mes = df_g_fin[(df_g_fin["data"].apply(_mes_de) == mes_str) & (df_g_fin["pago"].astype(int) == 1)].copy() if not df_g_fin.empty else _df_vazio_gastos()
+
+        # ── ➕ NOVO LANÇAMENTO — Descrição, Valor, Entrada ou Saída ──────
+        # Ponto único de lançamento (substitui a antiga aba "Lançamento
+        # Rápido"): simples, direto, sem categorias nem vínculos
+        # obrigatórios. Gera uma linha de entrada ou de saída, que aparece
+        # na tabela de extrato logo abaixo para ser editada/conferida.
+        st.markdown("---")
+        st.markdown("##### ➕ Novo Lançamento")
+        with st.form(f"form_novo_lanc_{mes_str}", clear_on_submit=True):
+            col_nl1, col_nl2, col_nl3 = st.columns([3, 2, 2])
+            nl_desc = col_nl1.text_input("Descrição *", placeholder="Ex: Sinal do vestido da Ana")
+            nl_val  = col_nl2.number_input("Valor (R$) *", min_value=0.01, step=10.0, format="%.2f")
+            nl_tipo = col_nl3.selectbox("Tipo", ["💰 Entrada", "📉 Saída"])
+            nl_data = st.date_input("Data", hoje_brasilia(), format="DD/MM/YYYY", key=f"nl_data_{mes_str}")
+
+            if st.form_submit_button("💾 Lançar", use_container_width=True, type="primary"):
+                if nl_desc.strip() and nl_val > 0:
+                    if nl_tipo.startswith("💰"):
+                        recebimentos_inserir({
+                            "encomenda_id": None,
+                            "descricao": nl_desc.strip(),
+                            "valor": nl_val,
+                            "categoria": "Outro",
+                            "data": nl_data.isoformat(),
+                            "forma_pagamento": "",
+                            "conciliado": 0,
+                            "criado_em": agora_br().isoformat(),
+                        })
+                        st.success("✅ Entrada lançada!")
+                    else:
+                        gastos_inserir({
+                            "encomenda_id": None,
+                            "descricao": nl_desc.strip(), "valor": nl_val,
+                            "data": nl_data.isoformat(), "categoria": "Outro",
+                            "pago": 1, "recorrente": 0,
+                            "grande_despesa_prevista": 0,
+                            "conciliado": 0,
+                            "criado_em": agora_br().isoformat(),
+                        })
+                        st.success("✅ Saída lançada!")
+                    st.rerun()
+                else:
+                    st.error("Preencha descrição e valor.")
 
         # ── ✏️ EXTRATO DO MÊS — Entradas e Saídas, EDITÁVEL ──────────────
         st.markdown("---")
