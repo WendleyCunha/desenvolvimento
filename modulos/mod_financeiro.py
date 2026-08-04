@@ -1068,7 +1068,7 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
                 if not ja_fechado and st.button("💾 Salvar alterações (Saídas)", key=f"salvar_g_{mes_str}", use_container_width=True):
                     rowids_antes_g = set(df_g_edit_base["rowid"].astype(str))
                     rowids_depois_g = set(edited_g["rowid"].dropna().astype(str))
-                    excluidos_g = rowids_antes_g - rowids_depois
+                    excluidos_g = rowids_antes_g - rowids_depois_g
 
                     for rid in excluidos_g:
                         gastos_deletar(rid)
