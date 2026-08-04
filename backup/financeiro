@@ -283,9 +283,62 @@ def _status_pagamento_badge(v_recebido: float, v_total: float) -> str:
         return '<span class="badge badge-red">🔴 Sem pagamento</span>'
 
 
+@st.dialog("💵 Recebimento Parcial")
+def _dialog_recebimento_parcial(enc_id: str, cliente: str, peca: str,
+                                 v_total_e: float, v_recebido: float, v_restante: float):
+    """
+    Popup dedicado para registrar um recebimento PARCIAL de um pedido — em
+    vez do "Quitar saldo total" (que zera o saldo de uma vez), aqui o
+    usuário informa exatamente quanto está entrando agora.
+
+    A gravação usa EXATAMENTE o mesmo caminho de dados do resto do sistema
+    (recebimentos_inserir + encomendas_atualizar), então tudo que lê esses
+    dados — Lucro Real, Lucro Previsto, A Receber do mês, Projeção, Extrato
+    do mês, Relatório Mensal — se ajusta sozinho na próxima renderização.
+    Não existe cálculo paralelo nem valor duplicado: é a mesma fonte de
+    verdade de sempre, só que alimentada por um popup mais direto.
+    """
+    st.markdown(f"**{cliente}** — {peca}")
+    col_m1, col_m2, col_m3 = st.columns(3)
+    col_m1.metric("Valor Total", brl(v_total_e))
+    col_m2.metric("Já Recebido", brl(v_recebido))
+    col_m3.metric("Saldo Restante", brl(v_restante))
+
+    st.markdown("")
+    valor_parcial = st.number_input(
+        "Quanto vai receber agora? (R$)",
+        min_value=0.01, max_value=float(v_restante),
+        value=float(v_restante), step=10.0, format="%.2f",
+        key=f"parcial_val_{enc_id}",
+        help="Pode ser qualquer valor até o saldo restante — o que sobrar continua pendente.",
+    )
+    forma_parcial = st.selectbox("Forma de pagamento", FORMAS_PAGAMENTO, key=f"parcial_forma_{enc_id}")
+
+    saldo_depois = max(v_restante - valor_parcial, 0.0)
+    st.caption(f"💡 Depois deste recebimento, o saldo pendente deste pedido passa a ser **{brl(saldo_depois)}**.")
+
+    col_ok, col_cancel = st.columns(2)
+    if col_ok.button("✅ Confirmar Recebimento", use_container_width=True, type="primary", key=f"parcial_confirmar_{enc_id}"):
+        recebimentos_inserir({
+            "encomenda_id": str(enc_id),
+            "descricao": f"Pagamento parcial – {cliente}: {peca}",
+            "valor": valor_parcial,
+            "categoria": "Venda de peça",
+            "data": hoje_brasilia().isoformat(),
+            "forma_pagamento": forma_parcial,
+            "conciliado": 0,
+            "criado_em": agora_br().isoformat(),
+        })
+        novo_total = v_recebido + valor_parcial
+        encomendas_atualizar(str(enc_id), {"valor_recebido": novo_total})
+        st.success(f"✅ {brl(valor_parcial)} registrado para {cliente}! Saldo restante: {brl(saldo_depois)}.")
+        st.rerun()
+    if col_cancel.button("❌ Cancelar", use_container_width=True, key=f"parcial_cancelar_{enc_id}"):
+        st.rerun()
+
+
 def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
     """Renderiza o BLOCO FINANCEIRO completo."""
-    st.markdown("## 💰 Financeiro")
     st.markdown("### 💰 Controle Financeiro Profissional")
 
     df_enc_fin = df_enc_all
@@ -356,102 +409,107 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
     capital_giro_sug = receita_total * pct_capital
     teto_gasto_mens  = (receita_total + receber_total_geral) * (1 - margem_min) if (receita_total + receber_total_geral) > 0 else 0
 
-    # ── KPI de topo: Saldo em Caixa Atual ─────────────────────────────────
-    col_sc, col_sc2 = st.columns([2, 3])
-    with col_sc:
-        st.markdown(f"""
-        <div class="kcard" style="border:2px solid #3d1f10;">
-          <div class="kcard-title" style="font-size:1.6rem;">💵 {brl(saldo_caixa_atual)}</div>
-          <div class="kcard-sub">Saldo em Caixa Atual
-            {f"(herdado do fechamento de {mes_corte_fech})" if mes_corte_fech else "(nenhum mês fechado ainda — considerando todo o histórico)"}
-          </div>
-        </div>""", unsafe_allow_html=True)
-    with col_sc2:
-        if not mes_corte_fech:
-            st.markdown('<div class="fin-alerta">📌 Você ainda não fez nenhum fechamento de caixa. Vá até a aba "🔒 Fechamento &amp; Conciliação" e feche o primeiro mês para começar a ter um saldo confiável de arrastar entre os meses.</div>', unsafe_allow_html=True)
-        else:
-            st.markdown(f'<div class="fin-ok">✅ Último mês fechado: <b>{mes_corte_fech}</b>, com saldo final de <b>{brl(saldo_herdado)}</b>. Tudo lançado depois disso já está somado ao saldo acima.</div>', unsafe_allow_html=True)
+    # ── [v16] Visão Geral (Saldo, Alertas, KPIs, Capital/Reserva/Teto) ────
+    # Fica OCULTA por padrão dentro de um expander recolhido — os cálculos
+    # continuam acontecendo normalmente (as abas dependem deles), só a
+    # EXIBIÇÃO deste bloco é que fica escondida até o usuário clicar para
+    # expandir. Nada foi removido, só recolhido.
+    with st.expander("📊 Visão Geral (Saldo, KPIs e Indicadores)", expanded=False):
+        # ── KPI de topo: Saldo em Caixa Atual ─────────────────────────────
+        col_sc, col_sc2 = st.columns([2, 3])
+        with col_sc:
+            st.markdown(f"""
+            <div class="kcard" style="border:2px solid #3d1f10;">
+              <div class="kcard-title" style="font-size:1.6rem;">💵 {brl(saldo_caixa_atual)}</div>
+              <div class="kcard-sub">Saldo em Caixa Atual
+                {f"(herdado do fechamento de {mes_corte_fech})" if mes_corte_fech else "(nenhum mês fechado ainda — considerando todo o histórico)"}
+              </div>
+            </div>""", unsafe_allow_html=True)
+        with col_sc2:
+            if not mes_corte_fech:
+                st.markdown('<div class="fin-alerta">📌 Você ainda não fez nenhum fechamento de caixa. Vá até a aba "🔒 Fechamento &amp; Conciliação" e feche o primeiro mês para começar a ter um saldo confiável de arrastar entre os meses.</div>', unsafe_allow_html=True)
+            else:
+                st.markdown(f'<div class="fin-ok">✅ Último mês fechado: <b>{mes_corte_fech}</b>, com saldo final de <b>{brl(saldo_herdado)}</b>. Tudo lançado depois disso já está somado ao saldo acima.</div>', unsafe_allow_html=True)
 
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    # ── Alerta de atrasados — SEMPRE visível, nunca escondido em aba ─────
-    if receber_atrasado_top > 0.01 or pagar_atrasado_top > 0.01:
-        col_al1, col_al2 = st.columns(2)
-        if receber_atrasado_top > 0.01:
-            col_al1.markdown(
-                f'<div class="fin-danger">🔴 <b>{brl(receber_atrasado_top)}</b> em atraso para receber '
-                f'({len(df_receber_atrasado_top)} pedido(s) com entrega já vencida e saldo pendente). '
-                f'Veja detalhes na aba 📈 Projeção.</div>',
-                unsafe_allow_html=True,
-            )
-        else:
-            col_al1.markdown('<div class="fin-ok">✅ Nenhum recebimento atrasado.</div>', unsafe_allow_html=True)
-        if pagar_atrasado_top > 0.01:
-            col_al2.markdown(
-                f'<div class="fin-danger">🔴 <b>{brl(pagar_atrasado_top)}</b> em despesas vencidas e não pagas '
-                f'({len(df_pagar_atrasado_top)} lançamento(s)). Veja detalhes na aba 📈 Projeção.</div>',
-                unsafe_allow_html=True,
-            )
-        else:
-            col_al2.markdown('<div class="fin-ok">✅ Nenhuma despesa vencida em aberto.</div>', unsafe_allow_html=True)
         st.markdown("<br>", unsafe_allow_html=True)
 
-    col_f1, col_f2, col_f3 = st.columns(3)
-    col_f1.metric("💰 Receita Recebida (histórico)", brl(receita_total))
-    col_f2.metric("📉 Gastos Pagos (histórico)",     brl(gastos_pagos))
-    col_f3.metric("✅ Lucro Real (histórico)",        brl(lucro_real),
-                  delta=f"{pct_str(lucro_real, receita_total)} de margem" if receita_total > 0 else "")
+        # ── Alerta de atrasados — resumo (detalhe + baixa ficam na aba Projeção) ──
+        if receber_atrasado_top > 0.01 or pagar_atrasado_top > 0.01:
+            col_al1, col_al2 = st.columns(2)
+            if receber_atrasado_top > 0.01:
+                col_al1.markdown(
+                    f'<div class="fin-danger">🔴 <b>{brl(receber_atrasado_top)}</b> em atraso para receber '
+                    f'({len(df_receber_atrasado_top)} pedido(s) com entrega já vencida e saldo pendente). '
+                    f'Veja detalhes e dê baixa na aba 📈 Projeção.</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                col_al1.markdown('<div class="fin-ok">✅ Nenhum recebimento atrasado.</div>', unsafe_allow_html=True)
+            if pagar_atrasado_top > 0.01:
+                col_al2.markdown(
+                    f'<div class="fin-danger">🔴 <b>{brl(pagar_atrasado_top)}</b> em despesas vencidas e não pagas '
+                    f'({len(df_pagar_atrasado_top)} lançamento(s)). Veja detalhes e dê baixa na aba 📈 Projeção.</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                col_al2.markdown('<div class="fin-ok">✅ Nenhuma despesa vencida em aberto.</div>', unsafe_allow_html=True)
+            st.markdown("<br>", unsafe_allow_html=True)
 
-    col_f4, col_f5, col_f6, col_f7 = st.columns(4)
-    col_f4.metric(
-        "🔮 Lucro Previsto (mês)", brl(lucro_previsto_mes),
-        help="Lucro Real (histórico) + apenas o saldo que ainda falta receber "
-             "(valor_total − valor_recebido) de pedidos com Data de Entrega "
-             "neste mês. Um pedido com entrega daqui a 3 meses NÃO entra aqui "
-             "— ele só vai aparecer nesta conta no mês em que a entrega dele acontecer.",
-    )
-    col_f5.metric("📥 A Receber (mês atual)", brl(receber_mes_atual),
-                  help="Saldo pendente (valor_total - valor_recebido) de pedidos com Data de Entrega neste mês. Muda sozinho se você reagendar a entrega.")
-    col_f6.metric("📤 A Pagar (mês atual)", brl(pagar_mes_atual),
-                  help="Despesas em aberto com vencimento neste mês.")
-    col_f7.metric("🔮 Saldo Projetado (fim do mês)", brl(saldo_projetado_mes),
-                  help="Saldo em Caixa Atual + (A Receber do mês − A Pagar do mês). Não inclui atrasados de meses anteriores — veja o alerta acima.")
+        col_f1, col_f2, col_f3 = st.columns(3)
+        col_f1.metric("💰 Receita Recebida (histórico)", brl(receita_total))
+        col_f2.metric("📉 Gastos Pagos (histórico)",     brl(gastos_pagos))
+        col_f3.metric("✅ Lucro Real (histórico)",        brl(lucro_real),
+                      delta=f"{pct_str(lucro_real, receita_total)} de margem" if receita_total > 0 else "")
 
-    prog_fat = min(receita_total / meta_fat_fin, 1.0) if meta_fat_fin > 0 else 0
-    st.progress(prog_fat, text=f"Faturamento: {brl(receita_total)} / {brl(meta_fat_fin)} (meta)")
+        col_f4, col_f5, col_f6, col_f7 = st.columns(4)
+        col_f4.metric(
+            "🔮 Lucro Previsto (mês)", brl(lucro_previsto_mes),
+            help="Lucro Real (histórico) + apenas o saldo que ainda falta receber "
+                 "(valor_total − valor_recebido) de pedidos com Data de Entrega "
+                 "neste mês. Um pedido com entrega daqui a 3 meses NÃO entra aqui "
+                 "— ele só vai aparecer nesta conta no mês em que a entrega dele acontecer.",
+        )
+        col_f5.metric("📥 A Receber (mês atual)", brl(receber_mes_atual),
+                      help="Saldo pendente (valor_total - valor_recebido) de pedidos com Data de Entrega neste mês. Muda sozinho se você reagendar a entrega.")
+        col_f6.metric("📤 A Pagar (mês atual)", brl(pagar_mes_atual),
+                      help="Despesas em aberto com vencimento neste mês.")
+        col_f7.metric("🔮 Saldo Projetado (fim do mês)", brl(saldo_projetado_mes),
+                      help="Saldo em Caixa Atual + (A Receber do mês − A Pagar do mês). Não inclui atrasados de meses anteriores — veja o alerta acima.")
+
+        prog_fat = min(receita_total / meta_fat_fin, 1.0) if meta_fat_fin > 0 else 0
+        st.progress(prog_fat, text=f"Faturamento: {brl(receita_total)} / {brl(meta_fat_fin)} (meta)")
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        col_h1, col_h2, col_h3 = st.columns(3)
+        with col_h1:
+            st.markdown("#### 💡 Capital de Giro")
+            st.markdown(f'<div class="kcard"><div class="kcard-title">{brl(capital_giro_sug)}</div><div class="kcard-sub">Sugestão: manter {int(pct_capital*100)}% da receita disponível.</div></div>', unsafe_allow_html=True)
+            saldo_capital = lucro_real - capital_giro_sug
+            if saldo_capital >= 0:
+                st.markdown(f'<div class="fin-ok">✅ Capital de giro adequado. Sobram {brl(saldo_capital)}.</div>', unsafe_allow_html=True)
+            else:
+                st.markdown(f'<div class="fin-danger">⚠️ Faltam {brl(abs(saldo_capital))} para o capital mínimo.</div>', unsafe_allow_html=True)
+
+        with col_h2:
+            st.markdown("#### 🛡️ Reserva de Emergência")
+            st.markdown(f'<div class="kcard"><div class="kcard-title">{brl(reserva_sugerida)}</div><div class="kcard-sub">Sugestão: {pct_reserva} meses de custos guardados.</div></div>', unsafe_allow_html=True)
+            if lucro_real >= reserva_sugerida:
+                st.markdown(f'<div class="fin-ok">✅ Reserva coberta pelo lucro acumulado.</div>', unsafe_allow_html=True)
+            else:
+                falta = reserva_sugerida - lucro_real
+                st.markdown(f'<div class="fin-alerta">⚠️ Faltam {brl(falta)} para a reserva ideal.</div>', unsafe_allow_html=True)
+
+        with col_h3:
+            st.markdown("#### 🎯 Teto de Gastos")
+            st.markdown(f'<div class="kcard"><div class="kcard-title">{brl(teto_gasto_mens)}</div><div class="kcard-sub">Para margem mínima de {int(margem_min*100)}%.</div></div>', unsafe_allow_html=True)
+            if gastos_pagos <= teto_gasto_mens:
+                st.markdown(f'<div class="fin-ok">✅ Dentro do limite. Margem de {brl(teto_gasto_mens - gastos_pagos)}.</div>', unsafe_allow_html=True)
+            else:
+                st.markdown(f'<div class="fin-danger">🚨 Gastos {brl(gastos_pagos - teto_gasto_mens)} acima do teto!</div>', unsafe_allow_html=True)
+
     st.markdown("<br>", unsafe_allow_html=True)
-
-    col_h1, col_h2, col_h3 = st.columns(3)
-    with col_h1:
-        st.markdown("#### 💡 Capital de Giro")
-        st.markdown(f'<div class="kcard"><div class="kcard-title">{brl(capital_giro_sug)}</div><div class="kcard-sub">Sugestão: manter {int(pct_capital*100)}% da receita disponível.</div></div>', unsafe_allow_html=True)
-        saldo_capital = lucro_real - capital_giro_sug
-        if saldo_capital >= 0:
-            st.markdown(f'<div class="fin-ok">✅ Capital de giro adequado. Sobram {brl(saldo_capital)}.</div>', unsafe_allow_html=True)
-        else:
-            st.markdown(f'<div class="fin-danger">⚠️ Faltam {brl(abs(saldo_capital))} para o capital mínimo.</div>', unsafe_allow_html=True)
-
-    with col_h2:
-        st.markdown("#### 🛡️ Reserva de Emergência")
-        st.markdown(f'<div class="kcard"><div class="kcard-title">{brl(reserva_sugerida)}</div><div class="kcard-sub">Sugestão: {pct_reserva} meses de custos guardados.</div></div>', unsafe_allow_html=True)
-        if lucro_real >= reserva_sugerida:
-            st.markdown(f'<div class="fin-ok">✅ Reserva coberta pelo lucro acumulado.</div>', unsafe_allow_html=True)
-        else:
-            falta = reserva_sugerida - lucro_real
-            st.markdown(f'<div class="fin-alerta">⚠️ Faltam {brl(falta)} para a reserva ideal.</div>', unsafe_allow_html=True)
-
-    with col_h3:
-        st.markdown("#### 🎯 Teto de Gastos")
-        st.markdown(f'<div class="kcard"><div class="kcard-title">{brl(teto_gasto_mens)}</div><div class="kcard-sub">Para margem mínima de {int(margem_min*100)}%.</div></div>', unsafe_allow_html=True)
-        if gastos_pagos <= teto_gasto_mens:
-            st.markdown(f'<div class="fin-ok">✅ Dentro do limite. Margem de {brl(teto_gasto_mens - gastos_pagos)}.</div>', unsafe_allow_html=True)
-        else:
-            st.markdown(f'<div class="fin-danger">🚨 Gastos {brl(gastos_pagos - teto_gasto_mens)} acima do teto!</div>', unsafe_allow_html=True)
-
-    st.markdown("<br>", unsafe_allow_html=True)
-    f_fecha, f_proj, f_pedidos, f_relat = st.tabs([
-        "🔒 Fechamento & Conciliação", "📈 Projeção",
-        "💳 Pagamentos por Pedido", "📋 Relatório Mensal",
+    f_receb_despe, f_proj, f_fecha = st.tabs([
+        "📑 Receb. / Despe.", "📈 Projeção", "🔒 Fechamento & Conciliação",
     ])
 
     # ═══════════════════════════════════════════════════════════════════
@@ -544,6 +602,11 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
         # ── Atrasados — SEMPRE mostrados, independente do mês selecionado ──
         st.markdown("---")
         st.markdown("##### ⚠️ Pendências em atraso (fora do cálculo acima — não somem daqui)")
+        st.caption(
+            "💡 O que não for baixado aqui continua aparecendo automaticamente nos "
+            "meses seguintes, sempre no topo desta lista — nada se perde, e nada "
+            "precisa ser 'transportado' manualmente."
+        )
         df_receber_atr = _receber_atrasado(df_enc_fin, hoje_dt)
         df_pagar_atr = _despesas_abertas_atrasadas(df_g_fin, hoje_dt)
 
@@ -558,11 +621,34 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
                     f'vencida e saldo pendente — total de {brl(total_atr_receber)}.</div>',
                     unsafe_allow_html=True,
                 )
-                df_ra = df_receber_atr[["cliente", "peca", "_saldo_pendente", "data_entrega"]].copy()
-                df_ra.columns = ["Cliente", "Peça", "Em Atraso", "Entrega"]
-                df_ra["Entrega"] = df_ra["Entrega"].apply(formatar_data_br)
-                df_ra["Em Atraso"] = df_ra["Em Atraso"].apply(lambda x: brl(float(x)))
-                st.dataframe(df_ra, use_container_width=True, hide_index=True)
+                for _, r_atr in df_receber_atr.sort_values("data_entrega").iterrows():
+                    saldo_r = float(r_atr["_saldo_pendente"])
+                    col_ra1, col_ra2 = st.columns([3, 1.3])
+                    col_ra1.markdown(
+                        f"**{r_atr['cliente']}** — {r_atr['peca']}<br>"
+                        f"<span style='font-size:0.78rem;color:#8b7355;'>"
+                        f"Entrega: {formatar_data_br(r_atr['data_entrega'])} &nbsp;·&nbsp; "
+                        f"Em atraso: {brl(saldo_r)}</span>",
+                        unsafe_allow_html=True,
+                    )
+                    with col_ra2:
+                        st.write("")
+                        if st.button("💰 Dar baixa", key=f"baixa_receber_atr_{r_atr['rowid']}", use_container_width=True):
+                            recebimentos_inserir({
+                                "encomenda_id": str(r_atr["rowid"]),
+                                "descricao": f"Quitação (atraso) – {r_atr['cliente']}: {r_atr['peca']}",
+                                "valor": saldo_r,
+                                "categoria": "Venda de peça",
+                                "data": hoje_brasilia().isoformat(),
+                                "forma_pagamento": "Pix",
+                                "conciliado": 0,
+                                "criado_em": agora_br().isoformat(),
+                            })
+                            encomendas_atualizar(str(r_atr["rowid"]), {
+                                "valor_recebido": float(r_atr.get("valor_total", 0) or 0)
+                            })
+                            st.success(f"✅ Pagamento de {r_atr['cliente']} baixado!")
+                            st.rerun()
         with col_atr2:
             if df_pagar_atr.empty:
                 st.success("✅ Nenhuma despesa vencida em aberto.")
@@ -573,115 +659,260 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
                     f'pagas — total de {brl(total_atr_pagar)}.</div>',
                     unsafe_allow_html=True,
                 )
-                df_pa = df_pagar_atr[["descricao", "categoria", "valor", "data"]].copy()
-                df_pa.columns = ["Descrição", "Categoria", "Valor", "Vencimento"]
-                df_pa["Vencimento"] = df_pa["Vencimento"].apply(formatar_data_br)
-                df_pa["Valor"] = df_pa["Valor"].apply(lambda x: brl(float(x)))
-                st.dataframe(df_pa, use_container_width=True, hide_index=True)
+                for _, g_atr in df_pagar_atr.sort_values("data").iterrows():
+                    col_pa1, col_pa2 = st.columns([3, 1.3])
+                    col_pa1.markdown(
+                        f"**{g_atr['descricao']}** <span style='font-size:0.78rem;color:#8b7355;'>({g_atr['categoria']})</span><br>"
+                        f"<span style='font-size:0.78rem;color:#8b7355;'>"
+                        f"Vencimento: {formatar_data_br(g_atr['data'])} &nbsp;·&nbsp; "
+                        f"Valor: {brl(float(g_atr['valor']))}</span>",
+                        unsafe_allow_html=True,
+                    )
+                    with col_pa2:
+                        st.write("")
+                        if st.button("✅ Dar baixa", key=f"baixa_pagar_atr_{g_atr['rowid']}", use_container_width=True):
+                            gastos_atualizar(str(g_atr["rowid"]), {"pago": 1})
+                            st.success(f"✅ Despesa '{g_atr['descricao']}' baixada!")
+                            st.rerun()
 
     # ═══════════════════════════════════════════════════════════════════
-    # ABA: PAGAMENTOS POR PEDIDO
+    # ABA: RECEB. / DESPE.  (pedidos com saldo pendente + lançamentos avulsos
+    # + extrato editável do mês — tudo centralizado numa única aba)
     # ═══════════════════════════════════════════════════════════════════
-    with f_pedidos:
-        st.markdown("#### 💳 Gestão de Pagamentos por Pedido")
+    with f_receb_despe:
         st.caption(
-            "Baixe pagamentos (parciais ou totais) de cada pedido — cada baixa vira um "
-            "lançamento datado e vinculado à cliente, visível na aba Fechamento."
+            "Lance entradas/saídas avulsas rapidamente aqui em cima, veja o relatório do mês "
+            "logo abaixo, e os pedidos com saldo pendente ficam recolhidos mais embaixo. "
+            "Para editar, excluir ou conciliar um lançamento já existente, vá na aba "
+            "🔒 **Fechamento & Conciliação**."
         )
-        if df_enc_fin.empty:
-            st.info("Nenhum pedido cadastrado.")
+
+        st.markdown("##### ➕ Novo Lançamento")
+        st.caption("Entradas/saídas avulsas, sem vínculo com um pedido específico.")
+        with st.form("form_novo_lanc_rd", clear_on_submit=True):
+            col_nl1, col_nl2, col_nl3 = st.columns([3, 2, 2])
+            nl_desc = col_nl1.text_input("Descrição *", placeholder="Ex: Sinal do vestido da Ana")
+            nl_val  = col_nl2.number_input("Valor (R$) *", min_value=0.01, step=10.0, format="%.2f")
+            nl_tipo = col_nl3.selectbox("Tipo", ["💰 Entrada", "📉 Saída"])
+            nl_data = st.date_input("Data", hoje_brasilia(), format="DD/MM/YYYY", key="nl_data_rd")
+
+            if st.form_submit_button("💾 Lançar", use_container_width=True, type="primary"):
+                if nl_desc.strip() and nl_val > 0:
+                    if nl_tipo.startswith("💰"):
+                        recebimentos_inserir({
+                            "encomenda_id": None,
+                            "descricao": nl_desc.strip(),
+                            "valor": nl_val,
+                            "categoria": "Outro",
+                            "data": nl_data.isoformat(),
+                            "forma_pagamento": "",
+                            "conciliado": 0,
+                            "criado_em": agora_br().isoformat(),
+                        })
+                        st.success("✅ Entrada lançada!")
+                    else:
+                        gastos_inserir({
+                            "encomenda_id": None,
+                            "descricao": nl_desc.strip(), "valor": nl_val,
+                            "data": nl_data.isoformat(), "categoria": "Outro",
+                            "pago": 1, "recorrente": 0,
+                            "grande_despesa_prevista": 0,
+                            "conciliado": 0,
+                            "criado_em": agora_br().isoformat(),
+                        })
+                        st.success("✅ Saída lançada!")
+                    st.rerun()
+                else:
+                    st.error("Preencha descrição e valor.")
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # ── [v18] Relatório Financeiro Mensal — movido para cá (a antiga aba
+        # "📋 Relatório Mensal" foi eliminada; este é exatamente o mesmo
+        # conteúdo, só que agora logo abaixo do Novo Lançamento). ─────────
+        st.markdown("---")
+        st.markdown("#### 📋 Relatório Financeiro Mensal")
+        st.caption("Mostra o que já REALMENTE aconteceu no mês (lançamentos com data dentro dele) — não é uma projeção.")
+        col_rm1, col_rm2 = st.columns(2)
+        mes_sel_fin = col_rm1.selectbox("Mês", list(range(1,13)),
+            format_func=lambda x: MESES_PT[x-1], index=hoje_dt.month-1, key="mes_rel_fin")
+        ano_sel_fin = col_rm2.number_input("Ano", min_value=2020, max_value=2030, value=hoje_dt.year, key="ano_rel_fin")
+
+        mes_str_rel = f"{ano_sel_fin}-{mes_sel_fin:02d}"
+
+        df_r_mes_rel = df_r_fin[df_r_fin["data"].apply(_mes_de) == mes_str_rel].copy() if not df_r_fin.empty else _df_vazio_receb()
+        df_g_mes_rel = df_g_fin[df_g_fin["data"].apply(_mes_de) == mes_str_rel].copy() if not df_g_fin.empty else _df_vazio_gastos()
+
+        rec_mes   = _flt(df_r_mes_rel, "valor")
+        gasto_mes = float(df_g_mes_rel[df_g_mes_rel["pago"].astype(int) == 1]["valor"].fillna(0).astype(float).sum()) if not df_g_mes_rel.empty else 0.0
+        lucro_mes = rec_mes - gasto_mes
+        margem_mes = lucro_mes / rec_mes * 100 if rec_mes > 0 else 0
+
+        col_r1, col_r2, col_r3, col_r4 = st.columns(4)
+        col_r1.metric("Receita do Mês", brl(rec_mes))
+        col_r2.metric("Gastos do Mês",  brl(gasto_mes))
+        col_r3.metric("Lucro Líquido",  brl(lucro_mes))
+        col_r4.metric("Margem",         f"{margem_mes:.1f}%")
+
+        meta_fat_f = float(cfg_get("meta_faturamento") or 5000)
+        if rec_mes >= meta_fat_f:
+            st.markdown(f'<div class="fin-ok">🏆 Meta de {brl(meta_fat_f)} atingida!</div>', unsafe_allow_html=True)
         else:
-            filtro_pag = st.radio(
-                "Mostrar:", ["Com saldo pendente", "Quitados", "Todos"],
-                horizontal=True, key="filtro_pagto_pedido",
-            )
-            df_pag_view = df_enc_fin.copy()
-            df_pag_view["_saldo_pendente"] = (
-                df_pag_view["valor_total"].fillna(0).astype(float)
-                - df_pag_view["valor_recebido"].fillna(0).astype(float)
-            ).clip(lower=0)
+            st.markdown(f'<div class="fin-alerta">📌 Faltam {brl(meta_fat_f - rec_mes)} para a meta de {brl(meta_fat_f)}.</div>', unsafe_allow_html=True)
 
-            if filtro_pag == "Com saldo pendente":
-                df_pag_view = df_pag_view[df_pag_view["_saldo_pendente"] > 0.01]
-            elif filtro_pag == "Quitados":
-                df_pag_view = df_pag_view[df_pag_view["_saldo_pendente"] <= 0.01]
-
-            df_pag_view = df_pag_view.sort_values("_saldo_pendente", ascending=False)
-
-            if df_pag_view.empty:
-                st.info("Nenhum pedido nesse filtro.")
+        st.markdown("---")
+        col_rt1, col_rt2 = st.columns(2)
+        with col_rt1:
+            st.markdown("**Entradas do mês**")
+            if df_r_mes_rel.empty:
+                st.info("Nenhuma entrada neste mês.")
             else:
-                for _, enc in df_pag_view.iterrows():
-                    v_total_e  = float(enc.get("valor_total", 0) or 0)
-                    v_recebido = float(enc.get("valor_recebido", 0) or 0)
-                    v_restante = max(v_total_e - v_recebido, 0.0)
+                df_em = df_r_mes_rel[["descricao","categoria","valor","forma_pagamento"]].copy()
+                df_em.columns = ["Descrição","Categoria","Valor","Forma"]
+                df_em["Valor"] = df_em["Valor"].apply(lambda x: brl(float(x)))
+                st.dataframe(df_em, use_container_width=True, hide_index=True)
 
-                    gasto_enc = 0.0
-                    if not df_g_fin.empty and "encomenda_id" in df_g_fin.columns:
-                        gasto_enc = float(df_g_fin[df_g_fin["encomenda_id"] == enc["rowid"]]["valor"].fillna(0).astype(float).sum())
-                    lucro_enc  = v_recebido - gasto_enc
-                    margem_enc = lucro_enc / v_recebido * 100 if v_recebido > 0 else 0
-                    margem_min_val = float(cfg_get("margem_minima_pct") or 30)
+        with col_rt2:
+            st.markdown("**Gastos do mês**")
+            if df_g_mes_rel.empty:
+                st.info("Nenhum gasto registrado neste mês.")
+            else:
+                df_gm = df_g_mes_rel[["descricao","categoria","valor","pago"]].copy()
+                df_gm.columns = ["Descrição","Categoria","Valor","Pago?"]
+                df_gm["Valor"] = df_gm["Valor"].apply(lambda x: brl(float(x)))
+                df_gm["Pago?"] = df_gm["Pago?"].apply(lambda x: "✅" if int(x or 0) else "⏳")
+                st.dataframe(df_gm, use_container_width=True, hide_index=True)
 
-                    badge_html = _status_pagamento_badge(v_recebido, v_total_e)
+        st.markdown("---")
+        if st.button("📥 Exportar Relatório Mensal (Excel)", use_container_width=True):
+            buf_xl = io.BytesIO()
+            wb     = xlsxwriter.Workbook(buf_xl)
+            fmt_h   = wb.add_format({"bold":True,"bg_color":"#3d1f10","font_color":"white","border":1})
+            fmt_brl = wb.add_format({"num_format":"R$ #,##0.00","border":1})
+            fmt_n   = wb.add_format({"border":1})
 
-                    with st.expander(
-                        f"👗 {enc['cliente']} – {enc['peca']}  |  "
-                        f"Recebido: {brl(v_recebido)} / {brl(v_total_e)}  |  Margem: {margem_enc:.0f}%"
-                    ):
-                        st.markdown(badge_html, unsafe_allow_html=True)
-                        col_pm1, col_pm2, col_pm3, col_pm4 = st.columns(4)
-                        col_pm1.metric("Valor Total",  brl(v_total_e))
-                        col_pm2.metric("Recebido",     brl(v_recebido))
-                        col_pm3.metric("A Receber",    brl(v_restante))
-                        col_pm4.metric("Custo Direto", brl(gasto_enc))
+            ws1 = wb.add_worksheet("Entradas")
+            for ci, h in enumerate(["Descrição","Categoria","Valor","Forma","Data"]):
+                ws1.write(0, ci, h, fmt_h)
+            for ri, (_, row) in enumerate(df_r_mes_rel.iterrows(), 1):
+                ws1.write(ri, 0, row.get("descricao",""), fmt_n)
+                ws1.write(ri, 1, row.get("categoria",""), fmt_n)
+                ws1.write(ri, 2, float(row.get("valor",0) or 0), fmt_brl)
+                ws1.write(ri, 3, row.get("forma_pagamento",""), fmt_n)
+                ws1.write(ri, 4, str(row.get("data","")), fmt_n)
 
-                        if margem_enc >= margem_min_val:
-                            st.markdown(f'<div class="fin-ok">✅ Margem de <b>{margem_enc:.1f}%</b> — saudável.</div>', unsafe_allow_html=True)
-                        else:
-                            st.markdown(f'<div class="fin-danger">🚨 Margem de <b>{margem_enc:.1f}%</b> abaixo do mínimo ({margem_min_val:.0f}%).</div>', unsafe_allow_html=True)
+            ws2 = wb.add_worksheet("Gastos")
+            for ci, h in enumerate(["Data","Descrição","Categoria","Valor","Pago?"]):
+                ws2.write(0, ci, h, fmt_h)
+            for ri, (_, row) in enumerate(df_g_mes_rel.iterrows(), 1):
+                ws2.write(ri, 0, str(row.get("data","")), fmt_n)
+                ws2.write(ri, 1, row.get("descricao",""), fmt_n)
+                ws2.write(ri, 2, row.get("categoria",""), fmt_n)
+                ws2.write(ri, 3, float(row.get("valor",0) or 0), fmt_brl)
+                ws2.write(ri, 4, "Sim" if int(row.get("pago",0) or 0) else "Não", fmt_n)
 
-                        if v_restante > 0.01:
-                            col_rec1, col_rec2, col_rec3 = st.columns([2, 2, 1])
-                            novo_val = col_rec1.number_input(
-                                "Valor recebido agora (R$)",
-                                min_value=0.01, max_value=float(v_restante + 0.01),
-                                value=float(v_restante), step=10.0, format="%.2f",
-                                key=f"rec_val_{enc['rowid']}",
-                            )
-                            forma_rec = col_rec2.selectbox("Forma de pagamento", FORMAS_PAGAMENTO, key=f"forma_{enc['rowid']}")
-                            if col_rec3.button("✅ Confirmar", key=f"rec_btn_{enc['rowid']}"):
-                                recebimentos_inserir({
-                                    "encomenda_id": str(enc["rowid"]),
-                                    "descricao": f"Pagamento – {enc['cliente']}: {enc['peca']}",
-                                    "valor": novo_val,
-                                    "categoria": "Venda de peça",
-                                    "data": hoje_brasilia().isoformat(),
-                                    "forma_pagamento": forma_rec,
-                                    "conciliado": 0,
-                                    "criado_em": agora_br().isoformat(),
-                                })
-                                novo_total = v_recebido + novo_val
-                                encomendas_atualizar(str(enc["rowid"]), {"valor_recebido": novo_total})
-                                st.success(f"✅ {brl(novo_val)} registrado e vinculado a {enc['cliente']}!")
-                                st.rerun()
+            ws3 = wb.add_worksheet("Resumo")
+            ws3.write(0, 0, f"Relatório – {MESES_PT[mes_sel_fin-1]} {ano_sel_fin}",
+                      wb.add_format({"bold":True,"font_size":14,"font_color":"#3d1f10"}))
+            fmt_key = wb.add_format({"bold":True})
+            for ri, (k, v) in enumerate([("Receita Total", rec_mes),("Gastos Totais", gasto_mes),("Lucro Líquido", lucro_mes)], 2):
+                ws3.write(ri, 0, k, fmt_key)
+                ws3.write(ri, 1, v, fmt_brl)
 
-                            if st.button(f"💰 Quitar saldo total ({brl(v_restante)})", key=f"quit_total_{enc['rowid']}"):
-                                recebimentos_inserir({
-                                    "encomenda_id": str(enc["rowid"]),
-                                    "descricao": f"Quitação – {enc['cliente']}: {enc['peca']}",
-                                    "valor": v_restante,
-                                    "categoria": "Venda de peça",
-                                    "data": hoje_brasilia().isoformat(),
-                                    "forma_pagamento": "Pix",
-                                    "conciliado": 0,
-                                    "criado_em": agora_br().isoformat(),
-                                })
-                                encomendas_atualizar(str(enc["rowid"]), {"valor_recebido": v_total_e})
-                                st.success(f"✅ Pedido de {enc['cliente']} quitado!")
-                                st.rerun()
-                        else:
-                            st.markdown('<div class="fin-ok">✅ Pedido totalmente pago.</div>', unsafe_allow_html=True)
+            wb.close()
+            buf_xl.seek(0)
+            st.download_button(
+                label=f"📥 Baixar Excel – {MESES_PT[mes_sel_fin-1]} {ano_sel_fin}",
+                data=buf_xl,
+                file_name=f"Lila_Financeiro_{mes_sel_fin:02d}_{ano_sel_fin}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # ── [v17] "Recebimentos e Despesas" (pedidos com saldo pendente) fica
+        # OCULTO por padrão dentro de um expander recolhido — mesmo padrão já
+        # usado na "Visão Geral" do topo. Nada foi removido, só recolhido.
+        with st.expander("📑 Recebimentos e Despesas (Pedidos com Saldo Pendente)", expanded=False):
+            st.markdown("##### 💳 Pedidos com Saldo Pendente")
+            if df_enc_fin.empty:
+                st.info("Nenhum pedido cadastrado.")
+            else:
+                filtro_pag = st.radio(
+                    "Mostrar:", ["Com saldo pendente", "Quitados", "Todos"],
+                    horizontal=True, key="filtro_pagto_pedido",
+                )
+                df_pag_view = df_enc_fin.copy()
+                df_pag_view["_saldo_pendente"] = (
+                    df_pag_view["valor_total"].fillna(0).astype(float)
+                    - df_pag_view["valor_recebido"].fillna(0).astype(float)
+                ).clip(lower=0)
+
+                if filtro_pag == "Com saldo pendente":
+                    df_pag_view = df_pag_view[df_pag_view["_saldo_pendente"] > 0.01]
+                elif filtro_pag == "Quitados":
+                    df_pag_view = df_pag_view[df_pag_view["_saldo_pendente"] <= 0.01]
+
+                df_pag_view = df_pag_view.sort_values("_saldo_pendente", ascending=False)
+
+                if df_pag_view.empty:
+                    st.info("Nenhum pedido nesse filtro.")
+                else:
+                    for _, enc in df_pag_view.iterrows():
+                        v_total_e  = float(enc.get("valor_total", 0) or 0)
+                        v_recebido = float(enc.get("valor_recebido", 0) or 0)
+                        v_restante = max(v_total_e - v_recebido, 0.0)
+
+                        gasto_enc = 0.0
+                        if not df_g_fin.empty and "encomenda_id" in df_g_fin.columns:
+                            gasto_enc = float(df_g_fin[df_g_fin["encomenda_id"] == enc["rowid"]]["valor"].fillna(0).astype(float).sum())
+                        lucro_enc  = v_recebido - gasto_enc
+                        margem_enc = lucro_enc / v_recebido * 100 if v_recebido > 0 else 0
+                        margem_min_val = float(cfg_get("margem_minima_pct") or 30)
+
+                        badge_html = _status_pagamento_badge(v_recebido, v_total_e)
+
+                        with st.expander(
+                            f"👗 {enc['cliente']} – {enc['peca']}  |  "
+                            f"Recebido: {brl(v_recebido)} / {brl(v_total_e)}  |  Margem: {margem_enc:.0f}%"
+                        ):
+                            st.markdown(badge_html, unsafe_allow_html=True)
+                            col_pm1, col_pm2, col_pm3, col_pm4 = st.columns(4)
+                            col_pm1.metric("Valor Total",  brl(v_total_e))
+                            col_pm2.metric("Recebido",     brl(v_recebido))
+                            col_pm3.metric("A Receber",    brl(v_restante))
+                            col_pm4.metric("Custo Direto", brl(gasto_enc))
+
+                            if margem_enc >= margem_min_val:
+                                st.markdown(f'<div class="fin-ok">✅ Margem de <b>{margem_enc:.1f}%</b> — saudável.</div>', unsafe_allow_html=True)
+                            else:
+                                st.markdown(f'<div class="fin-danger">🚨 Margem de <b>{margem_enc:.1f}%</b> abaixo do mínimo ({margem_min_val:.0f}%).</div>', unsafe_allow_html=True)
+
+                            if v_restante > 0.01:
+                                col_rec1, col_rec2 = st.columns(2)
+                                if col_rec1.button("💵 Recebimento Parcial", key=f"parcial_btn_{enc['rowid']}", use_container_width=True):
+                                    _dialog_recebimento_parcial(
+                                        enc_id=str(enc["rowid"]), cliente=enc["cliente"], peca=enc["peca"],
+                                        v_total_e=v_total_e, v_recebido=v_recebido, v_restante=v_restante,
+                                    )
+
+                                if col_rec2.button(f"💰 Quitar saldo total ({brl(v_restante)})", key=f"quit_total_{enc['rowid']}", use_container_width=True):
+                                    recebimentos_inserir({
+                                        "encomenda_id": str(enc["rowid"]),
+                                        "descricao": f"Quitação – {enc['cliente']}: {enc['peca']}",
+                                        "valor": v_restante,
+                                        "categoria": "Venda de peça",
+                                        "data": hoje_brasilia().isoformat(),
+                                        "forma_pagamento": "Pix",
+                                        "conciliado": 0,
+                                        "criado_em": agora_br().isoformat(),
+                                    })
+                                    encomendas_atualizar(str(enc["rowid"]), {"valor_recebido": v_total_e})
+                                    st.success(f"✅ Pedido de {enc['cliente']} quitado!")
+                                    st.rerun()
+                            else:
+                                st.markdown('<div class="fin-ok">✅ Pedido totalmente pago.</div>', unsafe_allow_html=True)
 
     # ═══════════════════════════════════════════════════════════════════
     # ABA: FECHAMENTO & CONCILIAÇÃO
@@ -736,49 +967,12 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
         df_g_mes = df_g_fin[(df_g_fin["data"].apply(_mes_de) == mes_str) & (df_g_fin["pago"].astype(int) == 1)].copy() if not df_g_fin.empty else _df_vazio_gastos()
 
         st.markdown("---")
-        st.markdown("##### ➕ Novo Lançamento")
-        with st.form(f"form_novo_lanc_{mes_str}", clear_on_submit=True):
-            col_nl1, col_nl2, col_nl3 = st.columns([3, 2, 2])
-            nl_desc = col_nl1.text_input("Descrição *", placeholder="Ex: Sinal do vestido da Ana")
-            nl_val  = col_nl2.number_input("Valor (R$) *", min_value=0.01, step=10.0, format="%.2f")
-            nl_tipo = col_nl3.selectbox("Tipo", ["💰 Entrada", "📉 Saída"])
-            nl_data = st.date_input("Data", hoje_brasilia(), format="DD/MM/YYYY", key=f"nl_data_{mes_str}")
-
-            if st.form_submit_button("💾 Lançar", use_container_width=True, type="primary"):
-                if nl_desc.strip() and nl_val > 0:
-                    if nl_tipo.startswith("💰"):
-                        recebimentos_inserir({
-                            "encomenda_id": None,
-                            "descricao": nl_desc.strip(),
-                            "valor": nl_val,
-                            "categoria": "Outro",
-                            "data": nl_data.isoformat(),
-                            "forma_pagamento": "",
-                            "conciliado": 0,
-                            "criado_em": agora_br().isoformat(),
-                        })
-                        st.success("✅ Entrada lançada!")
-                    else:
-                        gastos_inserir({
-                            "encomenda_id": None,
-                            "descricao": nl_desc.strip(), "valor": nl_val,
-                            "data": nl_data.isoformat(), "categoria": "Outro",
-                            "pago": 1, "recorrente": 0,
-                            "grande_despesa_prevista": 0,
-                            "conciliado": 0,
-                            "criado_em": agora_br().isoformat(),
-                        })
-                        st.success("✅ Saída lançada!")
-                    st.rerun()
-                else:
-                    st.error("Preencha descrição e valor.")
-
-        st.markdown("---")
         st.markdown("##### ✏️ Extrato do mês — Entradas e Saídas")
         st.caption(
             "Edite diretamente valor, descrição, data e conciliado de cada lançamento deste mês, "
             "conforme for conferindo com o extrato bancário. Para EXCLUIR um lançamento, clique no "
-            "ícone de lixeira 🗑️ na linha correspondente e depois em \"💾 Salvar alterações\"."
+            "ícone de lixeira 🗑️ na linha correspondente e depois em \"💾 Salvar alterações\". "
+            "Para lançar uma entrada/saída NOVA, vá na aba 📑 **Receb. / Despe.**"
         )
 
         col_ex1, col_ex2 = st.columns(2)
@@ -994,7 +1188,7 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
 
         st.markdown("---")
         st.markdown("##### ✅ Progresso da conferência")
-        st.caption("Marque \"Conciliado?\" nas tabelas de Entradas/Saídas acima conforme for conferindo com o extrato do banco.")
+        st.caption("Marque \"Conciliado?\" no Extrato do mês acima conforme for conferindo com o extrato do banco.")
 
         total_itens = len(df_r_mes) + len(df_g_mes)
         conc_itens = 0
@@ -1123,106 +1317,3 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
                 for c in ["(a) Saldo Inicial","(d) Entradas","(g) Saídas","(i) Saldo Final","(k) Fundos Disponíveis"]:
                     df_hist_show[c] = df_hist_show[c].fillna(0).apply(lambda x: brl(float(x)))
                 st.dataframe(df_hist_show, use_container_width=True, hide_index=True)
-
-    # ═══════════════════════════════════════════════════════════════════
-    # ABA: RELATÓRIO MENSAL (histórico REALIZADO — data em que o dinheiro
-    # de fato entrou/saiu, diferente da Projeção que olha a agenda futura)
-    # ═══════════════════════════════════════════════════════════════════
-    with f_relat:
-        st.markdown("#### 📋 Relatório Financeiro Mensal")
-        st.caption("Mostra o que já REALMENTE aconteceu no mês (lançamentos com data dentro dele) — não é uma projeção.")
-        col_rm1, col_rm2 = st.columns(2)
-        mes_sel_fin = col_rm1.selectbox("Mês", list(range(1,13)),
-            format_func=lambda x: MESES_PT[x-1], index=hoje_dt.month-1, key="mes_rel_fin")
-        ano_sel_fin = col_rm2.number_input("Ano", min_value=2020, max_value=2030, value=hoje_dt.year, key="ano_rel_fin")
-
-        mes_str_rel = f"{ano_sel_fin}-{mes_sel_fin:02d}"
-
-        df_r_mes_rel = df_r_fin[df_r_fin["data"].apply(_mes_de) == mes_str_rel].copy() if not df_r_fin.empty else _df_vazio_receb()
-        df_g_mes_rel = df_g_fin[df_g_fin["data"].apply(_mes_de) == mes_str_rel].copy() if not df_g_fin.empty else _df_vazio_gastos()
-
-        rec_mes   = _flt(df_r_mes_rel, "valor")
-        gasto_mes = float(df_g_mes_rel[df_g_mes_rel["pago"].astype(int) == 1]["valor"].fillna(0).astype(float).sum()) if not df_g_mes_rel.empty else 0.0
-        lucro_mes = rec_mes - gasto_mes
-        margem_mes = lucro_mes / rec_mes * 100 if rec_mes > 0 else 0
-
-        col_r1, col_r2, col_r3, col_r4 = st.columns(4)
-        col_r1.metric("Receita do Mês", brl(rec_mes))
-        col_r2.metric("Gastos do Mês",  brl(gasto_mes))
-        col_r3.metric("Lucro Líquido",  brl(lucro_mes))
-        col_r4.metric("Margem",         f"{margem_mes:.1f}%")
-
-        meta_fat_f = float(cfg_get("meta_faturamento") or 5000)
-        if rec_mes >= meta_fat_f:
-            st.markdown(f'<div class="fin-ok">🏆 Meta de {brl(meta_fat_f)} atingida!</div>', unsafe_allow_html=True)
-        else:
-            st.markdown(f'<div class="fin-alerta">📌 Faltam {brl(meta_fat_f - rec_mes)} para a meta de {brl(meta_fat_f)}.</div>', unsafe_allow_html=True)
-
-        st.markdown("---")
-        col_rt1, col_rt2 = st.columns(2)
-        with col_rt1:
-            st.markdown("**Entradas do mês**")
-            if df_r_mes_rel.empty:
-                st.info("Nenhuma entrada neste mês.")
-            else:
-                df_em = df_r_mes_rel[["descricao","categoria","valor","forma_pagamento"]].copy()
-                df_em.columns = ["Descrição","Categoria","Valor","Forma"]
-                df_em["Valor"] = df_em["Valor"].apply(lambda x: brl(float(x)))
-                st.dataframe(df_em, use_container_width=True, hide_index=True)
-
-        with col_rt2:
-            st.markdown("**Gastos do mês**")
-            if df_g_mes_rel.empty:
-                st.info("Nenhum gasto registrado neste mês.")
-            else:
-                df_gm = df_g_mes_rel[["descricao","categoria","valor","pago"]].copy()
-                df_gm.columns = ["Descrição","Categoria","Valor","Pago?"]
-                df_gm["Valor"] = df_gm["Valor"].apply(lambda x: brl(float(x)))
-                df_gm["Pago?"] = df_gm["Pago?"].apply(lambda x: "✅" if int(x or 0) else "⏳")
-                st.dataframe(df_gm, use_container_width=True, hide_index=True)
-
-        st.markdown("---")
-        if st.button("📥 Exportar Relatório Mensal (Excel)", use_container_width=True):
-            buf_xl = io.BytesIO()
-            wb     = xlsxwriter.Workbook(buf_xl)
-            fmt_h   = wb.add_format({"bold":True,"bg_color":"#3d1f10","font_color":"white","border":1})
-            fmt_brl = wb.add_format({"num_format":"R$ #,##0.00","border":1})
-            fmt_n   = wb.add_format({"border":1})
-
-            ws1 = wb.add_worksheet("Entradas")
-            for ci, h in enumerate(["Descrição","Categoria","Valor","Forma","Data"]):
-                ws1.write(0, ci, h, fmt_h)
-            for ri, (_, row) in enumerate(df_r_mes_rel.iterrows(), 1):
-                ws1.write(ri, 0, row.get("descricao",""), fmt_n)
-                ws1.write(ri, 1, row.get("categoria",""), fmt_n)
-                ws1.write(ri, 2, float(row.get("valor",0) or 0), fmt_brl)
-                ws1.write(ri, 3, row.get("forma_pagamento",""), fmt_n)
-                ws1.write(ri, 4, str(row.get("data","")), fmt_n)
-
-            ws2 = wb.add_worksheet("Gastos")
-            for ci, h in enumerate(["Data","Descrição","Categoria","Valor","Pago?"]):
-                ws2.write(0, ci, h, fmt_h)
-            for ri, (_, row) in enumerate(df_g_mes_rel.iterrows(), 1):
-                ws2.write(ri, 0, str(row.get("data","")), fmt_n)
-                ws2.write(ri, 1, row.get("descricao",""), fmt_n)
-                ws2.write(ri, 2, row.get("categoria",""), fmt_n)
-                ws2.write(ri, 3, float(row.get("valor",0) or 0), fmt_brl)
-                ws2.write(ri, 4, "Sim" if int(row.get("pago",0) or 0) else "Não", fmt_n)
-
-            ws3 = wb.add_worksheet("Resumo")
-            ws3.write(0, 0, f"Relatório – {MESES_PT[mes_sel_fin-1]} {ano_sel_fin}",
-                      wb.add_format({"bold":True,"font_size":14,"font_color":"#3d1f10"}))
-            fmt_key = wb.add_format({"bold":True})
-            for ri, (k, v) in enumerate([("Receita Total", rec_mes),("Gastos Totais", gasto_mes),("Lucro Líquido", lucro_mes)], 2):
-                ws3.write(ri, 0, k, fmt_key)
-                ws3.write(ri, 1, v, fmt_brl)
-
-            wb.close()
-            buf_xl.seek(0)
-            st.download_button(
-                label=f"📥 Baixar Excel – {MESES_PT[mes_sel_fin-1]} {ano_sel_fin}",
-                data=buf_xl,
-                file_name=f"Lila_Financeiro_{mes_sel_fin:02d}_{ano_sel_fin}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
-            )
