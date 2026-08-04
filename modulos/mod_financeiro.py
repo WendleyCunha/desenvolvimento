@@ -454,9 +454,8 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
                 st.markdown(f'<div class="fin-danger">🚨 Gastos {brl(gastos_pagos - teto_gasto_mens)} acima do teto!</div>', unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
-    f_receb_despe, f_relat, f_proj, f_fecha = st.tabs([
-        "📑 Receb. / Despe.", "📋 Relatório Mensal",
-        "📈 Projeção", "🔒 Fechamento & Conciliação",
+    f_receb_despe, f_proj, f_fecha = st.tabs([
+        "📑 Receb. / Despe.", "📈 Projeção", "🔒 Fechamento & Conciliação",
     ])
 
     # ═══════════════════════════════════════════════════════════════════
@@ -672,11 +671,114 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # ── [v17] "Recebimentos e Despesas" (pedidos com saldo pendente +
-        # extrato do mês) fica OCULTO por padrão dentro de um expander
-        # recolhido — mesmo padrão já usado na "Visão Geral" do topo. Nada
-        # foi removido, só recolhido; um clique reabre.
-        with st.expander("📑 Recebimentos e Despesas (Pedidos e Extrato do mês)", expanded=False):
+        # ── [v18] Relatório Financeiro Mensal — movido para cá (a antiga aba
+        # "📋 Relatório Mensal" foi eliminada; este é exatamente o mesmo
+        # conteúdo, só que agora logo abaixo do Novo Lançamento). ─────────
+        st.markdown("---")
+        st.markdown("#### 📋 Relatório Financeiro Mensal")
+        st.caption("Mostra o que já REALMENTE aconteceu no mês (lançamentos com data dentro dele) — não é uma projeção.")
+        col_rm1, col_rm2 = st.columns(2)
+        mes_sel_fin = col_rm1.selectbox("Mês", list(range(1,13)),
+            format_func=lambda x: MESES_PT[x-1], index=hoje_dt.month-1, key="mes_rel_fin")
+        ano_sel_fin = col_rm2.number_input("Ano", min_value=2020, max_value=2030, value=hoje_dt.year, key="ano_rel_fin")
+
+        mes_str_rel = f"{ano_sel_fin}-{mes_sel_fin:02d}"
+
+        df_r_mes_rel = df_r_fin[df_r_fin["data"].apply(_mes_de) == mes_str_rel].copy() if not df_r_fin.empty else _df_vazio_receb()
+        df_g_mes_rel = df_g_fin[df_g_fin["data"].apply(_mes_de) == mes_str_rel].copy() if not df_g_fin.empty else _df_vazio_gastos()
+
+        rec_mes   = _flt(df_r_mes_rel, "valor")
+        gasto_mes = float(df_g_mes_rel[df_g_mes_rel["pago"].astype(int) == 1]["valor"].fillna(0).astype(float).sum()) if not df_g_mes_rel.empty else 0.0
+        lucro_mes = rec_mes - gasto_mes
+        margem_mes = lucro_mes / rec_mes * 100 if rec_mes > 0 else 0
+
+        col_r1, col_r2, col_r3, col_r4 = st.columns(4)
+        col_r1.metric("Receita do Mês", brl(rec_mes))
+        col_r2.metric("Gastos do Mês",  brl(gasto_mes))
+        col_r3.metric("Lucro Líquido",  brl(lucro_mes))
+        col_r4.metric("Margem",         f"{margem_mes:.1f}%")
+
+        meta_fat_f = float(cfg_get("meta_faturamento") or 5000)
+        if rec_mes >= meta_fat_f:
+            st.markdown(f'<div class="fin-ok">🏆 Meta de {brl(meta_fat_f)} atingida!</div>', unsafe_allow_html=True)
+        else:
+            st.markdown(f'<div class="fin-alerta">📌 Faltam {brl(meta_fat_f - rec_mes)} para a meta de {brl(meta_fat_f)}.</div>', unsafe_allow_html=True)
+
+        st.markdown("---")
+        col_rt1, col_rt2 = st.columns(2)
+        with col_rt1:
+            st.markdown("**Entradas do mês**")
+            if df_r_mes_rel.empty:
+                st.info("Nenhuma entrada neste mês.")
+            else:
+                df_em = df_r_mes_rel[["descricao","categoria","valor","forma_pagamento"]].copy()
+                df_em.columns = ["Descrição","Categoria","Valor","Forma"]
+                df_em["Valor"] = df_em["Valor"].apply(lambda x: brl(float(x)))
+                st.dataframe(df_em, use_container_width=True, hide_index=True)
+
+        with col_rt2:
+            st.markdown("**Gastos do mês**")
+            if df_g_mes_rel.empty:
+                st.info("Nenhum gasto registrado neste mês.")
+            else:
+                df_gm = df_g_mes_rel[["descricao","categoria","valor","pago"]].copy()
+                df_gm.columns = ["Descrição","Categoria","Valor","Pago?"]
+                df_gm["Valor"] = df_gm["Valor"].apply(lambda x: brl(float(x)))
+                df_gm["Pago?"] = df_gm["Pago?"].apply(lambda x: "✅" if int(x or 0) else "⏳")
+                st.dataframe(df_gm, use_container_width=True, hide_index=True)
+
+        st.markdown("---")
+        if st.button("📥 Exportar Relatório Mensal (Excel)", use_container_width=True):
+            buf_xl = io.BytesIO()
+            wb     = xlsxwriter.Workbook(buf_xl)
+            fmt_h   = wb.add_format({"bold":True,"bg_color":"#3d1f10","font_color":"white","border":1})
+            fmt_brl = wb.add_format({"num_format":"R$ #,##0.00","border":1})
+            fmt_n   = wb.add_format({"border":1})
+
+            ws1 = wb.add_worksheet("Entradas")
+            for ci, h in enumerate(["Descrição","Categoria","Valor","Forma","Data"]):
+                ws1.write(0, ci, h, fmt_h)
+            for ri, (_, row) in enumerate(df_r_mes_rel.iterrows(), 1):
+                ws1.write(ri, 0, row.get("descricao",""), fmt_n)
+                ws1.write(ri, 1, row.get("categoria",""), fmt_n)
+                ws1.write(ri, 2, float(row.get("valor",0) or 0), fmt_brl)
+                ws1.write(ri, 3, row.get("forma_pagamento",""), fmt_n)
+                ws1.write(ri, 4, str(row.get("data","")), fmt_n)
+
+            ws2 = wb.add_worksheet("Gastos")
+            for ci, h in enumerate(["Data","Descrição","Categoria","Valor","Pago?"]):
+                ws2.write(0, ci, h, fmt_h)
+            for ri, (_, row) in enumerate(df_g_mes_rel.iterrows(), 1):
+                ws2.write(ri, 0, str(row.get("data","")), fmt_n)
+                ws2.write(ri, 1, row.get("descricao",""), fmt_n)
+                ws2.write(ri, 2, row.get("categoria",""), fmt_n)
+                ws2.write(ri, 3, float(row.get("valor",0) or 0), fmt_brl)
+                ws2.write(ri, 4, "Sim" if int(row.get("pago",0) or 0) else "Não", fmt_n)
+
+            ws3 = wb.add_worksheet("Resumo")
+            ws3.write(0, 0, f"Relatório – {MESES_PT[mes_sel_fin-1]} {ano_sel_fin}",
+                      wb.add_format({"bold":True,"font_size":14,"font_color":"#3d1f10"}))
+            fmt_key = wb.add_format({"bold":True})
+            for ri, (k, v) in enumerate([("Receita Total", rec_mes),("Gastos Totais", gasto_mes),("Lucro Líquido", lucro_mes)], 2):
+                ws3.write(ri, 0, k, fmt_key)
+                ws3.write(ri, 1, v, fmt_brl)
+
+            wb.close()
+            buf_xl.seek(0)
+            st.download_button(
+                label=f"📥 Baixar Excel – {MESES_PT[mes_sel_fin-1]} {ano_sel_fin}",
+                data=buf_xl,
+                file_name=f"Lila_Financeiro_{mes_sel_fin:02d}_{ano_sel_fin}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # ── [v17] "Recebimentos e Despesas" (pedidos com saldo pendente) fica
+        # OCULTO por padrão dentro de um expander recolhido — mesmo padrão já
+        # usado na "Visão Geral" do topo. Nada foi removido, só recolhido.
+        with st.expander("📑 Recebimentos e Despesas (Pedidos com Saldo Pendente)", expanded=False):
             st.markdown("##### 💳 Pedidos com Saldo Pendente")
             if df_enc_fin.empty:
                 st.info("Nenhum pedido cadastrado.")
@@ -773,159 +875,6 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
                             else:
                                 st.markdown('<div class="fin-ok">✅ Pedido totalmente pago.</div>', unsafe_allow_html=True)
 
-            st.markdown("---")
-            st.markdown("##### ✏️ Extrato do mês — Entradas e Saídas")
-            st.caption(
-                "Edite diretamente valor, descrição, data e conciliado de cada lançamento deste mês, "
-                "conforme for conferindo com o extrato bancário. Para EXCLUIR um lançamento, clique no "
-                "ícone de lixeira 🗑️ na linha correspondente e depois em \"💾 Salvar alterações\"."
-            )
-
-            col_rdm1, col_rdm2 = st.columns(2)
-            mes_sel_rd = col_rdm1.selectbox("Mês", list(range(1, 13)),
-                format_func=lambda x: MESES_PT[x-1], index=hoje_dt.month-1, key="mes_receb_despe")
-            ano_sel_rd = col_rdm2.number_input("Ano", min_value=2020, max_value=2030, value=hoje_dt.year, key="ano_receb_despe")
-            mes_str_rd = f"{ano_sel_rd}-{mes_sel_rd:02d}"
-
-            fech_existente_rd = fechamento_buscar(mes_str_rd)
-            ja_fechado_rd = bool(fech_existente_rd and int(fech_existente_rd.get("fechado", 0) or 0) == 1)
-            if ja_fechado_rd:
-                st.info(
-                    f"🔒 O mês {mes_str_rd} já está fechado — os lançamentos abaixo ficam somente leitura. "
-                    f"Vá na aba 🔒 Fechamento & Conciliação para reabrir, caso precise corrigir algo."
-                )
-
-            df_r_mes_rd = df_r_fin[df_r_fin["data"].apply(_mes_de) == mes_str_rd].copy() if not df_r_fin.empty else _df_vazio_receb()
-            df_g_mes_rd = df_g_fin[(df_g_fin["data"].apply(_mes_de) == mes_str_rd) & (df_g_fin["pago"].astype(int) == 1)].copy() if not df_g_fin.empty else _df_vazio_gastos()
-
-            col_ex1, col_ex2 = st.columns(2)
-
-            with col_ex1:
-                st.markdown("**📥 Entradas**")
-                if df_r_mes_rd.empty:
-                    st.info("Nenhuma entrada neste mês.")
-                else:
-                    df_r_edit_base = df_r_mes_rd[["rowid", "data", "descricao", "valor", "conciliado"]].copy()
-                    df_r_edit_base["data"] = pd.to_datetime(df_r_edit_base["data"]).dt.date
-                    df_r_edit_base["valor"] = pd.to_numeric(df_r_edit_base["valor"], errors="coerce").fillna(0.0).astype("float64")
-                    df_r_edit_base["conciliado"] = df_r_edit_base["conciliado"].fillna(0).astype(int).astype(bool)
-                    df_r_edit_base = df_r_edit_base.sort_values("data").reset_index(drop=True)
-
-                    edited_r = st.data_editor(
-                        df_r_edit_base,
-                        column_config={
-                            "rowid": None,
-                            "data": st.column_config.DateColumn("Data", format="DD/MM/YYYY"),
-                            "descricao": st.column_config.TextColumn("Descrição"),
-                            "valor": st.column_config.NumberColumn("Valor (R$)", format="R$ %.2f", min_value=0.0, step=0.01),
-                            "conciliado": st.column_config.CheckboxColumn("Conciliado?"),
-                        },
-                        hide_index=True, use_container_width=True,
-                        num_rows="dynamic",
-                        key=f"edit_r_rd_{mes_str_rd}", disabled=ja_fechado_rd,
-                    )
-
-                    if not ja_fechado_rd and st.button("💾 Salvar alterações (Entradas)", key=f"salvar_r_rd_{mes_str_rd}", use_container_width=True):
-                        rowids_antes = set(df_r_edit_base["rowid"].astype(str))
-                        rowids_depois = set(edited_r["rowid"].dropna().astype(str))
-                        excluidos_r = rowids_antes - rowids_depois
-
-                        for rid in excluidos_r:
-                            recebimentos_deletar(rid)
-
-                        houve_mudanca_r = bool(excluidos_r)
-                        for _, row_new in edited_r.iterrows():
-                            if pd.isna(row_new["rowid"]):
-                                continue
-                            match = df_r_edit_base[df_r_edit_base["rowid"] == row_new["rowid"]]
-                            if match.empty:
-                                continue
-                            row_old = match.iloc[0]
-                            if (
-                                float(row_new["valor"]) != float(row_old["valor"])
-                                or str(row_new["descricao"]) != str(row_old["descricao"])
-                                or bool(row_new["conciliado"]) != bool(row_old["conciliado"])
-                                or row_new["data"] != row_old["data"]
-                            ):
-                                recebimentos_atualizar(str(row_new["rowid"]), {
-                                    "valor": float(row_new["valor"]),
-                                    "descricao": str(row_new["descricao"]),
-                                    "conciliado": 1 if row_new["conciliado"] else 0,
-                                    "data": row_new["data"].isoformat() if hasattr(row_new["data"], "isoformat") else str(row_new["data"]),
-                                })
-                                houve_mudanca_r = True
-                        if houve_mudanca_r:
-                            if excluidos_r:
-                                st.success(f"✅ Entradas atualizadas! ({len(excluidos_r)} excluída(s))")
-                            else:
-                                st.success("✅ Entradas atualizadas!")
-                            st.rerun()
-                        else:
-                            st.info("Nenhuma alteração para salvar.")
-
-            with col_ex2:
-                st.markdown("**📤 Saídas**")
-                if df_g_mes_rd.empty:
-                    st.info("Nenhuma saída paga neste mês.")
-                else:
-                    df_g_edit_base = df_g_mes_rd[["rowid", "data", "descricao", "valor", "conciliado"]].copy()
-                    df_g_edit_base["data"] = pd.to_datetime(df_g_edit_base["data"]).dt.date
-                    df_g_edit_base["valor"] = pd.to_numeric(df_g_edit_base["valor"], errors="coerce").fillna(0.0).astype("float64")
-                    df_g_edit_base["conciliado"] = df_g_edit_base["conciliado"].fillna(0).astype(int).astype(bool)
-                    df_g_edit_base = df_g_edit_base.sort_values("data").reset_index(drop=True)
-
-                    edited_g = st.data_editor(
-                        df_g_edit_base,
-                        column_config={
-                            "rowid": None,
-                            "data": st.column_config.DateColumn("Data", format="DD/MM/YYYY"),
-                            "descricao": st.column_config.TextColumn("Descrição"),
-                            "valor": st.column_config.NumberColumn("Valor (R$)", format="R$ %.2f", min_value=0.0, step=0.01),
-                            "conciliado": st.column_config.CheckboxColumn("Conciliado?"),
-                        },
-                        hide_index=True, use_container_width=True,
-                        num_rows="dynamic",
-                        key=f"edit_g_rd_{mes_str_rd}", disabled=ja_fechado_rd,
-                    )
-
-                    if not ja_fechado_rd and st.button("💾 Salvar alterações (Saídas)", key=f"salvar_g_rd_{mes_str_rd}", use_container_width=True):
-                        rowids_antes_g = set(df_g_edit_base["rowid"].astype(str))
-                        rowids_depois_g = set(edited_g["rowid"].dropna().astype(str))
-                        excluidos_g = rowids_antes_g - rowids_depois
-
-                        for rid in excluidos_g:
-                            gastos_deletar(rid)
-
-                        houve_mudanca_g = bool(excluidos_g)
-                        for _, row_new in edited_g.iterrows():
-                            if pd.isna(row_new["rowid"]):
-                                continue
-                            match = df_g_edit_base[df_g_edit_base["rowid"] == row_new["rowid"]]
-                            if match.empty:
-                                continue
-                            row_old = match.iloc[0]
-                            if (
-                                float(row_new["valor"]) != float(row_old["valor"])
-                                or str(row_new["descricao"]) != str(row_old["descricao"])
-                                or bool(row_new["conciliado"]) != bool(row_old["conciliado"])
-                                or row_new["data"] != row_old["data"]
-                            ):
-                                gastos_atualizar(str(row_new["rowid"]), {
-                                    "valor": float(row_new["valor"]),
-                                    "descricao": str(row_new["descricao"]),
-                                    "conciliado": 1 if row_new["conciliado"] else 0,
-                                    "data": row_new["data"].isoformat() if hasattr(row_new["data"], "isoformat") else str(row_new["data"]),
-                                })
-                                houve_mudanca_g = True
-                        if houve_mudanca_g:
-                            if excluidos_g:
-                                st.success(f"✅ Saídas atualizadas! ({len(excluidos_g)} excluída(s))")
-                            else:
-                                st.success("✅ Saídas atualizadas!")
-                            st.rerun()
-                        else:
-                            st.info("Nenhuma alteração para salvar.")
-
     # ═══════════════════════════════════════════════════════════════════
     # ABA: FECHAMENTO & CONCILIAÇÃO
     # ═══════════════════════════════════════════════════════════════════
@@ -979,12 +928,141 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
         df_g_mes = df_g_fin[(df_g_fin["data"].apply(_mes_de) == mes_str) & (df_g_fin["pago"].astype(int) == 1)].copy() if not df_g_fin.empty else _df_vazio_gastos()
 
         st.markdown("---")
+        st.markdown("##### ✏️ Extrato do mês — Entradas e Saídas")
         st.caption(
-            "💡 Para lançar novas entradas/saídas avulsas ou editar o extrato "
-            "(valor, descrição, data, conciliado) deste mês, vá na aba "
-            "📑 **Receb. / Despe.** — os totais abaixo já refletem tudo o que "
-            "estiver lançado lá, automaticamente."
+            "Edite diretamente valor, descrição, data e conciliado de cada lançamento deste mês, "
+            "conforme for conferindo com o extrato bancário. Para EXCLUIR um lançamento, clique no "
+            "ícone de lixeira 🗑️ na linha correspondente e depois em \"💾 Salvar alterações\". "
+            "Para lançar uma entrada/saída NOVA, vá na aba 📑 **Receb. / Despe.**"
         )
+
+        col_ex1, col_ex2 = st.columns(2)
+
+        with col_ex1:
+            st.markdown("**📥 Entradas**")
+            if df_r_mes.empty:
+                st.info("Nenhuma entrada neste mês.")
+            else:
+                df_r_edit_base = df_r_mes[["rowid", "data", "descricao", "valor", "conciliado"]].copy()
+                df_r_edit_base["data"] = pd.to_datetime(df_r_edit_base["data"]).dt.date
+                df_r_edit_base["valor"] = pd.to_numeric(df_r_edit_base["valor"], errors="coerce").fillna(0.0).astype("float64")
+                df_r_edit_base["conciliado"] = df_r_edit_base["conciliado"].fillna(0).astype(int).astype(bool)
+                df_r_edit_base = df_r_edit_base.sort_values("data").reset_index(drop=True)
+
+                edited_r = st.data_editor(
+                    df_r_edit_base,
+                    column_config={
+                        "rowid": None,
+                        "data": st.column_config.DateColumn("Data", format="DD/MM/YYYY"),
+                        "descricao": st.column_config.TextColumn("Descrição"),
+                        "valor": st.column_config.NumberColumn("Valor (R$)", format="R$ %.2f", min_value=0.0, step=0.01),
+                        "conciliado": st.column_config.CheckboxColumn("Conciliado?"),
+                    },
+                    hide_index=True, use_container_width=True,
+                    num_rows="dynamic",
+                    key=f"edit_r_{mes_str}", disabled=ja_fechado,
+                )
+
+                if not ja_fechado and st.button("💾 Salvar alterações (Entradas)", key=f"salvar_r_{mes_str}", use_container_width=True):
+                    rowids_antes = set(df_r_edit_base["rowid"].astype(str))
+                    rowids_depois = set(edited_r["rowid"].dropna().astype(str))
+                    excluidos_r = rowids_antes - rowids_depois
+
+                    for rid in excluidos_r:
+                        recebimentos_deletar(rid)
+
+                    houve_mudanca_r = bool(excluidos_r)
+                    for _, row_new in edited_r.iterrows():
+                        if pd.isna(row_new["rowid"]):
+                            continue
+                        match = df_r_edit_base[df_r_edit_base["rowid"] == row_new["rowid"]]
+                        if match.empty:
+                            continue
+                        row_old = match.iloc[0]
+                        if (
+                            float(row_new["valor"]) != float(row_old["valor"])
+                            or str(row_new["descricao"]) != str(row_old["descricao"])
+                            or bool(row_new["conciliado"]) != bool(row_old["conciliado"])
+                            or row_new["data"] != row_old["data"]
+                        ):
+                            recebimentos_atualizar(str(row_new["rowid"]), {
+                                "valor": float(row_new["valor"]),
+                                "descricao": str(row_new["descricao"]),
+                                "conciliado": 1 if row_new["conciliado"] else 0,
+                                "data": row_new["data"].isoformat() if hasattr(row_new["data"], "isoformat") else str(row_new["data"]),
+                            })
+                            houve_mudanca_r = True
+                    if houve_mudanca_r:
+                        if excluidos_r:
+                            st.success(f"✅ Entradas atualizadas! ({len(excluidos_r)} excluída(s))")
+                        else:
+                            st.success("✅ Entradas atualizadas!")
+                        st.rerun()
+                    else:
+                        st.info("Nenhuma alteração para salvar.")
+
+        with col_ex2:
+            st.markdown("**📤 Saídas**")
+            if df_g_mes.empty:
+                st.info("Nenhuma saída paga neste mês.")
+            else:
+                df_g_edit_base = df_g_mes[["rowid", "data", "descricao", "valor", "conciliado"]].copy()
+                df_g_edit_base["data"] = pd.to_datetime(df_g_edit_base["data"]).dt.date
+                df_g_edit_base["valor"] = pd.to_numeric(df_g_edit_base["valor"], errors="coerce").fillna(0.0).astype("float64")
+                df_g_edit_base["conciliado"] = df_g_edit_base["conciliado"].fillna(0).astype(int).astype(bool)
+                df_g_edit_base = df_g_edit_base.sort_values("data").reset_index(drop=True)
+
+                edited_g = st.data_editor(
+                    df_g_edit_base,
+                    column_config={
+                        "rowid": None,
+                        "data": st.column_config.DateColumn("Data", format="DD/MM/YYYY"),
+                        "descricao": st.column_config.TextColumn("Descrição"),
+                        "valor": st.column_config.NumberColumn("Valor (R$)", format="R$ %.2f", min_value=0.0, step=0.01),
+                        "conciliado": st.column_config.CheckboxColumn("Conciliado?"),
+                    },
+                    hide_index=True, use_container_width=True,
+                    num_rows="dynamic",
+                    key=f"edit_g_{mes_str}", disabled=ja_fechado,
+                )
+
+                if not ja_fechado and st.button("💾 Salvar alterações (Saídas)", key=f"salvar_g_{mes_str}", use_container_width=True):
+                    rowids_antes_g = set(df_g_edit_base["rowid"].astype(str))
+                    rowids_depois_g = set(edited_g["rowid"].dropna().astype(str))
+                    excluidos_g = rowids_antes_g - rowids_depois
+
+                    for rid in excluidos_g:
+                        gastos_deletar(rid)
+
+                    houve_mudanca_g = bool(excluidos_g)
+                    for _, row_new in edited_g.iterrows():
+                        if pd.isna(row_new["rowid"]):
+                            continue
+                        match = df_g_edit_base[df_g_edit_base["rowid"] == row_new["rowid"]]
+                        if match.empty:
+                            continue
+                        row_old = match.iloc[0]
+                        if (
+                            float(row_new["valor"]) != float(row_old["valor"])
+                            or str(row_new["descricao"]) != str(row_old["descricao"])
+                            or bool(row_new["conciliado"]) != bool(row_old["conciliado"])
+                            or row_new["data"] != row_old["data"]
+                        ):
+                            gastos_atualizar(str(row_new["rowid"]), {
+                                "valor": float(row_new["valor"]),
+                                "descricao": str(row_new["descricao"]),
+                                "conciliado": 1 if row_new["conciliado"] else 0,
+                                "data": row_new["data"].isoformat() if hasattr(row_new["data"], "isoformat") else str(row_new["data"]),
+                            })
+                            houve_mudanca_g = True
+                    if houve_mudanca_g:
+                        if excluidos_g:
+                            st.success(f"✅ Saídas atualizadas! ({len(excluidos_g)} excluída(s))")
+                        else:
+                            st.success("✅ Saídas atualizadas!")
+                        st.rerun()
+                    else:
+                        st.info("Nenhuma alteração para salvar.")
 
         receitas_mes = _flt(df_r_mes, "valor")
         despesas_mes = _flt(df_g_mes, "valor")
@@ -1071,7 +1149,7 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
 
         st.markdown("---")
         st.markdown("##### ✅ Progresso da conferência")
-        st.caption("Marque \"Conciliado?\" nas tabelas de Entradas/Saídas acima conforme for conferindo com o extrato do banco.")
+        st.caption("Mostra quantos lançamentos deste mês já estão marcados como conciliados no sistema.")
 
         total_itens = len(df_r_mes) + len(df_g_mes)
         conc_itens = 0
@@ -1200,106 +1278,3 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
                 for c in ["(a) Saldo Inicial","(d) Entradas","(g) Saídas","(i) Saldo Final","(k) Fundos Disponíveis"]:
                     df_hist_show[c] = df_hist_show[c].fillna(0).apply(lambda x: brl(float(x)))
                 st.dataframe(df_hist_show, use_container_width=True, hide_index=True)
-
-    # ═══════════════════════════════════════════════════════════════════
-    # ABA: RELATÓRIO MENSAL (histórico REALIZADO — data em que o dinheiro
-    # de fato entrou/saiu, diferente da Projeção que olha a agenda futura)
-    # ═══════════════════════════════════════════════════════════════════
-    with f_relat:
-        st.markdown("#### 📋 Relatório Financeiro Mensal")
-        st.caption("Mostra o que já REALMENTE aconteceu no mês (lançamentos com data dentro dele) — não é uma projeção.")
-        col_rm1, col_rm2 = st.columns(2)
-        mes_sel_fin = col_rm1.selectbox("Mês", list(range(1,13)),
-            format_func=lambda x: MESES_PT[x-1], index=hoje_dt.month-1, key="mes_rel_fin")
-        ano_sel_fin = col_rm2.number_input("Ano", min_value=2020, max_value=2030, value=hoje_dt.year, key="ano_rel_fin")
-
-        mes_str_rel = f"{ano_sel_fin}-{mes_sel_fin:02d}"
-
-        df_r_mes_rel = df_r_fin[df_r_fin["data"].apply(_mes_de) == mes_str_rel].copy() if not df_r_fin.empty else _df_vazio_receb()
-        df_g_mes_rel = df_g_fin[df_g_fin["data"].apply(_mes_de) == mes_str_rel].copy() if not df_g_fin.empty else _df_vazio_gastos()
-
-        rec_mes   = _flt(df_r_mes_rel, "valor")
-        gasto_mes = float(df_g_mes_rel[df_g_mes_rel["pago"].astype(int) == 1]["valor"].fillna(0).astype(float).sum()) if not df_g_mes_rel.empty else 0.0
-        lucro_mes = rec_mes - gasto_mes
-        margem_mes = lucro_mes / rec_mes * 100 if rec_mes > 0 else 0
-
-        col_r1, col_r2, col_r3, col_r4 = st.columns(4)
-        col_r1.metric("Receita do Mês", brl(rec_mes))
-        col_r2.metric("Gastos do Mês",  brl(gasto_mes))
-        col_r3.metric("Lucro Líquido",  brl(lucro_mes))
-        col_r4.metric("Margem",         f"{margem_mes:.1f}%")
-
-        meta_fat_f = float(cfg_get("meta_faturamento") or 5000)
-        if rec_mes >= meta_fat_f:
-            st.markdown(f'<div class="fin-ok">🏆 Meta de {brl(meta_fat_f)} atingida!</div>', unsafe_allow_html=True)
-        else:
-            st.markdown(f'<div class="fin-alerta">📌 Faltam {brl(meta_fat_f - rec_mes)} para a meta de {brl(meta_fat_f)}.</div>', unsafe_allow_html=True)
-
-        st.markdown("---")
-        col_rt1, col_rt2 = st.columns(2)
-        with col_rt1:
-            st.markdown("**Entradas do mês**")
-            if df_r_mes_rel.empty:
-                st.info("Nenhuma entrada neste mês.")
-            else:
-                df_em = df_r_mes_rel[["descricao","categoria","valor","forma_pagamento"]].copy()
-                df_em.columns = ["Descrição","Categoria","Valor","Forma"]
-                df_em["Valor"] = df_em["Valor"].apply(lambda x: brl(float(x)))
-                st.dataframe(df_em, use_container_width=True, hide_index=True)
-
-        with col_rt2:
-            st.markdown("**Gastos do mês**")
-            if df_g_mes_rel.empty:
-                st.info("Nenhum gasto registrado neste mês.")
-            else:
-                df_gm = df_g_mes_rel[["descricao","categoria","valor","pago"]].copy()
-                df_gm.columns = ["Descrição","Categoria","Valor","Pago?"]
-                df_gm["Valor"] = df_gm["Valor"].apply(lambda x: brl(float(x)))
-                df_gm["Pago?"] = df_gm["Pago?"].apply(lambda x: "✅" if int(x or 0) else "⏳")
-                st.dataframe(df_gm, use_container_width=True, hide_index=True)
-
-        st.markdown("---")
-        if st.button("📥 Exportar Relatório Mensal (Excel)", use_container_width=True):
-            buf_xl = io.BytesIO()
-            wb     = xlsxwriter.Workbook(buf_xl)
-            fmt_h   = wb.add_format({"bold":True,"bg_color":"#3d1f10","font_color":"white","border":1})
-            fmt_brl = wb.add_format({"num_format":"R$ #,##0.00","border":1})
-            fmt_n   = wb.add_format({"border":1})
-
-            ws1 = wb.add_worksheet("Entradas")
-            for ci, h in enumerate(["Descrição","Categoria","Valor","Forma","Data"]):
-                ws1.write(0, ci, h, fmt_h)
-            for ri, (_, row) in enumerate(df_r_mes_rel.iterrows(), 1):
-                ws1.write(ri, 0, row.get("descricao",""), fmt_n)
-                ws1.write(ri, 1, row.get("categoria",""), fmt_n)
-                ws1.write(ri, 2, float(row.get("valor",0) or 0), fmt_brl)
-                ws1.write(ri, 3, row.get("forma_pagamento",""), fmt_n)
-                ws1.write(ri, 4, str(row.get("data","")), fmt_n)
-
-            ws2 = wb.add_worksheet("Gastos")
-            for ci, h in enumerate(["Data","Descrição","Categoria","Valor","Pago?"]):
-                ws2.write(0, ci, h, fmt_h)
-            for ri, (_, row) in enumerate(df_g_mes_rel.iterrows(), 1):
-                ws2.write(ri, 0, str(row.get("data","")), fmt_n)
-                ws2.write(ri, 1, row.get("descricao",""), fmt_n)
-                ws2.write(ri, 2, row.get("categoria",""), fmt_n)
-                ws2.write(ri, 3, float(row.get("valor",0) or 0), fmt_brl)
-                ws2.write(ri, 4, "Sim" if int(row.get("pago",0) or 0) else "Não", fmt_n)
-
-            ws3 = wb.add_worksheet("Resumo")
-            ws3.write(0, 0, f"Relatório – {MESES_PT[mes_sel_fin-1]} {ano_sel_fin}",
-                      wb.add_format({"bold":True,"font_size":14,"font_color":"#3d1f10"}))
-            fmt_key = wb.add_format({"bold":True})
-            for ri, (k, v) in enumerate([("Receita Total", rec_mes),("Gastos Totais", gasto_mes),("Lucro Líquido", lucro_mes)], 2):
-                ws3.write(ri, 0, k, fmt_key)
-                ws3.write(ri, 1, v, fmt_brl)
-
-            wb.close()
-            buf_xl.seek(0)
-            st.download_button(
-                label=f"📥 Baixar Excel – {MESES_PT[mes_sel_fin-1]} {ano_sel_fin}",
-                data=buf_xl,
-                file_name=f"Lila_Financeiro_{mes_sel_fin:02d}_{ano_sel_fin}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
-            )
