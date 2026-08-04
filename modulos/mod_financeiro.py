@@ -688,7 +688,18 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
         )
 
         st.markdown("##### ➕ Novo Lançamento")
-        st.caption("Entradas/saídas avulsas, sem vínculo com um pedido específico.")
+        st.caption("Entradas/saídas avulsas. Saídas podem ser vinculadas a um pedido, para entrar no cálculo de Custo Direto/Margem daquele pedido.")
+
+        df_pedidos_nl = encomendas_listar(cancelado=False)
+        opcoes_pedido_nl = ["— Nenhum (lançamento avulso) —"]
+        mapa_pedido_nl = {}
+        if not df_pedidos_nl.empty and "cliente" in df_pedidos_nl.columns:
+            df_pedidos_nl_ord = df_pedidos_nl.sort_values("cliente", key=lambda s: s.str.lower())
+            for _, p in df_pedidos_nl_ord.iterrows():
+                label_p = f"{p['cliente']} – {p['peca']}"
+                opcoes_pedido_nl.append(label_p)
+                mapa_pedido_nl[label_p] = p["rowid"]
+
         with st.form("form_novo_lanc_rd", clear_on_submit=True):
             col_nl1, col_nl2, col_nl3 = st.columns([3, 2, 2])
             nl_desc = col_nl1.text_input("Descrição *", placeholder="Ex: Sinal do vestido da Ana")
@@ -696,8 +707,18 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
             nl_tipo = col_nl3.selectbox("Tipo", ["💰 Entrada", "📉 Saída"])
             nl_data = st.date_input("Data", hoje_brasilia(), format="DD/MM/YYYY", key="nl_data_rd")
 
+            nl_pedido_label = st.selectbox(
+                "Vincular esta Saída a um pedido? (opcional)",
+                opcoes_pedido_nl, key="nl_pedido_rd",
+                help="Só vale para Saídas (gastos) — é isso que alimenta o Custo Direto e a "
+                     "Margem de cada pedido, na seção 'Pedidos com Saldo Pendente' abaixo. "
+                     "Uma Entrada vinculada a um pedido não é contada aqui — use os botões "
+                     "'Recebimento Parcial' / 'Quitar saldo total' do próprio pedido para isso.",
+            )
+
             if st.form_submit_button("💾 Lançar", use_container_width=True, type="primary"):
                 if nl_desc.strip() and nl_val > 0:
+                    enc_id_vinculado = mapa_pedido_nl.get(nl_pedido_label)
                     if nl_tipo.startswith("💰"):
                         recebimentos_inserir({
                             "encomenda_id": None,
@@ -712,7 +733,7 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
                         st.success("✅ Entrada lançada!")
                     else:
                         gastos_inserir({
-                            "encomenda_id": None,
+                            "encomenda_id": enc_id_vinculado,
                             "descricao": nl_desc.strip(), "valor": nl_val,
                             "data": nl_data.isoformat(), "categoria": "Outro",
                             "pago": 1, "recorrente": 0,
@@ -720,7 +741,10 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
                             "conciliado": 0,
                             "criado_em": agora_br().isoformat(),
                         })
-                        st.success("✅ Saída lançada!")
+                        if enc_id_vinculado:
+                            st.success(f"✅ Saída lançada e vinculada a **{nl_pedido_label}**!")
+                        else:
+                            st.success("✅ Saída lançada!")
                     st.rerun()
                 else:
                     st.error("Preencha descrição e valor.")
@@ -767,8 +791,9 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
             if df_r_mes_rel.empty:
                 st.info("Nenhuma entrada neste mês.")
             else:
-                df_em = df_r_mes_rel[["descricao","categoria","valor","forma_pagamento"]].copy()
-                df_em.columns = ["Descrição","Categoria","Valor","Forma"]
+                df_em = df_r_mes_rel[["data","descricao","categoria","valor","forma_pagamento"]].copy()
+                df_em.columns = ["Data","Descrição","Categoria","Valor","Forma"]
+                df_em["Data"] = df_em["Data"].apply(formatar_data_br)
                 df_em["Valor"] = df_em["Valor"].apply(lambda x: brl(float(x)))
                 st.dataframe(df_em, use_container_width=True, hide_index=True)
 
@@ -777,8 +802,9 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
             if df_g_mes_rel.empty:
                 st.info("Nenhum gasto registrado neste mês.")
             else:
-                df_gm = df_g_mes_rel[["descricao","categoria","valor","pago"]].copy()
-                df_gm.columns = ["Descrição","Categoria","Valor","Pago?"]
+                df_gm = df_g_mes_rel[["data","descricao","categoria","valor","pago"]].copy()
+                df_gm.columns = ["Data","Descrição","Categoria","Valor","Pago?"]
+                df_gm["Data"] = df_gm["Data"].apply(formatar_data_br)
                 df_gm["Valor"] = df_gm["Valor"].apply(lambda x: brl(float(x)))
                 df_gm["Pago?"] = df_gm["Pago?"].apply(lambda x: "✅" if int(x or 0) else "⏳")
                 st.dataframe(df_gm, use_container_width=True, hide_index=True)
@@ -854,7 +880,7 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
                 elif filtro_pag == "Quitados":
                     df_pag_view = df_pag_view[df_pag_view["_saldo_pendente"] <= 0.01]
 
-                df_pag_view = df_pag_view.sort_values("_saldo_pendente", ascending=False)
+                df_pag_view = df_pag_view.sort_values("cliente", key=lambda s: s.str.lower())
 
                 if df_pag_view.empty:
                     st.info("Nenhum pedido nesse filtro.")
