@@ -627,8 +627,10 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
     # ═══════════════════════════════════════════════════════════════════
     with f_receb_despe:
         st.caption(
-            "Lance entradas/saídas avulsas rapidamente aqui em cima. Pedidos com saldo "
-            "pendente e o extrato editável do mês ficam recolhidos logo abaixo."
+            "Lance entradas/saídas avulsas rapidamente aqui em cima, veja o relatório do mês "
+            "logo abaixo, e os pedidos com saldo pendente ficam recolhidos mais embaixo. "
+            "Para editar, excluir ou conciliar um lançamento já existente, vá na aba "
+            "🔒 **Fechamento & Conciliação**."
         )
 
         st.markdown("##### ➕ Novo Lançamento")
@@ -1149,7 +1151,7 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
 
         st.markdown("---")
         st.markdown("##### ✅ Progresso da conferência")
-        st.caption("Mostra quantos lançamentos deste mês já estão marcados como conciliados no sistema.")
+        st.caption("Marque \"Conciliado?\" no Extrato do mês acima conforme for conferindo com o extrato do banco.")
 
         total_itens = len(df_r_mes) + len(df_g_mes)
         conc_itens = 0
