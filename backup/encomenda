@@ -12,31 +12,54 @@ principal. Reúne TUDO que gira em torno do ciclo de vida de um pedido:
     (`secao_nova_encomenda_inline`)
   • Sincronização de lembretes/cronograma com as datas do pedido
   • Edição completa de um pedido (`_conteudo_pedido`) — reaproveitada pelos
-    popups da Agenda, por Contratos e por Gerenciar Pedidos
+    popups da Agenda e por Gerenciar Pedidos
   • Popups (`_abrir_popup_pedido`, `_dialog_editar_dia`,
     `_dialog_editar_data_tarefa`)
   • Cards de pedido (`_card_pedido`)
   • As telas `renderizar_contratos`, `renderizar_nova_encomenda` e
     `renderizar_gerenciar_pedidos`
 
-NADA de lógica de negócio mudou nesta extração — é uma cópia fiel do que já
-existia em main.py, só reorganizada num módulo próprio (mesmo espírito da
-extração de `modulos/mod_financeiro.py`).
-
 DUAS ÚNICAS ADAPTAÇÕES TÉCNICAS feitas para este módulo funcionar sozinho,
 sem depender de variáveis globais do main.py:
 
-  1) `dialog_nova_encomenda` e `secao_nova_encomenda_inline` usavam o
-     `df_enc_all` (calculado uma vez no main.py) só para desenhar o
-     mini-calendário de ocupação da Confecção. Aqui, em vez do global,
-     buscamos os dados na hora com `encomendas_listar(cancelado=False)`
-     (que já é cacheado por `database.py` — nenhum custo extra de leitura).
+  1) `dialog_nova_encomenda` e `secao_nova_encomenda_inline` buscam a lista
+     de encomendas na hora com `encomendas_listar(cancelado=False)` (já
+     cacheado por `database.py` — nenhum custo extra de leitura), em vez de
+     depender de um `df_enc_all` global calculado no main.py.
 
   2) As constantes `ETAPAS`, `DIC_MEDIDAS`, `SENHA_DELETE` e `LOGO_PATH`
-     passaram a viver aqui (fonte única). O `main.py` importa
-     `DIC_MEDIDAS` (usada em Medidas), `SENHA_DELETE` (usada em
-     Configurações → Exclusão Permanente) e `LOGO_PATH` (usada no cabeçalho)
-     deste módulo, em vez de as redefinir.
+     vivem aqui (fonte única). O `main.py` importa `DIC_MEDIDAS` (usada em
+     Medidas), `SENHA_DELETE` (Configurações → Exclusão Permanente) e
+     `LOGO_PATH` (cabeçalho) deste módulo, em vez de as redefinir.
+
+[v16] — TRÊS MUDANÇAS GRANDES: unificação Contratos/Gerenciar Pedidos,
+        régua enxuta (1-4, sem Data Medidas nem Sinal) e suporte a Prospect
+        em `dialog_nova_encomenda` (`nome_fixo` / `prospect_id`).
+
+[v17] — Ver changelog de main.py (limpeza de duplicidade na sidebar e
+        módulo de Prospect) — nada mudou neste arquivo.
+
+[v18] — Ver changelog de main.py, database.py e regras_agenda.py
+        (correção da régua de etapas antiga espalhada pelo main.py, e da
+        seleção de cliente por nome em vez de rowid) — nada mudou neste
+        arquivo.
+
+[v19 — NOVO] CADASTRO RÁPIDO DE CLIENTE DENTRO DO PEDIDO: o expander
+        "📏 Ver / Editar Medidas desta Cliente" (dentro de `_conteudo_pedido`)
+        só mostrava "Cliente não encontrada no cadastro (pode ter sido
+        removida)" quando o nome da cliente do pedido não batia com nenhum
+        registro em `lila_clientes` — e não havia como resolver isso sem
+        sair do pedido. Agora, nesse caso, aparece um botão **"➕ Cadastrar
+        Cliente"** ali mesmo: cria o registro da cliente (mesmo nome do
+        pedido, telefone opcional) e, assim que cadastrada, o formulário de
+        medidas aparece normalmente — com histórico de medições vinculado a
+        essa cliente dali em diante, exatamente como qualquer outra.
+
+⚠️ ATENÇÃO — ponto que precisa de um ajuste manual em `main.py` (fora deste
+   módulo, não alterado aqui a pedido): o botão "✅ Feito" em
+   `_secao_tarefas_e_entregas_hoje` (Agenda) tinha uma lógica de avanço de
+   etapa HARDCODED para a numeração ANTIGA (1-7, com saltos manuais). Isso
+   já foi corrigido no `main.py` v18 — mantido aqui só como nota histórica.
 
 Ponto de entrada usados pelo main.py:
   renderizar_contratos(), renderizar_nova_encomenda(),
@@ -86,20 +109,21 @@ from database import (
     encomendas_listar, encomendas_inserir, encomendas_atualizar,
     encomendas_buscar, encomendas_cancelar,
     cronograma_listar, cronograma_inserir, cronograma_atualizar, cronograma_deletar,
+    prospects_deletar,
 )
 
 # ══════════════════════════════════════════════════════════════════════════════
 # CONSTANTES (fonte única — main.py importa DIC_MEDIDAS, SENHA_DELETE e
 # LOGO_PATH daqui para as suas próprias telas que ainda precisam delas)
 # ══════════════════════════════════════════════════════════════════════════════
+# [v16] Régua enxuta: sem "Visita" (Data Medidas) e sem "Sinal" (que na
+# prática nunca era atingida — o avanço automático já pulava direto dela).
+# Confecção agora é a ETAPA 1.
 ETAPAS = {
-    1: ("🤝", "Visita"),
-    2: ("💰", "Sinal"),
-    3: ("🛍️", "Tecidos"),
-    4: ("🪡", "Confecção"),
-    5: ("👗", "Prova"),
-    6: ("🎁", "Entrega"),
-    7: ("✅", "Concluído"),
+    1: ("🪡", "Confecção"),
+    2: ("👗", "Prova"),
+    3: ("🎁", "Entrega"),
+    4: ("✅", "Concluído"),
 }
 
 DIC_MEDIDAS = {
@@ -207,33 +231,6 @@ def _render_ocupacao_confeccao_navegavel(
 # ══════════════════════════════════════════════════════════════════════════════
 # SENHA ADM PARA CONFLITO DE DATA DA CONFECÇÃO  [v14]
 # ══════════════════════════════════════════════════════════════════════════════
-# A regra de exclusividade da Data da Confecção (nunca dois clientes no
-# mesmo dia — ver `modulos/regras_agenda.validar_data_confeccao`) deixou de
-# ser um bloqueio absoluto: se houver conflito, o sistema exige a senha de
-# administrador (a mesma de Configurações → Exclusão Permanente,
-# `SENHA_DELETE`) para liberar o salvamento mesmo assim.
-#
-# Os dois helpers abaixo são reaproveitados nos 4 pontos do sistema que
-# validam a Data da Confecção antes de salvar:
-#   1) dialog_nova_encomenda        (criação via popup do Calendário)
-#   2) secao_nova_encomenda_inline  (criação via formulário fixo)
-#   3) _conteudo_pedido             (edição de pedido existente)
-#   4) _dialog_editar_data_tarefa   (editar só a data de uma tarefa de Confecção)
-#
-# Padrão de uso em cada ponto de chamada:
-#
-#   if _checar_confeccao_com_senha(df_check, data_escolhida, escopo_key="algo", excluir_id=...):
-#       _fazer_o_salvamento()
-#
-#   if _render_confirmacao_senha_confeccao("algo"):
-#       _fazer_o_salvamento()
-#
-# `_checar_confeccao_com_senha` roda no momento do clique em "Salvar/Criar".
-# Se não há conflito, retorna True na hora (fluxo normal, sem qualquer
-# senha). Se há conflito, grava o aviso em st.session_state e força um
-# st.rerun() — na passada seguinte do script, `_render_confirmacao_senha_confeccao`
-# é quem mostra o aviso + campo de senha + botões de confirmar/cancelar, e
-# só retorna True no clique em que a senha correta é confirmada.
 def _checar_confeccao_com_senha(df_check: pd.DataFrame, data_confeccao: date, escopo_key: str,
                                  excluir_id: str | None = None, dados_para_salvar: dict | None = None) -> bool:
     """
@@ -241,16 +238,6 @@ def _checar_confeccao_com_senha(df_check: pd.DataFrame, data_confeccao: date, es
     True imediatamente (fluxo normal, o chamador salva com os valores atuais
     dos widgets). Com conflito: grava o aviso + uma FOTO de `dados_para_salvar`
     em session_state e força um st.rerun().
-
-    IMPORTANTE: guardamos os dados aqui (em vez de confiar que os widgets do
-    formulário ainda estarão com os mesmos valores dali a mais um clique) —
-    isso é o que garante que a senha ADM salve exatamente o que o usuário
-    preencheu, mesmo que o formulário seja re-renderizado entre o clique em
-    "Salvar" e o clique em "Confirmar com senha".
-
-    `escopo_key` precisa ser único por formulário/pedido (ex: o rowid da
-    encomenda, ou um nome fixo para os formulários de criação) para não
-    misturar o estado de conflito de um pedido com o de outro.
     """
     ok_conf, msg_conf = validar_data_confeccao(df_check, data_confeccao, excluir_id=excluir_id)
     pend_key = f"pend_conf_{escopo_key}"
@@ -269,10 +256,7 @@ def _render_confirmacao_senha_confeccao(escopo_key: str):
     mostra o aviso de bloqueio + campo de senha ADM + botões de
     confirmar/cancelar. Retorna a FOTO de `dados_para_salvar` (gravada por
     `_checar_confeccao_com_senha`) SOMENTE no clique em que a senha correta
-    é confirmada — o chamador deve usar esse retorno para salvar (em vez de
-    reler os widgets do formulário, que podem já não refletir o mesmo
-    estado). Em qualquer outro caso (sem pendência, senha ainda não
-    digitada, ou incorreta) retorna None.
+    é confirmada.
     """
     pend_key = f"pend_conf_{escopo_key}"
     pend = st.session_state.get(pend_key)
@@ -337,7 +321,6 @@ def gerar_pdf_contrato(enc: dict, cpf: str, rg: str) -> bytes:
     num_contrato = hashlib.md5(seed.encode()).hexdigest()[:10].upper()
     emitido_em_str = agora_br().strftime("%d/%m/%Y às %H:%M")
 
-    dt_visita  = formatar_data_br(enc.get("data_visita", ""))
     dt_prova   = formatar_data_br(enc.get("data_prova", ""))
     tem_prova2 = bool(str(enc.get("data_prova2") or "").strip())
     dt_prova2  = formatar_data_br(enc.get("data_prova2", "")) if tem_prova2 else ""
@@ -457,7 +440,6 @@ def gerar_pdf_contrato(enc: dict, cpf: str, rg: str) -> bytes:
         textColor=colors.white, alignment=TA_CENTER)
     etapas_rows = [
         [Paragraph("<b>Etapa</b>", s_et_hdr), Paragraph("<b>Descrição</b>", s_et_hdr), Paragraph("<b>Data Prevista</b>", s_et_hdr)],
-        ["🤝 Visita",    "Tomada de medidas, briefing e validação do modelo",   dt_visita],
         ["🛍️ Tecidos",  "Compra e separação dos tecidos e aviamentos",         dt_tecido],
         ["🪡 Confecção", "Início da produção da peça na medida solicitada",     dt_confec],
         ["👗 Prova",     "Prova com a cliente para ajustes finos e acabamentos", dt_prova],
@@ -587,9 +569,18 @@ def gerar_pdf_contrato(enc: dict, cpf: str, rg: str) -> bytes:
 # COMPONENTES COMPARTILHADOS — usados pelos blocos CONTRATOS, ENCOMENDAS e AGENDA
 # ══════════════════════════════════════════════════════════════════════════════
 
-# ── Popup: Nova Encomenda Rápida (a partir do calendário) ─────────────────────
+# ── Popup: Nova Encomenda Rápida (a partir do calendário, ou de um Prospect) ──
 @st.dialog("🛍️ Nova Encomenda Rápida", width="large")
-def dialog_nova_encomenda(data_pre: date | None = None):
+def dialog_nova_encomenda(data_pre: date | None = None, nome_fixo: str | None = None,
+                           prospect_id: str | None = None):
+    """
+    `nome_fixo` e `prospect_id` são usados pelo `modulos/mod_prospect.py` na
+    conversão de um Prospect em pedido: quando `nome_fixo` vem preenchido,
+    o campo de cliente já aparece travado com esse nome (sem a escolha de
+    "Selecionar existente / Cadastrar nova"), e ao criar a encomenda com
+    sucesso o prospect correspondente (`prospect_id`) é excluído da lista
+    automaticamente — ele "virou" o pedido.
+    """
     resultado = st.session_state.get("_dlg_enc_resultado")
     if resultado:
         st.success(f"✅ Encomenda **{resultado['peca']}** criada para **{resultado['cliente']}**!")
@@ -611,25 +602,29 @@ def dialog_nova_encomenda(data_pre: date | None = None):
         return
 
     d_base = data_pre or hoje_brasilia()
-    st.caption(f"📅 Data de referência: **{formatar_data_br(d_base)}**")
 
     df_clis_dlg = clientes_listar()
     clis_dlg = df_clis_dlg["nome"].tolist() if not df_clis_dlg.empty else []
 
     st.markdown("##### 👤 Cliente")
-    modo_cli = st.radio(
-        "Cliente", ["Selecionar existente", "Cadastrar nova"],
-        horizontal=True, key="dlg_modo_cli", label_visibility="collapsed",
-        index=0 if clis_dlg else 1,
-    )
-
-    cli_tel_dlg = ""
-    if modo_cli == "Selecionar existente" and clis_dlg:
-        cli_sel_dlg = st.selectbox("Cliente *", clis_dlg, key="dlg_cli_sel")
+    if nome_fixo:
+        st.info(f"Convertendo prospect em pedido: **{nome_fixo}**")
+        modo_cli = "Selecionar existente" if nome_fixo in clis_dlg else "Cadastrar nova"
+        cli_sel_dlg = nome_fixo
+        cli_tel_dlg = ""
     else:
-        col_cn1, col_cn2 = st.columns(2)
-        cli_sel_dlg = col_cn1.text_input("Nome da nova cliente *", key="dlg_cli_novo")
-        cli_tel_dlg = col_cn2.text_input("Telefone / WhatsApp", key="dlg_cli_tel")
+        modo_cli = st.radio(
+            "Cliente", ["Selecionar existente", "Cadastrar nova"],
+            horizontal=True, key="dlg_modo_cli", label_visibility="collapsed",
+            index=0 if clis_dlg else 1,
+        )
+        cli_tel_dlg = ""
+        if modo_cli == "Selecionar existente" and clis_dlg:
+            cli_sel_dlg = st.selectbox("Cliente *", clis_dlg, key="dlg_cli_sel")
+        else:
+            col_cn1, col_cn2 = st.columns(2)
+            cli_sel_dlg = col_cn1.text_input("Nome da nova cliente *", key="dlg_cli_novo")
+            cli_tel_dlg = col_cn2.text_input("Telefone / WhatsApp", key="dlg_cli_tel")
 
     st.markdown("##### 🧵 Peça / Serviço")
     peca_dlg = st.text_input("Peça / Serviço *", placeholder="Ex: Vestido de festa…", key="dlg_peca")
@@ -643,12 +638,10 @@ def dialog_nova_encomenda(data_pre: date | None = None):
         ["PIX","Dinheiro","Cartão de Crédito","Cartão de Débito","A combinar"], key="dlg_forma_pag")
 
     st.markdown("##### 📅 Datas")
+    st.caption("A primeira etapa do pedido é a Data da Confecção — não há mais um campo separado de 'Data Medidas'.")
 
-    d_visita_dlg = st.date_input(
-        "📏 Data Medidas", value=d_base, key="dlg_visita", format="DD/MM/YYYY"
-    )
     d_confeccao_dlg = st.date_input(
-        "🪡 Data da Confecção", value=d_visita_dlg + timedelta(days=7),
+        "🪡 Data da Confecção", value=d_base + timedelta(days=7),
         key="dlg_confeccao", format="DD/MM/YYYY"
     )
     _render_ocupacao_confeccao_navegavel(encomendas_listar(cancelado=False), key_prefix="dlg", data_referencia=d_confeccao_dlg)
@@ -670,7 +663,7 @@ def dialog_nova_encomenda(data_pre: date | None = None):
         )
 
     precisa_tecido_dlg = st.checkbox("Precisa comprar tecido?", key="dlg_tecido")
-    d_tecido_dlg = d_visita_dlg + timedelta(days=3)
+    d_tecido_dlg = d_base + timedelta(days=3)
     if precisa_tecido_dlg:
         d_tecido_dlg = st.date_input(
             "🛍️ Data Compra do Tecido", value=d_tecido_dlg, key="dlg_data_tecido", format="DD/MM/YYYY"
@@ -692,14 +685,15 @@ def dialog_nova_encomenda(data_pre: date | None = None):
         é uma FOTO dos campos preenchidos, tirada no clique em "Criar
         Encomenda" — usada tanto no fluxo normal quanto após confirmar a
         senha ADM, para garantir que o que é salvo é exatamente o que o
-        usuário preencheu naquele clique."""
+        usuário preencheu naquele clique. Se vier de um Prospect
+        (`prospect_id`), o prospect é excluído da lista ao final."""
         if dados_form is None:
             dados_form = dict(
                 nome_final=(cli_sel_dlg.strip() if isinstance(cli_sel_dlg, str) else cli_sel_dlg),
                 modo_cli=modo_cli, cli_tel_dlg=cli_tel_dlg,
                 peca_dlg=peca_dlg, descricao_dlg=descricao_dlg,
                 v_total_dlg=v_total_dlg, v_sinal_dlg=v_sinal_dlg, forma_pag_dlg=forma_pag_dlg,
-                d_visita_dlg=d_visita_dlg, d_confeccao_dlg=d_confeccao_dlg, d_prova_dlg=d_prova_dlg,
+                d_confeccao_dlg=d_confeccao_dlg, d_prova_dlg=d_prova_dlg,
                 tem_prova2_dlg=tem_prova2_dlg, d_prova2_dlg=d_prova2_dlg,
                 precisa_tecido_dlg=precisa_tecido_dlg, d_tecido_dlg=d_tecido_dlg,
                 d_entrega_dlg=d_entrega_dlg, cpf_dlg=cpf_dlg, rg_dlg=rg_dlg, obs_dlg=obs_dlg,
@@ -710,7 +704,7 @@ def dialog_nova_encomenda(data_pre: date | None = None):
         f_peca = dados_form["peca_dlg"]; f_desc = dados_form["descricao_dlg"]
         f_vtotal = dados_form["v_total_dlg"]; f_vsinal = dados_form["v_sinal_dlg"]
         f_fpag = dados_form["forma_pag_dlg"]
-        f_dvisita = dados_form["d_visita_dlg"]; f_dconf = dados_form["d_confeccao_dlg"]
+        f_dconf = dados_form["d_confeccao_dlg"]
         f_dprova = dados_form["d_prova_dlg"]; f_temprova2 = dados_form["tem_prova2_dlg"]
         f_dprova2 = dados_form["d_prova2_dlg"]; f_precisatecido = dados_form["precisa_tecido_dlg"]
         f_dtecido = dados_form["d_tecido_dlg"]; f_dentrega = dados_form["d_entrega_dlg"]
@@ -727,7 +721,6 @@ def dialog_nova_encomenda(data_pre: date | None = None):
             "descricao": f_desc.strip(), "valor_total": f_vtotal, "sinal": f_vsinal,
             "valor_recebido": f_vsinal,
             "etapa": 1, "precisa_tecido": 1 if f_precisatecido else 0,
-            "data_visita":    f_dvisita.isoformat(),
             "data_tecido":    f_dtecido.isoformat(),
             "data_confeccao": f_dconf.isoformat(),
             "data_prova":     f_dprova.isoformat(),
@@ -741,9 +734,7 @@ def dialog_nova_encomenda(data_pre: date | None = None):
         })
 
         desc_dlg = f"{f_peca.strip()} ({nome_final})"
-        tarefas_auto_dlg = [
-            (f"📏 Medidas: {desc_dlg}",   "Costura", 1.0, f_dvisita.isoformat()),
-        ]
+        tarefas_auto_dlg = []
         if f_precisatecido:
             tarefas_auto_dlg.append((f"🛍️ Tecido: {desc_dlg}", "Compras", 1.0, f_dtecido.isoformat()))
         tarefas_auto_dlg.append((f"🪡 Confecção: {desc_dlg}", "Costura", 3.0, f_dconf.isoformat()))
@@ -765,7 +756,6 @@ def dialog_nova_encomenda(data_pre: date | None = None):
                 "cliente": nome_final, "peca": f_peca.strip(),
                 "descricao": f_desc.strip(), "valor_total": f_vtotal,
                 "sinal": f_vsinal, "forma_pagamento": f_fpag,
-                "data_visita": f_dvisita.isoformat(),
                 "data_tecido": f_dtecido.isoformat() if f_precisatecido else "",
                 "data_confeccao": f_dconf.isoformat(),
                 "data_prova": f_dprova.isoformat(),
@@ -775,6 +765,9 @@ def dialog_nova_encomenda(data_pre: date | None = None):
                 "observacoes": f_obs.strip(),
             }
             pdf_bytes_dlg = gerar_pdf_contrato(enc_dict_pdf, f_cpf.strip(), f_rg.strip())
+
+        if prospect_id:
+            prospects_deletar(str(prospect_id))
 
         st.session_state["_dlg_enc_resultado"] = {
             "cliente": nome_final, "peca": f_peca.strip(), "pdf_bytes": pdf_bytes_dlg,
@@ -813,7 +806,7 @@ def dialog_nova_encomenda(data_pre: date | None = None):
             nome_final=nome_final, modo_cli=modo_cli, cli_tel_dlg=cli_tel_dlg,
             peca_dlg=peca_dlg, descricao_dlg=descricao_dlg,
             v_total_dlg=v_total_dlg, v_sinal_dlg=v_sinal_dlg, forma_pag_dlg=forma_pag_dlg,
-            d_visita_dlg=d_visita_dlg, d_confeccao_dlg=d_confeccao_dlg, d_prova_dlg=d_prova_dlg,
+            d_confeccao_dlg=d_confeccao_dlg, d_prova_dlg=d_prova_dlg,
             tem_prova2_dlg=tem_prova2_dlg, d_prova2_dlg=d_prova2_dlg,
             precisa_tecido_dlg=precisa_tecido_dlg, d_tecido_dlg=d_tecido_dlg,
             d_entrega_dlg=d_entrega_dlg, cpf_dlg=cpf_dlg, rg_dlg=rg_dlg, obs_dlg=obs_dlg,
@@ -904,12 +897,10 @@ def secao_nova_encomenda_inline():
         ["PIX","Dinheiro","Cartão de Crédito","Cartão de Débito","A combinar"], key="ne_forma_pag")
 
     st.markdown("##### 📅 Datas")
+    st.caption("A primeira etapa do pedido é a Data da Confecção — não há mais um campo separado de 'Data Medidas'.")
 
-    d_visita_dlg = st.date_input(
-        "📏 Data Medidas", value=d_base, key="ne_visita", format="DD/MM/YYYY"
-    )
     d_confeccao_dlg = st.date_input(
-        "🪡 Data da Confecção", value=d_visita_dlg + timedelta(days=7),
+        "🪡 Data da Confecção", value=d_base + timedelta(days=7),
         key="ne_confeccao", format="DD/MM/YYYY"
     )
     _render_ocupacao_confeccao_navegavel(encomendas_listar(cancelado=False), key_prefix="ne", data_referencia=d_confeccao_dlg)
@@ -931,7 +922,7 @@ def secao_nova_encomenda_inline():
         )
 
     precisa_tecido_dlg = st.checkbox("Precisa comprar tecido?", key="ne_tecido")
-    d_tecido_dlg = d_visita_dlg + timedelta(days=3)
+    d_tecido_dlg = d_base + timedelta(days=3)
     if precisa_tecido_dlg:
         d_tecido_dlg = st.date_input(
             "🛍️ Data Compra do Tecido", value=d_tecido_dlg, key="ne_data_tecido", format="DD/MM/YYYY"
@@ -960,7 +951,7 @@ def secao_nova_encomenda_inline():
                 modo_cli=modo_cli, cli_tel_dlg=cli_tel_dlg,
                 peca_dlg=peca_dlg, descricao_dlg=descricao_dlg,
                 v_total_dlg=v_total_dlg, v_sinal_dlg=v_sinal_dlg, forma_pag_dlg=forma_pag_dlg,
-                d_visita_dlg=d_visita_dlg, d_confeccao_dlg=d_confeccao_dlg, d_prova_dlg=d_prova_dlg,
+                d_confeccao_dlg=d_confeccao_dlg, d_prova_dlg=d_prova_dlg,
                 tem_prova2_dlg=tem_prova2_dlg, d_prova2_dlg=d_prova2_dlg,
                 precisa_tecido_dlg=precisa_tecido_dlg, d_tecido_dlg=d_tecido_dlg,
                 d_entrega_dlg=d_entrega_dlg, cpf_dlg=cpf_dlg, rg_dlg=rg_dlg, obs_dlg=obs_dlg,
@@ -971,7 +962,7 @@ def secao_nova_encomenda_inline():
         f_peca = dados_form["peca_dlg"]; f_desc = dados_form["descricao_dlg"]
         f_vtotal = dados_form["v_total_dlg"]; f_vsinal = dados_form["v_sinal_dlg"]
         f_fpag = dados_form["forma_pag_dlg"]
-        f_dvisita = dados_form["d_visita_dlg"]; f_dconf = dados_form["d_confeccao_dlg"]
+        f_dconf = dados_form["d_confeccao_dlg"]
         f_dprova = dados_form["d_prova_dlg"]; f_temprova2 = dados_form["tem_prova2_dlg"]
         f_dprova2 = dados_form["d_prova2_dlg"]; f_precisatecido = dados_form["precisa_tecido_dlg"]
         f_dtecido = dados_form["d_tecido_dlg"]; f_dentrega = dados_form["d_entrega_dlg"]
@@ -988,7 +979,6 @@ def secao_nova_encomenda_inline():
             "descricao": f_desc.strip(), "valor_total": f_vtotal, "sinal": f_vsinal,
             "valor_recebido": f_vsinal,
             "etapa": 1, "precisa_tecido": 1 if f_precisatecido else 0,
-            "data_visita":    f_dvisita.isoformat(),
             "data_tecido":    f_dtecido.isoformat(),
             "data_confeccao": f_dconf.isoformat(),
             "data_prova":     f_dprova.isoformat(),
@@ -1002,9 +992,7 @@ def secao_nova_encomenda_inline():
         })
 
         desc_dlg = f"{f_peca.strip()} ({nome_final})"
-        tarefas_auto_dlg = [
-            (f"📏 Medidas: {desc_dlg}",   "Costura", 1.0, f_dvisita.isoformat()),
-        ]
+        tarefas_auto_dlg = []
         if f_precisatecido:
             tarefas_auto_dlg.append((f"🛍️ Tecido: {desc_dlg}", "Compras", 1.0, f_dtecido.isoformat()))
         tarefas_auto_dlg.append((f"🪡 Confecção: {desc_dlg}", "Costura", 3.0, f_dconf.isoformat()))
@@ -1026,7 +1014,6 @@ def secao_nova_encomenda_inline():
                 "cliente": nome_final, "peca": f_peca.strip(),
                 "descricao": f_desc.strip(), "valor_total": f_vtotal,
                 "sinal": f_vsinal, "forma_pagamento": f_fpag,
-                "data_visita": f_dvisita.isoformat(),
                 "data_tecido": f_dtecido.isoformat() if f_precisatecido else "",
                 "data_confeccao": f_dconf.isoformat(),
                 "data_prova": f_dprova.isoformat(),
@@ -1057,7 +1044,7 @@ def secao_nova_encomenda_inline():
             nome_final=nome_final, modo_cli=modo_cli, cli_tel_dlg=cli_tel_dlg,
             peca_dlg=peca_dlg, descricao_dlg=descricao_dlg,
             v_total_dlg=v_total_dlg, v_sinal_dlg=v_sinal_dlg, forma_pag_dlg=forma_pag_dlg,
-            d_visita_dlg=d_visita_dlg, d_confeccao_dlg=d_confeccao_dlg, d_prova_dlg=d_prova_dlg,
+            d_confeccao_dlg=d_confeccao_dlg, d_prova_dlg=d_prova_dlg,
             tem_prova2_dlg=tem_prova2_dlg, d_prova2_dlg=d_prova2_dlg,
             precisa_tecido_dlg=precisa_tecido_dlg, d_tecido_dlg=d_tecido_dlg,
             d_entrega_dlg=d_entrega_dlg, cpf_dlg=cpf_dlg, rg_dlg=rg_dlg, obs_dlg=obs_dlg,
@@ -1080,7 +1067,7 @@ def secao_nova_encomenda_inline():
 # ── Sincronização de lembretes (cronograma) com as datas do pedido ────────────
 def _sincronizar_lembretes_pedido(
     enc_id: str, cliente: str, peca: str,
-    d_visita: date, precisa_tecido: bool, d_tecido: date,
+    precisa_tecido: bool, d_tecido: date,
     d_confeccao: date, d_prova: date, tem_prova2: bool, d_prova2,
     d_entrega: date,
 ):
@@ -1099,7 +1086,6 @@ def _sincronizar_lembretes_pedido(
         df_crono = df_crono[df_crono["encomenda_id"].astype(str) == str(enc_id)]
 
     especificacoes = [
-        ("📏 Medidas:",     "Costura", 1.0, d_visita, True),
         ("🛍️ Tecido:",     "Compras", 1.0, d_tecido, bool(precisa_tecido)),
         ("🪡 Confecção:",   "Costura", 3.0, d_confeccao, True),
         ("👗 2ª Prova:",    "Costura", 1.0, d_prova2, bool(tem_prova2) and d_prova2 is not None),
@@ -1137,27 +1123,23 @@ def _sincronizar_lembretes_pedido(
 
 
 def _calcular_etapa_maxima_por_datas(
-    hoje: date, d_visita: date, precisa_tecido: bool, d_tecido: date,
-    d_confeccao: date, d_prova: date, d_entrega: date,
+    hoje: date, d_confeccao: date, d_prova: date, d_entrega: date,
 ) -> int:
     """
     Calcula, comparando com a data de hoje, até qual etapa da régua as datas
-    do pedido já justificam. Nunca retorna 7 (Concluído) — essa etapa continua
-    sendo sempre uma confirmação manual.
+    do pedido já justificam. Régua enxuta: 1 Confecção, 2 Prova, 3 Entrega.
+    Nunca retorna 4 (Concluído) — essa etapa continua sendo sempre uma
+    confirmação manual.
     """
     etapa = 1
-    if hoje >= d_visita:
-        etapa = 3 if precisa_tecido else 4
-    if precisa_tecido and hoje >= d_tecido:
-        etapa = 4
     if hoje >= d_confeccao:
-        etapa = 5
+        etapa = 2
     if hoje >= d_prova:
-        etapa = 6
+        etapa = 3
     return etapa
 
 
-def _reverter_lembretes_por_etapa(enc_id: str, etapa_atual: int, precisa_tecido: bool):
+def _reverter_lembretes_por_etapa(enc_id: str, etapa_atual: int):
     """
     Mantém o cronograma coerente com a etapa atual do pedido: se a régua
     "voltou", marca de volta como PENDENTE qualquer tarefa cuja conclusão
@@ -1170,13 +1152,10 @@ def _reverter_lembretes_por_etapa(enc_id: str, etapa_atual: int, precisa_tecido:
     if df_todas.empty:
         return
 
-    medidas_etapa = 3 if precisa_tecido else 4
     mapa_etapas = [
-        ("📏 Medidas:",   medidas_etapa),
-        ("🛍️ Tecido:",   4),
-        ("🪡 Confecção:", 5),
-        ("👗 Prova:",     6),
-        ("🎁 Entrega:",   7),
+        ("🪡 Confecção:", 1),
+        ("👗 Prova:",     2),
+        ("🎁 Entrega:",   3),
     ]
 
     for prefixo, etapa_gerada in mapa_etapas:
@@ -1198,7 +1177,8 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
     medidas da cliente e formulário de edição (incluindo o nome da cliente,
     editável). É o mesmo "miolo" usado tanto dentro de um popup
     (Encomendas/Agenda) quanto dentro do painel de detalhe do BLOCO
-    CONTRATOS — a única diferença é o container que o envolve por fora.
+    CONTRATOS/GERENCIAR PEDIDOS — a única diferença é o container que o
+    envolve por fora.
     """
     enc_atualizado = encomendas_buscar(str(enc["rowid"]))
     if enc_atualizado:
@@ -1213,7 +1193,7 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
 
     if not cancelado:
         steps_html = '<div class="step-bar">'
-        for i in range(1, 8):
+        for i in range(1, 5):
             ic, nm = ETAPAS[i]
             cls = "done" if i < etapa_num else ("active" if i == etapa_num else "")
             steps_html += f'<div class="step-item {cls}"><div class="step-dot">{ic}</div><div class="step-lbl">{nm}</div></div>'
@@ -1234,8 +1214,7 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
     if enc.get("precisa_tecido") and str(enc.get("data_tecido") or "").strip():
         tecido_txt = f" &nbsp;|&nbsp; 🛍️ Tecido: **{formatar_data_br(enc.get('data_tecido'))}**"
     st.caption(
-        f"📏 Medidas: **{formatar_data_br(enc.get('data_visita',''))}** "
-        f"&nbsp;|&nbsp; 🪡 Confecção: **{formatar_data_br(enc.get('data_confeccao',''))}** "
+        f"🪡 Confecção: **{formatar_data_br(enc.get('data_confeccao',''))}** "
         f"&nbsp;|&nbsp; 👗 Prova: **{formatar_data_br(enc.get('data_prova',''))}**"
         f"{prova2_txt}{tecido_txt}"
     )
@@ -1276,7 +1255,43 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
                 cli_row_medidas = match_cli.iloc[0]
 
         if cli_row_medidas is None:
-            st.info("Cliente não encontrada no cadastro (pode ter sido removida).")
+            # ── [v19] CADASTRO RÁPIDO DE CLIENTE ─────────────────────────
+            # Antes, esse caso só mostrava um aviso e não dava pra fazer
+            # nada — a cliente ficava travada, sem poder ter medidas
+            # registradas. Agora aparece um botão que cadastra a cliente
+            # (mesmo nome do pedido) na hora; assim que cadastrada, o
+            # formulário de medidas aparece normalmente (via rerun) e o
+            # histórico de medições passa a existir dali em diante, igual
+            # a qualquer outra cliente.
+            st.warning(
+                f"**{enc.get('cliente','—')}** não foi encontrada no cadastro de "
+                "clientes (pode ter sido removida, ou o pedido foi criado antes "
+                "dela existir no cadastro). Sem um cadastro, não há onde guardar "
+                "as medidas — cadastre agora para liberar o histórico."
+            )
+            col_cad1, col_cad2 = st.columns([3, 1.3])
+            tel_cad_medidas = col_cad1.text_input(
+                "Telefone / WhatsApp (opcional)",
+                key=f"tel_cad_med_{enc['rowid']}",
+                placeholder="Ex: (11) 91234-5678",
+            )
+            with col_cad2:
+                st.write("")
+                if st.button(
+                    "➕ Cadastrar Cliente", use_container_width=True, type="primary",
+                    key=f"cad_cli_pedido_{enc['rowid']}",
+                ):
+                    nome_para_cadastro = str(enc.get("cliente") or "").strip()
+                    if not nome_para_cadastro:
+                        st.error("Este pedido não tem um nome de cliente definido — corrija o nome no formulário abaixo antes de cadastrar.")
+                    else:
+                        clientes_inserir({
+                            "nome": nome_para_cadastro,
+                            "telefone": tel_cad_medidas.strip(),
+                            "criado_em": agora_br().isoformat(),
+                        })
+                        st.success(f"✅ Cliente **{nome_para_cadastro}** cadastrada! Agora já dá para registrar as medidas.")
+                        st.rerun()
         else:
             with st.form(f"form_medidas_pedido_{enc['rowid']}"):
                 colm1, colm2, colm3 = st.columns(3)
@@ -1324,15 +1339,13 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
         ed_obs    = col_f2e.text_area("Observações", value=str(enc.get("observacoes") or ""), height=60)
 
         st.markdown("📅 Datas")
-        d1, d2 = st.columns(2)
-        ed_vis  = d1.date_input("📏 Data Medidas", value=converter_para_data(enc.get("data_visita")),
-                                 key=f"dv_{enc['rowid']}", format="DD/MM/YYYY")
+        d2, d3 = st.columns(2)
         ed_conf = d2.date_input("🪡 Data da Confecção", value=converter_para_data(enc.get("data_confeccao")),
                                  key=f"dconf_{enc['rowid']}", format="DD/MM/YYYY")
-
-        d3, d4 = st.columns(2)
         ed_pro = d3.date_input("👗 Data da Prova", value=converter_para_data(enc.get("data_prova")),
                                 key=f"dp_{enc['rowid']}", format="DD/MM/YYYY")
+
+        d4, d5 = st.columns(2)
         ed_pro2 = None
         if ed_tem_prova2:
             ed_pro2 = d4.date_input(
@@ -1341,10 +1354,10 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
                 key=f"dp2_{enc['rowid']}", format="DD/MM/YYYY",
             )
 
-        d5, d6 = st.columns(2)
-        ed_tec  = d5.date_input("🛍️ Data Compra do Tecido", value=converter_para_data(enc.get("data_tecido")),
+        d6, d7 = st.columns(2)
+        ed_tec  = d6.date_input("🛍️ Data Compra do Tecido", value=converter_para_data(enc.get("data_tecido")),
                                  key=f"dt_{enc['rowid']}", format="DD/MM/YYYY")
-        ed_ent  = d6.date_input("🎁 Data de Entrega", value=converter_para_data(enc.get("data_entrega")),
+        ed_ent  = d7.date_input("🎁 Data de Entrega", value=converter_para_data(enc.get("data_entrega")),
                                  key=f"de_{enc['rowid']}", format="DD/MM/YYYY")
 
         col_b1, col_b2, col_b3 = st.columns(3)
@@ -1372,12 +1385,12 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
             dados_form = dict(
                 ed_cliente=ed_cliente, ed_peca=ed_peca, ed_desc=ed_desc,
                 ed_fpag=ed_fpag, ed_obs=ed_obs,
-                ed_vis=ed_vis, ed_tec=ed_tec, ed_conf=ed_conf,
+                ed_tec=ed_tec, ed_conf=ed_conf,
                 ed_pro=ed_pro, ed_tem_prova2=ed_tem_prova2, ed_pro2=ed_pro2,
                 ed_ent=ed_ent,
             )
 
-        f_vis, f_tec, f_conf = dados_form["ed_vis"], dados_form["ed_tec"], dados_form["ed_conf"]
+        f_tec, f_conf = dados_form["ed_tec"], dados_form["ed_conf"]
         f_pro, f_pro2, f_ent = dados_form["ed_pro"], dados_form["ed_pro2"], dados_form["ed_ent"]
         f_tem_prova2 = dados_form["ed_tem_prova2"]
 
@@ -1389,7 +1402,6 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
             "cliente": cliente_final,
             "peca": dados_form["ed_peca"], "descricao": dados_form["ed_desc"],
             "forma_pagamento": dados_form["ed_fpag"], "observacoes": dados_form["ed_obs"],
-            "data_visita": f_vis.isoformat(),
             "data_tecido": f_tec.isoformat(),
             "data_confeccao": f_conf.isoformat(),
             "data_prova": f_pro.isoformat(),
@@ -1401,9 +1413,7 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
         etapa_ajustada = False
         if not cancelado:
             etapa_max_datas = _calcular_etapa_maxima_por_datas(
-                hoje=hoje_brasilia(), d_visita=f_vis,
-                precisa_tecido=precisa_tecido_enc, d_tecido=f_tec,
-                d_confeccao=f_conf, d_prova=f_pro, d_entrega=f_ent,
+                hoje=hoje_brasilia(), d_confeccao=f_conf, d_prova=f_pro, d_entrega=f_ent,
             )
             if etapa_max_datas < etapa_atual:
                 dados_salvar["etapa"] = etapa_max_datas
@@ -1413,14 +1423,10 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
         encomendas_atualizar(str(enc["rowid"]), dados_salvar)
 
         if etapa_ajustada:
-            _reverter_lembretes_por_etapa(
-                enc_id=str(enc["rowid"]), etapa_atual=etapa_atual,
-                precisa_tecido=precisa_tecido_enc,
-            )
+            _reverter_lembretes_por_etapa(enc_id=str(enc["rowid"]), etapa_atual=etapa_atual)
 
         _sincronizar_lembretes_pedido(
             enc_id=str(enc["rowid"]), cliente=cliente_final, peca=dados_form["ed_peca"],
-            d_visita=f_vis,
             precisa_tecido=precisa_tecido_enc, d_tecido=f_tec,
             d_confeccao=f_conf, d_prova=f_pro,
             tem_prova2=f_tem_prova2, d_prova2=f_pro2,
@@ -1445,7 +1451,7 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
             dados_atuais = dict(
                 ed_cliente=ed_cliente, ed_peca=ed_peca, ed_desc=ed_desc,
                 ed_fpag=ed_fpag, ed_obs=ed_obs,
-                ed_vis=ed_vis, ed_tec=ed_tec, ed_conf=ed_conf,
+                ed_tec=ed_tec, ed_conf=ed_conf,
                 ed_pro=ed_pro, ed_tem_prova2=ed_tem_prova2, ed_pro2=ed_pro2,
                 ed_ent=ed_ent,
             )
@@ -1465,7 +1471,7 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
         _executar_salvamento_pedido(dados_pendentes_pedido)
 
     if clicou_concluir:
-        encomendas_atualizar(str(enc["rowid"]), {"etapa": 7})
+        encomendas_atualizar(str(enc["rowid"]), {"etapa": 4})
         st.rerun()
     if clicou_cancelar_pedido:
         encomendas_cancelar(str(enc["rowid"]))
@@ -1528,7 +1534,6 @@ def _mapa_prefixo_campo_data():
     a encomenda) com o campo de data correspondente na encomenda.
     """
     return {
-        "📏 Medidas:":    "data_visita",
         "🛍️ Tecido:":    "data_tecido",
         "🪡 Confecção:":  "data_confeccao",
         "👗 2ª Prova:":   "data_prova2",
@@ -1608,9 +1613,18 @@ def _card_pedido(enc: dict, idx: int):
     etapa_ic, etapa_nm = ETAPAS.get(etapa_num, ("📦", "–"))
     cancelado  = bool(int(enc.get("cancelado", 0) or 0))
     restante_enc = float(enc.get("valor_total", 0) or 0) - float(enc.get("valor_recebido", 0) or 0)
-    pct = 0 if cancelado else round(min(etapa_num / 7, 1.0) * 100)
+    pct = 0 if cancelado else round(min(etapa_num / 4, 1.0) * 100)
     badge_cls = "badge-red" if cancelado else "badge-gold"
     badge_txt = "❌ Cancelado" if cancelado else f"{etapa_ic} {etapa_nm}"
+
+    tem_contrato = bool(
+        str(enc.get("cpf_cliente") or "").strip()
+        and str(enc.get("rg_cliente") or "").strip()
+    )
+    contrato_badge = (
+        '&nbsp;<span class="badge badge-blue">📄 Contrato pronto</span>' if tem_contrato
+        else '&nbsp;<span class="badge badge-navy">⏳ Falta CPF/RG</span>'
+    )
 
     if st.button(f"📦 {enc['cliente']} — {enc['peca']}",
                  key=f"pedcard_{idx}_{enc['rowid']}", use_container_width=True):
@@ -1627,111 +1641,23 @@ def _card_pedido(enc: dict, idx: int):
         <div style="margin-top:6px;">
             <span class="badge {badge_cls}">{badge_txt}</span>
             &nbsp;<span class="badge badge-green">Recebido {brl(float(enc.get('valor_recebido',0) or 0))}</span>
-            {saldo_badge}
+            {saldo_badge}{contrato_badge}
         </div>
     </div>""", unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ██████████████████████████  BLOCO: CONTRATOS  ████████████████████████████████
-# ══════════════════════════════════════════════════════════════════════════════
-def renderizar_contratos():
-    """
-    Lista de encomendas à esquerda (com busca) + painel de detalhe do
-    contrato à direita. Clicar no nome da encomenda abre, ao lado, o
-    contrato completo: dados, edição de datas/valores, medidas, botão de
-    baixar PDF e botão de assinatura via GOV.BR — tudo reaproveitando
-    `_conteudo_pedido`, sem duplicar regra de negócio nenhuma.
-    """
-    st.markdown("## 📄 Contratos")
-    st.caption("Selecione uma encomenda na lista para ver, editar e assinar o contrato.")
-
-    if "ct_selecionado" not in st.session_state:
-        st.session_state.ct_selecionado = None
-
-    df_ct_full = encomendas_listar()
-    if df_ct_full.empty:
-        st.info("Nenhuma encomenda cadastrada ainda. Crie a primeira em **🛍️ Encomendas**.")
-        return
-
-    with st.container(key="ct_paineis"):
-        col_lista, col_detalhe = st.columns([1, 1.7])
-
-        with col_lista:
-            busca_ct = st.text_input("🔍 Buscar por cliente ou peça", key="ct_busca")
-            df_ct = df_ct_full
-            if busca_ct.strip():
-                mask_ct = (
-                    df_ct["cliente"].astype(str).str.contains(busca_ct, case=False, na=False) |
-                    df_ct["peca"].astype(str).str.contains(busca_ct, case=False, na=False)
-                )
-                df_ct = df_ct[mask_ct]
-
-            if "_criado_em" in df_ct.columns:
-                df_ct = df_ct.sort_values("_criado_em", ascending=False)
-
-            st.markdown(f"**{len(df_ct)} encomenda(s)**")
-
-            if df_ct.empty:
-                st.info("Nenhum resultado para essa busca.")
-            else:
-                for _, enc in df_ct.iterrows():
-                    cancelado_ct = bool(int(enc.get("cancelado", 0) or 0))
-                    etapa_ct = int(enc.get("etapa", 1))
-                    etapa_ic, etapa_nm = ETAPAS.get(etapa_ct, ("📦", "–"))
-                    selecionado = st.session_state.ct_selecionado == enc["rowid"]
-
-                    if st.button(
-                        f"{'📄' if selecionado else '🧵'} {enc['cliente']} — {enc['peca']}",
-                        key=f"ctcard_{enc['rowid']}", use_container_width=True,
-                        type="primary" if selecionado else "secondary",
-                    ):
-                        st.session_state.ct_selecionado = enc["rowid"]
-                        st.rerun()
-
-                    badge_txt_ct = "❌ Cancelado" if cancelado_ct else f"{etapa_ic} {etapa_nm}"
-                    tem_contrato = bool(
-                        str(enc.get("cpf_cliente") or "").strip()
-                        and str(enc.get("rg_cliente") or "").strip()
-                    )
-                    st.caption(
-                        f"{badge_txt_ct} &nbsp;·&nbsp; "
-                        f"{'📄 Contrato pronto para baixar' if tem_contrato else '⏳ Falta CPF/RG'}"
-                    )
-
-        with col_detalhe:
-            selecionado_id = st.session_state.ct_selecionado
-            enc_sel = encomendas_buscar(str(selecionado_id)) if selecionado_id else None
-
-            if not enc_sel:
-                if selecionado_id:
-                    st.session_state.ct_selecionado = None
-                st.markdown(
-                    '<div class="ct-detalhe-vazio">👈 Selecione uma encomenda na lista '
-                    'ao lado para ver o contrato completo aqui.</div>',
-                    unsafe_allow_html=True,
-                )
-            else:
-                cancelado_sel = bool(int(enc_sel.get("cancelado", 0) or 0))
-                _conteudo_pedido(enc_sel, cancelado_sel)
-# ══════════════════════════════════════════════════════════════════════════════
-# ████████████████████████████  BLOCO: NOVA ENCOMENDA  █████████████████████████
-# ══════════════════════════════════════════════════════════════════════════════
-def renderizar_nova_encomenda():
-    st.markdown("## 🆕 Nova Encomenda")
-    st.caption(
-        "Preencha os dados abaixo para cadastrar uma nova encomenda. "
-        "Este formulário fica sempre visível nesta tela — inclusive se você trocar "
-        "de aba ou de aplicativo no celular, os dados já digitados permanecem aqui."
-    )
-    with st.container(border=True):
-        secao_nova_encomenda_inline()
-# ══════════════════════════════════════════════════════════════════════════════
 # ██████████████████████████  BLOCO: GERENCIAR PEDIDOS  ████████████████████████
+# [v16] ÚNICA tela — reúne tudo que "Contratos" e "Gerenciar Pedidos" faziam
+# separadamente. "renderizar_contratos" abaixo é só um alias, para o main.py
+# não precisar de nenhum ajuste (os dois botões da sidebar caem aqui).
 # ══════════════════════════════════════════════════════════════════════════════
 def renderizar_gerenciar_pedidos():
     st.markdown("## 📋 Gerenciar Pedidos")
-    st.caption("💡 Clique em um pedido para abrir os detalhes — o nome da cliente também pode ser editado ali, na seção **✏️ Editar Pedido**.")
+    st.caption(
+        "💡 Clique em um pedido para ver e editar tudo — régua de etapas, valores, "
+        "contrato (CPF/RG, baixar PDF, assinar via GOV.BR) e medidas da cliente."
+    )
 
     filtro_cli = st.text_input(
         "🔍 Buscar por cliente ou peça",
@@ -1749,9 +1675,9 @@ def renderizar_gerenciar_pedidos():
 
     if not df_e.empty:
         if filtro_status == "Em andamento":
-            df_e = df_e[(df_e["etapa"].astype(int) < 7) & (df_e["cancelado"].astype(int) == 0)]
+            df_e = df_e[(df_e["etapa"].astype(int) < 4) & (df_e["cancelado"].astype(int) == 0)]
         elif filtro_status == "Concluídos":
-            df_e = df_e[(df_e["etapa"].astype(int) == 7) & (df_e["cancelado"].astype(int) == 0)]
+            df_e = df_e[(df_e["etapa"].astype(int) == 4) & (df_e["cancelado"].astype(int) == 0)]
         elif filtro_status == "Cancelados":
             df_e = df_e[df_e["cancelado"].astype(int) == 1]
         else:
@@ -1774,3 +1700,27 @@ def renderizar_gerenciar_pedidos():
         for idx, (_, enc) in enumerate(df_e.iterrows()):
             with cols_ped[idx % 2]:
                 _card_pedido(enc, idx)
+
+
+def renderizar_contratos():
+    """
+    [v16] Alias: "Contratos" e "Gerenciar Pedidos" faziam a mesma coisa por
+    baixo (abrir `_conteudo_pedido`), só com visual diferente. Unificamos
+    numa tela só, e este alias garante que o botão "Contratos" da sidebar
+    (em main.py) continue funcionando sem precisar de nenhum ajuste lá.
+    """
+    renderizar_gerenciar_pedidos()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ████████████████████████████  BLOCO: NOVA ENCOMENDA  █████████████████████████
+# ══════════════════════════════════════════════════════════════════════════════
+def renderizar_nova_encomenda():
+    st.markdown("## 🆕 Nova Encomenda")
+    st.caption(
+        "Preencha os dados abaixo para cadastrar uma nova encomenda. "
+        "Este formulário fica sempre visível nesta tela — inclusive se você trocar "
+        "de aba ou de aplicativo no celular, os dados já digitados permanecem aqui."
+    )
+    with st.container(border=True):
+        secao_nova_encomenda_inline()
