@@ -778,11 +778,13 @@ def _secao_tarefas_e_entregas_hoje():
         # Antes: filtrava por `etapa >= 6`, valor só válido na régua ANTIGA
         # de 7 etapas — na régua atual (máximo 4) essa condição nunca era
         # verdadeira, então esta seção ficava sempre vazia mesmo havendo
-        # entregas de verdade marcadas para hoje. Corrigido para `>= 3`
-        # (etapa "Entrega" ou "Concluído").
+        # entregas de verdade marcadas para hoje. Corrigido para
+        # `>= ETAPA_CONCLUIDO - 1` (etapa "Entrega" ou "Concluído") — usa a
+        # constante nomeada em vez de um número solto, para nunca mais
+        # ficar defasado se a régua mudar de novo no futuro.
         df_ent_hoje = df_enc_all[
             (df_enc_all.get("data_entrega", pd.Series(dtype=str)) == hoje_dt.isoformat()) &
-            (df_enc_all["etapa"].astype(int) >= 3)
+            (df_enc_all["etapa"].astype(int) >= ETAPA_CONCLUIDO - 1)
         ]
         if df_ent_hoje.empty:
             st.info("Nenhuma entrega programada para hoje.")
