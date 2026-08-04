@@ -9,16 +9,17 @@ para o seu BLOCO correspondente, todos dentro deste mesmo arquivo:
     BLOCO AGENDA            → calendário mensal + agenda de trabalho + vida
                               pessoal (campo, peso) + alerta de entregas
                               urgentes
-    BLOCO CONTRATOS         → lista de encomendas + painel de detalhe do
-                              contrato ao lado (ver, editar, baixar PDF, GOV.BR)
-    BLOCO MEDIDAS           → ficha de medidas das clientes (com busca)
     BLOCO GERENCIAR PEDIDOS → gerenciamento geral dos pedidos (cards + popup)
+                              — inclui tudo que "Contratos" fazia (ver PDF,
+                              CPF/RG, GOV.BR), já que são a mesma tela
+    BLOCO MEDIDAS           → ficha de medidas das clientes (com busca)
+    BLOCO PROSPECT          → agora em modulos/mod_prospect.py
     BLOCO FINANCEIRO        → agora em modulos/mod_financeiro.py
     BLOCO CONFIGURAÇÕES     → dados da empresa, metas, alerta de entrega,
                               exclusões permanentes
 
   Ordem da sidebar (grupo "Operacional"):
-      Nova Encomenda → Agenda → Contratos → Medidas → Gerenciar Pedidos
+      Prospect → Nova Encomenda → Agenda → Medidas → Gerenciar Pedidos
   Grupo "Gestão": Financeiro
   Grupo "Administração": Configurações
 
@@ -34,24 +35,17 @@ Histórico de versões (changelog):
         cabeçalho (logo + nome) e os KPIs do topo continuam sempre
         visíveis, sejá qual for a seção selecionada.
 
-  [v11] BLOCO CONTRATOS (novo): antes, "ver o contrato" só existia dentro
-        do popup de um pedido (Gerenciar Pedidos → clique no card). Agora
-        existe uma seção própria na sidebar — "📄 Contratos" — com uma
-        lista de encomendas à esquerda (com busca) e, ao clicar no nome,
-        o contrato completo abre ao lado: dados do pedido, edição de
-        datas/valores, medidas da cliente, botão de baixar PDF e botão de
-        assinatura via GOV.BR. Reaproveita 100% da função `_conteudo_pedido`
-        já existente (mesma lógica usada nos popups de Encomendas/Agenda),
-        então não há duplicação de regras de negócio — só um novo "container"
-        para ela.
+  [v11] BLOCO CONTRATOS (removido em v17 — ver changelog abaixo): antes,
+        "ver o contrato" só existia dentro do popup de um pedido
+        (Gerenciar Pedidos → clique no card). Passou a existir uma seção
+        própria na sidebar — "📄 Contratos" — reaproveitando 100% da
+        função `_conteudo_pedido` já existente.
 
   [v11.1] O que antes era um único bloco "Encomendas" (com Nova Encomenda no
         topo + abas internas "Medidas & Clientes" e "Gerenciar Pedidos") virou
-        TRÊS itens próprios na sidebar: 🆕 Nova Encomenda, 📏 Medidas e
+        itens próprios na sidebar: 🆕 Nova Encomenda, 📏 Medidas e
         📋 Gerenciar Pedidos — cada um com sua função `renderizar_*` dedicada,
-        sem abas internas escondendo conteúdo. Ordem final da sidebar:
-        Nova Encomenda → Agenda → Contratos → Medidas → Gerenciar Pedidos →
-        Financeiro → Configurações.
+        sem abas internas escondendo conteúdo.
 
   [v11.2] CABEÇALHO FIXO: o cabeçalho (logo/nome) e os 3 KPIs do topo agora
         ficam FIXOS (position: sticky) no topo da área principal enquanto o
@@ -94,8 +88,8 @@ Histórico de versões (changelog):
            da Confecção.
 
         5) Campo "Cliente" agora é editável dentro do formulário de edição de
-           pedido (usado por Gerenciar Pedidos, Contratos e Agenda), sem
-           precisar apagar e recriar a encomenda.
+           pedido (usado por Gerenciar Pedidos e Agenda), sem precisar
+           apagar e recriar a encomenda.
 
   [v13] MEDIDAS ENXUTO: removida a listagem "Clientes Cadastradas" da tela
         de Medidas — agora a tela mostra direto a Ficha de Medidas, com uma
@@ -118,7 +112,7 @@ Histórico de versões (changelog):
         `_render_confirmacao_senha_confeccao` — reaproveitados nos 4 pontos
         do sistema que validam a Data da Confecção: criação via popup
         (Agenda/Calendário), criação via formulário fixo (Nova Encomenda),
-        edição de pedido existente (Contratos/Agenda/Gerenciar Pedidos) e
+        edição de pedido existente (Agenda/Gerenciar Pedidos) e
         edição rápida de data de uma tarefa de Confecção no Calendário.
 
   [v15] MODULARIZAÇÃO — BLOCO ENCOMENDAS: todo o bloco de criação/edição de
@@ -132,6 +126,26 @@ Histórico de versões (changelog):
         só a organização dos arquivos. `main.py` agora importa
         `DIC_MEDIDAS`, `SENHA_DELETE` e `LOGO_PATH` desse módulo (fonte
         única), em vez de os redefinir.
+
+  [v16] (em modulos/mod_encomendas.py) Contratos e Gerenciar Pedidos
+        unificados — `renderizar_contratos()` virou um ALIAS interno de
+        `renderizar_gerenciar_pedidos()`. Nenhuma mudança neste arquivo
+        ainda nesse momento (os dois botões da sidebar continuaram
+        existindo, só levando ao mesmo lugar).
+
+  [v17] LIMPEZA DA DUPLICIDADE + PROSPECT:
+        1) Removido o botão "📄 Contratos" da sidebar e o import de
+           `renderizar_contratos` — como ele já era só um alias de
+           `renderizar_gerenciar_pedidos()` (v16), os dois botões abriam
+           exatamente a mesma tela. "📋 Gerenciar Pedidos" continua sendo o
+           único ponto de entrada (cards, contrato/PDF/GOV.BR, medidas,
+           edição — tudo intacto em `mod_encomendas.py`, nada mudou lá).
+        2) Novo módulo `modulos/mod_prospect.py` (lista simples de gente
+           interessada, antes de virar pedido) plugado na sidebar como
+           "🌱 Prospect", logo acima de "Nova Encomenda" — reflete o fluxo
+           real: primeiro entra como prospect, depois vira encomenda via
+           "🪡 Converter em Pedido" (que reaproveita o mesmo
+           `dialog_nova_encomenda`, sem duplicar nenhuma regra).
 """
 
 import streamlit as st
@@ -150,9 +164,10 @@ from modulos.utils import (
 
 # ── Módulos extraídos ─────────────────────────────────────────────────────────
 from modulos.mod_financeiro import renderizar_financeiro
+from modulos.mod_prospect import renderizar_prospects
 from modulos.mod_encomendas import (
     DIC_MEDIDAS, SENHA_DELETE, LOGO_PATH,
-    renderizar_contratos, renderizar_nova_encomenda, renderizar_gerenciar_pedidos,
+    renderizar_nova_encomenda, renderizar_gerenciar_pedidos,
     _abrir_popup_pedido, _dialog_editar_dia, _dialog_editar_data_tarefa,
 )
 from modulos.regras_agenda import (
@@ -523,10 +538,9 @@ div[class*="st-key-pedcard_"] button:hover {
 .kpi-red   .kpi-label, .kpi-red .kpi-sub { color: #ffd9d9; }
 
 /* ══════════════════════════════════════════════════════════════
-   BLOCO CONTRATOS — lista de encomendas (esquerda) + painel de
-   detalhe do contrato (direita). Mesmo espírito do painel de
-   Tickets do KingStar: coluna de lista rolando por dentro, sem
-   empurrar a página toda, e cards clicáveis na lista.
+   BLOCO GERENCIAR PEDIDOS — lista de encomendas (cards) + painel de
+   detalhe do pedido em popup. Mesmo espírito do painel de
+   Tickets do KingStar: cards clicáveis na lista.
    ══════════════════════════════════════════════════════════════ */
 div[class*="st-key-ct_paineis"] div[data-testid="stColumn"]:first-child {
   max-height: calc(100vh - 300px);
@@ -1342,9 +1356,9 @@ with st.sidebar:
     st.markdown('<div class="sb-subtitulo">Atelier de Costura</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="sb-secao-label">Operacional</div>', unsafe_allow_html=True)
+    _nav_btn("Prospect",           "prospect",           "🌱")
     _nav_btn("Nova Encomenda",    "nova_encomenda",     "🆕")
     _nav_btn("Agenda",            "agenda",             "📅")
-    _nav_btn("Contratos",         "contratos",          "📄")
     _nav_btn("Medidas",           "medidas",            "📏")
     _nav_btn("Gerenciar Pedidos", "gerenciar_pedidos",  "📋")
 
@@ -1357,12 +1371,12 @@ with st.sidebar:
 # ══════════════════════════════════════════════════════════════════════════════
 # ROTEAMENTO — renderiza o bloco selecionado na sidebar
 # ══════════════════════════════════════════════════════════════════════════════
-if st.session_state.pagina == "nova_encomenda":
+if st.session_state.pagina == "prospect":
+    renderizar_prospects()
+elif st.session_state.pagina == "nova_encomenda":
     renderizar_nova_encomenda()
 elif st.session_state.pagina == "agenda":
     renderizar_agenda()
-elif st.session_state.pagina == "contratos":
-    renderizar_contratos()
 elif st.session_state.pagina == "medidas":
     renderizar_medidas()
 elif st.session_state.pagina == "gerenciar_pedidos":
@@ -1372,4 +1386,4 @@ elif st.session_state.pagina == "financeiro":
 elif st.session_state.pagina == "configuracoes":
     renderizar_configuracoes()
 
-st.caption("v15.0.0 | Lila Closet Atelier | Firestore · Horário de Brasília · wendleydesenvolvimento")
+st.caption("v17.0.0 | Lila Closet Atelier | Firestore · Horário de Brasília · wendleydesenvolvimento")
