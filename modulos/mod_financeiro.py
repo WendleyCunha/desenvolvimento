@@ -1593,6 +1593,10 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
             "Saldo que aparece no extrato bancário no último dia do mês (R$)",
             value=float(fech_existente.get("saldo_extrato_informado", saldo_teorico)) if fech_existente and fech_existente.get("saldo_extrato_informado") is not None else float(saldo_teorico),
             step=10.0, format="%.2f", disabled=ja_fechado,
+            # key amarrada ao mês: sem isso, o Streamlit pode manter o valor
+            # digitado ao trocar de mês em vez de recalcular o padrão certo
+            # para o novo mês selecionado.
+            key=f"saldo_extrato_{mes_str}",
         )
         diferenca = saldo_teorico - saldo_extrato
         if abs(diferenca) < 0.01:
