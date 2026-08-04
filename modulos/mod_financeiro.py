@@ -283,6 +283,60 @@ def _status_pagamento_badge(v_recebido: float, v_total: float) -> str:
         return '<span class="badge badge-red">🔴 Sem pagamento</span>'
 
 
+@st.dialog("💵 Recebimento Parcial")
+def _dialog_recebimento_parcial(enc_id: str, cliente: str, peca: str,
+                                 v_total_e: float, v_recebido: float, v_restante: float):
+    """
+    Popup dedicado para registrar um recebimento PARCIAL de um pedido — em
+    vez do "Quitar saldo total" (que zera o saldo de uma vez), aqui o
+    usuário informa exatamente quanto está entrando agora.
+
+    A gravação usa EXATAMENTE o mesmo caminho de dados do resto do sistema
+    (recebimentos_inserir + encomendas_atualizar), então tudo que lê esses
+    dados — Lucro Real, Lucro Previsto, A Receber do mês, Projeção, Extrato
+    do mês, Relatório Mensal — se ajusta sozinho na próxima renderização.
+    Não existe cálculo paralelo nem valor duplicado: é a mesma fonte de
+    verdade de sempre, só que alimentada por um popup mais direto.
+    """
+    st.markdown(f"**{cliente}** — {peca}")
+    col_m1, col_m2, col_m3 = st.columns(3)
+    col_m1.metric("Valor Total", brl(v_total_e))
+    col_m2.metric("Já Recebido", brl(v_recebido))
+    col_m3.metric("Saldo Restante", brl(v_restante))
+
+    st.markdown("")
+    valor_parcial = st.number_input(
+        "Quanto vai receber agora? (R$)",
+        min_value=0.01, max_value=float(v_restante),
+        value=float(v_restante), step=10.0, format="%.2f",
+        key=f"parcial_val_{enc_id}",
+        help="Pode ser qualquer valor até o saldo restante — o que sobrar continua pendente.",
+    )
+    forma_parcial = st.selectbox("Forma de pagamento", FORMAS_PAGAMENTO, key=f"parcial_forma_{enc_id}")
+
+    saldo_depois = max(v_restante - valor_parcial, 0.0)
+    st.caption(f"💡 Depois deste recebimento, o saldo pendente deste pedido passa a ser **{brl(saldo_depois)}**.")
+
+    col_ok, col_cancel = st.columns(2)
+    if col_ok.button("✅ Confirmar Recebimento", use_container_width=True, type="primary", key=f"parcial_confirmar_{enc_id}"):
+        recebimentos_inserir({
+            "encomenda_id": str(enc_id),
+            "descricao": f"Pagamento parcial – {cliente}: {peca}",
+            "valor": valor_parcial,
+            "categoria": "Venda de peça",
+            "data": hoje_brasilia().isoformat(),
+            "forma_pagamento": forma_parcial,
+            "conciliado": 0,
+            "criado_em": agora_br().isoformat(),
+        })
+        novo_total = v_recebido + valor_parcial
+        encomendas_atualizar(str(enc_id), {"valor_recebido": novo_total})
+        st.success(f"✅ {brl(valor_parcial)} registrado para {cliente}! Saldo restante: {brl(saldo_depois)}.")
+        st.rerun()
+    if col_cancel.button("❌ Cancelar", use_container_width=True, key=f"parcial_cancelar_{enc_id}"):
+        st.rerun()
+
+
 def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
     """Renderiza o BLOCO FINANCEIRO completo."""
     st.markdown("### 💰 Controle Financeiro Profissional")
@@ -836,31 +890,14 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
                                 st.markdown(f'<div class="fin-danger">🚨 Margem de <b>{margem_enc:.1f}%</b> abaixo do mínimo ({margem_min_val:.0f}%).</div>', unsafe_allow_html=True)
 
                             if v_restante > 0.01:
-                                col_rec1, col_rec2, col_rec3 = st.columns([2, 2, 1])
-                                novo_val = col_rec1.number_input(
-                                    "Valor recebido agora (R$)",
-                                    min_value=0.01, max_value=float(v_restante + 0.01),
-                                    value=float(v_restante), step=10.0, format="%.2f",
-                                    key=f"rec_val_{enc['rowid']}",
-                                )
-                                forma_rec = col_rec2.selectbox("Forma de pagamento", FORMAS_PAGAMENTO, key=f"forma_{enc['rowid']}")
-                                if col_rec3.button("✅ Confirmar", key=f"rec_btn_{enc['rowid']}"):
-                                    recebimentos_inserir({
-                                        "encomenda_id": str(enc["rowid"]),
-                                        "descricao": f"Pagamento – {enc['cliente']}: {enc['peca']}",
-                                        "valor": novo_val,
-                                        "categoria": "Venda de peça",
-                                        "data": hoje_brasilia().isoformat(),
-                                        "forma_pagamento": forma_rec,
-                                        "conciliado": 0,
-                                        "criado_em": agora_br().isoformat(),
-                                    })
-                                    novo_total = v_recebido + novo_val
-                                    encomendas_atualizar(str(enc["rowid"]), {"valor_recebido": novo_total})
-                                    st.success(f"✅ {brl(novo_val)} registrado e vinculado a {enc['cliente']}!")
-                                    st.rerun()
+                                col_rec1, col_rec2 = st.columns(2)
+                                if col_rec1.button("💵 Recebimento Parcial", key=f"parcial_btn_{enc['rowid']}", use_container_width=True):
+                                    _dialog_recebimento_parcial(
+                                        enc_id=str(enc["rowid"]), cliente=enc["cliente"], peca=enc["peca"],
+                                        v_total_e=v_total_e, v_recebido=v_recebido, v_restante=v_restante,
+                                    )
 
-                                if st.button(f"💰 Quitar saldo total ({brl(v_restante)})", key=f"quit_total_{enc['rowid']}"):
+                                if col_rec2.button(f"💰 Quitar saldo total ({brl(v_restante)})", key=f"quit_total_{enc['rowid']}", use_container_width=True):
                                     recebimentos_inserir({
                                         "encomenda_id": str(enc["rowid"]),
                                         "descricao": f"Quitação – {enc['cliente']}: {enc['peca']}",
