@@ -146,6 +146,7 @@ from modulos.mod_encomendas import (
     DIC_MEDIDAS, SENHA_DELETE, LOGO_PATH,
     renderizar_nova_encomenda, renderizar_gerenciar_pedidos,
     _abrir_popup_pedido, _dialog_editar_dia, _dialog_editar_data_tarefa,
+    _fmt_medida_para_texto,
 )
 from modulos.regras_agenda import (
     pedidos_com_entrega_proxima, LIMITE_PROVAS_PARA_CONFECCAO, ETAPA_CONCLUIDO,
@@ -640,10 +641,14 @@ def renderizar_medidas():
         col1, col2, col3 = st.columns(3)
         novos = {}
         for i, (label, col_db) in enumerate(DIC_MEDIDAS.items()):
-            raw = dados_cli.get(col_db, 0)
-            val_f = float(raw) if raw not in [None, "", "nan"] and pd.notna(raw) else 0.0
+            raw = dados_cli.get(col_db)
+            val_txt = _fmt_medida_para_texto(raw)
             target = col1 if i < 5 else (col2 if i < 10 else col3)
-            novos[col_db] = target.number_input(f"{label} (cm)", value=val_f, format="%.1f", step=0.5)
+            novos[col_db] = target.text_input(
+                f"{label} (cm)", value=val_txt,
+                key=f"med_{sel_rowid}_{col_db}",
+                placeholder="Ex: 36 ou 25/33",
+            )
         obs = st.text_area("Observações de modelagem", value=str(dados_cli.get("outro") or ""))
 
         if st.form_submit_button("💾 Salvar Medidas", use_container_width=True):
