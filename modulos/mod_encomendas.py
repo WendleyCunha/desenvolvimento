@@ -32,40 +32,34 @@ sem depender de variáveis globais do main.py:
      Medidas), `SENHA_DELETE` (Configurações → Exclusão Permanente) e
      `LOGO_PATH` (cabeçalho) deste módulo, em vez de as redefinir.
 
-[v16] — TRÊS MUDANÇAS GRANDES:
+[v16] — TRÊS MUDANÇAS GRANDES: unificação Contratos/Gerenciar Pedidos,
+        régua enxuta (1-4, sem Data Medidas nem Sinal) e suporte a Prospect
+        em `dialog_nova_encomenda` (`nome_fixo` / `prospect_id`).
 
-  1) CONTRATOS + GERENCIAR PEDIDOS UNIFICADOS: as duas telas faziam a
-     mesma coisa por baixo (abrir `_conteudo_pedido`) com visual diferente.
-     `renderizar_gerenciar_pedidos()` passou a ser a ÚNICA tela completa
-     (cards + filtro de status + busca + selo de contrato pronto/pendente
-     + saldo pendente). `renderizar_contratos()` agora é só um ALIAS que
-     chama a mesma função — o `main.py` não precisou ser tocado, os dois
-     botões da sidebar (que já existiam) levam ao mesmo lugar.
+[v17] — Ver changelog de main.py (limpeza de duplicidade na sidebar e
+        módulo de Prospect) — nada mudou neste arquivo.
 
-  2) "DATA MEDIDAS" ELIMINADA DE TODA A LÓGICA: não existe mais o campo
-     `data_visita` em nenhum formulário, no PDF do contrato, na
-     sincronização de lembretes nem na régua de etapas. A régua agora
-     começa direto em **Confecção** (etapa 1) → Prova (2) → Entrega (3) →
-     Concluído (4). A etapa "Sinal" (que na prática nunca era atingida — o
-     avanço automático já pulava direto dela) também saiu da régua; o campo
-     de dinheiro "Sinal / Entrada (R$)" continua existindo normalmente, só
-     não é mais uma etapa visual. "Tecido" continua existindo como
-     tarefa/lembrete opcional (quando marcado "Precisa comprar tecido?"),
-     só deixou de ser uma etapa própria da régua.
+[v18] — Ver changelog de main.py, database.py e regras_agenda.py
+        (correção da régua de etapas antiga espalhada pelo main.py, e da
+        seleção de cliente por nome em vez de rowid) — nada mudou neste
+        arquivo.
 
-  3) SUPORTE A PROSPECT: `dialog_nova_encomenda` ganhou os parâmetros
-     opcionais `nome_fixo` e `prospect_id`, usados pelo novo
-     `modulos/mod_prospect.py` para converter um prospect (só nome) em um
-     pedido completo — o nome já vem preenchido e travado, e ao criar a
-     encomenda o prospect correspondente é excluído da lista automaticamente
-     (usa `database.prospects_deletar`).
+[v19 — NOVO] CADASTRO RÁPIDO DE CLIENTE DENTRO DO PEDIDO: o expander
+        "📏 Ver / Editar Medidas desta Cliente" (dentro de `_conteudo_pedido`)
+        só mostrava "Cliente não encontrada no cadastro (pode ter sido
+        removida)" quando o nome da cliente do pedido não batia com nenhum
+        registro em `lila_clientes` — e não havia como resolver isso sem
+        sair do pedido. Agora, nesse caso, aparece um botão **"➕ Cadastrar
+        Cliente"** ali mesmo: cria o registro da cliente (mesmo nome do
+        pedido, telefone opcional) e, assim que cadastrada, o formulário de
+        medidas aparece normalmente — com histórico de medições vinculado a
+        essa cliente dali em diante, exatamente como qualquer outra.
 
 ⚠️ ATENÇÃO — ponto que precisa de um ajuste manual em `main.py` (fora deste
    módulo, não alterado aqui a pedido): o botão "✅ Feito" em
-   `_secao_tarefas_e_entregas_hoje` (Agenda) tem uma lógica de avanço de
-   etapa HARDCODED para a numeração ANTIGA (1-7, com saltos manuais). Com a
-   régua nova (1-4) esse trecho precisa ser trocado — veja o texto que
-   acompanha esta entrega para o snippet exato.
+   `_secao_tarefas_e_entregas_hoje` (Agenda) tinha uma lógica de avanço de
+   etapa HARDCODED para a numeração ANTIGA (1-7, com saltos manuais). Isso
+   já foi corrigido no `main.py` v18 — mantido aqui só como nota histórica.
 
 Ponto de entrada usados pelo main.py:
   renderizar_contratos(), renderizar_nova_encomenda(),
@@ -1261,7 +1255,43 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
                 cli_row_medidas = match_cli.iloc[0]
 
         if cli_row_medidas is None:
-            st.info("Cliente não encontrada no cadastro (pode ter sido removida).")
+            # ── [v19] CADASTRO RÁPIDO DE CLIENTE ─────────────────────────
+            # Antes, esse caso só mostrava um aviso e não dava pra fazer
+            # nada — a cliente ficava travada, sem poder ter medidas
+            # registradas. Agora aparece um botão que cadastra a cliente
+            # (mesmo nome do pedido) na hora; assim que cadastrada, o
+            # formulário de medidas aparece normalmente (via rerun) e o
+            # histórico de medições passa a existir dali em diante, igual
+            # a qualquer outra cliente.
+            st.warning(
+                f"**{enc.get('cliente','—')}** não foi encontrada no cadastro de "
+                "clientes (pode ter sido removida, ou o pedido foi criado antes "
+                "dela existir no cadastro). Sem um cadastro, não há onde guardar "
+                "as medidas — cadastre agora para liberar o histórico."
+            )
+            col_cad1, col_cad2 = st.columns([3, 1.3])
+            tel_cad_medidas = col_cad1.text_input(
+                "Telefone / WhatsApp (opcional)",
+                key=f"tel_cad_med_{enc['rowid']}",
+                placeholder="Ex: (11) 91234-5678",
+            )
+            with col_cad2:
+                st.write("")
+                if st.button(
+                    "➕ Cadastrar Cliente", use_container_width=True, type="primary",
+                    key=f"cad_cli_pedido_{enc['rowid']}",
+                ):
+                    nome_para_cadastro = str(enc.get("cliente") or "").strip()
+                    if not nome_para_cadastro:
+                        st.error("Este pedido não tem um nome de cliente definido — corrija o nome no formulário abaixo antes de cadastrar.")
+                    else:
+                        clientes_inserir({
+                            "nome": nome_para_cadastro,
+                            "telefone": tel_cad_medidas.strip(),
+                            "criado_em": agora_br().isoformat(),
+                        })
+                        st.success(f"✅ Cliente **{nome_para_cadastro}** cadastrada! Agora já dá para registrar as medidas.")
+                        st.rerun()
         else:
             with st.form(f"form_medidas_pedido_{enc['rowid']}"):
                 colm1, colm2, colm3 = st.columns(3)
