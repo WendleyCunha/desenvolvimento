@@ -1,45 +1,60 @@
 """
 modulos/mod_financeiro.py — Lila Closet Atelier
 ─────────────────────────────────────────────────────────────────────────────
-BLOCO FINANCEIRO — v15 (adiciona o KPI "Lucro Previsto" do mês).
+BLOCO FINANCEIRO — v19 (Resumo do Fechamento reestruturado + PDF oficial).
 
-POR QUE ESTA REESCRITA EXISTE (bugs reais encontrados e corrigidos):
+[v19] AJUSTES NA ABA "🔒 Fechamento & Conciliação" (a pedido do Wendley,
+      usando como referência a estrutura oficial da Folha de Contas (S-26)
+      e do Relatório Mensal de Contas (S-30) — SEM a parte de "Anúncio
+      Mensal", que não se aplica aqui):
 
-  1) "Lucro Previsto" do topo somava o valor_total BRUTO de todo pedido
-     ativo (etapa < 7), sem descontar valor_recebido e sem filtrar por mês
-     nenhum. Resultado: um pedido pago pela metade entrava de novo INTEIRO
-     na conta, e pedidos com entrega em dezembro entravam somados na
-     "previsão" de agosto. Era só ruído, não uma previsão real.
-     CORRIGIDO: toda previsão agora usa (valor_total - valor_recebido),
-     nunca o bruto, e é sempre filtrada pela Data de Entrega do mês em
-     questão.
+  1) NOVO "📋 Resumo do Fechamento" — passou a ser a PRIMEIRA coisa exibida
+     na aba (antes da conferência lançamento por lançamento), com a mesma
+     estrutura oficial:
+         Saldo do Mês Anterior
+       + Total das Entradas
+       – Total das Despesas
+       = Saldo do Mês (Positivo/Negativo)
+       = Saldo Disponível no Final do Mês (sempre transportado
+         automaticamente para o mês seguinte)
+     Nenhum cálculo mudou — é o mesmo `saldo_inicial`, `receitas_mes`,
+     `despesas_mes`, `lucro_real_mes`, `saldo_teorico` de sempre, só
+     exibidos de forma mais clara e na ordem oficial, logo no topo.
 
-  2) Pedidos com entrega JÁ VENCIDA mas ainda não pagos (ou despesas já
-     vencidas e não pagas) simplesmente desapareciam de qualquer cálculo —
-     não entravam no mês atual (porque a entrega não é "deste mês"), e não
-     apareciam em lugar nenhum como atraso. Dinheiro invisível.
-     CORRIGIDO: existem agora funções e seções DEDICADAS a atrasados
-     (_receber_atrasado / _despesas_abertas_atrasadas), sempre visíveis no
-     topo da tela e na aba Projeção — nunca escondidas.
+  2) NOVO PDF DE FECHAMENTO (`gerar_pdf_fechamento`) — ao lado do Excel que
+     já existia, um botão "📄 Baixar PDF de Fechamento" gera um documento
+     no mesmo padrão visual do contrato (marrom/dourado), com: Resumo do
+     Mês, Entradas do Mês (detalhado), Despesas do Mês (detalhado), Grandes
+     Despesas Previstas (se houver) e Confronto com o Extrato Bancário (se
+     informado). Se o mês ainda não foi fechado, o PDF sai com um selo
+     "⏳ PRÉVIA" (os valores podem mudar até o fechamento oficial); se já
+     foi fechado, sai com "🔒 FECHADO em dd/mm/aaaa às hh:mm" e usa os
+     valores OFICIAIS gravados no fechamento (não recalculados).
 
-  3) A projeção de meses futuros olhava só o mês escolhido isolado, sem
-     considerar o que acontece nos meses intermediários.
-     CORRIGIDO: a projeção agora encadeia mês a mês, a partir do Saldo em
-     Caixa Atual, somando o resultado projetado de cada mês até chegar no
-     mês escolhido.
+  3) Extrato do mês (conferência lançamento por lançamento) continua
+     exatamente igual — só mudou de posição (agora vem logo depois do
+     Resumo, antes de Grandes Despesas). Nenhuma lógica de edição/exclusão/
+     conciliação foi tocada.
 
-  4) "Baixar pagamento" vinculado a um pedido (cliente) já existia e já
-     estava correto (recebimentos_inserir com encomenda_id + atualização
-     do cache valor_recebido). Mantido, só ganhou selo visual de status
-     (✅ Quitado / 🟡 Parcial / 🔴 Sem pagamento) e filtro.
+  Nada na aba 📈 Projeção ou 📑 Receb./Despe. foi alterado.
 
-  5) [v15] NOVO KPI "🔮 Lucro Previsto (mês)" no topo: soma o Lucro Real
+HISTÓRICO ANTERIOR (mantido para referência):
+
+  [v15] NOVO KPI "🔮 Lucro Previsto (mês)" no topo: soma o Lucro Real
      (histórico, já recebido/pago) + apenas o SALDO que ainda falta
      receber (valor_total - valor_recebido, nunca o bruto) de pedidos com
-     Data de Entrega dentro do mês atual. Um pedido de R$300 com R$100 de
-     sinal e entrega neste mês entra com R$200 (não R$300); se a entrega
-     for daqui a 3 meses, esse saldo NÃO entra agora — só entra na conta
-     no mês em que a entrega de fato acontecer.
+     Data de Entrega dentro do mês atual.
+
+  [v16] "Visão Geral" (Saldo, Alertas, KPIs) passou a viver dentro de um
+     expander recolhido por padrão — nada foi removido, só a exibição
+     ficou oculta até o usuário clicar para expandir.
+
+  [v17] "Recebimentos e Despesas" (pedidos com saldo pendente) também
+     passou a viver dentro de um expander recolhido, mesmo padrão do v16.
+
+  [v18] O "Relatório Financeiro Mensal" (antes uma aba própria) foi movido
+     para dentro da aba "📑 Receb. / Despe.", logo abaixo do Novo
+     Lançamento.
 
 PRINCÍPIO GERAL DESTE ARQUIVO: toda projeção lê, AO VIVO, a Data de
 Entrega dos pedidos e o vencimento das despesas em aberto. Se você mudar a
@@ -56,11 +71,27 @@ Ponto de entrada: `renderizar_financeiro(df_enc_all, hoje_dt)`
 """
 
 import io
+import os
 from datetime import date
 
 import pandas as pd
 import streamlit as st
 import xlsxwriter
+
+from reportlab.lib.pagesizes import A4
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import cm
+from reportlab.platypus import (
+    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable, Image as RLImage
+)
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+
+# LOGO_PATH vem de mod_encomendas (fonte única — mesmo padrão já usado em
+# main.py). Nenhuma regra de negócio de encomendas é importada aqui, só o
+# caminho do arquivo do logo, para o cabeçalho do PDF de fechamento ficar
+# visualmente igual ao PDF de contrato.
+from modulos.mod_encomendas import LOGO_PATH
 
 from database import (
     cfg_get,
@@ -337,6 +368,295 @@ def _dialog_recebimento_parcial(enc_id: str, cliente: str, peca: str,
         st.rerun()
 
 
+# ══════════════════════════════════════════════════════════════════════════
+# PDF — FECHAMENTO DE CAIXA MENSAL  [v19]
+# ══════════════════════════════════════════════════════════════════════════
+# Segue a MESMA estrutura oficial do Relatório Mensal de Contas (S-30) /
+# Folha de Contas (S-26): Saldo do Mês Anterior + Entradas − Despesas =
+# Saldo Disponível no Final do Mês (sempre transportado para o mês
+# seguinte). NÃO inclui a parte de "Anúncio Mensal" — isso não existe no
+# contexto do Lila Closet Atelier, é um documento interno de conferência.
+#
+# Mesmo padrão visual do PDF de contrato (marrom/dourado, cabeçalho com
+# logo), mas mais enxuto — é um relatório interno de fechamento, não um
+# instrumento jurídico.
+
+def _marrom_fin():  return colors.HexColor("#3d1f10")
+def _bege_fin():    return colors.HexColor("#fdf6ee")
+def _dourado_fin(): return colors.HexColor("#c9a227")
+
+
+def gerar_pdf_fechamento(
+    mes_str: str,
+    saldo_inicial: float,
+    df_r_mes: pd.DataFrame,
+    df_g_mes: pd.DataFrame,
+    receitas_mes: float,
+    despesas_mes: float,
+    lucro_real_mes: float,
+    saldo_final: float,
+    df_grandes: pd.DataFrame,
+    total_grandes: float,
+    fundos_disponiveis: float,
+    saldo_extrato: float | None = None,
+    diferenca: float | None = None,
+    observacoes: str = "",
+    fechado: bool = False,
+    data_fechamento: str | None = None,
+) -> bytes:
+    buf = io.BytesIO()
+    styles = getSampleStyleSheet()
+    mes_num, ano_num = int(mes_str[5:7]), int(mes_str[:4])
+    mes_nome = MESES_PT[mes_num - 1]
+
+    s_titulo = ParagraphStyle("titulo_fech", parent=styles["Normal"],
+        fontName="Helvetica-Bold", fontSize=15, textColor=_marrom_fin(),
+        alignment=TA_CENTER, spaceAfter=3)
+    s_subtit = ParagraphStyle("subtit_fech", parent=styles["Normal"],
+        fontName="Helvetica", fontSize=8.5, textColor=_dourado_fin(),
+        alignment=TA_CENTER, spaceAfter=8, leading=12)
+    s_cls_tit = ParagraphStyle("clt_fech", parent=styles["Normal"],
+        fontName="Helvetica-Bold", fontSize=10.5, textColor=_marrom_fin(),
+        spaceBefore=12, spaceAfter=4, leading=13)
+    s_rodape = ParagraphStyle("rodape_fech", parent=styles["Normal"],
+        fontName="Helvetica", fontSize=7.5, textColor=colors.HexColor("#9e8a78"),
+        alignment=TA_CENTER)
+
+    cnpj_val = cfg_get("cnpj")
+    tel_val  = cfg_get("telefone")
+    end_val  = cfg_get("endereco")
+    emitido_em_str = agora_br().strftime("%d/%m/%Y às %H:%M")
+
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+        rightMargin=2.0*cm, leftMargin=2.0*cm,
+        topMargin=2.0*cm, bottomMargin=2.0*cm)
+    story = []
+
+    # ── Cabeçalho (mesmo padrão visual do contrato) ──
+    s_hdr_empresa = ParagraphStyle("hdr_emp_fech", fontName="Helvetica-Bold", fontSize=13,
+        textColor=colors.white, alignment=TA_LEFT, leading=17)
+    s_hdr_slogan = ParagraphStyle("hdr_slo_fech", fontName="Helvetica", fontSize=7.5,
+        textColor=colors.HexColor("#f5e6d3"), alignment=TA_LEFT, leading=10, spaceBefore=2)
+    s_hdr_info = ParagraphStyle("hdr_inf_fech", fontName="Helvetica", fontSize=7.5,
+        textColor=colors.HexColor("#f5dfc0"), alignment=TA_RIGHT, leading=11)
+
+    if os.path.exists(LOGO_PATH):
+        logo_cell = RLImage(LOGO_PATH, width=2.1*cm, height=2.1*cm)
+    else:
+        logo_cell = Paragraph("🧵", ParagraphStyle("lc_fech", fontName="Helvetica-Bold",
+            fontSize=24, textColor=colors.HexColor("#c9a227"), alignment=TA_CENTER))
+
+    nome_empresa_cell = Table([
+        [Paragraph("LILA CLOSET ATELIER", s_hdr_empresa)],
+        [Paragraph("Fechamento de Caixa Mensal", s_hdr_slogan)],
+    ], colWidths=["100%"])
+    nome_empresa_cell.setStyle(TableStyle([
+        ("TOPPADDING",(0,0),(-1,-1),0),("BOTTOMPADDING",(0,0),(-1,-1),1),
+        ("LEFTPADDING",(0,0),(-1,-1),0),("RIGHTPADDING",(0,0),(-1,-1),0),
+    ]))
+    left_cell = Table([[logo_cell, nome_empresa_cell]], colWidths=[2.5*cm, "100%"])
+    left_cell.setStyle(TableStyle([
+        ("VALIGN",(0,0),(-1,-1),"MIDDLE"),("TOPPADDING",(0,0),(-1,-1),0),
+        ("BOTTOMPADDING",(0,0),(-1,-1),0),("LEFTPADDING",(0,0),(-1,-1),0),
+        ("RIGHTPADDING",(0,0),(0,-1),8),("RIGHTPADDING",(1,0),(1,-1),0),
+    ]))
+    right_cell = Paragraph(f"CNPJ: {cnpj_val}<br/>{end_val}<br/>Tel.: {tel_val}", s_hdr_info)
+    hdr_table = Table([[left_cell, right_cell]], colWidths=["60%","40%"])
+    hdr_table.setStyle(TableStyle([
+        ("BACKGROUND",(0,0),(-1,-1),_marrom_fin()),
+        ("TOPPADDING",(0,0),(-1,-1),12),("BOTTOMPADDING",(0,0),(-1,-1),12),
+        ("LEFTPADDING",(0,0),(-1,-1),16),("RIGHTPADDING",(0,0),(-1,-1),16),
+        ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+    ]))
+    story.append(hdr_table)
+    story.append(Spacer(1, 10))
+
+    story.append(Paragraph(f"FECHAMENTO DE CAIXA — {mes_nome.upper()} DE {ano_num}", s_titulo))
+    status_txt = (
+        f"🔒 Mês FECHADO em {formatar_data_hora_br(data_fechamento)}" if fechado
+        else "⏳ PRÉVIA — mês ainda em conferência, valores podem mudar até o fechamento oficial"
+    )
+    story.append(Paragraph(f"{status_txt} &nbsp;|&nbsp; Emitido em {emitido_em_str}", s_subtit))
+    story.append(HRFlowable(width="100%", thickness=1.5, color=_dourado_fin()))
+    story.append(Spacer(1, 8))
+
+    # ── RESUMO DO MÊS (mesma estrutura oficial, sem o Anúncio) ──
+    story.append(Paragraph("RESUMO DO MÊS", s_cls_tit))
+    s_res_lbl = ParagraphStyle("resl_fech", fontName="Helvetica", fontSize=9.5,
+        textColor=colors.HexColor("#2d1f14"))
+    s_res_val = ParagraphStyle("resv_fech", fontName="Helvetica-Bold", fontSize=9.5,
+        textColor=colors.HexColor("#2d1f14"), alignment=TA_RIGHT)
+    s_res_val_final = ParagraphStyle("resvf_fech", fontName="Helvetica-Bold", fontSize=11,
+        textColor=_marrom_fin(), alignment=TA_RIGHT)
+
+    cor_resultado_pdf = colors.HexColor("#1b5e20") if lucro_real_mes >= 0 else colors.HexColor("#c0392b")
+    label_resultado = "Saldo Positivo do Mês" if lucro_real_mes >= 0 else "Saldo Negativo do Mês"
+
+    resumo_rows = [
+        [Paragraph("Saldo do Mês Anterior", s_res_lbl), Paragraph(brl(saldo_inicial), s_res_val)],
+        [Paragraph("(+) Total das Entradas", s_res_lbl),
+         Paragraph(brl(receitas_mes), ParagraphStyle("rv1_fech", parent=s_res_val, textColor=colors.HexColor("#1b5e20")))],
+        [Paragraph("(–) Total das Despesas", s_res_lbl),
+         Paragraph(brl(despesas_mes), ParagraphStyle("rv2_fech", parent=s_res_val, textColor=colors.HexColor("#c0392b")))],
+        [Paragraph(f"<b>{label_resultado}</b>", s_res_lbl),
+         Paragraph(f"<b>{brl(lucro_real_mes)}</b>", ParagraphStyle("rv3_fech", parent=s_res_val, textColor=cor_resultado_pdf))],
+        [Paragraph("<b>Saldo Disponível no Final do Mês</b>", s_res_lbl),
+         Paragraph(f"<b>{brl(saldo_final)}</b>", s_res_val_final)],
+    ]
+    resumo_t = Table(resumo_rows, colWidths=["65%","35%"])
+    resumo_t.setStyle(TableStyle([
+        ("FONTSIZE",(0,0),(-1,-1),9.5),
+        ("TOPPADDING",(0,0),(-1,-1),7),("BOTTOMPADDING",(0,0),(-1,-1),7),
+        ("LEFTPADDING",(0,0),(-1,-1),10),("RIGHTPADDING",(0,0),(-1,-1),10),
+        ("ROWBACKGROUNDS",(0,0),(-1,-2),[colors.white,_bege_fin()]),
+        ("BACKGROUND",(0,-1),(-1,-1),colors.HexColor("#fff8e1")),
+        ("BOX",(0,0),(-1,-1),1,_dourado_fin()),
+        ("INNERGRID",(0,0),(-1,-1),0.5,colors.HexColor("#e0d5c9")),
+        ("LINEABOVE",(0,-1),(-1,-1),1.2,_dourado_fin()),
+    ]))
+    story.append(resumo_t)
+    story.append(Paragraph(
+        "💡 O Saldo Disponível no Final do Mês é sempre transportado automaticamente "
+        "como saldo inicial do mês seguinte.",
+        ParagraphStyle("nota_fech", fontName="Helvetica-Oblique", fontSize=8,
+            textColor=colors.HexColor("#8b7355"), spaceBefore=4),
+    ))
+    story.append(Spacer(1, 6))
+
+    s_et_hdr = ParagraphStyle("eth_fech", fontName="Helvetica-Bold", fontSize=8.5,
+        textColor=colors.white, alignment=TA_CENTER)
+
+    # ── ENTRADAS DO MÊS ──
+    story.append(Paragraph("ENTRADAS DO MÊS", s_cls_tit))
+    if df_r_mes.empty:
+        story.append(Paragraph("Nenhuma entrada registrada neste mês.", styles["Normal"]))
+    else:
+        rows_r = [[Paragraph("<b>Data</b>", s_et_hdr), Paragraph("<b>Descrição</b>", s_et_hdr), Paragraph("<b>Valor</b>", s_et_hdr)]]
+        for _, r in df_r_mes.sort_values("data").iterrows():
+            rows_r.append([formatar_data_br(r["data"]), str(r.get("descricao","")), brl(float(r.get("valor",0) or 0))])
+        rows_r.append([
+            "", Paragraph("<b>TOTAL</b>", ParagraphStyle("tot_fech", fontName="Helvetica-Bold", fontSize=9)),
+            Paragraph(f"<b>{brl(receitas_mes)}</b>", ParagraphStyle("totv_fech", fontName="Helvetica-Bold", fontSize=9, textColor=colors.HexColor("#1b5e20"))),
+        ])
+        t_r = Table(rows_r, colWidths=["18%","57%","25%"])
+        t_r.setStyle(TableStyle([
+            ("BACKGROUND",(0,0),(-1,0),_marrom_fin()),
+            ("FONTSIZE",(0,1),(-1,-1),8.5),
+            ("ALIGN",(2,1),(2,-1),"RIGHT"),
+            ("ROWBACKGROUNDS",(0,1),(-1,-2),[colors.white,_bege_fin()]),
+            ("BACKGROUND",(0,-1),(-1,-1),colors.HexColor("#fff8e1")),
+            ("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),5),
+            ("LEFTPADDING",(0,0),(-1,-1),8),("RIGHTPADDING",(0,0),(-1,-1),8),
+            ("BOX",(0,0),(-1,-1),1,_dourado_fin()),
+            ("INNERGRID",(0,0),(-1,-1),0.5,colors.HexColor("#e0d5c9")),
+        ]))
+        story.append(t_r)
+    story.append(Spacer(1, 8))
+
+    # ── DESPESAS DO MÊS ──
+    story.append(Paragraph("DESPESAS DO MÊS", s_cls_tit))
+    if df_g_mes.empty:
+        story.append(Paragraph("Nenhuma despesa paga registrada neste mês.", styles["Normal"]))
+    else:
+        rows_g = [[Paragraph("<b>Data</b>", s_et_hdr), Paragraph("<b>Descrição</b>", s_et_hdr),
+                   Paragraph("<b>Categoria</b>", s_et_hdr), Paragraph("<b>Valor</b>", s_et_hdr)]]
+        for _, g in df_g_mes.sort_values("data").iterrows():
+            rows_g.append([formatar_data_br(g["data"]), str(g.get("descricao","")),
+                            str(g.get("categoria","")), brl(float(g.get("valor",0) or 0))])
+        rows_g.append([
+            "", "", Paragraph("<b>TOTAL</b>", ParagraphStyle("tot2_fech", fontName="Helvetica-Bold", fontSize=9)),
+            Paragraph(f"<b>{brl(despesas_mes)}</b>", ParagraphStyle("totv2_fech", fontName="Helvetica-Bold", fontSize=9, textColor=colors.HexColor("#c0392b"))),
+        ])
+        t_g = Table(rows_g, colWidths=["15%","42%","20%","23%"])
+        t_g.setStyle(TableStyle([
+            ("BACKGROUND",(0,0),(-1,0),_marrom_fin()),
+            ("FONTSIZE",(0,1),(-1,-1),8.5),
+            ("ALIGN",(3,1),(3,-1),"RIGHT"),
+            ("ROWBACKGROUNDS",(0,1),(-1,-2),[colors.white,_bege_fin()]),
+            ("BACKGROUND",(0,-1),(-1,-1),colors.HexColor("#fff8e1")),
+            ("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),5),
+            ("LEFTPADDING",(0,0),(-1,-1),8),("RIGHTPADDING",(0,0),(-1,-1),8),
+            ("BOX",(0,0),(-1,-1),1,_dourado_fin()),
+            ("INNERGRID",(0,0),(-1,-1),0.5,colors.HexColor("#e0d5c9")),
+        ]))
+        story.append(t_g)
+    story.append(Spacer(1, 8))
+
+    # ── GRANDES DESPESAS PREVISTAS (se houver) ──
+    if not df_grandes.empty:
+        story.append(Paragraph("GRANDES DESPESAS PREVISTAS (RESERVADAS)", s_cls_tit))
+        rows_gd = [[Paragraph("<b>Data Prevista</b>", s_et_hdr), Paragraph("<b>Descrição</b>", s_et_hdr), Paragraph("<b>Valor</b>", s_et_hdr)]]
+        for _, gd in df_grandes.sort_values("data").iterrows():
+            rows_gd.append([formatar_data_br(gd["data"]), str(gd.get("descricao","")), brl(float(gd.get("valor",0) or 0))])
+        t_gd = Table(rows_gd, colWidths=["18%","57%","25%"])
+        t_gd.setStyle(TableStyle([
+            ("BACKGROUND",(0,0),(-1,0),_marrom_fin()),
+            ("FONTSIZE",(0,1),(-1,-1),8.5),
+            ("ALIGN",(2,1),(2,-1),"RIGHT"),
+            ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,_bege_fin()]),
+            ("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),5),
+            ("LEFTPADDING",(0,0),(-1,-1),8),("RIGHTPADDING",(0,0),(-1,-1),8),
+            ("BOX",(0,0),(-1,-1),1,_dourado_fin()),
+            ("INNERGRID",(0,0),(-1,-1),0.5,colors.HexColor("#e0d5c9")),
+        ]))
+        story.append(t_gd)
+        story.append(Spacer(1, 4))
+        story.append(Paragraph(
+            f"Total reservado: <b>{brl(total_grandes)}</b> &nbsp;&nbsp;|&nbsp;&nbsp; "
+            f"Fundos realmente disponíveis (Saldo Final − Reservado): <b>{brl(fundos_disponiveis)}</b>",
+            ParagraphStyle("gdtot_fech", fontName="Helvetica", fontSize=9.5),
+        ))
+        story.append(Spacer(1, 8))
+
+    # ── CONFRONTO COM O EXTRATO BANCÁRIO (se informado) ──
+    if saldo_extrato is not None:
+        story.append(Paragraph("CONFRONTO COM O EXTRATO BANCÁRIO", s_cls_tit))
+        bateu = diferenca is not None and abs(diferenca) < 0.01
+        conf_rows = [
+            [Paragraph("Saldo calculado pelo sistema", s_res_lbl), Paragraph(brl(saldo_final), s_res_val)],
+            [Paragraph("Saldo informado no extrato bancário", s_res_lbl), Paragraph(brl(saldo_extrato), s_res_val)],
+            [Paragraph("<b>Diferença</b>", s_res_lbl), Paragraph(
+                f"<b>{brl(diferenca)}</b>" if diferenca is not None else "—",
+                ParagraphStyle("diff_fech", parent=s_res_val,
+                    textColor=(colors.HexColor("#1b5e20") if bateu else colors.HexColor("#c0392b"))),
+            )],
+        ]
+        conf_t = Table(conf_rows, colWidths=["65%","35%"])
+        conf_t.setStyle(TableStyle([
+            ("FONTSIZE",(0,0),(-1,-1),9.5),
+            ("TOPPADDING",(0,0),(-1,-1),6),("BOTTOMPADDING",(0,0),(-1,-1),6),
+            ("LEFTPADDING",(0,0),(-1,-1),10),("RIGHTPADDING",(0,0),(-1,-1),10),
+            ("ROWBACKGROUNDS",(0,0),(-1,-1),[colors.white,_bege_fin()]),
+            ("BOX",(0,0),(-1,-1),1,_dourado_fin()),
+            ("INNERGRID",(0,0),(-1,-1),0.5,colors.HexColor("#e0d5c9")),
+        ]))
+        story.append(conf_t)
+        nota_conf = ("✅ Confronto bateu certinho com o extrato bancário." if bateu else
+                     "⚠️ Há diferença entre o sistema e o extrato — revisar lançamentos.")
+        story.append(Paragraph(nota_conf, ParagraphStyle("notaconf_fech", fontName="Helvetica-Oblique",
+            fontSize=8, textColor=colors.HexColor("#8b7355"), spaceBefore=4)))
+        story.append(Spacer(1, 8))
+
+    # ── OBSERVAÇÕES ──
+    if observacoes and observacoes.strip():
+        story.append(Paragraph("OBSERVAÇÕES", s_cls_tit))
+        story.append(Paragraph(observacoes.strip(), ParagraphStyle("obsbody_fech", fontName="Helvetica",
+            fontSize=9.5, textColor=colors.HexColor("#2d1f14"), leading=14)))
+        story.append(Spacer(1, 8))
+
+    story.append(Spacer(1, 10))
+    story.append(HRFlowable(width="100%", thickness=0.8, color=colors.HexColor("#e0d5c9")))
+    story.append(Spacer(1, 5))
+    story.append(Paragraph(
+        f"Lila Closet Atelier · {tel_val} · Fechamento de {mes_nome}/{ano_num} · "
+        f"Documento gerado automaticamente pelo sistema",
+        s_rodape,
+    ))
+
+    doc.build(story)
+    return buf.getvalue()
+
+
 def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
     """Renderiza o BLOCO FINANCEIRO completo."""
     st.markdown("### 💰 Controle Financeiro Profissional")
@@ -525,11 +845,11 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
             "um valor travado."
         )
 
-        mes_seguinte_str = _mes_seguinte(mes_atual_str)
-        opcoes_mes_proj = [mes_atual_str, mes_seguinte_str, _mes_seguinte(mes_seguinte_str)]
+        mes_seguinte_str_proj = _mes_seguinte(mes_atual_str)
+        opcoes_mes_proj = [mes_atual_str, mes_seguinte_str_proj, _mes_seguinte(mes_seguinte_str_proj)]
         labels_mes_proj = {
             mes_atual_str: f"Mês atual ({MESES_PT[int(mes_atual_str[5:7])-1]}/{mes_atual_str[:4]})",
-            mes_seguinte_str: f"Mês seguinte ({MESES_PT[int(mes_seguinte_str[5:7])-1]}/{mes_seguinte_str[:4]})",
+            mes_seguinte_str_proj: f"Mês seguinte ({MESES_PT[int(mes_seguinte_str_proj[5:7])-1]}/{mes_seguinte_str_proj[:4]})",
             opcoes_mes_proj[2]: f"Depois ({MESES_PT[int(opcoes_mes_proj[2][5:7])-1]}/{opcoes_mes_proj[2][:4]})",
         }
         mes_proj_sel = st.selectbox(
@@ -941,7 +1261,12 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
                                 st.markdown('<div class="fin-ok">✅ Pedido totalmente pago.</div>', unsafe_allow_html=True)
 
     # ═══════════════════════════════════════════════════════════════════
-    # ABA: FECHAMENTO & CONCILIAÇÃO
+    # ABA: FECHAMENTO & CONCILIAÇÃO  [v19 — reorganizada]
+    # Ordem: (1) Resumo do Fechamento (estrutura oficial, bem claro) →
+    #        (2) Extrato do mês (conferência lançamento por lançamento) →
+    #        (3) Grandes despesas previstas → (4) Progresso da conferência →
+    #        (5) Confronto bancário → (6) Fechar/Reabrir mês →
+    #        (7) Exportações (PDF + Excel) → (8) Histórico
     # ═══════════════════════════════════════════════════════════════════
     with f_fecha:
         st.markdown("#### 🔒 Fechamento de Caixa & Conciliação Bancária")
@@ -952,6 +1277,7 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
             format_func=lambda x: MESES_PT[x-1], index=hoje_dt.month-1, key="mes_fechamento")
         ano_sel = col_fm2.number_input("Ano", min_value=2020, max_value=2030, value=hoje_dt.year, key="ano_fechamento")
         mes_str = f"{ano_sel}-{mes_sel:02d}"
+        mes_seguinte_label = f"{MESES_PT[int(_mes_seguinte(mes_str)[5:7])-1]}/{_mes_seguinte(mes_str)[:4]}"
 
         fech_existente = fechamento_buscar(mes_str)
         ja_fechado = bool(fech_existente and int(fech_existente.get("fechado", 0) or 0) == 1)
@@ -970,7 +1296,7 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
         else:
             saldo_inicial = 0.0
 
-        st.markdown("##### (a) Saldo inicial do mês")
+        st.markdown("##### Saldo inicial do mês")
         if saldo_inicial_editavel:
             st.caption(
                 "📌 Este é o primeiro mês controlado no sistema (ou o mês foi reaberto para correção). "
@@ -992,12 +1318,77 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
         df_r_mes = df_r_fin[df_r_fin["data"].apply(_mes_de) == mes_str].copy() if not df_r_fin.empty else _df_vazio_receb()
         df_g_mes = df_g_fin[(df_g_fin["data"].apply(_mes_de) == mes_str) & (df_g_fin["pago"].astype(int) == 1)].copy() if not df_g_fin.empty else _df_vazio_gastos()
 
+        receitas_mes = _flt(df_r_mes, "valor")
+        despesas_mes = _flt(df_g_mes, "valor")
+        lucro_real_mes = receitas_mes - despesas_mes
+        saldo_teorico = saldo_inicial + lucro_real_mes
+
+        # ══════════════════════════════════════════════════════════════
+        # (1) RESUMO DO FECHAMENTO — mesma estrutura oficial do Relatório
+        # Mensal de Contas: Saldo do Mês Anterior + Entradas − Despesas =
+        # Saldo Disponível no Final do Mês (sempre transportado). Nenhum
+        # cálculo novo — só a exibição, bem clara, logo no topo da aba.
+        # ══════════════════════════════════════════════════════════════
+        st.markdown("---")
+        st.markdown(f"## 📋 Resumo do Fechamento — {MESES_PT[mes_sel-1]}/{ano_sel}")
+        st.caption(
+            "Saldo do Mês Anterior + Entradas − Despesas = Saldo Disponível no Final do Mês "
+            "— que é sempre transportado automaticamente para o mês seguinte."
+        )
+
+        col_res1, col_res2, col_res3 = st.columns(3)
+        col_res1.markdown(f"""
+        <div class="kpi-card kpi-cream">
+            <div class="kpi-label">📦 Saldo do Mês Anterior</div>
+            <div class="kpi-value">{brl(saldo_inicial)}</div>
+            <div class="kpi-sub">{("Transportado de " + mes_ant_str) if tem_fechamento_anterior else "Informado manualmente (primeiro mês)"}</div>
+        </div>""", unsafe_allow_html=True)
+        col_res2.markdown(f"""
+        <div class="kpi-card kpi-green">
+            <div class="kpi-label">📥 (+) Total das Entradas</div>
+            <div class="kpi-value">{brl(receitas_mes)}</div>
+            <div class="kpi-sub">{len(df_r_mes)} lançamento(s) neste mês</div>
+        </div>""", unsafe_allow_html=True)
+        col_res3.markdown(f"""
+        <div class="kpi-card kpi-red">
+            <div class="kpi-label">📤 (–) Total das Despesas</div>
+            <div class="kpi-value">{brl(despesas_mes)}</div>
+            <div class="kpi-sub">{len(df_g_mes)} lançamento(s) pagos neste mês</div>
+        </div>""", unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        col_res4, col_res5 = st.columns(2)
+        cor_resultado = "kpi-green" if lucro_real_mes >= 0 else "kpi-red"
+        sinal_resultado = "✅ Saldo Positivo do Mês" if lucro_real_mes >= 0 else "⚠️ Saldo Negativo do Mês"
+        col_res4.markdown(f"""
+        <div class="kpi-card {cor_resultado}">
+            <div class="kpi-label">{sinal_resultado}</div>
+            <div class="kpi-value">{brl(lucro_real_mes)}</div>
+            <div class="kpi-sub">Entradas − Despesas</div>
+        </div>""", unsafe_allow_html=True)
+        col_res5.markdown(f"""
+        <div class="kpi-card kpi-brown" style="border:2px solid #c9a227;">
+            <div class="kpi-label">💰 Saldo Disponível no Final do Mês</div>
+            <div class="kpi-value" style="font-size:1.7rem;">{brl(saldo_teorico)}</div>
+            <div class="kpi-sub">➡️ Transportado automaticamente como saldo inicial de {mes_seguinte_label}</div>
+        </div>""", unsafe_allow_html=True)
+
+        st.caption(
+            "💡 Este resumo é calculado em tempo real a partir dos lançamentos abaixo. Qualquer "
+            "edição ou exclusão no Extrato do mês atualiza os números acima automaticamente."
+        )
+
+        # ══════════════════════════════════════════════════════════════
+        # (2) EXTRATO DO MÊS — conferência lançamento por lançamento
+        # (lógica de edição/exclusão/conciliação 100% inalterada)
+        # ══════════════════════════════════════════════════════════════
         st.markdown("---")
         st.markdown("##### ✏️ Extrato do mês — Entradas e Saídas")
         st.caption(
-            "Edite diretamente valor, descrição, data e conciliado de cada lançamento deste mês, "
-            "conforme for conferindo com o extrato bancário. Para EXCLUIR um lançamento, clique no "
-            "ícone de lixeira 🗑️ na linha correspondente e depois em \"💾 Salvar alterações\". "
+            "Confira cada lançamento contra o extrato bancário e marque \"Conciliado?\" conforme "
+            "for validando. Edite valor, descrição ou data diretamente na tabela. Para EXCLUIR um "
+            "lançamento, clique no ícone de lixeira 🗑️ na linha e depois em \"💾 Salvar alterações\". "
             "Para lançar uma entrada/saída NOVA, vá na aba 📑 **Receb. / Despe.**"
         )
 
@@ -1129,43 +1520,9 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
                     else:
                         st.info("Nenhuma alteração para salvar.")
 
-        receitas_mes = _flt(df_r_mes, "valor")
-        despesas_mes = _flt(df_g_mes, "valor")
-        lucro_real_mes = receitas_mes - despesas_mes
-        saldo_teorico = saldo_inicial + lucro_real_mes
-
-        st.markdown("---")
-        st.markdown("##### 📊 Resumo do mês — antes de fechar")
-        col_re1, col_re2, col_re3 = st.columns(3)
-        col_re1.metric("💰 Total de Receitas (Entradas)", brl(receitas_mes))
-        col_re2.metric("📉 Total de Despesas (Saídas)", brl(despesas_mes))
-        if lucro_real_mes >= 0:
-            col_re3.metric("✅ Resultado do mês", brl(lucro_real_mes), delta="Positivo")
-        else:
-            col_re3.metric("⚠️ Resultado do mês", brl(lucro_real_mes), delta="Negativo")
-
-        if lucro_real_mes >= 0:
-            st.markdown(
-                f'<div class="fin-ok">✅ O mês fechou <b>positivo</b> em {brl(lucro_real_mes)} — esse valor '
-                f'será <b>somado</b> ao saldo inicial ({brl(saldo_inicial)}), resultando em '
-                f'<b>(i) Saldo final do mês = {brl(saldo_teorico)}</b>, que vira o saldo inicial do mês seguinte.</div>',
-                unsafe_allow_html=True,
-            )
-        else:
-            st.markdown(
-                f'<div class="fin-danger">⚠️ O mês fechou <b>negativo</b> em {brl(abs(lucro_real_mes))} — esse valor '
-                f'será <b>abatido</b> do saldo inicial ({brl(saldo_inicial)}), resultando em '
-                f'<b>(i) Saldo final do mês = {brl(saldo_teorico)}</b>, que vira o saldo inicial do mês seguinte.</div>',
-                unsafe_allow_html=True,
-            )
-
-        col_r1, col_r2, col_r3, col_r4 = st.columns(4)
-        col_r1.metric("(a) Saldo inicial", brl(saldo_inicial))
-        col_r2.metric("(d) Entradas do mês", brl(receitas_mes))
-        col_r3.metric("(g) Saídas do mês (pagas)", brl(despesas_mes))
-        col_r4.metric("(i) = Saldo final do mês", brl(saldo_teorico))
-        st.caption("Lucro Real (h) só conta o que já foi de fato recebido e pago neste mês — é diferente do Lucro Projetado da aba \"📈 Projeção\", que inclui o que ainda está previsto.")
-
+        # ══════════════════════════════════════════════════════════════
+        # (3) GRANDES DESPESAS PREVISTAS
+        # ══════════════════════════════════════════════════════════════
         st.markdown("---")
         st.markdown("##### 🎯 Grandes Despesas Previstas (fundos reservados)")
         st.caption("Despesas grandes já esperadas mas ainda não pagas — ficam aqui até serem quitadas, não importa o mês. Elas reservam parte do seu saldo para você não gastar esse dinheiro por engano em outra coisa.")
@@ -1184,9 +1541,9 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
                     st.rerun()
 
         col_j, col_k = st.columns(2)
-        col_j.metric("(j) Total reservado", brl(total_grandes))
-        col_k.metric("(k) = Fundos realmente disponíveis", brl(fundos_disponiveis),
-                     help="(i) Saldo final do mês menos (j) o que já está reservado para as grandes despesas previstas.")
+        col_j.metric("Total reservado", brl(total_grandes))
+        col_k.metric("Fundos realmente disponíveis", brl(fundos_disponiveis),
+                     help="Saldo Disponível no Final do Mês menos o que já está reservado para as grandes despesas previstas.")
         if fundos_disponiveis < 0:
             st.markdown(f'<div class="fin-danger">⚠️ O saldo não cobre todas as grandes despesas reservadas — faltam {brl(abs(fundos_disponiveis))}.</div>', unsafe_allow_html=True)
 
@@ -1212,6 +1569,9 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
                     else:
                         st.error("Preencha descrição e valor.")
 
+        # ══════════════════════════════════════════════════════════════
+        # (4) PROGRESSO DA CONFERÊNCIA
+        # ══════════════════════════════════════════════════════════════
         st.markdown("---")
         st.markdown("##### ✅ Progresso da conferência")
         st.caption("Marque \"Conciliado?\" no Extrato do mês acima conforme for conferindo com o extrato do banco.")
@@ -1224,6 +1584,9 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
             conc_itens += int(df_g_mes["conciliado"].fillna(0).astype(int).sum())
         st.progress(conc_itens / total_itens if total_itens else 0, text=f"{conc_itens} de {total_itens} lançamentos conferidos")
 
+        # ══════════════════════════════════════════════════════════════
+        # (5) CONFRONTO FINAL COM O SALDO DO BANCO
+        # ══════════════════════════════════════════════════════════════
         st.markdown("---")
         st.markdown("##### 🏦 Confronto final com o saldo do banco")
         saldo_extrato = st.number_input(
@@ -1242,8 +1605,11 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
                                     value=fech_existente.get("observacoes", "") if fech_existente else "",
                                     disabled=ja_fechado)
 
+        # ══════════════════════════════════════════════════════════════
+        # (6) FECHAR MÊS / REABRIR / AVANÇAR
+        # ══════════════════════════════════════════════════════════════
         if ja_fechado:
-            st.success(f"🔒 Mês {mes_str} já está FECHADO (fechamento em {formatar_data_hora_br(fech_existente.get('data_fechamento'))}). Saldo final (i): {brl(float(fech_existente.get('saldo_final', 0)))} — Fundos disponíveis (k): {brl(float(fech_existente.get('fundos_disponiveis', fech_existente.get('saldo_final', 0))))}")
+            st.success(f"🔒 Mês {mes_str} já está FECHADO (fechamento em {formatar_data_hora_br(fech_existente.get('data_fechamento'))}). Saldo final: {brl(float(fech_existente.get('saldo_final', 0)))} — Fundos disponíveis: {brl(float(fech_existente.get('fundos_disponiveis', fech_existente.get('saldo_final', 0))))}")
             col_reab, col_avc = st.columns(2)
             if col_reab.button("🔓 Reabrir este mês (usar apenas para corrigir erro)", key="reabrir_mes", use_container_width=True):
                 fechamento_salvar(mes_str, {"fechado": 0})
@@ -1283,50 +1649,93 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
                 st.success(f"✅ Mês {mes_str} fechado! Saldo final de {brl(saldo_final_oficial)} vira o saldo inicial de {prox}. Indo para o próximo mês...")
                 st.rerun()
 
+        # ══════════════════════════════════════════════════════════════
+        # (7) EXPORTAÇÕES — PDF de Fechamento (estrutura oficial, sem
+        # "Anúncio Mensal") + Excel (planilha completa para arquivo/backup)
+        # ══════════════════════════════════════════════════════════════
         st.markdown("---")
-        buf_fech = io.BytesIO()
-        wb_fech = xlsxwriter.Workbook(buf_fech)
-        fmt_h_fech = wb_fech.add_format({"bold": True, "bg_color": "#3d1f10", "font_color": "white", "border": 1})
-        fmt_brl_fech = wb_fech.add_format({"num_format": "R$ #,##0.00", "border": 1})
-        fmt_n_fech = wb_fech.add_format({"border": 1})
-        ws_fech = wb_fech.add_worksheet("Fechamento")
-        ws_fech.set_column(0, 0, 45)
-        ws_fech.set_column(1, 1, 18)
-        ws_fech.write(0, 0, f"Fechamento de Caixa — {mes_str}", wb_fech.add_format({"bold": True, "font_size": 14, "font_color": "#3d1f10"}))
-        linhas_fech = [
-            ("(a) Saldo inicial do mês", saldo_inicial),
-            ("(d) Entradas do mês", receitas_mes),
-            ("(g) Saídas do mês (pagas)", despesas_mes),
-            ("(h) Lucro Real do mês [(d) - (g)]", lucro_real_mes),
-            ("(i) Saldo final do mês [(a) + (h)]", saldo_teorico if not ja_fechado else float(fech_existente.get("saldo_final", saldo_teorico))),
-            ("(j) Grandes despesas previstas (reservado)", total_grandes),
-            ("(k) Fundos realmente disponíveis [(i) - (j)]", fundos_disponiveis if not ja_fechado else float(fech_existente.get("fundos_disponiveis", fundos_disponiveis))),
-        ]
-        for ri, (label, val) in enumerate(linhas_fech, 2):
-            ws_fech.write(ri, 0, label, fmt_n_fech)
-            ws_fech.write(ri, 1, float(val), fmt_brl_fech)
-        r0 = len(linhas_fech) + 4
-        ws_fech.write(r0, 0, "Entradas do mês (detalhado)", fmt_h_fech)
-        ws_fech.write(r0, 1, "Valor", fmt_h_fech)
-        for i, (_, r) in enumerate(df_r_mes.sort_values("data").iterrows(), 1):
-            ws_fech.write(r0 + i, 0, f"{formatar_data_br(r['data'])} — {r['descricao']}", fmt_n_fech)
-            ws_fech.write(r0 + i, 1, float(r["valor"]), fmt_brl_fech)
-        r1 = r0 + len(df_r_mes) + 3
-        ws_fech.write(r1, 0, "Saídas do mês (detalhado)", fmt_h_fech)
-        ws_fech.write(r1, 1, "Valor", fmt_h_fech)
-        for i, (_, g) in enumerate(df_g_mes.sort_values("data").iterrows(), 1):
-            ws_fech.write(r1 + i, 0, f"{formatar_data_br(g['data'])} — {g['descricao']}", fmt_n_fech)
-            ws_fech.write(r1 + i, 1, float(g["valor"]), fmt_brl_fech)
-        wb_fech.close()
-        buf_fech.seek(0)
-        st.download_button(
-            label=f"📥 Baixar Fechamento de {mes_str} (Excel)",
-            data=buf_fech,
-            file_name=f"Lila_Fechamento_{mes_str}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-        )
+        st.markdown("##### 📤 Exportar Fechamento")
 
+        saldo_final_export = saldo_teorico if not ja_fechado else float(fech_existente.get("saldo_final", saldo_teorico))
+        fundos_disp_export = fundos_disponiveis if not ja_fechado else float(fech_existente.get("fundos_disponiveis", fundos_disponiveis))
+        data_fech_export = fech_existente.get("data_fechamento") if (ja_fechado and fech_existente) else None
+
+        col_exp1, col_exp2 = st.columns(2)
+
+        with col_exp1:
+            pdf_fechamento_bytes = gerar_pdf_fechamento(
+                mes_str=mes_str,
+                saldo_inicial=saldo_inicial,
+                df_r_mes=df_r_mes,
+                df_g_mes=df_g_mes,
+                receitas_mes=receitas_mes,
+                despesas_mes=despesas_mes,
+                lucro_real_mes=lucro_real_mes,
+                saldo_final=saldo_final_export,
+                df_grandes=df_grandes,
+                total_grandes=total_grandes,
+                fundos_disponiveis=fundos_disp_export,
+                saldo_extrato=saldo_extrato,
+                diferenca=diferenca,
+                observacoes=observacoes,
+                fechado=ja_fechado,
+                data_fechamento=data_fech_export,
+            )
+            st.download_button(
+                label=f"📄 Baixar PDF de Fechamento — {mes_str}",
+                data=pdf_fechamento_bytes,
+                file_name=f"Lila_Fechamento_{mes_str}.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+            )
+
+        with col_exp2:
+            buf_fech = io.BytesIO()
+            wb_fech = xlsxwriter.Workbook(buf_fech)
+            fmt_h_fech = wb_fech.add_format({"bold": True, "bg_color": "#3d1f10", "font_color": "white", "border": 1})
+            fmt_brl_fech = wb_fech.add_format({"num_format": "R$ #,##0.00", "border": 1})
+            fmt_n_fech = wb_fech.add_format({"border": 1})
+            ws_fech = wb_fech.add_worksheet("Fechamento")
+            ws_fech.set_column(0, 0, 45)
+            ws_fech.set_column(1, 1, 18)
+            ws_fech.write(0, 0, f"Fechamento de Caixa — {mes_str}", wb_fech.add_format({"bold": True, "font_size": 14, "font_color": "#3d1f10"}))
+            linhas_fech = [
+                ("Saldo do Mês Anterior", saldo_inicial),
+                ("(+) Total das Entradas", receitas_mes),
+                ("(–) Total das Despesas", despesas_mes),
+                ("Saldo do Mês (positivo/negativo)", lucro_real_mes),
+                ("Saldo Disponível no Final do Mês", saldo_final_export),
+                ("Total reservado (grandes despesas)", total_grandes),
+                ("Fundos realmente disponíveis", fundos_disp_export),
+            ]
+            for ri, (label, val) in enumerate(linhas_fech, 2):
+                ws_fech.write(ri, 0, label, fmt_n_fech)
+                ws_fech.write(ri, 1, float(val), fmt_brl_fech)
+            r0 = len(linhas_fech) + 4
+            ws_fech.write(r0, 0, "Entradas do mês (detalhado)", fmt_h_fech)
+            ws_fech.write(r0, 1, "Valor", fmt_h_fech)
+            for i, (_, r) in enumerate(df_r_mes.sort_values("data").iterrows(), 1):
+                ws_fech.write(r0 + i, 0, f"{formatar_data_br(r['data'])} — {r['descricao']}", fmt_n_fech)
+                ws_fech.write(r0 + i, 1, float(r["valor"]), fmt_brl_fech)
+            r1 = r0 + len(df_r_mes) + 3
+            ws_fech.write(r1, 0, "Saídas do mês (detalhado)", fmt_h_fech)
+            ws_fech.write(r1, 1, "Valor", fmt_h_fech)
+            for i, (_, g) in enumerate(df_g_mes.sort_values("data").iterrows(), 1):
+                ws_fech.write(r1 + i, 0, f"{formatar_data_br(g['data'])} — {g['descricao']}", fmt_n_fech)
+                ws_fech.write(r1 + i, 1, float(g["valor"]), fmt_brl_fech)
+            wb_fech.close()
+            buf_fech.seek(0)
+            st.download_button(
+                label=f"📊 Baixar Fechamento de {mes_str} (Excel)",
+                data=buf_fech,
+                file_name=f"Lila_Fechamento_{mes_str}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
+
+        # ══════════════════════════════════════════════════════════════
+        # (8) HISTÓRICO DE FECHAMENTOS
+        # ══════════════════════════════════════════════════════════════
         st.markdown("---")
         st.markdown("##### 🗓️ Histórico de fechamentos")
         if df_f_fin.empty:
@@ -1339,7 +1748,7 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
                 if "fundos_disponiveis" not in df_hist.columns:
                     df_hist["fundos_disponiveis"] = df_hist["saldo_final"]
                 df_hist_show = df_hist[["mes","saldo_inicial","receitas_mes","despesas_mes","saldo_final","fundos_disponiveis"]].copy()
-                df_hist_show.columns = ["Mês","(a) Saldo Inicial","(d) Entradas","(g) Saídas","(i) Saldo Final","(k) Fundos Disponíveis"]
-                for c in ["(a) Saldo Inicial","(d) Entradas","(g) Saídas","(i) Saldo Final","(k) Fundos Disponíveis"]:
+                df_hist_show.columns = ["Mês","Saldo Anterior","Entradas","Despesas","Saldo Final","Fundos Disponíveis"]
+                for c in ["Saldo Anterior","Entradas","Despesas","Saldo Final","Fundos Disponíveis"]:
                     df_hist_show[c] = df_hist_show[c].fillna(0).apply(lambda x: brl(float(x)))
                 st.dataframe(df_hist_show, use_container_width=True, hide_index=True)
