@@ -9,16 +9,17 @@ para o seu BLOCO correspondente, todos dentro deste mesmo arquivo:
     BLOCO AGENDA            → calendário mensal + agenda de trabalho + vida
                               pessoal (campo, peso) + alerta de entregas
                               urgentes
-    BLOCO CONTRATOS         → lista de encomendas + painel de detalhe do
-                              contrato ao lado (ver, editar, baixar PDF, GOV.BR)
-    BLOCO MEDIDAS           → ficha de medidas das clientes (com busca)
     BLOCO GERENCIAR PEDIDOS → gerenciamento geral dos pedidos (cards + popup)
+                              — inclui tudo que "Contratos" fazia (ver PDF,
+                              CPF/RG, GOV.BR), já que são a mesma tela
+    BLOCO MEDIDAS           → ficha de medidas das clientes (com busca)
+    BLOCO PROSPECT          → agora em modulos/mod_prospect.py
     BLOCO FINANCEIRO        → agora em modulos/mod_financeiro.py
     BLOCO CONFIGURAÇÕES     → dados da empresa, metas, alerta de entrega,
                               exclusões permanentes
 
   Ordem da sidebar (grupo "Operacional"):
-      Nova Encomenda → Agenda → Contratos → Medidas → Gerenciar Pedidos
+      Prospect → Nova Encomenda → Agenda → Medidas → Gerenciar Pedidos
   Grupo "Gestão": Financeiro
   Grupo "Administração": Configurações
 
@@ -34,24 +35,17 @@ Histórico de versões (changelog):
         cabeçalho (logo + nome) e os KPIs do topo continuam sempre
         visíveis, sejá qual for a seção selecionada.
 
-  [v11] BLOCO CONTRATOS (novo): antes, "ver o contrato" só existia dentro
-        do popup de um pedido (Gerenciar Pedidos → clique no card). Agora
-        existe uma seção própria na sidebar — "📄 Contratos" — com uma
-        lista de encomendas à esquerda (com busca) e, ao clicar no nome,
-        o contrato completo abre ao lado: dados do pedido, edição de
-        datas/valores, medidas da cliente, botão de baixar PDF e botão de
-        assinatura via GOV.BR. Reaproveita 100% da função `_conteudo_pedido`
-        já existente (mesma lógica usada nos popups de Encomendas/Agenda),
-        então não há duplicação de regras de negócio — só um novo "container"
-        para ela.
+  [v11] BLOCO CONTRATOS (removido em v17 — ver changelog abaixo): antes,
+        "ver o contrato" só existia dentro do popup de um pedido
+        (Gerenciar Pedidos → clique no card). Passou a existir uma seção
+        própria na sidebar — "📄 Contratos" — reaproveitando 100% da
+        função `_conteudo_pedido` já existente.
 
   [v11.1] O que antes era um único bloco "Encomendas" (com Nova Encomenda no
         topo + abas internas "Medidas & Clientes" e "Gerenciar Pedidos") virou
-        TRÊS itens próprios na sidebar: 🆕 Nova Encomenda, 📏 Medidas e
+        itens próprios na sidebar: 🆕 Nova Encomenda, 📏 Medidas e
         📋 Gerenciar Pedidos — cada um com sua função `renderizar_*` dedicada,
-        sem abas internas escondendo conteúdo. Ordem final da sidebar:
-        Nova Encomenda → Agenda → Contratos → Medidas → Gerenciar Pedidos →
-        Financeiro → Configurações.
+        sem abas internas escondendo conteúdo.
 
   [v11.2] CABEÇALHO FIXO: o cabeçalho (logo/nome) e os 3 KPIs do topo agora
         ficam FIXOS (position: sticky) no topo da área principal enquanto o
@@ -69,69 +63,66 @@ Histórico de versões (changelog):
 
   [v12] SUPER AGENDA — regras novas de negócio, apoiadas por um novo módulo
         `modulos/regras_agenda.py` (funções puras de validação, sem Firestore
-        nem Streamlit, reaproveitadas na criação E na edição de pedido):
+        nem Streamlit, reaproveitadas na criação E na edição de pedido).
 
-        1) Removido o campo "Data da Encomenda" de todo o sistema (formulário
-           de criação, edição de pedido, cronograma automático). Não é mais
-           coletado nem exibido em nenhum lugar. A "Data Medidas" é o
-           pontapé inicial de todo o fluxo.
+  [v13] MEDIDAS ENXUTO / GERENCIAR PEDIDOS — ajustes de UX e filtros padrão.
 
-        2) ALERTA DE ENTREGA URGENTE: pedidos cuja Data de Entrega esteja
-           a N dias (configurável em ⚙️ Configurações, padrão 7, mas o
-           Wendley pode ajustar para 30 etc.) aparecem em destaque vermelho
-           no topo da Agenda, com prioridade máxima — visualmente diferente
-           do aviso de "atrasado". Regra mantida intacta.
+  [v14] SENHA ADM PARA CONFLITO DE CONFECÇÃO.
 
-        3) Regra de exclusividade da Data da Confecção: o sistema nunca
-           permite dois clientes com confecção na mesma data. Ao escolher a
-           Data da Confecção (criação e edição), um mini-calendário do mês
-           mostra 🔴 nos dias já ocupados e 🟡 nos dias já lotados de prova
-           (ver regra 4), que por isso também ficam bloqueados para confecção.
+  [v15] MODULARIZAÇÃO — BLOCO ENCOMENDAS extraído para
+        `modulos/mod_encomendas.py`.
 
-        4) Regra de limite de provas: no máximo 3 provas (1ª ou 2ª, somando
-           todos os pedidos ativos) no mesmo dia. Um dia com mais de 3
-           provas marcadas fica automaticamente bloqueado para receber Data
-           da Confecção.
+  [v16] (em modulos/mod_encomendas.py) Contratos e Gerenciar Pedidos
+        unificados — `renderizar_contratos()` virou um ALIAS interno de
+        `renderizar_gerenciar_pedidos()`.
 
-        5) Campo "Cliente" agora é editável dentro do formulário de edição de
-           pedido (usado por Gerenciar Pedidos, Contratos e Agenda), sem
-           precisar apagar e recriar a encomenda.
+  [v17] LIMPEZA DA DUPLICIDADE + PROSPECT: botão "📄 Contratos" removido da
+        sidebar (alias duplicado); novo módulo `modulos/mod_prospect.py`
+        plugado como "🌱 Prospect" na sidebar.
 
-  [v13] MEDIDAS ENXUTO: removida a listagem "Clientes Cadastradas" da tela
-        de Medidas — agora a tela mostra direto a Ficha de Medidas, com uma
-        barra de busca por nome para localizar a cliente rapidamente.
+  [v18] CORREÇÃO DE BUGS — régua de etapas antiga (1-7) ainda espalhada
+        pelo main.py, sobrevivendo à migração para a régua enxuta (1-4,
+        feita em mod_encomendas.py v16). Isso causava três problemas reais:
 
-  [v13] GERENCIAR PEDIDOS: removido o botão "➕ Nova Encomenda" (a criação
-        já existe em outras telas). Filtro padrão passou a ser
-        "Em andamento" (antes era "Todos"). A busca ganhou mais destaque
-        (linha própria, full width) e passou a buscar por cliente OU peça.
-        A listagem agora é ordenada pela Data de Entrega mais próxima
-        primeiro (pedidos sem data de entrega vão para o final).
+        1) "✅ Feito" (Agenda → Tarefas para Hoje) usava a lógica de avanço
+           de etapa ANTIGA (`prox+1`, com saltos manuais tipo "se prox==2,
+           prox=3"). Na régua nova isso fazia o pedido pular direto para
+           **Concluído (4)** sozinho, sem ninguém clicar em "✅ Marcar
+           Concluído" — ou seja, pedidos "se fechavam sozinhos". Corrigido:
+           agora o botão "✅ Feito" avança no MÁXIMO até a etapa 3
+           (Entrega); a etapa 4 (Concluído) só é definida pelo humano,
+           clicando em "✅ Marcar Concluído" dentro do pedido (isso nunca
+           mudou — mod_encomendas.py já garantia isso corretamente).
 
-  [v14] SENHA ADM PARA CONFLITO DE CONFECÇÃO: a regra de exclusividade da
-        Data da Confecção (nunca dois clientes no mesmo dia) deixou de ser
-        um bloqueio absoluto. Agora, se houver conflito, o sistema exige a
-        senha de administrador (a mesma usada em Configurações → Exclusão
-        Permanente) para liberar o salvamento mesmo assim. Sem a senha
-        correta, o salvamento continua bloqueado. Implementado através de
-        dois helpers novos — `_checar_confeccao_com_senha` e
-        `_render_confirmacao_senha_confeccao` — reaproveitados nos 4 pontos
-        do sistema que validam a Data da Confecção: criação via popup
-        (Agenda/Calendário), criação via formulário fixo (Nova Encomenda),
-        edição de pedido existente (Contratos/Agenda/Gerenciar Pedidos) e
-        edição rápida de data de uma tarefa de Confecção no Calendário.
+        2) "🎁 Entregas de Hoje" filtrava por `etapa >= 6` (valor válido só
+           na régua antiga de 7 etapas). Na régua nova (máximo 4), essa
+           condição nunca era verdadeira — a seção sempre aparecia vazia,
+           mesmo com entregas de verdade marcadas para hoje. Corrigido para
+           `etapa >= 3` (Entrega ou Concluído).
 
-  [v15] MODULARIZAÇÃO — BLOCO ENCOMENDAS: todo o bloco de criação/edição de
-        pedido foi extraído para `modulos/mod_encomendas.py` (mesmo espírito
-        da extração do BLOCO FINANCEIRO em v11.2): geração de PDF de
-        contrato, mini-calendário de ocupação da Confecção, os helpers de
-        senha ADM, `dialog_nova_encomenda`, `secao_nova_encomenda_inline`,
-        `_conteudo_pedido` e seus popups, `_card_pedido`, e as telas
-        `renderizar_contratos`, `renderizar_nova_encomenda` e
-        `renderizar_gerenciar_pedidos`. Nenhuma regra de negócio mudou —
-        só a organização dos arquivos. `main.py` agora importa
-        `DIC_MEDIDAS`, `SENHA_DELETE` e `LOGO_PATH` desse módulo (fonte
-        única), em vez de os redefinir.
+        3) O KPI "🛍️ Pedidos Ativos" do topo contava `etapa < 7`, que na
+           régua nova é SEMPRE verdadeiro (inclusive para pedidos já
+           Concluídos) — o card contava pedidos concluídos como "ativos".
+           Corrigido para `etapa < 4`.
+
+        Além disso, o mesmo tipo de resquício foi corrigido em
+        `modulos/regras_agenda.py` (`pedidos_com_entrega_proxima` filtrava
+        por `etapa < 7`, fazendo pedidos já concluídos aparecerem para
+        sempre no alerta de entrega urgente/atrasados da Agenda).
+
+        4) SELEÇÃO DE CLIENTE EM MEDIDAS POR ROWID (não mais por nome): a
+           tela "📏 Medidas" selecionava a cliente comparando o NOME digitado
+           no dropdown com `df_c["nome"] == sel_cli`. Se duas clientes
+           tivessem o mesmo nome cadastrado, a segunda nunca era alcançável
+           — selecionar o nome dela sempre abria (e sobrescrevia, ao salvar)
+           os dados da PRIMEIRA cliente com aquele nome. Corrigido: a lista
+           agora é construída e selecionada por `rowid` (identificador único
+           do Firestore), com o nome exibido como rótulo — e um sufixo
+           discreto é adicionado automaticamente só quando há nomes
+           duplicados, pra desambiguar sem poluir a tela no caso comum.
+           (Também foi corrigido em `database.py`: `clientes_listar()` não
+           usa mais `.order_by("nome")` do Firestore, que excluía
+           silenciosamente qualquer cliente sem o campo "nome" preenchido.)
 """
 
 import streamlit as st
@@ -150,13 +141,14 @@ from modulos.utils import (
 
 # ── Módulos extraídos ─────────────────────────────────────────────────────────
 from modulos.mod_financeiro import renderizar_financeiro
+from modulos.mod_prospect import renderizar_prospects
 from modulos.mod_encomendas import (
     DIC_MEDIDAS, SENHA_DELETE, LOGO_PATH,
-    renderizar_contratos, renderizar_nova_encomenda, renderizar_gerenciar_pedidos,
+    renderizar_nova_encomenda, renderizar_gerenciar_pedidos,
     _abrir_popup_pedido, _dialog_editar_dia, _dialog_editar_data_tarefa,
 )
 from modulos.regras_agenda import (
-    pedidos_com_entrega_proxima, LIMITE_PROVAS_PARA_CONFECCAO,
+    pedidos_com_entrega_proxima, LIMITE_PROVAS_PARA_CONFECCAO, ETAPA_CONCLUIDO,
 )
 
 # ── Banco de dados Firestore ──────────────────────────────────────────────────
@@ -523,10 +515,9 @@ div[class*="st-key-pedcard_"] button:hover {
 .kpi-red   .kpi-label, .kpi-red .kpi-sub { color: #ffd9d9; }
 
 /* ══════════════════════════════════════════════════════════════
-   BLOCO CONTRATOS — lista de encomendas (esquerda) + painel de
-   detalhe do contrato (direita). Mesmo espírito do painel de
-   Tickets do KingStar: coluna de lista rolando por dentro, sem
-   empurrar a página toda, e cards clicáveis na lista.
+   BLOCO GERENCIAR PEDIDOS — lista de encomendas (cards) + painel de
+   detalhe do pedido em popup. Mesmo espírito do painel de
+   Tickets do KingStar: cards clicáveis na lista.
    ══════════════════════════════════════════════════════════════ */
 div[class*="st-key-ct_paineis"] div[data-testid="stColumn"]:first-child {
   max-height: calc(100vh - 300px);
@@ -563,6 +554,9 @@ hr { border-color: #e8dfd5 !important; }
 # modulos/mod_encomendas.py (fonte única) e são importados no topo deste
 # arquivo — DIC_MEDIDAS é usada por renderizar_medidas(), SENHA_DELETE pelas
 # exclusões permanentes em Configurações, e LOGO_PATH por get_logo_base64().
+# ETAPA_CONCLUIDO (=4) vem de modulos/regras_agenda.py — última etapa da
+# régua atual, usada para nunca mais espalhar um "7" ou "6" solto pelo
+# código (foi exatamente isso que causou os bugs corrigidos no v18).
 META_HORAS_CAMPO = 50.0
 META_PESO_KG     = 57.0
 PESO_INICIAL_KG  = 70.0
@@ -612,16 +606,37 @@ def renderizar_medidas():
     busca_med = st.text_input("🔍 Buscar cliente pelo nome", key="busca_med")
     df_c_filtrado = df_c
     if busca_med.strip():
-        df_c_filtrado = df_c[df_c["nome"].str.contains(busca_med, case=False, na=False)]
+        df_c_filtrado = df_c[df_c["nome"].astype(str).str.contains(busca_med, case=False, na=False)]
 
     if df_c_filtrado.empty:
         st.info("Nenhuma cliente encontrada para essa busca.")
         return
 
-    sel_cli = st.selectbox("Selecione a cliente", df_c_filtrado["nome"].tolist(), key="sel_med")
-    dados_cli = df_c[df_c["nome"] == sel_cli].iloc[0]
+    # ── [v18] Seleção por ROWID, nunca por nome ────────────────────────────
+    # Antes, a cliente era localizada comparando `df_c["nome"] == sel_cli`.
+    # Se duas clientes tivessem o MESMO nome cadastrado, a segunda nunca era
+    # alcançável — selecionar o nome dela sempre abria (e salvava por cima)
+    # os dados da PRIMEIRA cliente com aquele nome, dando a impressão de que
+    # ela "não aparecia" para cadastrar medidas. Agora a lista é montada e
+    # selecionada pelo `rowid` (único de verdade no Firestore); um sufixo
+    # discreto só aparece quando dois nomes colidem, pra desambiguar sem
+    # poluir a tela no caso comum (nomes únicos).
+    df_c_filtrado = df_c_filtrado.sort_values(
+        "nome", key=lambda s: s.fillna("").astype(str).str.lower()
+    )
+    opcoes_med: dict[str, str] = {}
+    contagem_nomes: dict[str, int] = {}
+    for _, row in df_c_filtrado.iterrows():
+        nome_row = str(row.get("nome") or "—")
+        contagem_nomes[nome_row] = contagem_nomes.get(nome_row, 0) + 1
+        label = nome_row if contagem_nomes[nome_row] == 1 else f"{nome_row} ({str(row['rowid'])[:6]})"
+        opcoes_med[label] = row["rowid"]
 
-    with st.form(f"form_med_{sel_cli}"):
+    sel_label = st.selectbox("Selecione a cliente", list(opcoes_med.keys()), key="sel_med")
+    sel_rowid = opcoes_med[sel_label]
+    dados_cli = df_c[df_c["rowid"] == sel_rowid].iloc[0]
+
+    with st.form(f"form_med_{sel_rowid}"):
         col1, col2, col3 = st.columns(3)
         novos = {}
         for i, (label, col_db) in enumerate(DIC_MEDIDAS.items()):
@@ -648,7 +663,8 @@ def _secao_alerta_entregas_urgentes():
     Alerta VISUALMENTE DIFERENTE do aviso normal de "atrasado": mostra os
     pedidos cuja Data de Entrega esteja dentro da janela de antecedência
     configurada em ⚙️ Configurações (padrão: 7 dias) — sinal de "pare tudo
-    e priorize".
+    e priorize". `pedidos_com_entrega_proxima` já exclui pedidos cancelados
+    e (desde a correção do v18) pedidos já Concluídos (etapa 4).
     """
     dias_antecedencia = int(cfg_get("alerta_entrega_dias") or 7)
     df_urgentes = pedidos_com_entrega_proxima(df_enc_all, hoje_dt, dias_antecedencia)
@@ -731,10 +747,20 @@ def _secao_tarefas_e_entregas_hoje():
                     if enc_id:
                         enc_data = encomendas_buscar(str(enc_id))
                         if enc_data:
-                            prox = int(enc_data.get("etapa", 1)) + 1
-                            if prox == 2: prox = 3
-                            if prox == 3 and not enc_data.get("precisa_tecido"): prox = 4
-                            if prox <= 7:
+                            # ── [v18 — CORREÇÃO DE BUG] ──────────────────────
+                            # Antes: `prox = etapa+1`, com saltos manuais da
+                            # régua ANTIGA (1-7) — na régua atual (1-4) isso
+                            # fazia o pedido pular direto para "Concluído"
+                            # (4) sozinho, sem nenhum humano confirmar.
+                            # Agora: concluir uma tarefa do dia avança a
+                            # régua em no MÁXIMO até a etapa 3 (Entrega).
+                            # A etapa 4 (Concluído) É SEMPRE uma decisão
+                            # manual — só é definida quando alguém clica em
+                            # "✅ Marcar Concluído" dentro do próprio pedido
+                            # (em mod_encomendas.py, nunca aqui).
+                            etapa_atual_feito = int(enc_data.get("etapa", 1))
+                            prox = min(etapa_atual_feito + 1, ETAPA_CONCLUIDO - 1)
+                            if prox > etapa_atual_feito:
                                 encomendas_atualizar(str(enc_id), {"etapa": prox})
                     cronograma_atualizar(str(row["rowid"]), {"concluida": 1})
                     st.rerun()
@@ -748,9 +774,17 @@ def _secao_tarefas_e_entregas_hoje():
     st.divider()
     st.markdown("### 🎁 Entregas de Hoje")
     if not df_enc_all.empty:
+        # ── [v18 — CORREÇÃO DE BUG] ──────────────────────────────────────
+        # Antes: filtrava por `etapa >= 6`, valor só válido na régua ANTIGA
+        # de 7 etapas — na régua atual (máximo 4) essa condição nunca era
+        # verdadeira, então esta seção ficava sempre vazia mesmo havendo
+        # entregas de verdade marcadas para hoje. Corrigido para
+        # `>= ETAPA_CONCLUIDO - 1` (etapa "Entrega" ou "Concluído") — usa a
+        # constante nomeada em vez de um número solto, para nunca mais
+        # ficar defasado se a régua mudar de novo no futuro.
         df_ent_hoje = df_enc_all[
             (df_enc_all.get("data_entrega", pd.Series(dtype=str)) == hoje_dt.isoformat()) &
-            (df_enc_all["etapa"].astype(int) >= 6)
+            (df_enc_all["etapa"].astype(int) >= ETAPA_CONCLUIDO - 1)
         ]
         if df_ent_hoje.empty:
             st.info("Nenhuma entrega programada para hoje.")
@@ -1149,6 +1183,11 @@ def renderizar_configuracoes():
         f"pontualmente com a senha de administrador (a mesma usada em Exclusão "
         f"Permanente) — sem a senha correta, o sistema não deixa salvar."
     )
+    st.info(
+        "🔒 **A etapa 'Concluído' só pode ser definida por um humano** — clicando em "
+        "\"✅ Marcar Concluído\" dentro do próprio pedido. Marcar tarefas do dia como "
+        "\"Feito\" na Agenda avança a régua no máximo até a etapa Entrega."
+    )
 
     st.markdown("---")
     st.markdown("#### 🗑️ Limpeza (Cuidado!)")
@@ -1232,7 +1271,8 @@ def renderizar_configuracoes():
         st.info("Nenhuma cliente cadastrada.")
     else:
         opcoes_clientes = {
-            f"{row['nome']}" + (f" · {row['telefone']}" if str(row.get('telefone') or '').strip() else ""): row["rowid"]
+            f"{row['nome']}" + (f" · {row['telefone']}" if str(row.get('telefone') or '').strip() else "")
+            + f" ({str(row['rowid'])[:6]})": row["rowid"]
             for _, row in df_todas_clientes.iterrows()
         }
 
@@ -1287,9 +1327,13 @@ with st.container(key="topo_fixo"):
     </div>
     """, unsafe_allow_html=True)
 
+    # ── [v18 — CORREÇÃO DE BUG] ──────────────────────────────────────────
+    # Antes: `etapa < 7`, valor da régua ANTIGA de 7 etapas — na régua
+    # atual (máximo 4) essa condição era SEMPRE verdadeira, contando até
+    # pedidos já Concluídos como "ativos". Corrigido para `etapa < 4`.
     enc_ativas = 0
     if not df_enc_all.empty and "etapa" in df_enc_all.columns:
-        enc_ativas = int((df_enc_all["etapa"].astype(int) < 7).sum())
+        enc_ativas = int((df_enc_all["etapa"].astype(int) < ETAPA_CONCLUIDO).sum())
 
     meta_ped = int(cfg_get("meta_pedidos_mes") or 8)
 
@@ -1342,9 +1386,9 @@ with st.sidebar:
     st.markdown('<div class="sb-subtitulo">Atelier de Costura</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="sb-secao-label">Operacional</div>', unsafe_allow_html=True)
+    _nav_btn("Prospect",           "prospect",           "🌱")
     _nav_btn("Nova Encomenda",    "nova_encomenda",     "🆕")
     _nav_btn("Agenda",            "agenda",             "📅")
-    _nav_btn("Contratos",         "contratos",          "📄")
     _nav_btn("Medidas",           "medidas",            "📏")
     _nav_btn("Gerenciar Pedidos", "gerenciar_pedidos",  "📋")
 
@@ -1357,12 +1401,12 @@ with st.sidebar:
 # ══════════════════════════════════════════════════════════════════════════════
 # ROTEAMENTO — renderiza o bloco selecionado na sidebar
 # ══════════════════════════════════════════════════════════════════════════════
-if st.session_state.pagina == "nova_encomenda":
+if st.session_state.pagina == "prospect":
+    renderizar_prospects()
+elif st.session_state.pagina == "nova_encomenda":
     renderizar_nova_encomenda()
 elif st.session_state.pagina == "agenda":
     renderizar_agenda()
-elif st.session_state.pagina == "contratos":
-    renderizar_contratos()
 elif st.session_state.pagina == "medidas":
     renderizar_medidas()
 elif st.session_state.pagina == "gerenciar_pedidos":
@@ -1372,4 +1416,4 @@ elif st.session_state.pagina == "financeiro":
 elif st.session_state.pagina == "configuracoes":
     renderizar_configuracoes()
 
-st.caption("v15.0.0 | Lila Closet Atelier | Firestore · Horário de Brasília · wendleydesenvolvimento")
+st.caption("v18.0.0 | Lila Closet Atelier | Firestore · Horário de Brasília · wendleydesenvolvimento")
