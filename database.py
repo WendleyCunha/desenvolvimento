@@ -54,6 +54,18 @@ releituras redundantes entre uma gravação e outra.
       prospect "vira" o pedido e some da lista de prospects. Segue
       exatamente o mesmo padrão simples de `clientes_*` acima (sem cache
       próprio de documento único, só listagem).
+
+[v17 — CORREÇÃO DE BUG] `clientes_listar()` usava `.order_by("nome")` do
+      Firestore para ordenar. Isso é perigoso: uma consulta com `order_by`
+      no Firestore EXCLUI SILENCIOSAMENTE (sem erro nenhum) qualquer
+      documento que não tenha o campo usado para ordenar preenchido. Se por
+      qualquer motivo uma cliente antiga tivesse ficado sem o campo "nome"
+      (edição manual no console, migração antiga, etc.), ela simplesmente
+      sumia da lista de clientes em toda a tela — inclusive na tela de
+      Medidas, sem nenhum aviso. Corrigido para buscar TODOS os documentos
+      sem filtro de ordenação do Firestore, e ordenar em Python (mesmo
+      padrão já usado em `prospects_listar`, que nunca teve esse problema).
+      Assim, nenhuma cliente cadastrada pode ficar de fora da lista.
 ──────────────────────────────────────────────────────────────────────────────
 """
 
@@ -165,8 +177,21 @@ def init_config_defaults() -> None:
 
 @st.cache_data(ttl=_TTL_LISTAS, show_spinner=False)
 def clientes_listar() -> pd.DataFrame:
-    docs = _col("lila_clientes").order_by("nome").stream()
-    return _docs_to_df(list(docs))
+    """
+    [v17 — corrigido] Busca TODOS os documentos da coleção, SEM usar
+    `.order_by("nome")` do Firestore. Um `order_by` no Firestore exclui
+    silenciosamente (sem erro) qualquer documento que não tenha o campo
+    usado para ordenar — se uma cliente antiga estivesse sem o campo "nome"
+    preenchido, ela sumia da lista pra sempre, em qualquer tela do sistema
+    (inclusive Medidas), sem nenhum aviso. Agora buscamos tudo primeiro e
+    ordenamos em Python (mesmo padrão já usado em `prospects_listar`
+    abaixo), então nenhuma cliente cadastrada pode ficar de fora.
+    """
+    docs = _col("lila_clientes").stream()
+    df = _docs_to_df(list(docs))
+    if not df.empty and "nome" in df.columns:
+        df = df.sort_values("nome", key=lambda s: s.fillna("").astype(str).str.lower())
+    return df
 
 
 def clientes_inserir(dados: dict) -> str:
