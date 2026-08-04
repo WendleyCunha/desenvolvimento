@@ -13,6 +13,7 @@ Coleções criadas:
   lila_campo_horas         → horas de serviço de campo (vida pessoal)
   lila_peso_registro       → registro mensal de peso (vida pessoal)
   lila_config              → pares chave/valor de configuração
+  lila_prospects           → [v16] lista de prospects (nome, à espera de virar pedido)
 
 ──────────────────────────────────────────────────────────────────────────────
 SOBRE O CACHE (importante para não estourar a cota gratuita do Firestore):
@@ -43,6 +44,16 @@ releituras redundantes entre uma gravação e outra.
       sendo atualizado normalmente — ele passa a ser um cache/atalho para
       exibição rápida, e a fonte de verdade financeira passa a ser a soma
       dos documentos em `lila_recebimentos`.
+
+[v16] Adicionada a coleção `lila_prospects` — cadastro simples (praticamente
+      só o nome) de pessoas interessadas, ANTES de virarem um pedido de
+      verdade. `modulos/mod_prospect.py` lista, cria e apaga esses
+      registros; a conversão em pedido (feita por
+      `modulos/mod_encomendas.dialog_nova_encomenda`) chama
+      `prospects_deletar` assim que a encomenda é criada com sucesso — o
+      prospect "vira" o pedido e some da lista de prospects. Segue
+      exatamente o mesmo padrão simples de `clientes_*` acima (sem cache
+      próprio de documento único, só listagem).
 ──────────────────────────────────────────────────────────────────────────────
 """
 
@@ -179,6 +190,51 @@ def clientes_deletar(rowid: str) -> None:
     """
     _col("lila_clientes").document(rowid).delete()
     clientes_listar.clear()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# PROSPECTS  [novo — v16]
+# ──────────────────────────────────────────────────────────────────────────────
+# Cadastro enxuto (nome + telefone opcional) de gente interessada mas que
+# ainda não virou pedido — o "antes" das medidas serem tiradas e do pedido
+# de verdade ser fechado. Segue o mesmo padrão simples de `clientes_*`
+# acima. A conversão em pedido não é feita aqui: quem apaga o prospect é
+# `modulos.mod_encomendas.dialog_nova_encomenda`, no momento em que a
+# encomenda correspondente é criada com sucesso.
+
+@st.cache_data(ttl=_TTL_LISTAS, show_spinner=False)
+def prospects_listar() -> pd.DataFrame:
+    docs = _col("lila_prospects").stream()
+    df = _docs_to_df(list(docs))
+    if not df.empty and "nome" in df.columns:
+        df = df.sort_values("nome", key=lambda s: s.str.lower())
+    return df
+
+
+def prospects_inserir(dados: dict) -> str:
+    """
+    dados esperado: nome (str, obrigatório), telefone (str, opcional),
+    criado_em (str isoformat).
+    """
+    dados["_criado_em"] = _now_iso()
+    _, ref = _col("lila_prospects").add(dados)
+    prospects_listar.clear()
+    return ref.id
+
+
+def prospects_atualizar(rowid: str, dados: dict) -> None:
+    _col("lila_prospects").document(rowid).update(dados)
+    prospects_listar.clear()
+
+
+def prospects_deletar(rowid: str) -> None:
+    """
+    Remove o prospect da lista. Chamada tanto para excluir manualmente
+    (desistiu) quanto — o caso mais comum — automaticamente por
+    `dialog_nova_encomenda` assim que o prospect vira um pedido de verdade.
+    """
+    _col("lila_prospects").document(rowid).delete()
+    prospects_listar.clear()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
