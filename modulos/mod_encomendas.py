@@ -147,6 +147,42 @@ SENHA_DELETE = "Qmerd@10"
 
 LOGO_PATH = "lila.png"
 
+
+def _fmt_medida_para_texto(raw) -> str:
+    """
+    [v20] Converte o valor salvo de uma medida em texto para exibir no
+    campo. Antes, as medidas eram `number_input` (só aceitava número) —
+    isso significa que tentar digitar algo como "25/33" fazia o Streamlit
+    simplesmente descartar a barra e colar os dígitos ("2533"), sem avisar
+    nada. Agora os campos são `text_input` (texto livre: aceita "/",
+    vírgula, espaço, o que for), então esta função só cuida de pegar
+    valores ANTIGOS (números de verdade, salvos antes dessa mudança) e
+    convertê-los para texto de forma limpa, sem perder nada:
+      - None / vazio / zero → "" (campo em branco)
+      - Número inteiro (ex: 36.0) → "36" (sem decimal solto)
+      - Número quebrado (ex: 79.5) → "79,5"
+      - Já é texto (medida nova, digitada livremente) → devolve como está
+    Nunca lança exceção — no pior caso, devolve a representação crua.
+    """
+    if raw is None or raw == "":
+        return ""
+    if isinstance(raw, str):
+        return raw
+    try:
+        if pd.isna(raw):
+            return ""
+    except TypeError:
+        pass
+    try:
+        f = float(raw)
+    except (TypeError, ValueError):
+        return str(raw)
+    if f == 0:
+        return ""
+    if f == int(f):
+        return str(int(f))
+    return str(f).replace(".", ",")
+
 # ══════════════════════════════════════════════════════════════════════════════
 # MINI-CALENDÁRIO DE OCUPAÇÃO — Data da Confecção
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1297,12 +1333,13 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
                 colm1, colm2, colm3 = st.columns(3)
                 novas_medidas = {}
                 for i, (label, col_db) in enumerate(DIC_MEDIDAS.items()):
-                    raw = cli_row_medidas.get(col_db, 0)
-                    val_f = float(raw) if raw not in [None, "", "nan"] and pd.notna(raw) else 0.0
+                    raw = cli_row_medidas.get(col_db)
+                    val_txt = _fmt_medida_para_texto(raw)
                     alvo = colm1 if i < 5 else (colm2 if i < 10 else colm3)
-                    novas_medidas[col_db] = alvo.number_input(
-                        f"{label} (cm)", value=val_f, format="%.1f", step=0.5,
+                    novas_medidas[col_db] = alvo.text_input(
+                        f"{label} (cm)", value=val_txt,
                         key=f"med_{enc['rowid']}_{col_db}",
+                        placeholder="Ex: 36 ou 25/33",
                     )
                 obs_medidas = st.text_area(
                     "Observações de modelagem",
@@ -1645,6 +1682,20 @@ def _card_pedido(enc: dict, idx: int):
         </div>
     </div>""", unsafe_allow_html=True)
 
+    # ── [v20] Ação rápida — pedido na etapa Entrega: "✅ Marcar como
+    # Concluído" direto no card, sem precisar abrir o popup. Só aparece
+    # quando a etapa é Entrega (3) e o pedido não está cancelado — não
+    # toca em nada financeiro, só avança a régua pra Concluído (4), igual
+    # ao botão "✅ Marcar Concluído" de dentro do pedido.
+    if not cancelado and etapa_num == 3:
+        if st.button(
+            "✅ Marcar como Concluído", key=f"concluir_direto_{idx}_{enc['rowid']}",
+            use_container_width=True,
+        ):
+            encomendas_atualizar(str(enc["rowid"]), {"etapa": 4})
+            st.success(f"✅ Pedido de {enc['cliente']} marcado como Concluído!")
+            st.rerun()
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ██████████████████████████  BLOCO: GERENCIAR PEDIDOS  ████████████████████████
@@ -1667,7 +1718,7 @@ def renderizar_gerenciar_pedidos():
 
     filtro_status = st.radio(
         "Filtrar por status:",
-        ["Em andamento", "Todos", "Concluídos", "Cancelados"],
+        ["Em andamento", "Entrega", "Concluídos", "Cancelados", "Todos"],
         horizontal=True, key="filtro_ger",
     )
 
@@ -1676,6 +1727,11 @@ def renderizar_gerenciar_pedidos():
     if not df_e.empty:
         if filtro_status == "Em andamento":
             df_e = df_e[(df_e["etapa"].astype(int) < 4) & (df_e["cancelado"].astype(int) == 0)]
+        elif filtro_status == "Entrega":
+            # [v20] Pedidos já na etapa Entrega (3) — útil pra ver de uma
+            # vez só quem já está pronto/entregue e só falta confirmar
+            # "Concluído" (o botão rápido aparece direto no card).
+            df_e = df_e[(df_e["etapa"].astype(int) == 3) & (df_e["cancelado"].astype(int) == 0)]
         elif filtro_status == "Concluídos":
             df_e = df_e[(df_e["etapa"].astype(int) == 4) & (df_e["cancelado"].astype(int) == 0)]
         elif filtro_status == "Cancelados":
