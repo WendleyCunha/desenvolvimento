@@ -18,6 +18,14 @@ Regras implementadas:
   3) ENTREGAS PRÓXIMAS — lista de pedidos cuja Data de Entrega caia dentro
      da janela de antecedência configurada (dias), para o alerta urgente.
 
+[v2 — correção de bug] `pedidos_com_entrega_proxima` filtrava por
+`etapa < 7`, resquício da régua ANTIGA de 7 etapas (de antes do v16 do
+mod_encomendas.py). Na régua atual (1 Confecção, 2 Prova, 3 Entrega,
+4 Concluído), esse filtro nunca excluía nada — pedidos já CONCLUÍDOS
+continuavam aparecendo para sempre no alerta de entrega urgente e na
+lista de atrasados da Agenda. Corrigido para `etapa < 4`, que exclui
+corretamente os pedidos já concluídos.
+
 Em todas as funções, "pedidos ativos" = não cancelados. Ao editar um
 pedido já existente, use `excluir_id` para não contar o próprio pedido
 como conflito consigo mesmo.
@@ -36,6 +44,12 @@ import pandas as pd
 # Confecção; a partir da 4ª prova no mesmo dia, a Confecção fica bloqueada
 # nesse dia. As provas em si continuam sem nenhum limite de quantidade.
 LIMITE_PROVAS_PARA_CONFECCAO = 3
+
+# Número da última etapa da régua atual (4 = Concluído). Usado para excluir
+# pedidos já concluídos dos alertas de entrega/atraso. Mantido como
+# constante nomeada (em vez de um "7" ou "4" solto no meio do código) para
+# que, se a régua mudar de novo no futuro, só precise ser ajustado aqui.
+ETAPA_CONCLUIDO = 4
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -187,10 +201,11 @@ def dias_com_provas_lotadas(df_enc: pd.DataFrame, excluir_id: Optional[str] = No
 
 def pedidos_com_entrega_proxima(df_enc: pd.DataFrame, hoje: date, dias_antecedencia: int) -> pd.DataFrame:
     """
-    Retorna os pedidos ativos (não cancelados, não concluídos — etapa < 7)
-    cuja Data de Entrega esteja dentro da janela de `dias_antecedencia` a
-    partir de hoje (isso inclui entregas de hoje e entregas já atrasadas).
-    Ordenado pela entrega mais próxima/mais atrasada primeiro.
+    Retorna os pedidos ativos (não cancelados, não concluídos — etapa <
+    ETAPA_CONCLUIDO) cuja Data de Entrega esteja dentro da janela de
+    `dias_antecedencia` a partir de hoje (isso inclui entregas de hoje e
+    entregas já atrasadas, sem limite de quão atrasadas). Ordenado pela
+    entrega mais próxima/mais atrasada primeiro.
 
     Uma coluna auxiliar "_dias_restantes" é adicionada ao resultado
     (negativa = atrasado, 0 = hoje, positiva = dias que faltam).
@@ -202,7 +217,7 @@ def pedidos_com_entrega_proxima(df_enc: pd.DataFrame, hoje: date, dias_anteceden
     if "cancelado" in df.columns:
         df = df[df["cancelado"].astype(int) == 0]
     if "etapa" in df.columns:
-        df = df[df["etapa"].astype(int) < 7]
+        df = df[df["etapa"].astype(int) < ETAPA_CONCLUIDO]
     if df.empty or "data_entrega" not in df.columns:
         return pd.DataFrame()
 
