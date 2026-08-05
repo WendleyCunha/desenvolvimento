@@ -123,6 +123,12 @@ Histórico de versões (changelog):
            (Também foi corrigido em `database.py`: `clientes_listar()` não
            usa mais `.order_by("nome")` do Firestore, que excluía
            silenciosamente qualquer cliente sem o campo "nome" preenchido.)
+
+  [v18.1] CORREÇÃO DE COMPATIBILIDADE — f-string com barra invertida na
+        parte {...} (montagem do HTML das tarefas do calendário) não é
+        aceita pelo Python 3.11 (só passou a ser permitido a partir do
+        Python 3.12). Corrigido calculando o HTML do "cliente" numa
+        variável separada antes de montar a f-string final.
 """
 
 import streamlit as st
@@ -1073,15 +1079,19 @@ def renderizar_agenda():
                 tasks  = df_all_cal[df_all_cal["data"] == dt_str] if not df_all_cal.empty else pd.DataFrame()
                 is_hoje = dt_str == hoje_brasilia().isoformat()
 
+                # ── [v18.1 — CORREÇÃO DE COMPATIBILIDADE] ────────────────────
+                # Antes, o HTML do "cliente" era montado com uma expressão
+                # condicional (com aspas escapadas \") DENTRO da parte {...}
+                # de uma f-string. Isso só é aceito a partir do Python 3.12 —
+                # no Python 3.11 dá SyntaxError: "f-string expression part
+                # cannot include a backslash". Corrigido calculando o HTML do
+                # cliente numa variável comum ANTES de montar a f-string.
                 tarefas_html = ""
                 for _, r in tasks.iterrows():
                     tipo_tarefa  = r["tarefa"].split(":")[0].strip() if ":" in r["tarefa"] else r["tarefa"][:16]
                     cliente_cal  = r.get("nome_cliente", "")
-                    tarefas_html += (
-                        f"<div class='cal-task-tag'>{tipo_tarefa}"
-                        f"{'<br><span class=\"cal-task-cliente\">' + cliente_cal + '</span>' if cliente_cal else ''}"
-                        f"</div>"
-                    )
+                    cliente_html = f'<br><span class="cal-task-cliente">{cliente_cal}</span>' if cliente_cal else ""
+                    tarefas_html += f"<div class='cal-task-tag'>{tipo_tarefa}{cliente_html}</div>"
 
                 cell_key = f"calcell_hoje_{dt_str}" if is_hoje else f"calcell_{dt_str}"
                 tem_pedido_dia = (
@@ -1421,4 +1431,4 @@ elif st.session_state.pagina == "financeiro":
 elif st.session_state.pagina == "configuracoes":
     renderizar_configuracoes()
 
-st.caption("v18.0.0 | Lila Closet Atelier | Firestore · Horário de Brasília · wendleydesenvolvimento")
+st.caption("v18.1.0 | Lila Closet Atelier | Firestore · Horário de Brasília · wendleydesenvolvimento")
