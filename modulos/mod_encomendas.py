@@ -55,6 +55,17 @@ sem depender de variáveis globais do main.py:
         medidas aparece normalmente — com histórico de medições vinculado a
         essa cliente dali em diante, exatamente como qualquer outra.
 
+[v21 — NOVO] FOTO DA PEÇA (upload + preview) DENTRO DO PEDIDO: logo acima
+        dos botões "💾 Salvar" / "✅ Marcar Concluído" / "❌ Cancelar Pedido"
+        em `_conteudo_pedido`, foi adicionado um uploader de imagem com
+        pré-visualização. A foto é redimensionada/comprimida em JPEG
+        (`_processar_foto_para_base64`) e salva em base64 no próprio
+        documento da encomenda (`foto_base64`), para nunca estourar o
+        limite de ~1 MiB por documento do Firestore. Também os 4 metrics de
+        resumo (Valor Total / Recebido / Saldo Restante / Entrega) tiveram
+        a fonte reduzida via CSS escopado, já que valores mais altos
+        (ex: "R$ 1.600,00") estavam sendo cortados visualmente no popup.
+
 ⚠️ ATENÇÃO — ponto que precisa de um ajuste manual em `main.py` (fora deste
    módulo, não alterado aqui a pedido): o botão "✅ Feito" em
    `_secao_tarefas_e_entregas_hoje` (Agenda) tinha uma lógica de avanço de
@@ -72,10 +83,12 @@ import io
 import time
 import hashlib
 import calendar
+import base64
 from datetime import date, timedelta
 
 import streamlit as st
 import pandas as pd
+from PIL import Image
 
 # PDF
 from reportlab.lib.pagesizes import A4
@@ -182,6 +195,25 @@ def _fmt_medida_para_texto(raw) -> str:
     if f == int(f):
         return str(int(f))
     return str(f).replace(".", ",")
+
+
+def _processar_foto_para_base64(arquivo_upload, max_lado: int = 900, qualidade: int = 70) -> str:
+    """
+    [v21] Redimensiona e comprime a foto antes de gravar em base64 no
+    Firestore. Um documento do Firestore tem limite de ~1 MiB — uma foto
+    "crua" tirada direto da câmera do celular facilmente passa de 3-5 MB,
+    o que quebraria o salvamento do pedido. Aqui sempre convertemos para
+    JPEG (bem mais leve que PNG para fotos) e limitamos o lado maior a
+    `max_lado` pixels, mantendo a proporção — o resultado final fica
+    tipicamente entre 50-150 KB em base64, bem dentro do limite.
+    """
+    arquivo_upload.seek(0)
+    img = Image.open(arquivo_upload)
+    img = img.convert("RGB")  # remove canal alpha/modo P — garante JPEG válido
+    img.thumbnail((max_lado, max_lado))
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=qualidade, optimize=True)
+    return base64.b64encode(buf.getvalue()).decode()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # MINI-CALENDÁRIO DE OCUPAÇÃO — Data da Confecção
@@ -1237,11 +1269,28 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
         st.markdown(steps_html, unsafe_allow_html=True)
         st.markdown("")
 
-    col_inf1, col_inf2, col_inf3, col_inf4 = st.columns(4)
-    col_inf1.metric("Valor Total",    brl(float(enc.get("valor_total",0) or 0)))
-    col_inf2.metric("Recebido",       brl(float(enc.get("valor_recebido",0) or 0)))
-    col_inf3.metric("Saldo Restante", brl(max(restante_enc, 0)))
-    col_inf4.metric("Entrega",        formatar_data_br(enc.get("data_entrega","")))
+    # ── [v21] Fonte reduzida nos 4 metrics de resumo — valores maiores
+    # (ex.: "R$ 1.600,00") estavam sendo cortados visualmente com o
+    # tamanho padrão do st.metric do Streamlit. O CSS é escopado ao
+    # container "pedido_metrics_resumo" logo abaixo, então não afeta
+    # nenhum outro st.metric do sistema (financeiro, recebimento parcial etc).
+    st.markdown("""
+    <style>
+    div[class*="st-key-pedido_metrics_resumo"] [data-testid="stMetricValue"] {
+        font-size: 1.05rem !important;
+    }
+    div[class*="st-key-pedido_metrics_resumo"] [data-testid="stMetricLabel"] {
+        font-size: 0.72rem !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    with st.container(key="pedido_metrics_resumo"):
+        col_inf1, col_inf2, col_inf3, col_inf4 = st.columns(4)
+        col_inf1.metric("Valor Total",    brl(float(enc.get("valor_total",0) or 0)))
+        col_inf2.metric("Recebido",       brl(float(enc.get("valor_recebido",0) or 0)))
+        col_inf3.metric("Saldo Restante", brl(max(restante_enc, 0)))
+        col_inf4.metric("Entrega",        formatar_data_br(enc.get("data_entrega","")))
 
     prova2_txt = ""
     if str(enc.get("data_prova2") or "").strip():
@@ -1363,6 +1412,45 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
         df_check_edicao, key_prefix=f"cp_{enc['rowid']}",
         data_referencia=mes_ref_conf, excluir_id=str(enc["rowid"]),
     )
+
+    # ── [v21] Foto da Peça — upload com preview, fica logo acima dos
+    # botões de Salvar/Marcar Concluído/Cancelar. Fora do st.form abaixo
+    # de propósito: precisa reagir na hora (mostrar a pré-visualização e
+    # salvar sozinha), o que um st.form não permite (só processa no clique
+    # do submit do form inteiro).
+    st.markdown("##### 📷 Foto da Peça")
+    foto_atual_b64 = enc.get("foto_base64")
+
+    if foto_atual_b64:
+        try:
+            st.image(base64.b64decode(foto_atual_b64), caption="Foto atual", width=220)
+        except Exception:
+            st.caption("⚠️ Não foi possível exibir a foto salva.")
+
+    col_foto1, col_foto2 = st.columns([3, 1.2])
+    nova_foto = col_foto1.file_uploader(
+        "Enviar / substituir foto da peça",
+        type=["png", "jpg", "jpeg", "webp"],
+        key=f"foto_upload_{enc['rowid']}",
+    )
+    if nova_foto is not None:
+        st.image(nova_foto, caption="Pré-visualização (ainda não salva)", width=220)
+
+    with col_foto2:
+        st.write("")
+        if nova_foto is not None:
+            if st.button("💾 Salvar Foto", key=f"salvar_foto_{enc['rowid']}", use_container_width=True, type="primary"):
+                foto_b64_nova = _processar_foto_para_base64(nova_foto)
+                encomendas_atualizar(str(enc["rowid"]), {"foto_base64": foto_b64_nova})
+                st.success("✅ Foto salva!")
+                st.rerun()
+        if foto_atual_b64:
+            if st.button("🗑️ Remover Foto", key=f"remover_foto_{enc['rowid']}", use_container_width=True):
+                encomendas_atualizar(str(enc["rowid"]), {"foto_base64": None})
+                st.success("Foto removida.")
+                st.rerun()
+
+    st.markdown("")
 
     with st.form(f"edit_{enc['rowid']}"):
         ed_cliente = st.text_input("Cliente", value=str(enc.get("cliente") or ""), key=f"cliente_{enc['rowid']}")
