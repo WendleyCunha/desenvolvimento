@@ -1373,7 +1373,7 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
         fpag_cur  = enc.get("forma_pagamento","A combinar")
         fpag_idx  = fpag_opts.index(fpag_cur) if fpag_cur in fpag_opts else 4
         ed_fpag   = col_f1e.selectbox("Forma de Pagamento", fpag_opts, index=fpag_idx)
-        ed_obs    = col_f2e.text_area("Observações", value=str(enc.get("observacoes") or ""), height=60)
+        ed_obs    = col_f2e.text_area("Observações", value=str(enc.get("observacoes") or ""), height=68)
 
         st.markdown("📅 Datas")
         d2, d3 = st.columns(2)
