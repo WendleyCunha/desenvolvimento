@@ -599,8 +599,7 @@ df_enc_all = encomendas_listar(cancelado=False)
 # ══════════════════════════════════════════════════════════════════════════════
 def renderizar_medidas():
     st.markdown("## 📏 Medidas")
-    st.markdown("### 📏 Ficha de Medidas")
-
+    
     df_c = clientes_listar()
 
     if df_c.empty:
