@@ -1219,10 +1219,17 @@ def renderizar_financeiro(df_enc_all: pd.DataFrame, hoje_dt):
 
                         badge_html = _status_pagamento_badge(v_recebido, v_total_e)
 
-                        with st.expander(
-                            f"👗 {enc['cliente']} – {enc['peca']}  |  "
-                            f"Recebido: {brl(v_recebido)} / {brl(v_total_e)}  |  Margem: {margem_enc:.0f}%"
-                        ):
+                        # ── Antes era um st.expander aqui dentro (expander dentro
+                        # de expander não é permitido pelo Streamlit — lança
+                        # StreamlitAPIException). Trocado por um container com
+                        # borda + título em markdown, mantendo visual de "card"
+                        # por pedido, sem quebrar a regra de aninhamento. ──
+                        with st.container(border=True):
+                            st.markdown(
+                                f"**👗 {enc['cliente']} – {enc['peca']}**  |  "
+                                f"Recebido: {brl(v_recebido)} / {brl(v_total_e)}  |  "
+                                f"Margem: {margem_enc:.0f}%"
+                            )
                             st.markdown(badge_html, unsafe_allow_html=True)
                             col_pm1, col_pm2, col_pm3, col_pm4 = st.columns(4)
                             col_pm1.metric("Valor Total",  brl(v_total_e))
