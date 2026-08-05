@@ -1121,7 +1121,6 @@ def renderizar_agenda():
 # ══════════════════════════════════════════════════════════════════════════════
 def renderizar_configuracoes():
     st.markdown("## ⚙️ Configurações")
-    st.markdown("### ⚙️ Configurações do Sistema")
 
     col_cfg1, col_cfg2 = st.columns(2)
 
