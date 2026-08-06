@@ -1367,13 +1367,13 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
     with st.form(f"edit_{enc['rowid']}"):
         ed_cliente = st.text_input("Cliente", value=str(enc.get("cliente") or ""), key=f"cliente_{enc['rowid']}")
         ed_peca = st.text_input("Peça", value=str(enc.get("peca") or ""))
-        ed_desc = st.text_area("Descrição", value=str(enc.get("descricao") or ""), height=60)
+        ed_desc = st.text_area("Descrição", value=str(enc.get("descricao") or ""), height=68)
         col_f1e, col_f2e = st.columns(2)
         fpag_opts = ["PIX","Dinheiro","Cartão de Crédito","Cartão de Débito","A combinar"]
         fpag_cur  = enc.get("forma_pagamento","A combinar")
         fpag_idx  = fpag_opts.index(fpag_cur) if fpag_cur in fpag_opts else 4
         ed_fpag   = col_f1e.selectbox("Forma de Pagamento", fpag_opts, index=fpag_idx)
-        ed_obs    = col_f2e.text_area("Observações", value=str(enc.get("observacoes") or ""), height=60)
+        ed_obs    = col_f2e.text_area("Observações", value=str(enc.get("observacoes") or ""), height=68)
 
         st.markdown("📅 Datas")
         d2, d3 = st.columns(2)
