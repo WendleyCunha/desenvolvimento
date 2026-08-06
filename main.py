@@ -227,27 +227,23 @@ if not st.session_state.token_autenticado:
         font-family: 'Inter', sans-serif;
     }
 
-    /* Contêiner PRÓPRIO (não a classe nativa .block-container do Streamlit,
-       que tem regras internas concorrentes e "ganha" a disputa de
-       especificidade em vários casos — mesmo com !important em algumas
-       propriedades, outras como min-height/align-items acabam sendo
-       ignoradas). Aqui, como o elemento é 100% nosso, forçamos a altura
-       mínima de 100vh nele — isso obriga o .block-container (que por
-       padrão só cresce até caber o conteúdo) a crescer também, e SÓ ENTÃO
-       o flex de centralização abaixo passa a ter espaço de verdade para
-       distribuir e centralizar o card na tela toda. */
-    div[class*="st-key-lila_lock_outer"] {
-        min-height: 100vh !important;
-        display: flex !important;
-        flex-direction: column !important;
-        align-items: center !important;
-        justify-content: center !important;
-    }
-    div[class*="st-key-lila_lock_outer"] div[data-testid="stHorizontalBlock"] {
-        width: 100% !important;
-    }
-
+    /* Centralização à prova de qualquer disputa de CSS com o Streamlit:
+       `position: fixed` + `top/left: 50%` + `transform: translate(-50%,-50%)`
+       centraliza o card em relação à JANELA DO NAVEGADOR — não depende de
+       nenhum contêiner pai (.block-container, stVerticalBlock etc.) ter a
+       altura certa, crescer ou "cooperar" com flexbox. É a técnica de
+       centralização mais robusta que existe em CSS puro, porque o elemento
+       sai do fluxo normal da página e passa a ser posicionado direto pela
+       viewport. As colunas (st.columns) que antes ajudavam a centralizar
+       na horizontal não são mais necessárias — foram removidas.
+    */
     div[class*="st-key-lila_lock_card"] {
+        position: fixed !important;
+        top: 50% !important;
+        left: 50% !important;
+        transform: translate(-50%, -50%) !important;
+        width: min(92vw, 420px) !important;
+        z-index: 10000 !important;
         background: #fdf6ee;
         border-radius: 20px;
         padding: 2.6rem 2.4rem 2.2rem;
@@ -280,39 +276,36 @@ if not st.session_state.token_autenticado:
     </style>
     """, unsafe_allow_html=True)
 
-    with st.container(key="lila_lock_outer"):
-        _, col_lock, _ = st.columns([1, 1.1, 1])
-        with col_lock:
-            with st.container(key="lila_lock_card"):
-                logo_b64_lock = get_logo_base64()
-                if logo_b64_lock:
-                    st.markdown(
-                        f'<img src="data:image/png;base64,{logo_b64_lock}" class="lila-lock-logo">',
-                        unsafe_allow_html=True,
-                    )
-                else:
-                    st.markdown('<div class="lila-lock-icon">🧵</div>', unsafe_allow_html=True)
+    with st.container(key="lila_lock_card"):
+        logo_b64_lock = get_logo_base64()
+        if logo_b64_lock:
+            st.markdown(
+                f'<img src="data:image/png;base64,{logo_b64_lock}" class="lila-lock-logo">',
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown('<div class="lila-lock-icon">🧵</div>', unsafe_allow_html=True)
 
-                st.markdown(
-                    '<div class="lila-lock-title">Lila Closet Atelier</div>'
-                    '<div class="lila-lock-sub">Sistema de Gestão Profissional</div>',
-                    unsafe_allow_html=True,
-                )
+        st.markdown(
+            '<div class="lila-lock-title">Lila Closet Atelier</div>'
+            '<div class="lila-lock-sub">Sistema de Gestão Profissional</div>',
+            unsafe_allow_html=True,
+        )
 
-                with st.form("form_token_acesso"):
-                    token_digitado = st.text_input(
-                        "Chave de acesso", type="password",
-                        placeholder="Digite a chave de acesso",
-                        label_visibility="collapsed",
-                    )
-                    entrar = st.form_submit_button("🔓 Entrar", use_container_width=True)
+        with st.form("form_token_acesso"):
+            token_digitado = st.text_input(
+                "Chave de acesso", type="password",
+                placeholder="Digite a chave de acesso",
+                label_visibility="collapsed",
+            )
+            entrar = st.form_submit_button("🔓 Entrar", use_container_width=True)
 
-                if entrar:
-                    if token_digitado.strip() == TOKEN_ACESSO:
-                        st.session_state.token_autenticado = True
-                        st.rerun()
-                    else:
-                        st.error("❌ Chave de acesso incorreta.")
+        if entrar:
+            if token_digitado.strip() == TOKEN_ACESSO:
+                st.session_state.token_autenticado = True
+                st.rerun()
+            else:
+                st.error("❌ Chave de acesso incorreta.")
 
     st.stop()
 
