@@ -221,35 +221,44 @@ if not st.session_state.token_autenticado:
 
     [data-testid="stSidebar"] { display: none !important; }
     [data-testid="stHeader"] { background: transparent !important; }
-    .block-container { padding-top: 0 !important; max-width: 100% !important; }
     html, body, [data-testid="stAppViewContainer"] {
         background: linear-gradient(135deg, #1a0f0a 0%, #3d1f10 45%, #6b3a22 100%) !important;
         font-family: 'Inter', sans-serif;
     }
 
-    /* Centralização à prova de qualquer disputa de CSS com o Streamlit:
-       `position: fixed` + `top/left: 50%` + `transform: translate(-50%,-50%)`
-       centraliza o card em relação à JANELA DO NAVEGADOR — não depende de
-       nenhum contêiner pai (.block-container, stVerticalBlock etc.) ter a
-       altura certa, crescer ou "cooperar" com flexbox. É a técnica de
-       centralização mais robusta que existe em CSS puro, porque o elemento
-       sai do fluxo normal da página e passa a ser posicionado direto pela
-       viewport. As colunas (st.columns) que antes ajudavam a centralizar
-       na horizontal não são mais necessárias — foram removidas.
-    */
-    div[class*="st-key-lila_lock_card"] {
+    /* [v19.1 — CORREÇÃO] As duas tentativas anteriores (flex no
+       .block-container, depois um st.container(key=...) próprio) tentavam
+       agrupar visualmente logo + nome + formulário dentro de um contêiner
+       específico — e, nas duas vezes, algum elemento acabou renderizando
+       FORA da caixa estilizada (a classe gerada pelo Streamlit não estava
+       pegando o elemento que a gente imaginava). A causa raiz era sempre a
+       mesma: depender de adivinhar qual <div> exatamente o Streamlit usa
+       por baixo dos panos.
+
+       Solução definitiva: nesta tela (o "portão" de acesso), o
+       .block-container JÁ contém SÓ o que a gente coloca aqui — logo,
+       nome, campo de senha, nada mais. Em vez de criar mais um contêiner
+       por dentro dele, o PRÓPRIO .block-container passa a SER o cartão:
+       ganha o fundo claro, a borda dourada, a sombra E a centralização via
+       position:fixed. Não existe mais nenhum "filho especial" para
+       localizar — position/top/left/transform são propriedades que o
+       Streamlit nunca define para .block-container, então (diferente da
+       tentativa com display/min-height, que SÃO propriedades que o
+       Streamlit controla e disputa) não há mais disputa de especificidade
+       nenhuma aqui. */
+    .block-container {
         position: fixed !important;
         top: 50% !important;
         left: 50% !important;
         transform: translate(-50%, -50%) !important;
         width: min(92vw, 420px) !important;
-        z-index: 10000 !important;
-        background: #fdf6ee;
-        border-radius: 20px;
-        padding: 2.6rem 2.4rem 2.2rem;
-        box-shadow: 0 20px 50px rgba(0,0,0,0.35);
-        border-top: 5px solid #c9a227;
-        text-align: center;
+        max-width: min(92vw, 420px) !important;
+        background: #fdf6ee !important;
+        border-radius: 20px !important;
+        padding: 2.6rem 2.4rem 2.2rem !important;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.35) !important;
+        border-top: 5px solid #c9a227 !important;
+        text-align: center !important;
     }
     .lila-lock-logo {
         height: 64px; width: auto; border-radius: 10px;
@@ -264,11 +273,11 @@ if not st.session_state.token_autenticado:
         font-size: 0.7rem; letter-spacing: 1.5px; text-transform: uppercase;
         color: #a98c3d; margin-top: 4px; margin-bottom: 22px;
     }
-    div[class*="st-key-lila_lock_card"] [data-testid="stTextInput"] input {
+    .block-container [data-testid="stTextInput"] input {
         text-align: center; letter-spacing: 3px; font-weight: 700;
         border-radius: 10px !important; border-color: #e0d5c9 !important;
     }
-    div[class*="st-key-lila_lock_card"] [data-testid="stFormSubmitButton"] button {
+    .block-container [data-testid="stFormSubmitButton"] button {
         background: linear-gradient(135deg, #3d1f10, #6b3a22) !important;
         color: #f5e6d3 !important; border: none !important;
         font-weight: 700 !important; border-radius: 10px !important;
@@ -276,36 +285,35 @@ if not st.session_state.token_autenticado:
     </style>
     """, unsafe_allow_html=True)
 
-    with st.container(key="lila_lock_card"):
-        logo_b64_lock = get_logo_base64()
-        if logo_b64_lock:
-            st.markdown(
-                f'<img src="data:image/png;base64,{logo_b64_lock}" class="lila-lock-logo">',
-                unsafe_allow_html=True,
-            )
-        else:
-            st.markdown('<div class="lila-lock-icon">🧵</div>', unsafe_allow_html=True)
-
+    logo_b64_lock = get_logo_base64()
+    if logo_b64_lock:
         st.markdown(
-            '<div class="lila-lock-title">Lila Closet Atelier</div>'
-            '<div class="lila-lock-sub">Sistema de Gestão Profissional</div>',
+            f'<img src="data:image/png;base64,{logo_b64_lock}" class="lila-lock-logo">',
             unsafe_allow_html=True,
         )
+    else:
+        st.markdown('<div class="lila-lock-icon">🧵</div>', unsafe_allow_html=True)
 
-        with st.form("form_token_acesso"):
-            token_digitado = st.text_input(
-                "Chave de acesso", type="password",
-                placeholder="Digite a chave de acesso",
-                label_visibility="collapsed",
-            )
-            entrar = st.form_submit_button("🔓 Entrar", use_container_width=True)
+    st.markdown(
+        '<div class="lila-lock-title">Lila Closet Atelier</div>'
+        '<div class="lila-lock-sub">Sistema de Gestão Profissional</div>',
+        unsafe_allow_html=True,
+    )
 
-        if entrar:
-            if token_digitado.strip() == TOKEN_ACESSO:
-                st.session_state.token_autenticado = True
-                st.rerun()
-            else:
-                st.error("❌ Chave de acesso incorreta.")
+    with st.form("form_token_acesso"):
+        token_digitado = st.text_input(
+            "Chave de acesso", type="password",
+            placeholder="Digite a chave de acesso",
+            label_visibility="collapsed",
+        )
+        entrar = st.form_submit_button("🔓 Entrar", use_container_width=True)
+
+    if entrar:
+        if token_digitado.strip() == TOKEN_ACESSO:
+            st.session_state.token_autenticado = True
+            st.rerun()
+        else:
+            st.error("❌ Chave de acesso incorreta.")
 
     st.stop()
 
