@@ -26,6 +26,19 @@ continuavam aparecendo para sempre no alerta de entrega urgente e na
 lista de atrasados da Agenda. Corrigido para `etapa < 4`, que exclui
 corretamente os pedidos já concluídos.
 
+[v3 — Consertos não disputam exclusividade de dia] A partir do
+mod_prospect.py, um "Conserto" nasce direto na coleção de encomendas
+(para integrar com financeiro/agenda), mas por definição de negócio ele
+NÃO participa das regras de exclusividade da Data da Confecção nem da
+contagem de provas — ele pode ser agendado em qualquer dia, mesmo que já
+exista um pedido normal (ou outro conserto) nesse dia. Como a regra vale
+nos dois sentidos (o conserto não é bloqueado por essas regras E também
+não deve bloquear pedidos normais por causa dele), as funções de ocupação
+de dia/provas abaixo agora ignoram qualquer registro cuja peça comece com
+o prefixo "[Conserto]" (mesmo prefixo usado por `mod_prospect.py` ao criar
+o registro). A regra de ENTREGA PRÓXIMA não precisa desse filtro porque
+consertos nunca têm `data_entrega` preenchida.
+
 Em todas as funções, "pedidos ativos" = não cancelados. Ao editar um
 pedido já existente, use `excluir_id` para não contar o próprio pedido
 como conflito consigo mesmo.
@@ -50,6 +63,11 @@ LIMITE_PROVAS_PARA_CONFECCAO = 3
 # constante nomeada (em vez de um "7" ou "4" solto no meio do código) para
 # que, se a régua mudar de novo no futuro, só precise ser ajustado aqui.
 ETAPA_CONCLUIDO = 4
+
+# Prefixo usado por `mod_prospect.py` para marcar um registro como Conserto
+# (em vez de um pedido normal de peça). Mantido como constante nomeada para
+# não haver duas strings soltas ("[Conserto]") que possam divergir.
+PREFIXO_CONSERTO = "[Conserto]"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -85,6 +103,18 @@ def _pedidos_ativos(df_enc: pd.DataFrame, excluir_id: Optional[str] = None) -> p
     return df
 
 
+def _sem_consertos(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Remove os registros de Conserto (peça iniciando com `PREFIXO_CONSERTO`)
+    de um DataFrame já filtrado por `_pedidos_ativos`. Usada apenas pelas
+    regras de exclusividade de Data da Confecção e contagem de provas —
+    consertos não entram nem saem dessas contas, em nenhuma direção.
+    """
+    if df.empty or "peca" not in df.columns:
+        return df
+    return df[~df["peca"].astype(str).str.startswith(PREFIXO_CONSERTO)]
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # REGRA 1 e 2 — DATA DA CONFECÇÃO
 # ──────────────────────────────────────────────────────────────────────────────
@@ -92,9 +122,10 @@ def _pedidos_ativos(df_enc: pd.DataFrame, excluir_id: Optional[str] = None) -> p
 def confeccao_ocupada_em(df_enc: pd.DataFrame, data_alvo: date, excluir_id: Optional[str] = None) -> Optional[str]:
     """
     Retorna o nome do cliente que já tem 'Data da Confecção' == data_alvo,
-    ou None se o dia estiver livre para confecção.
+    ou None se o dia estiver livre para confecção. Registros de Conserto
+    nunca ocupam o dia (ver `_sem_consertos`).
     """
-    df = _pedidos_ativos(df_enc, excluir_id)
+    df = _sem_consertos(_pedidos_ativos(df_enc, excluir_id))
     if df.empty or "data_confeccao" not in df.columns:
         return None
     for _, row in df.iterrows():
@@ -104,8 +135,11 @@ def confeccao_ocupada_em(df_enc: pd.DataFrame, data_alvo: date, excluir_id: Opti
 
 
 def dias_confeccao_ocupados(df_enc: pd.DataFrame, excluir_id: Optional[str] = None) -> set:
-    """Conjunto de todas as datas (date) já comprometidas com Data da Confecção."""
-    df = _pedidos_ativos(df_enc, excluir_id)
+    """
+    Conjunto de todas as datas (date) já comprometidas com Data da
+    Confecção. Registros de Conserto não entram neste conjunto.
+    """
+    df = _sem_consertos(_pedidos_ativos(df_enc, excluir_id))
     if df.empty or "data_confeccao" not in df.columns:
         return set()
     datas = {_to_date(v) for v in df["data_confeccao"]}
@@ -124,6 +158,11 @@ def validar_data_confeccao(df_enc: pd.DataFrame, data_alvo: date, excluir_id: Op
         provas marcadas (padrão: mais de 3). Um dia com exatamente 3
         provas (ou menos) continua liberado para confecção — o limite só
         entra em ação a partir da 4ª prova no mesmo dia.
+
+    Esta validação NUNCA é chamada para Consertos (eles são criados
+    direto por `mod_prospect.py`, sem passar por aqui) — mas mesmo que
+    fosse, os Consertos já cadastrados não contam como ocupação nem como
+    prova (ver `_sem_consertos`).
     """
     if data_alvo is None:
         return True, ""
@@ -153,12 +192,12 @@ def validar_data_confeccao(df_enc: pd.DataFrame, data_alvo: date, excluir_id: Op
 def contar_provas_no_dia(df_enc: pd.DataFrame, data_alvo: date, excluir_id: Optional[str] = None) -> int:
     """
     Conta quantas provas (1ª ou 2ª) já estão marcadas para `data_alvo`,
-    entre os pedidos ativos (não cancelados). Não há limite de provas por
-    dia — o cliente pode marcar quantas quiser. Esta contagem serve apenas
-    para decidir se o dia bloqueia (ou não) a Data da Confecção, em
-    `validar_data_confeccao`.
+    entre os pedidos ativos (não cancelados, excluindo Consertos). Não há
+    limite de provas por dia — o cliente pode marcar quantas quiser. Esta
+    contagem serve apenas para decidir se o dia bloqueia (ou não) a Data
+    da Confecção, em `validar_data_confeccao`.
     """
-    df = _pedidos_ativos(df_enc, excluir_id)
+    df = _sem_consertos(_pedidos_ativos(df_enc, excluir_id))
     if df.empty or data_alvo is None:
         return 0
     total = 0
@@ -177,9 +216,10 @@ def dias_com_provas_lotadas(df_enc: pd.DataFrame, excluir_id: Optional[str] = No
     Conjunto de datas com MAIS de `limite` provas marcadas (padrão: mais de
     3) — dias que, por causa da quantidade de provas, ficam bloqueados para
     receber Confecção. Um dia com exatamente `limite` provas NÃO entra
-    neste conjunto (continua liberado para confecção).
+    neste conjunto (continua liberado para confecção). Registros de
+    Conserto não entram nesta contagem.
     """
-    df = _pedidos_ativos(df_enc, excluir_id)
+    df = _sem_consertos(_pedidos_ativos(df_enc, excluir_id))
     if df.empty:
         return set()
     contagem: dict = {}
@@ -206,6 +246,10 @@ def pedidos_com_entrega_proxima(df_enc: pd.DataFrame, hoje: date, dias_anteceden
     `dias_antecedencia` a partir de hoje (isso inclui entregas de hoje e
     entregas já atrasadas, sem limite de quão atrasadas). Ordenado pela
     entrega mais próxima/mais atrasada primeiro.
+
+    Consertos nunca aparecem aqui na prática, pois não têm `data_entrega`
+    preenchida — por isso não precisam de filtro explícito, diferente das
+    funções de Confecção/Provas acima.
 
     Uma coluna auxiliar "_dias_restantes" é adicionada ao resultado
     (negativa = atrasado, 0 = hoje, positiva = dias que faltam).
