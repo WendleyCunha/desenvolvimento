@@ -1,8 +1,19 @@
 """
 modulos/mod_prospect.py — Lila Closet Atelier
 ─────────────────────────────────────────────────────────────────────────────
-BLOCO PROSPECT — [v16] novo módulo.
-Atualizado: Adição do fluxo simplificado de "Conserto".
+BLOCO PROSPECT — [v17] correção no fluxo de "Conserto".
+
+[v17 — correção de bug] O conserto estava sendo salvo com a chave
+"etapa_atual", mas TODO o resto do sistema (database.py, regras_agenda.py,
+mod_financeiro.py) usa a chave "etapa" para saber em que estágio da régua
+um pedido está. Como as duas chaves nunca batiam, o conserto ficava sem
+"etapa" de verdade nas telas que dependem desse campo. Corrigido para
+"etapa": 1. Também passou a gravar "valor_recebido": 0.0 explicitamente
+(antes ficava implícito via NaN→0 do pandas), deixando o registro
+idêntico em formato a um pedido normal recém-criado.
+
+[v16] BLOCO PROSPECT — novo módulo. Adição do fluxo simplificado de
+"Conserto".
 """
 
 import streamlit as st
@@ -20,30 +31,37 @@ from modulos.mod_encomendas import dialog_nova_encomenda
 def dialog_novo_conserto(nome_fixo: str, prospect_id: str):
     """
     Cria um conserto a partir de um prospect.
-    Salva como uma encomenda simplificada (para integrar com financeiro e agenda),
-    mas ignora regras de limite de ocupação e gera apenas o lembrete de confecção.
+    Salva como uma encomenda simplificada (para integrar com financeiro e
+    agenda), mas ignora regras de limite de ocupação e gera apenas o
+    lembrete de confecção.
+
+    IMPORTANTE: para que este conserto não dispute (nem seja bloqueado por)
+    a exclusividade do dia de Confecção ou o limite de provas de pedidos
+    normais, ele é marcado com o prefixo "[Conserto]" na peça — e
+    `modulos/regras_agenda.py` explicitamente ignora qualquer registro com
+    esse prefixo ao calcular ocupação de dias e contagem de provas.
     """
     st.markdown(f"**Cliente:** {nome_fixo}")
     st.caption("Consertos são inseridos diretamente na agenda sem validação de limite de peças e geram apenas a etapa de Confecção.")
-    
+
     tipo_conserto = st.selectbox("Tipo de conserto", ["Barra", "Zíper", "Ajuste", "Outro"])
     data_conserto = st.date_input("Data da Confecção (Conserto)")
     valor_conserto = st.number_input("Valor (R$)", min_value=0.0, step=10.0, format="%.2f")
-    
+
     if st.button("💾 Agendar Conserto", type="primary", use_container_width=True):
         # 1. Cria o conserto como um pedido simplificado
         nova_enc = {
             "cliente": nome_fixo,
             "peca": f"[Conserto] {tipo_conserto}",
             "valor_total": valor_conserto,
-            "sinal": 0.0, # Começa sem sinal pago, aguardando quitação no financeiro
+            "valor_recebido": 0.0,   # aguardando quitação no financeiro
+            "sinal": 0.0,
             "data_confeccao": data_conserto.isoformat(),
-            "etapa_atual": 1,
+            "etapa": 1,              # 1 = Confecção (chave usada em todo o sistema)
             "precisa_tecido": False,
-            "criado_em": agora_br().isoformat(),
         }
         novo_id = encomendas_inserir(nova_enc)
-        
+
         # 2. Gera APENAS o lembrete da confecção (sem provas ou tecidos)
         cronograma_inserir({
             "encomenda_id": novo_id,
@@ -51,10 +69,10 @@ def dialog_novo_conserto(nome_fixo: str, prospect_id: str):
             "data_tarefa": data_conserto.isoformat(),
             "concluido": False
         })
-        
+
         # 3. Remove da lista de prospects (já virou serviço ativo)
         prospects_deletar(str(prospect_id))
-        
+
         st.success("✅ Conserto registrado na agenda e no financeiro!")
         time.sleep(1)
         st.rerun()
@@ -109,7 +127,7 @@ def renderizar_prospects():
 
         if col2.button("🪡 Converter", key=f"conv_prospect_{p['rowid']}", use_container_width=True):
             dialog_nova_encomenda(nome_fixo=p["nome"], prospect_id=p["rowid"])
-            
+
         if col3.button("✂️ Conserto", key=f"cons_prospect_{p['rowid']}", use_container_width=True):
             dialog_novo_conserto(nome_fixo=p["nome"], prospect_id=p["rowid"])
 
