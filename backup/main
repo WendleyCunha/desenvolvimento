@@ -123,6 +123,12 @@ Histórico de versões (changelog):
            (Também foi corrigido em `database.py`: `clientes_listar()` não
            usa mais `.order_by("nome")` do Firestore, que excluía
            silenciosamente qualquer cliente sem o campo "nome" preenchido.)
+
+  [v18.1] CORREÇÃO DE COMPATIBILIDADE — f-string com barra invertida na
+        parte {...} (montagem do HTML das tarefas do calendário) não é
+        aceita pelo Python 3.11 (só passou a ser permitido a partir do
+        Python 3.12). Corrigido calculando o HTML do "cliente" numa
+        variável separada antes de montar a f-string final.
 """
 
 import streamlit as st
@@ -146,6 +152,7 @@ from modulos.mod_encomendas import (
     DIC_MEDIDAS, SENHA_DELETE, LOGO_PATH,
     renderizar_nova_encomenda, renderizar_gerenciar_pedidos,
     _abrir_popup_pedido, _dialog_editar_dia, _dialog_editar_data_tarefa,
+    _fmt_medida_para_texto,
 )
 from modulos.regras_agenda import (
     pedidos_com_entrega_proxima, LIMITE_PROVAS_PARA_CONFECCAO, ETAPA_CONCLUIDO,
@@ -592,8 +599,7 @@ df_enc_all = encomendas_listar(cancelado=False)
 # ══════════════════════════════════════════════════════════════════════════════
 def renderizar_medidas():
     st.markdown("## 📏 Medidas")
-    st.markdown("### 📏 Ficha de Medidas")
-
+    
     df_c = clientes_listar()
 
     if df_c.empty:
@@ -640,10 +646,14 @@ def renderizar_medidas():
         col1, col2, col3 = st.columns(3)
         novos = {}
         for i, (label, col_db) in enumerate(DIC_MEDIDAS.items()):
-            raw = dados_cli.get(col_db, 0)
-            val_f = float(raw) if raw not in [None, "", "nan"] and pd.notna(raw) else 0.0
+            raw = dados_cli.get(col_db)
+            val_txt = _fmt_medida_para_texto(raw)
             target = col1 if i < 5 else (col2 if i < 10 else col3)
-            novos[col_db] = target.number_input(f"{label} (cm)", value=val_f, format="%.1f", step=0.5)
+            novos[col_db] = target.text_input(
+                f"{label} (cm)", value=val_txt,
+                key=f"med_{sel_rowid}_{col_db}",
+                placeholder="Ex: 36 ou 25/33",
+            )
         obs = st.text_area("Observações de modelagem", value=str(dados_cli.get("outro") or ""))
 
         if st.form_submit_button("💾 Salvar Medidas", use_container_width=True):
@@ -1068,15 +1078,19 @@ def renderizar_agenda():
                 tasks  = df_all_cal[df_all_cal["data"] == dt_str] if not df_all_cal.empty else pd.DataFrame()
                 is_hoje = dt_str == hoje_brasilia().isoformat()
 
+                # ── [v18.1 — CORREÇÃO DE COMPATIBILIDADE] ────────────────────
+                # Antes, o HTML do "cliente" era montado com uma expressão
+                # condicional (com aspas escapadas \") DENTRO da parte {...}
+                # de uma f-string. Isso só é aceito a partir do Python 3.12 —
+                # no Python 3.11 dá SyntaxError: "f-string expression part
+                # cannot include a backslash". Corrigido calculando o HTML do
+                # cliente numa variável comum ANTES de montar a f-string.
                 tarefas_html = ""
                 for _, r in tasks.iterrows():
                     tipo_tarefa  = r["tarefa"].split(":")[0].strip() if ":" in r["tarefa"] else r["tarefa"][:16]
                     cliente_cal  = r.get("nome_cliente", "")
-                    tarefas_html += (
-                        f"<div class='cal-task-tag'>{tipo_tarefa}"
-                        f"{'<br><span class=\"cal-task-cliente\">' + cliente_cal + '</span>' if cliente_cal else ''}"
-                        f"</div>"
-                    )
+                    cliente_html = f'<br><span class="cal-task-cliente">{cliente_cal}</span>' if cliente_cal else ""
+                    tarefas_html += f"<div class='cal-task-tag'>{tipo_tarefa}{cliente_html}</div>"
 
                 cell_key = f"calcell_hoje_{dt_str}" if is_hoje else f"calcell_{dt_str}"
                 tem_pedido_dia = (
@@ -1107,7 +1121,6 @@ def renderizar_agenda():
 # ══════════════════════════════════════════════════════════════════════════════
 def renderizar_configuracoes():
     st.markdown("## ⚙️ Configurações")
-    st.markdown("### ⚙️ Configurações do Sistema")
 
     col_cfg1, col_cfg2 = st.columns(2)
 
@@ -1416,4 +1429,4 @@ elif st.session_state.pagina == "financeiro":
 elif st.session_state.pagina == "configuracoes":
     renderizar_configuracoes()
 
-st.caption("v18.0.0 | Lila Closet Atelier | Firestore · Horário de Brasília · wendleydesenvolvimento")
+st.caption("v18.1.0 | Lila Closet Atelier | Firestore · Horário de Brasília · wendleydesenvolvimento")
