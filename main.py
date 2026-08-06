@@ -221,7 +221,18 @@ if not st.session_state.token_autenticado:
 
     [data-testid="stSidebar"] { display: none !important; }
     [data-testid="stHeader"] { background: transparent !important; }
-    .block-container { padding-top: 0 !important; max-width: 100% !important; }
+    .block-container {
+        padding-top: 0 !important;
+        max-width: 100% !important;
+        min-height: 100vh;
+        display: flex !important;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+    }
+    .block-container > div {
+        width: 100%;
+    }
     html, body, [data-testid="stAppViewContainer"] {
         background: linear-gradient(135deg, #1a0f0a 0%, #3d1f10 45%, #6b3a22 100%) !important;
         font-family: 'Inter', sans-serif;
@@ -231,7 +242,6 @@ if not st.session_state.token_autenticado:
         background: #fdf6ee;
         border-radius: 20px;
         padding: 2.6rem 2.4rem 2.2rem;
-        margin-top: 12vh;
         box-shadow: 0 20px 50px rgba(0,0,0,0.35);
         border-top: 5px solid #c9a227;
         text-align: center;
