@@ -55,17 +55,6 @@ sem depender de variáveis globais do main.py:
         medidas aparece normalmente — com histórico de medições vinculado a
         essa cliente dali em diante, exatamente como qualquer outra.
 
-[v21 — NOVO] FOTO DA PEÇA (upload + preview) DENTRO DO PEDIDO: logo acima
-        dos botões "💾 Salvar" / "✅ Marcar Concluído" / "❌ Cancelar Pedido"
-        em `_conteudo_pedido`, foi adicionado um uploader de imagem com
-        pré-visualização. A foto é redimensionada/comprimida em JPEG
-        (`_processar_foto_para_base64`) e salva em base64 no próprio
-        documento da encomenda (`foto_base64`), para nunca estourar o
-        limite de ~1 MiB por documento do Firestore. Também os 4 metrics de
-        resumo (Valor Total / Recebido / Saldo Restante / Entrega) tiveram
-        a fonte reduzida via CSS escopado, já que valores mais altos
-        (ex: "R$ 1.600,00") estavam sendo cortados visualmente no popup.
-
 ⚠️ ATENÇÃO — ponto que precisa de um ajuste manual em `main.py` (fora deste
    módulo, não alterado aqui a pedido): o botão "✅ Feito" em
    `_secao_tarefas_e_entregas_hoje` (Agenda) tinha uma lógica de avanço de
@@ -83,12 +72,10 @@ import io
 import time
 import hashlib
 import calendar
-import base64
 from datetime import date, timedelta
 
 import streamlit as st
 import pandas as pd
-from PIL import Image
 
 # PDF
 from reportlab.lib.pagesizes import A4
@@ -159,61 +146,6 @@ DIC_MEDIDAS = {
 SENHA_DELETE = "Qmerd@10"
 
 LOGO_PATH = "lila.png"
-
-
-def _fmt_medida_para_texto(raw) -> str:
-    """
-    [v20] Converte o valor salvo de uma medida em texto para exibir no
-    campo. Antes, as medidas eram `number_input` (só aceitava número) —
-    isso significa que tentar digitar algo como "25/33" fazia o Streamlit
-    simplesmente descartar a barra e colar os dígitos ("2533"), sem avisar
-    nada. Agora os campos são `text_input` (texto livre: aceita "/",
-    vírgula, espaço, o que for), então esta função só cuida de pegar
-    valores ANTIGOS (números de verdade, salvos antes dessa mudança) e
-    convertê-los para texto de forma limpa, sem perder nada:
-      - None / vazio / zero → "" (campo em branco)
-      - Número inteiro (ex: 36.0) → "36" (sem decimal solto)
-      - Número quebrado (ex: 79.5) → "79,5"
-      - Já é texto (medida nova, digitada livremente) → devolve como está
-    Nunca lança exceção — no pior caso, devolve a representação crua.
-    """
-    if raw is None or raw == "":
-        return ""
-    if isinstance(raw, str):
-        return raw
-    try:
-        if pd.isna(raw):
-            return ""
-    except TypeError:
-        pass
-    try:
-        f = float(raw)
-    except (TypeError, ValueError):
-        return str(raw)
-    if f == 0:
-        return ""
-    if f == int(f):
-        return str(int(f))
-    return str(f).replace(".", ",")
-
-
-def _processar_foto_para_base64(arquivo_upload, max_lado: int = 900, qualidade: int = 70) -> str:
-    """
-    [v21] Redimensiona e comprime a foto antes de gravar em base64 no
-    Firestore. Um documento do Firestore tem limite de ~1 MiB — uma foto
-    "crua" tirada direto da câmera do celular facilmente passa de 3-5 MB,
-    o que quebraria o salvamento do pedido. Aqui sempre convertemos para
-    JPEG (bem mais leve que PNG para fotos) e limitamos o lado maior a
-    `max_lado` pixels, mantendo a proporção — o resultado final fica
-    tipicamente entre 50-150 KB em base64, bem dentro do limite.
-    """
-    arquivo_upload.seek(0)
-    img = Image.open(arquivo_upload)
-    img = img.convert("RGB")  # remove canal alpha/modo P — garante JPEG válido
-    img.thumbnail((max_lado, max_lado))
-    buf = io.BytesIO()
-    img.save(buf, format="JPEG", quality=qualidade, optimize=True)
-    return base64.b64encode(buf.getvalue()).decode()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # MINI-CALENDÁRIO DE OCUPAÇÃO — Data da Confecção
@@ -1269,28 +1201,11 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
         st.markdown(steps_html, unsafe_allow_html=True)
         st.markdown("")
 
-    # ── [v21] Fonte reduzida nos 4 metrics de resumo — valores maiores
-    # (ex.: "R$ 1.600,00") estavam sendo cortados visualmente com o
-    # tamanho padrão do st.metric do Streamlit. O CSS é escopado ao
-    # container "pedido_metrics_resumo" logo abaixo, então não afeta
-    # nenhum outro st.metric do sistema (financeiro, recebimento parcial etc).
-    st.markdown("""
-    <style>
-    div[class*="st-key-pedido_metrics_resumo"] [data-testid="stMetricValue"] {
-        font-size: 1.05rem !important;
-    }
-    div[class*="st-key-pedido_metrics_resumo"] [data-testid="stMetricLabel"] {
-        font-size: 0.72rem !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
-    with st.container(key="pedido_metrics_resumo"):
-        col_inf1, col_inf2, col_inf3, col_inf4 = st.columns(4)
-        col_inf1.metric("Valor Total",    brl(float(enc.get("valor_total",0) or 0)))
-        col_inf2.metric("Recebido",       brl(float(enc.get("valor_recebido",0) or 0)))
-        col_inf3.metric("Saldo Restante", brl(max(restante_enc, 0)))
-        col_inf4.metric("Entrega",        formatar_data_br(enc.get("data_entrega","")))
+    col_inf1, col_inf2, col_inf3, col_inf4 = st.columns(4)
+    col_inf1.metric("Valor Total",    brl(float(enc.get("valor_total",0) or 0)))
+    col_inf2.metric("Recebido",       brl(float(enc.get("valor_recebido",0) or 0)))
+    col_inf3.metric("Saldo Restante", brl(max(restante_enc, 0)))
+    col_inf4.metric("Entrega",        formatar_data_br(enc.get("data_entrega","")))
 
     prova2_txt = ""
     if str(enc.get("data_prova2") or "").strip():
@@ -1382,13 +1297,12 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
                 colm1, colm2, colm3 = st.columns(3)
                 novas_medidas = {}
                 for i, (label, col_db) in enumerate(DIC_MEDIDAS.items()):
-                    raw = cli_row_medidas.get(col_db)
-                    val_txt = _fmt_medida_para_texto(raw)
+                    raw = cli_row_medidas.get(col_db, 0)
+                    val_f = float(raw) if raw not in [None, "", "nan"] and pd.notna(raw) else 0.0
                     alvo = colm1 if i < 5 else (colm2 if i < 10 else colm3)
-                    novas_medidas[col_db] = alvo.text_input(
-                        f"{label} (cm)", value=val_txt,
+                    novas_medidas[col_db] = alvo.number_input(
+                        f"{label} (cm)", value=val_f, format="%.1f", step=0.5,
                         key=f"med_{enc['rowid']}_{col_db}",
-                        placeholder="Ex: 36 ou 25/33",
                     )
                 obs_medidas = st.text_area(
                     "Observações de modelagem",
@@ -1413,55 +1327,16 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
         data_referencia=mes_ref_conf, excluir_id=str(enc["rowid"]),
     )
 
-    # ── [v21] Foto da Peça — upload com preview, fica logo acima dos
-    # botões de Salvar/Marcar Concluído/Cancelar. Fora do st.form abaixo
-    # de propósito: precisa reagir na hora (mostrar a pré-visualização e
-    # salvar sozinha), o que um st.form não permite (só processa no clique
-    # do submit do form inteiro).
-    st.markdown("##### 📷 Foto da Peça")
-    foto_atual_b64 = enc.get("foto_base64")
-
-    if foto_atual_b64:
-        try:
-            st.image(base64.b64decode(foto_atual_b64), caption="Foto atual", width=220)
-        except Exception:
-            st.caption("⚠️ Não foi possível exibir a foto salva.")
-
-    col_foto1, col_foto2 = st.columns([3, 1.2])
-    nova_foto = col_foto1.file_uploader(
-        "Enviar / substituir foto da peça",
-        type=["png", "jpg", "jpeg", "webp"],
-        key=f"foto_upload_{enc['rowid']}",
-    )
-    if nova_foto is not None:
-        st.image(nova_foto, caption="Pré-visualização (ainda não salva)", width=220)
-
-    with col_foto2:
-        st.write("")
-        if nova_foto is not None:
-            if st.button("💾 Salvar Foto", key=f"salvar_foto_{enc['rowid']}", use_container_width=True, type="primary"):
-                foto_b64_nova = _processar_foto_para_base64(nova_foto)
-                encomendas_atualizar(str(enc["rowid"]), {"foto_base64": foto_b64_nova})
-                st.success("✅ Foto salva!")
-                st.rerun()
-        if foto_atual_b64:
-            if st.button("🗑️ Remover Foto", key=f"remover_foto_{enc['rowid']}", use_container_width=True):
-                encomendas_atualizar(str(enc["rowid"]), {"foto_base64": None})
-                st.success("Foto removida.")
-                st.rerun()
-
-    st.markdown("")
-
     with st.form(f"edit_{enc['rowid']}"):
         ed_cliente = st.text_input("Cliente", value=str(enc.get("cliente") or ""), key=f"cliente_{enc['rowid']}")
         ed_peca = st.text_input("Peça", value=str(enc.get("peca") or ""))
-        ed_desc = st.text_area("Descrição", value=str(enc.get("descricao") or ""), height=68)
+        ed_desc = st.text_area("Descrição", value=str(enc.get("descricao") or ""), height=60)
         col_f1e, col_f2e = st.columns(2)
         fpag_opts = ["PIX","Dinheiro","Cartão de Crédito","Cartão de Débito","A combinar"]
         fpag_cur  = enc.get("forma_pagamento","A combinar")
         fpag_idx  = fpag_opts.index(fpag_cur) if fpag_cur in fpag_opts else 4
         ed_fpag   = col_f1e.selectbox("Forma de Pagamento", fpag_opts, index=fpag_idx)
-        ed_obs    = col_f2e.text_area("Observações", value=str(enc.get("observacoes") or ""), height=68)
+        ed_obs    = col_f2e.text_area("Observações", value=str(enc.get("observacoes") or ""), height=60)
 
         st.markdown("📅 Datas")
         d2, d3 = st.columns(2)
@@ -1770,20 +1645,6 @@ def _card_pedido(enc: dict, idx: int):
         </div>
     </div>""", unsafe_allow_html=True)
 
-    # ── [v20] Ação rápida — pedido na etapa Entrega: "✅ Marcar como
-    # Concluído" direto no card, sem precisar abrir o popup. Só aparece
-    # quando a etapa é Entrega (3) e o pedido não está cancelado — não
-    # toca em nada financeiro, só avança a régua pra Concluído (4), igual
-    # ao botão "✅ Marcar Concluído" de dentro do pedido.
-    if not cancelado and etapa_num == 3:
-        if st.button(
-            "✅ Marcar como Concluído", key=f"concluir_direto_{idx}_{enc['rowid']}",
-            use_container_width=True,
-        ):
-            encomendas_atualizar(str(enc["rowid"]), {"etapa": 4})
-            st.success(f"✅ Pedido de {enc['cliente']} marcado como Concluído!")
-            st.rerun()
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ██████████████████████████  BLOCO: GERENCIAR PEDIDOS  ████████████████████████
@@ -1806,7 +1667,7 @@ def renderizar_gerenciar_pedidos():
 
     filtro_status = st.radio(
         "Filtrar por status:",
-        ["Em andamento", "Entrega", "Concluídos", "Cancelados", "Todos"],
+        ["Em andamento", "Todos", "Concluídos", "Cancelados"],
         horizontal=True, key="filtro_ger",
     )
 
@@ -1815,11 +1676,6 @@ def renderizar_gerenciar_pedidos():
     if not df_e.empty:
         if filtro_status == "Em andamento":
             df_e = df_e[(df_e["etapa"].astype(int) < 4) & (df_e["cancelado"].astype(int) == 0)]
-        elif filtro_status == "Entrega":
-            # [v20] Pedidos já na etapa Entrega (3) — útil pra ver de uma
-            # vez só quem já está pronto/entregue e só falta confirmar
-            # "Concluído" (o botão rápido aparece direto no card).
-            df_e = df_e[(df_e["etapa"].astype(int) == 3) & (df_e["cancelado"].astype(int) == 0)]
         elif filtro_status == "Concluídos":
             df_e = df_e[(df_e["etapa"].astype(int) == 4) & (df_e["cancelado"].astype(int) == 0)]
         elif filtro_status == "Cancelados":
