@@ -1,16 +1,38 @@
 """
 modulos/mod_prospect.py — Lila Closet Atelier
 ─────────────────────────────────────────────────────────────────────────────
-BLOCO PROSPECT — [v17] correção no fluxo de "Conserto".
+BLOCO PROSPECT — [v18] correção do lembrete de "Conserto".
+
+[v18 — correção de bug] O lembrete do conserto era gravado em
+`cronograma_inserir` com campos que NÃO EXISTEM no resto do sistema
+("data_tarefa", "concluido", "etapa"). O cronograma de verdade (ver
+`database.py` e `modulos/mod_encomendas.py`) usa: "tarefa" (texto exibido
+no calendário), "categoria", "horas", "data", "frequencia", "concluida"
+(0/1) e, principalmente, "tipo_agenda" — que é o campo usado para filtrar
+a aba Trabalho e o Calendário (`cronograma_listar(tipo_agenda="Trabalho")`).
+Sem "tipo_agenda", o lembrete do conserto NUNCA aparecia em lugar nenhum
+da agenda. Corrigido para usar exatamente o mesmo formato de
+`mod_encomendas.py`.
+
+Além disso, o texto do lembrete usa o prefixo "🪡 Confecção:" (o mesmo já
+reconhecido por `_mapa_prefixo_campo_data()` e `_sincronizar_lembretes_
+pedido()` em mod_encomendas.py), com "[Conserto]" no meio do texto — assim
+ele aparece escrito como conserto no calendário, mas continua totalmente
+compatível com a sincronização de data que já existe para pedidos normais
+(editar a data pelo popup do dia no Calendário atualiza os dois lados sem
+duplicar lembrete).
+
+[v18] Também passou a preencher `data_prova`, `data_entrega` e
+`data_tecido` com a mesma data da confecção (em vez de deixar em branco).
+Isso evita um erro ao abrir o Conserto pela tela de Gerenciar Pedidos: o
+formulário de edição de pedido usa esses três campos num `st.date_input`,
+e um pedido salvo sem eles quebra ao clicar em "Salvar". Como bônus, o
+Conserto passa a aparecer certinho no Financeiro como "a receber"/"em
+atraso" quando a data passar — o que ajuda a lembrar de cobrar/finalizar.
 
 [v17 — correção de bug] O conserto estava sendo salvo com a chave
-"etapa_atual", mas TODO o resto do sistema (database.py, regras_agenda.py,
-mod_financeiro.py) usa a chave "etapa" para saber em que estágio da régua
-um pedido está. Como as duas chaves nunca batiam, o conserto ficava sem
-"etapa" de verdade nas telas que dependem desse campo. Corrigido para
-"etapa": 1. Também passou a gravar "valor_recebido": 0.0 explicitamente
-(antes ficava implícito via NaN→0 do pandas), deixando o registro
-idêntico em formato a um pedido normal recém-criado.
+"etapa_atual" em vez de "etapa" (chave usada em todo o resto do sistema).
+Corrigido. Também passou a gravar "valor_recebido": 0.0 explicitamente.
 
 [v16] BLOCO PROSPECT — novo módulo. Adição do fluxo simplificado de
 "Conserto".
@@ -32,14 +54,25 @@ def dialog_novo_conserto(nome_fixo: str, prospect_id: str):
     """
     Cria um conserto a partir de um prospect.
     Salva como uma encomenda simplificada (para integrar com financeiro e
-    agenda), mas ignora regras de limite de ocupação e gera apenas o
-    lembrete de confecção.
+    agenda), mas ignora regras de limite de ocupação e gera apenas UM
+    lembrete (Confecção) — sem provas, sem tecido.
 
-    IMPORTANTE: para que este conserto não dispute (nem seja bloqueado por)
-    a exclusividade do dia de Confecção ou o limite de provas de pedidos
-    normais, ele é marcado com o prefixo "[Conserto]" na peça — e
-    `modulos/regras_agenda.py` explicitamente ignora qualquer registro com
-    esse prefixo ao calcular ocupação de dias e contagem de provas.
+    Compatibilidade com o resto do sistema (ver `modulos/regras_agenda.py`
+    e `modulos/mod_encomendas.py`):
+      - A peça é marcada com o prefixo "[Conserto]" — `regras_agenda.py`
+        ignora explicitamente qualquer registro com esse prefixo ao
+        calcular ocupação do dia de Confecção e contagem de provas (não
+        disputa nem é bloqueado por essas regras).
+      - O lembrete no cronograma usa o prefixo de texto "🪡 Confecção:",
+        já reconhecido por `_mapa_prefixo_campo_data()` e
+        `_sincronizar_lembretes_pedido()` em mod_encomendas.py — então,
+        se o conserto for aberto e editado depois pela tela normal de
+        Gerenciar Pedidos, a sincronização de data funciona sem duplicar
+        lembrete.
+      - "data_prova", "data_entrega" e "data_tecido" são preenchidas com a
+        mesma data da Confecção, só para o formulário de edição de pedido
+        (que espera essas datas preenchidas) nunca quebrar caso alguém
+        abra o conserto por lá.
     """
     st.markdown(f"**Cliente:** {nome_fixo}")
     st.caption("Consertos são inseridos diretamente na agenda sem validação de limite de peças e geram apenas a etapa de Confecção.")
@@ -49,25 +82,43 @@ def dialog_novo_conserto(nome_fixo: str, prospect_id: str):
     valor_conserto = st.number_input("Valor (R$)", min_value=0.0, step=10.0, format="%.2f")
 
     if st.button("💾 Agendar Conserto", type="primary", use_container_width=True):
+        data_iso = data_conserto.isoformat()
+
         # 1. Cria o conserto como um pedido simplificado
         nova_enc = {
             "cliente": nome_fixo,
             "peca": f"[Conserto] {tipo_conserto}",
+            "descricao": "",
             "valor_total": valor_conserto,
             "valor_recebido": 0.0,   # aguardando quitação no financeiro
             "sinal": 0.0,
-            "data_confeccao": data_conserto.isoformat(),
             "etapa": 1,              # 1 = Confecção (chave usada em todo o sistema)
-            "precisa_tecido": False,
+            "precisa_tecido": 0,
+            "data_tecido": data_iso,
+            "data_confeccao": data_iso,
+            "data_prova": data_iso,
+            "tem_prova2": 0,
+            "data_prova2": "",
+            "data_entrega": data_iso,
+            "cpf_cliente": "",
+            "rg_cliente": "",
+            "forma_pagamento": "A combinar",
+            "observacoes": f"Conserto — {tipo_conserto}",
         }
         novo_id = encomendas_inserir(nova_enc)
 
-        # 2. Gera APENAS o lembrete da confecção (sem provas ou tecidos)
+        # 2. Gera APENAS o lembrete da confecção (sem provas ou tecidos),
+        #    já no formato real do cronograma — aparece no Calendário e na
+        #    aba Trabalho igual a qualquer outro pedido.
         cronograma_inserir({
+            "tarefa": f"🪡 Confecção: [Conserto] {tipo_conserto} ({nome_fixo})",
+            "categoria": "Costura",
+            "horas": 1.0,
+            "data": data_iso,
+            "frequencia": "Pontual",
+            "concluida": 0,
             "encomenda_id": novo_id,
-            "etapa": 1,
-            "data_tarefa": data_conserto.isoformat(),
-            "concluido": False
+            "tipo_agenda": "Trabalho",
         })
 
         # 3. Remove da lista de prospects (já virou serviço ativo)
