@@ -129,6 +129,20 @@ Histórico de versões (changelog):
         aceita pelo Python 3.11 (só passou a ser permitido a partir do
         Python 3.12). Corrigido calculando o HTML do "cliente" numa
         variável separada antes de montar a f-string final.
+
+  [v19] CHAVE DE ACESSO (TOKEN) NA ENTRADA DO SISTEMA — como o sistema já
+        guarda CPF/RG de clientes e valores financeiros, foi adicionada uma
+        tela de bloqueio simples ANTES de qualquer outra coisa (inclusive
+        antes de tocar no Firestore): pede uma chave de acesso única
+        (padrão "2061", fixa em `TOKEN_ACESSO` abaixo — troque direto no
+        código se quiser outra). A confirmação fica em `st.session_state`,
+        que sobrevive a QUALQUER interação normal dentro da mesma aba do
+        navegador (clique de botão, troca de seção, salvar formulário —
+        nada disso apaga a sessão), então o sistema NÃO volta a pedir a
+        chave a cada clique. Ela só é pedida de novo se a aba for fechada/
+        reaberta ou se a página for atualizada manualmente (F5) — é uma
+        limitação inerente de qualquer proteção baseada em sessão do
+        navegador (sem cookie/login de verdade), não um defeito.
 """
 
 import streamlit as st
@@ -180,6 +194,107 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CONTROLE DE ACESSO (chave/token) — ver [v19] no changelog acima. Fica
+# ANTES de qualquer CSS pesado e ANTES de init_db() de propósito: enquanto
+# a chave não é confirmada, o sistema nem chega a abrir conexão com o
+# Firestore.
+# ══════════════════════════════════════════════════════════════════════════════
+TOKEN_ACESSO = "2061"  # troque aqui se quiser outra chave — é só isso, fixa no código.
+
+
+def get_logo_base64() -> str | None:
+    if os.path.exists(LOGO_PATH):
+        with open(LOGO_PATH, "rb") as f:
+            return base64.b64encode(f.read()).decode()
+    return None
+
+
+if "token_autenticado" not in st.session_state:
+    st.session_state.token_autenticado = False
+
+if not st.session_state.token_autenticado:
+    st.markdown("""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+
+    [data-testid="stSidebar"] { display: none !important; }
+    [data-testid="stHeader"] { background: transparent !important; }
+    .block-container { padding-top: 0 !important; max-width: 100% !important; }
+    html, body, [data-testid="stAppViewContainer"] {
+        background: linear-gradient(135deg, #1a0f0a 0%, #3d1f10 45%, #6b3a22 100%) !important;
+        font-family: 'Inter', sans-serif;
+    }
+
+    div[class*="st-key-lila_lock_card"] {
+        background: #fdf6ee;
+        border-radius: 20px;
+        padding: 2.6rem 2.4rem 2.2rem;
+        margin-top: 12vh;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.35);
+        border-top: 5px solid #c9a227;
+        text-align: center;
+    }
+    .lila-lock-logo {
+        height: 64px; width: auto; border-radius: 10px;
+        margin-bottom: 14px; object-fit: contain;
+    }
+    .lila-lock-icon { font-size: 2.4rem; margin-bottom: 6px; }
+    .lila-lock-title {
+        font-family: 'Playfair Display', serif; font-size: 1.4rem; font-weight: 700;
+        color: #3d1f10; margin: 0;
+    }
+    .lila-lock-sub {
+        font-size: 0.7rem; letter-spacing: 1.5px; text-transform: uppercase;
+        color: #a98c3d; margin-top: 4px; margin-bottom: 22px;
+    }
+    div[class*="st-key-lila_lock_card"] [data-testid="stTextInput"] input {
+        text-align: center; letter-spacing: 3px; font-weight: 700;
+        border-radius: 10px !important; border-color: #e0d5c9 !important;
+    }
+    div[class*="st-key-lila_lock_card"] [data-testid="stFormSubmitButton"] button {
+        background: linear-gradient(135deg, #3d1f10, #6b3a22) !important;
+        color: #f5e6d3 !important; border: none !important;
+        font-weight: 700 !important; border-radius: 10px !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    _, col_lock, _ = st.columns([1, 1.1, 1])
+    with col_lock:
+        with st.container(key="lila_lock_card"):
+            logo_b64_lock = get_logo_base64()
+            if logo_b64_lock:
+                st.markdown(
+                    f'<img src="data:image/png;base64,{logo_b64_lock}" class="lila-lock-logo">',
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown('<div class="lila-lock-icon">🧵</div>', unsafe_allow_html=True)
+
+            st.markdown(
+                '<div class="lila-lock-title">Lila Closet Atelier</div>'
+                '<div class="lila-lock-sub">Sistema de Gestão Profissional</div>',
+                unsafe_allow_html=True,
+            )
+
+            with st.form("form_token_acesso"):
+                token_digitado = st.text_input(
+                    "Chave de acesso", type="password",
+                    placeholder="Digite a chave de acesso",
+                    label_visibility="collapsed",
+                )
+                entrar = st.form_submit_button("🔓 Entrar", use_container_width=True)
+
+            if entrar:
+                if token_digitado.strip() == TOKEN_ACESSO:
+                    st.session_state.token_autenticado = True
+                    st.rerun()
+                else:
+                    st.error("❌ Chave de acesso incorreta.")
+
+    st.stop()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # CSS GLOBAL
@@ -560,10 +675,11 @@ hr { border-color: #e8dfd5 !important; }
 # ETAPAS, DIC_MEDIDAS, SENHA_DELETE e LOGO_PATH agora vivem em
 # modulos/mod_encomendas.py (fonte única) e são importados no topo deste
 # arquivo — DIC_MEDIDAS é usada por renderizar_medidas(), SENHA_DELETE pelas
-# exclusões permanentes em Configurações, e LOGO_PATH por get_logo_base64().
-# ETAPA_CONCLUIDO (=4) vem de modulos/regras_agenda.py — última etapa da
-# régua atual, usada para nunca mais espalhar um "7" ou "6" solto pelo
-# código (foi exatamente isso que causou os bugs corrigidos no v18).
+# exclusões permanentes em Configurações, e LOGO_PATH por get_logo_base64()
+# (definida mais acima, junto com o controle de acesso). ETAPA_CONCLUIDO
+# (=4) vem de modulos/regras_agenda.py — última etapa da régua atual, usada
+# para nunca mais espalhar um "7" ou "6" solto pelo código (foi exatamente
+# isso que causou os bugs corrigidos no v18).
 META_HORAS_CAMPO = 50.0
 META_PESO_KG     = 57.0
 PESO_INICIAL_KG  = 70.0
@@ -572,16 +688,6 @@ PESO_INICIAL_KG  = 70.0
 # INICIALIZAÇÃO DO BANCO
 # ══════════════════════════════════════════════════════════════════════════════
 init_db()
-
-# ══════════════════════════════════════════════════════════════════════════════
-# HELPERS (específicos do main.py)
-# ══════════════════════════════════════════════════════════════════════════════
-def get_logo_base64() -> str | None:
-    if os.path.exists(LOGO_PATH):
-        with open(LOGO_PATH, "rb") as f:
-            return base64.b64encode(f.read()).decode()
-    return None
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 # DADOS DE BASE (calculados uma vez por execução, usados por vários blocos)
@@ -1429,4 +1535,4 @@ elif st.session_state.pagina == "financeiro":
 elif st.session_state.pagina == "configuracoes":
     renderizar_configuracoes()
 
-st.caption("v18.1.0 | Lila Closet Atelier | Firestore · Horário de Brasília · wendleydesenvolvimento")
+st.caption("v19.0.0 | Lila Closet Atelier | Firestore · Horário de Brasília · wendleydesenvolvimento")
