@@ -9,12 +9,16 @@ quanto pelos de edição de pedido, sem duplicar regra nenhuma.
 
 Regras implementadas:
 
-  1) DATA DA CONFECÇÃO — nunca dois clientes na mesma data.
-  2) DATA DA CONFECÇÃO — bloqueada se o dia já tiver MAIS de
-     `LIMITE_PROVAS_PARA_CONFECCAO` provas marcadas (padrão 3). As provas em
-     si NÃO têm limite nenhum — o cliente pode marcar 4, 5, 6 provas no
-     mesmo dia à vontade; o que fica bloqueado é usar esse dia para
-     Confecção.
+  1) DATA DA CONFECÇÃO — dois clientes no mesmo dia NÃO são mais bloqueados
+     por senha. A partir da segunda encomenda no mesmo dia, a função de
+     validação retorna um status de CONFIRMAÇÃO (sim/não), informando
+     quantas encomendas já existem naquele dia, para a tela perguntar ao
+     usuário se ele deseja mesmo assim marcar mais uma encomenda ali.
+  2) DATA DA CONFECÇÃO — continua BLOQUEADA (sem opção de confirmar) se o
+     dia já tiver MAIS de `LIMITE_PROVAS_PARA_CONFECCAO` provas marcadas
+     (padrão 3). As provas em si continuam SEM limite nenhum — o cliente
+     pode marcar 4, 5, 6 provas no mesmo dia à vontade; o que fica
+     bloqueado é usar esse dia para Confecção.
   3) ENTREGAS PRÓXIMAS — lista de pedidos cuja Data de Entrega caia dentro
      da janela de antecedência configurada (dias), para o alerta urgente.
 
@@ -38,6 +42,21 @@ de dia/provas abaixo agora ignoram qualquer registro cuja peça comece com
 o prefixo "[Conserto]" (mesmo prefixo usado por `mod_prospect.py` ao criar
 o registro). A regra de ENTREGA PRÓXIMA não precisa desse filtro porque
 consertos nunca têm `data_entrega` preenchida.
+
+[v4 — fim do bloqueio por senha na Data da Confecção] Antes, marcar uma
+segunda encomenda no mesmo dia de confecção exigia senha (fluxo que ficava
+na tela do formulário, fora deste arquivo). Essa trava foi removida. No
+lugar, `validar_data_confeccao` agora devolve um status em texto ("ok",
+"confirmar" ou "bloqueado"):
+  - "confirmar" → o dia já tem N encomenda(s) de confecção; a tela deve
+    exibir a quantidade e perguntar sim/não se o usuário quer seguir mesmo
+    assim. Se ele confirmar, a tela chama a função de novo passando
+    `confirmar_duplicidade=True` para pular a pergunta e liberar o dia.
+  - "bloqueado" → continua sendo definitivo, sem opção de confirmar
+    (limite de provas excedido).
+  - "ok" → segue sem nenhuma pergunta.
+A regra de LIMITE DE PROVAS (regra 2) não mudou: continua um bloqueio
+definitivo, sem confirmação possível.
 
 Em todas as funções, "pedidos ativos" = não cancelados. Ao editar um
 pedido já existente, use `excluir_id` para não contar o próprio pedido
@@ -116,28 +135,52 @@ def _sem_consertos(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# REGRA 1 e 2 — DATA DA CONFECÇÃO
+# REGRA 1 — DATA DA CONFECÇÃO (exclusividade → agora vira confirmação sim/não)
 # ──────────────────────────────────────────────────────────────────────────────
 
-def confeccao_ocupada_em(df_enc: pd.DataFrame, data_alvo: date, excluir_id: Optional[str] = None) -> Optional[str]:
+def clientes_em_confeccao_no_dia(df_enc: pd.DataFrame, data_alvo: date, excluir_id: Optional[str] = None) -> list:
     """
-    Retorna o nome do cliente que já tem 'Data da Confecção' == data_alvo,
-    ou None se o dia estiver livre para confecção. Registros de Conserto
-    nunca ocupam o dia (ver `_sem_consertos`).
+    Lista os nomes de todos os clientes que já têm 'Data da Confecção' ==
+    data_alvo, entre os pedidos ativos (excluindo Consertos, ver
+    `_sem_consertos`). Pode ter mais de um nome, já que a exclusividade de
+    dia deixou de ser um bloqueio e virou uma confirmação sim/não — a
+    tela usa esta lista para montar a mensagem de confirmação.
     """
     df = _sem_consertos(_pedidos_ativos(df_enc, excluir_id))
     if df.empty or "data_confeccao" not in df.columns:
-        return None
+        return []
+    lista = []
     for _, row in df.iterrows():
         if _to_date(row.get("data_confeccao")) == data_alvo:
-            return str(row.get("cliente") or "—")
-    return None
+            lista.append(str(row.get("cliente") or "—"))
+    return lista
+
+
+def contar_confeccoes_no_dia(df_enc: pd.DataFrame, data_alvo: date, excluir_id: Optional[str] = None) -> int:
+    """Quantidade de encomendas (não-Conserto) já marcadas para confecção em `data_alvo`."""
+    return len(clientes_em_confeccao_no_dia(df_enc, data_alvo, excluir_id))
+
+
+def confeccao_ocupada_em(df_enc: pd.DataFrame, data_alvo: date, excluir_id: Optional[str] = None) -> Optional[str]:
+    """
+    [DEPRECATED — mantida só por compatibilidade com chamadas antigas]
+    Retorna o nome do PRIMEIRO cliente que já tem 'Data da Confecção' ==
+    data_alvo, ou None se o dia estiver livre. Como a exclusividade de dia
+    deixou de ser um bloqueio (virou confirmação sim/não), prefira usar
+    `clientes_em_confeccao_no_dia` ou `contar_confeccoes_no_dia`, que
+    trazem todos os nomes/quantidade, e não só o primeiro.
+    """
+    lista = clientes_em_confeccao_no_dia(df_enc, data_alvo, excluir_id)
+    return lista[0] if lista else None
 
 
 def dias_confeccao_ocupados(df_enc: pd.DataFrame, excluir_id: Optional[str] = None) -> set:
     """
     Conjunto de todas as datas (date) já comprometidas com Data da
-    Confecção. Registros de Conserto não entram neste conjunto.
+    Confecção. Registros de Conserto não entram neste conjunto. Útil para
+    a tela destacar visualmente no calendário os dias já usados — não
+    significa mais que esses dias estão bloqueados, já que agora é
+    possível confirmar mais uma encomenda no mesmo dia.
     """
     df = _sem_consertos(_pedidos_ativos(df_enc, excluir_id))
     if df.empty or "data_confeccao" not in df.columns:
@@ -147,17 +190,25 @@ def dias_confeccao_ocupados(df_enc: pd.DataFrame, excluir_id: Optional[str] = No
     return datas
 
 
-def validar_data_confeccao(df_enc: pd.DataFrame, data_alvo: date, excluir_id: Optional[str] = None):
+def validar_data_confeccao(
+    df_enc: pd.DataFrame,
+    data_alvo: date,
+    excluir_id: Optional[str] = None,
+    confirmar_duplicidade: bool = False,
+):
     """
     Valida se `data_alvo` pode ser usada como Data da Confecção.
-    Retorna (True, "") se OK, ou (False, "motivo") se bloqueado.
 
-    Regras:
-      - Nunca dois clientes com confecção no mesmo dia.
-      - Não pode ser um dia com MAIS de `LIMITE_PROVAS_PARA_CONFECCAO`
-        provas marcadas (padrão: mais de 3). Um dia com exatamente 3
-        provas (ou menos) continua liberado para confecção — o limite só
-        entra em ação a partir da 4ª prova no mesmo dia.
+    Retorna uma tupla (status, mensagem):
+      - status == "ok"        → segue sem nenhuma pergunta, dia liberado.
+      - status == "confirmar" → o dia já tem N encomenda(s) de confecção
+        marcada(s). A tela deve mostrar `mensagem` (que já traz a
+        quantidade) e perguntar sim/não ao usuário. Se ele responder
+        "sim", chame esta função de novo com `confirmar_duplicidade=True`
+        para pular esta checagem e liberar o dia.
+      - status == "bloqueado" → bloqueio definitivo (mais de
+        `LIMITE_PROVAS_PARA_CONFECCAO` provas no dia). Não existe opção de
+        confirmar; é preciso escolher outra data.
 
     Esta validação NUNCA é chamada para Consertos (eles são criados
     direto por `mod_prospect.py`, sem passar por aqui) — mas mesmo que
@@ -165,24 +216,31 @@ def validar_data_confeccao(df_enc: pd.DataFrame, data_alvo: date, excluir_id: Op
     prova (ver `_sem_consertos`).
     """
     if data_alvo is None:
-        return True, ""
+        return "ok", ""
 
-    cliente_ocupando = confeccao_ocupada_em(df_enc, data_alvo, excluir_id)
-    if cliente_ocupando:
-        return False, (
-            f"❌ O dia {data_alvo.strftime('%d/%m/%Y')} já está reservado para a confecção "
-            f"de **{cliente_ocupando}**. Escolha outra data — nunca pode haver dois clientes "
-            f"em confecção no mesmo dia."
-        )
-
+    # Regra 2 — limite de provas: continua sendo bloqueio definitivo,
+    # sem opção de confirmação, e é checada mesmo se o usuário já
+    # confirmou a duplicidade de encomendas.
     qtd_provas = contar_provas_no_dia(df_enc, data_alvo, excluir_id)
     if qtd_provas > LIMITE_PROVAS_PARA_CONFECCAO:
-        return False, (
+        return "bloqueado", (
             f"❌ O dia {data_alvo.strftime('%d/%m/%Y')} já tem {qtd_provas} provas marcadas "
             f"(mais de {LIMITE_PROVAS_PARA_CONFECCAO}) e por isso não pode receber confecção. "
             f"Escolha outro dia para a Confecção."
         )
-    return True, ""
+
+    # Regra 1 — duas (ou mais) encomendas no mesmo dia: agora é só uma
+    # confirmação sim/não, não bloqueio nem senha.
+    if not confirmar_duplicidade:
+        qtd_confeccoes = contar_confeccoes_no_dia(df_enc, data_alvo, excluir_id)
+        if qtd_confeccoes > 0:
+            plural = "encomenda" if qtd_confeccoes == 1 else "encomendas"
+            return "confirmar", (
+                f"⚠️ O dia {data_alvo.strftime('%d/%m/%Y')} já tem {qtd_confeccoes} {plural} "
+                f"marcada(s) para confecção. Deseja marcar mais uma encomenda para esse mesmo dia?"
+            )
+
+    return "ok", ""
 
 
 # ──────────────────────────────────────────────────────────────────────────────
