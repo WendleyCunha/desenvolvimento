@@ -340,15 +340,24 @@ def _render_confirmacao_duplicidade_confeccao(escopo_key: str):
     if not pend:
         return None
 
-    if pend["status"] == "bloqueado":
-        st.error(pend["msg"])
+    # [Correção] `pend.get(...)` em vez de `pend[...]`: se sobrar em
+    # session_state uma pendência gravada por uma versão ANTERIOR deste
+    # arquivo (antes de existir a chave "status"), o acesso direto por
+    # chave ("pend['status']") lançava KeyError e derrubava a tela. Com
+    # `.get`, uma pendência nesse formato antigo/desconhecido simplesmente
+    # cai no ramo de confirmação (comportamento seguro) em vez de quebrar.
+    status_pend = pend.get("status", "confirmar")
+    msg_pend = pend.get("msg", "")
+
+    if status_pend == "bloqueado":
+        st.error(msg_pend)
         if st.button("Ok, vou escolher outra data", key=f"btn_ciente_{pend_key}", use_container_width=True):
             st.session_state.pop(pend_key, None)
             st.rerun()
         return None
 
-    # status == "confirmar"
-    st.warning(pend["msg"])
+    # status_pend == "confirmar"
+    st.warning(msg_pend)
     col_c1, col_c2 = st.columns(2)
     confirmou = col_c1.button("✅ Sim, marcar mesmo assim", key=f"btn_sim_{pend_key}", use_container_width=True)
     cancelou  = col_c2.button("❌ Não, escolher outra data", key=f"btn_nao_{pend_key}", use_container_width=True)
