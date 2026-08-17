@@ -6,8 +6,8 @@ principal. Reúne TUDO que gira em torno do ciclo de vida de um pedido:
 
   • Geração de PDF de contrato (`gerar_pdf_contrato` + helpers de cor)
   • Mini-calendário de ocupação da Data da Confecção
-  • Senha ADM para conflito de Data da Confecção (`_checar_confeccao_com_senha`
-    / `_render_confirmacao_senha_confeccao`)
+  • Confirmação sim/não para duplicidade de Data da Confecção
+    (`_checar_confeccao_confirmavel` / `_render_confirmacao_duplicidade_confeccao`)
   • Criação de encomenda — popup (`dialog_nova_encomenda`) e formulário fixo
     (`secao_nova_encomenda_inline`)
   • Sincronização de lembretes/cronograma com as datas do pedido
@@ -44,7 +44,7 @@ sem depender de variáveis globais do main.py:
         seleção de cliente por nome em vez de rowid) — nada mudou neste
         arquivo.
 
-[v19 — NOVO] CADASTRO RÁPIDO DE CLIENTE DENTRO DO PEDIDO: o expander
+[v19] CADASTRO RÁPIDO DE CLIENTE DENTRO DO PEDIDO: o expander
         "📏 Ver / Editar Medidas desta Cliente" (dentro de `_conteudo_pedido`)
         só mostrava "Cliente não encontrada no cadastro (pode ter sido
         removida)" quando o nome da cliente do pedido não batia com nenhum
@@ -54,6 +54,24 @@ sem depender de variáveis globais do main.py:
         pedido, telefone opcional) e, assim que cadastrada, o formulário de
         medidas aparece normalmente — com histórico de medições vinculado a
         essa cliente dali em diante, exatamente como qualquer outra.
+
+[v20 — NOVO] FIM DA SENHA ADM PARA DUPLICIDADE DE CONFECÇÃO: antes, marcar
+        uma segunda encomenda no mesmo dia de confecção exigia digitar a
+        senha `SENHA_DELETE`. Isso foi removido (acompanhando a mudança em
+        `modulos/regras_agenda.py`, onde `validar_data_confeccao` agora
+        devolve um status em texto: "ok" / "confirmar" / "bloqueado", em
+        vez de True/False). No lugar da senha, o sistema simplesmente
+        avisa quantas encomendas já existem naquele dia e pergunta sim/não
+        se o usuário quer marcar mais uma. `_checar_confeccao_com_senha`
+        virou `_checar_confeccao_confirmavel`, e
+        `_render_confirmacao_senha_confeccao` virou
+        `_render_confirmacao_duplicidade_confeccao` (sem campo de senha).
+        `SENHA_DELETE` continua existindo neste arquivo — ela ainda é usada
+        em Configurações → Exclusão Permanente, só não é mais usada aqui
+        para a Data da Confecção. O limite de provas (regra 2 de
+        `regras_agenda.py`) continua sendo um bloqueio definitivo, sem
+        opção de confirmar — só a duplicidade de encomendas no mesmo dia
+        (regra 1) virou pergunta sim/não.
 
 ⚠️ ATENÇÃO — ponto que precisa de um ajuste manual em `main.py` (fora deste
    módulo, não alterado aqui a pedido): o botão "✅ Feito" em
@@ -143,6 +161,10 @@ DIC_MEDIDAS = {
     "Colarinho":   "colarinho",
 }
 
+# [v20] Não é mais usada para o conflito de Data da Confecção (ver
+# `_checar_confeccao_confirmavel` / `_render_confirmacao_duplicidade_confeccao`
+# abaixo). Mantida aqui como fonte única porque `main.py` ainda a importa
+# para a tela de Configurações → Exclusão Permanente.
 SENHA_DELETE = "Qmerd@10"
 
 LOGO_PATH = "lila.png"
@@ -189,9 +211,11 @@ def _fmt_medida_para_texto(raw) -> str:
 def _render_ocupacao_confeccao(df_enc: pd.DataFrame, ano: int, mes: int, excluir_id: str | None = None):
     """
     Mostra um mini-calendário do mês/ano informados, com legenda visual:
-      🔴 dia já reservado para confecção de outro cliente (bloqueado)
+      🔴 dia já usado por confecção de outro cliente (agora é só um aviso —
+         ainda é possível confirmar mais uma encomenda nesse dia)
       🟡 dia com mais de LIMITE_PROVAS_PARA_CONFECCAO provas marcadas
-         (bloqueado para confecção, mas SEM limite de provas em si)
+         (esse sim continua bloqueado para confecção, sem opção de
+         confirmar — SEM limite de provas em si)
     Puramente informativo: a validação de verdade acontece ao salvar,
     usando as mesmas funções de `modulos/regras_agenda.py`.
     """
@@ -200,7 +224,7 @@ def _render_ocupacao_confeccao(df_enc: pd.DataFrame, ano: int, mes: int, excluir
 
     st.caption(
         f"📌 Ocupação de **{MESES_PT[mes-1]}/{ano}** para a Data da Confecção — "
-        f"🔴 já reservado por outro cliente &nbsp;·&nbsp; "
+        f"🔴 já tem encomenda nesse dia (dá pra confirmar mais uma) &nbsp;·&nbsp; "
         f"🟡 mais de {LIMITE_PROVAS_PARA_CONFECCAO} provas nesse dia (bloqueado p/ confecção)"
     )
     cols_h = st.columns(7)
@@ -265,64 +289,78 @@ def _render_ocupacao_confeccao_navegavel(
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SENHA ADM PARA CONFLITO DE DATA DA CONFECÇÃO  [v14]
+# CONFIRMAÇÃO SIM/NÃO PARA DUPLICIDADE DE DATA DA CONFECÇÃO  [v20]
 # ══════════════════════════════════════════════════════════════════════════════
-def _checar_confeccao_com_senha(df_check: pd.DataFrame, data_confeccao: date, escopo_key: str,
-                                 excluir_id: str | None = None, dados_para_salvar: dict | None = None) -> bool:
+def _checar_confeccao_confirmavel(df_check: pd.DataFrame, data_confeccao: date, escopo_key: str,
+                                   excluir_id: str | None = None, dados_para_salvar: dict | None = None) -> bool:
     """
-    Verifica a exclusividade da Data da Confecção. Sem conflito: retorna
-    True imediatamente (fluxo normal, o chamador salva com os valores atuais
-    dos widgets). Com conflito: grava o aviso + uma FOTO de `dados_para_salvar`
-    em session_state e força um st.rerun().
+    Verifica a Data da Confecção usando `validar_data_confeccao` (regras
+    puras em `regras_agenda.py`, que agora devolvem um status em texto):
+
+      - status "ok": retorna True imediatamente — o chamador salva com os
+        valores atuais dos widgets, sem nenhuma pergunta.
+      - status "confirmar": o dia já tem uma ou mais encomendas de
+        confecção marcadas. Grava o aviso + uma FOTO de `dados_para_salvar`
+        em session_state e força um st.rerun(), para
+        `_render_confirmacao_duplicidade_confeccao` perguntar sim/não.
+      - status "bloqueado": limite de provas excedido — bloqueio
+        definitivo, sem opção de confirmar. Mesmo assim grava o aviso e
+        força o rerun, para a mensagem de erro aparecer.
     """
-    ok_conf, msg_conf = validar_data_confeccao(df_check, data_confeccao, excluir_id=excluir_id)
+    status, msg = validar_data_confeccao(df_check, data_confeccao, excluir_id=excluir_id)
     pend_key = f"pend_conf_{escopo_key}"
 
-    if ok_conf:
+    if status == "ok":
         st.session_state.pop(pend_key, None)
         return True
 
-    st.session_state[pend_key] = {"msg": msg_conf, "dados": dados_para_salvar}
+    st.session_state[pend_key] = {"status": status, "msg": msg, "dados": dados_para_salvar}
     st.rerun()
 
 
-def _render_confirmacao_senha_confeccao(escopo_key: str):
+def _render_confirmacao_duplicidade_confeccao(escopo_key: str):
     """
-    Se houver um conflito de Data da Confecção pendente para `escopo_key`,
-    mostra o aviso de bloqueio + campo de senha ADM + botões de
-    confirmar/cancelar. Retorna a FOTO de `dados_para_salvar` (gravada por
-    `_checar_confeccao_com_senha`) SOMENTE no clique em que a senha correta
-    é confirmada.
+    Se houver uma pendência de Data da Confecção para `escopo_key`, mostra
+    o aviso correspondente:
+
+      - status "bloqueado" (limite de provas): st.error, sem opção de
+        seguir — só um botão para o usuário confirmar que está ciente e
+        voltar a escolher outra data. Sempre retorna None.
+      - status "confirmar" (duplicidade de encomenda no dia): st.warning
+        com a quantidade de encomendas já marcadas + botões
+        "✅ Sim, marcar mesmo assim" / "❌ Não, escolher outra data".
+        Retorna a FOTO de `dados_para_salvar` (gravada por
+        `_checar_confeccao_confirmavel`) SOMENTE no clique em "Sim".
+
+    Se não houver nenhuma pendência para este escopo, retorna None sem
+    mostrar nada.
     """
     pend_key = f"pend_conf_{escopo_key}"
     pend = st.session_state.get(pend_key)
     if not pend:
         return None
 
-    st.error(pend["msg"])
-    st.warning(
-        "🔑 Duas Confecções no mesmo dia não são permitidas sem autorização. "
-        "Informe a senha de administrador para salvar mesmo assim."
-    )
-    senha_digitada = st.text_input(
-        "Senha ADM", type="password", key=f"senha_{pend_key}",
-        placeholder="Digite a senha para liberar",
-    )
+    if pend["status"] == "bloqueado":
+        st.error(pend["msg"])
+        if st.button("Ok, vou escolher outra data", key=f"btn_ciente_{pend_key}", use_container_width=True):
+            st.session_state.pop(pend_key, None)
+            st.rerun()
+        return None
+
+    # status == "confirmar"
+    st.warning(pend["msg"])
     col_c1, col_c2 = st.columns(2)
-    confirmou = col_c1.button("✅ Confirmar com senha", key=f"btn_ok_{pend_key}", use_container_width=True)
-    cancelou  = col_c2.button("❌ Cancelar", key=f"btn_no_{pend_key}", use_container_width=True)
+    confirmou = col_c1.button("✅ Sim, marcar mesmo assim", key=f"btn_sim_{pend_key}", use_container_width=True)
+    cancelou  = col_c2.button("❌ Não, escolher outra data", key=f"btn_nao_{pend_key}", use_container_width=True)
 
     if cancelou:
         st.session_state.pop(pend_key, None)
         st.rerun()
 
     if confirmou:
-        if senha_digitada == SENHA_DELETE:
-            dados = pend.get("dados")
-            st.session_state.pop(pend_key, None)
-            return dados if dados is not None else {}
-        else:
-            st.error("❌ Senha incorreta. Não é possível salvar com dois clientes na mesma Data da Confecção.")
+        dados = pend.get("dados")
+        st.session_state.pop(pend_key, None)
+        return dados if dados is not None else {}
     return None
 
 
@@ -720,9 +758,10 @@ def dialog_nova_encomenda(data_pre: date | None = None, nome_fixo: str | None = 
         """Grava a encomenda + tarefas + PDF e mostra o resultado. `dados_form`
         é uma FOTO dos campos preenchidos, tirada no clique em "Criar
         Encomenda" — usada tanto no fluxo normal quanto após confirmar a
-        senha ADM, para garantir que o que é salvo é exatamente o que o
-        usuário preencheu naquele clique. Se vier de um Prospect
-        (`prospect_id`), o prospect é excluído da lista ao final."""
+        duplicidade de dia (botão "Sim"), para garantir que o que é salvo
+        é exatamente o que o usuário preencheu naquele clique. Se vier de
+        um Prospect (`prospect_id`), o prospect é excluído da lista ao
+        final."""
         if dados_form is None:
             dados_form = dict(
                 nome_final=(cli_sel_dlg.strip() if isinstance(cli_sel_dlg, str) else cli_sel_dlg),
@@ -848,21 +887,22 @@ def dialog_nova_encomenda(data_pre: date | None = None, nome_fixo: str | None = 
             d_entrega_dlg=d_entrega_dlg, cpf_dlg=cpf_dlg, rg_dlg=rg_dlg, obs_dlg=obs_dlg,
         )
 
-        # ── Validação de agenda (exclusividade da Data da Confecção) ──
-        # Sem conflito: cria direto. Com conflito: pede senha ADM (o helper
-        # já cuida de gravar o estado e forçar o rerun necessário).
+        # ── Validação de agenda (duplicidade da Data da Confecção) ──
+        # Sem conflito: cria direto. Com duplicidade: pergunta sim/não (o
+        # helper já cuida de gravar o estado e forçar o rerun necessário).
         df_check_dlg = encomendas_listar(cancelado=False)
-        if _checar_confeccao_com_senha(
+        if _checar_confeccao_confirmavel(
             df_check_dlg, d_confeccao_dlg, escopo_key="dlg_nova",
             dados_para_salvar=dados_atuais_dlg,
         ):
             _criar_encomenda_dlg(dados_atuais_dlg)
         return
 
-    # ── Se há um conflito pendente desta tela, mostra o campo de senha ADM.
-    #    Só cria de fato (usando a foto tirada no clique original) quando a
-    #    senha correta é confirmada. ──────────────
-    dados_pend_dlg = _render_confirmacao_senha_confeccao("dlg_nova")
+    # ── Se há uma pendência de Data da Confecção nesta tela, mostra o
+    #    aviso (e, se for caso de duplicidade, os botões sim/não). Só cria
+    #    de fato (usando a foto tirada no clique original) quando o
+    #    usuário confirma com "Sim". ──────────────
+    dados_pend_dlg = _render_confirmacao_duplicidade_confeccao("dlg_nova")
     if dados_pend_dlg is not None:
         _criar_encomenda_dlg(dados_pend_dlg)
         return
@@ -978,9 +1018,10 @@ def secao_nova_encomenda_inline():
     def _criar_encomenda_ne(dados_form: dict | None = None):
         """Grava a encomenda + tarefas + PDF e reinicia a tela mostrando o
         resultado. `dados_form` é uma FOTO dos campos, tirada no clique em
-        "Criar Encomenda" — usada tanto no fluxo normal quanto após a senha
-        ADM, para garantir que o que é salvo é exatamente o que o usuário
-        preencheu naquele clique."""
+        "Criar Encomenda" — usada tanto no fluxo normal quanto após
+        confirmar a duplicidade de dia (botão "Sim"), para garantir que o
+        que é salvo é exatamente o que o usuário preencheu naquele
+        clique."""
         if dados_form is None:
             dados_form = dict(
                 nome_final=(cli_sel_dlg.strip() if isinstance(cli_sel_dlg, str) else cli_sel_dlg),
@@ -1086,16 +1127,16 @@ def secao_nova_encomenda_inline():
             d_entrega_dlg=d_entrega_dlg, cpf_dlg=cpf_dlg, rg_dlg=rg_dlg, obs_dlg=obs_dlg,
         )
 
-        # ── Validação de agenda (exclusividade da Data da Confecção) ──
+        # ── Validação de agenda (duplicidade da Data da Confecção) ──
         df_check_ne = encomendas_listar(cancelado=False)
-        if _checar_confeccao_com_senha(
+        if _checar_confeccao_confirmavel(
             df_check_ne, d_confeccao_dlg, escopo_key="ne_nova",
             dados_para_salvar=dados_atuais_ne,
         ):
             _criar_encomenda_ne(dados_atuais_ne)
         return
 
-    dados_pend_ne = _render_confirmacao_senha_confeccao("ne_nova")
+    dados_pend_ne = _render_confirmacao_duplicidade_confeccao("ne_nova")
     if dados_pend_ne is not None:
         _criar_encomenda_ne(dados_pend_ne)
 
@@ -1406,17 +1447,18 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
             clicou_cancelar_pedido = col_b3.form_submit_button("❌ Cancelar Pedido", use_container_width=True)
 
     # ── Ações do formulário — processadas FORA do st.form. Isso é necessário
-    #    para o fluxo de senha ADM em caso de conflito de Data da Confecção:
-    #    os botões de confirmar/cancelar senha não podem viver dentro de um
-    #    st.form (só o botão de submit de um form dispara o processamento). ──
+    #    para o fluxo de confirmação sim/não em caso de duplicidade de Data
+    #    da Confecção: os botões de confirmar/cancelar não podem viver
+    #    dentro de um st.form (só o botão de submit de um form dispara o
+    #    processamento). ──
     def _executar_salvamento_pedido(dados_form: dict | None = None):
         """
         `dados_form` é uma FOTO dos valores do formulário (ver abaixo). Se
         vier None, usa os valores ATUAIS dos widgets (fluxo normal, sem
-        conflito de agenda). Se vier preenchido, usa exatamente esses
-        valores — é o caso do fluxo de senha ADM, onde os widgets podem já
-        não refletir mais o que o usuário preencheu no momento do clique
-        original em "Salvar".
+        duplicidade de agenda). Se vier preenchido, usa exatamente esses
+        valores — é o caso do fluxo de confirmação sim/não, onde os
+        widgets podem já não refletir mais o que o usuário preencheu no
+        momento do clique original em "Salvar".
         """
         if dados_form is None:
             dados_form = dict(
@@ -1484,7 +1526,8 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
             st.error("Informe o nome da cliente.")
         else:
             # ── Foto dos dados exatamente como estão neste clique — é o que
-            #    será salvo, seja agora (sem conflito) ou depois (com senha). ──
+            #    será salvo, seja agora (sem conflito) ou depois de
+            #    confirmar a duplicidade com "Sim". ──
             dados_atuais = dict(
                 ed_cliente=ed_cliente, ed_peca=ed_peca, ed_desc=ed_desc,
                 ed_fpag=ed_fpag, ed_obs=ed_obs,
@@ -1492,18 +1535,19 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
                 ed_pro=ed_pro, ed_tem_prova2=ed_tem_prova2, ed_pro2=ed_pro2,
                 ed_ent=ed_ent,
             )
-            # ── Validação de agenda (exclusividade da Data da Confecção) ──
+            # ── Validação de agenda (duplicidade da Data da Confecção) ──
             df_check_save = encomendas_listar(cancelado=False)
-            if _checar_confeccao_com_senha(
+            if _checar_confeccao_confirmavel(
                 df_check_save, ed_conf, escopo_key=f"pedido_{enc['rowid']}",
                 excluir_id=str(enc["rowid"]), dados_para_salvar=dados_atuais,
             ):
                 _executar_salvamento_pedido(dados_atuais)
 
-    # ── Se há um conflito pendente para este pedido, mostra o campo de
-    #    senha ADM. Só salva de fato (usando a foto tirada acima) quando a
-    #    senha correta é confirmada. ──
-    dados_pendentes_pedido = _render_confirmacao_senha_confeccao(f"pedido_{enc['rowid']}")
+    # ── Se há uma pendência de Data da Confecção para este pedido, mostra
+    #    o aviso (e, se for duplicidade, os botões sim/não). Só salva de
+    #    fato (usando a foto tirada acima) quando o usuário confirma com
+    #    "Sim". ──
+    dados_pendentes_pedido = _render_confirmacao_duplicidade_confeccao(f"pedido_{enc['rowid']}")
     if dados_pendentes_pedido is not None:
         _executar_salvamento_pedido(dados_pendentes_pedido)
 
@@ -1616,15 +1660,15 @@ def _dialog_editar_data_tarefa(row):
 
     col_ok, col_cancel = st.columns(2)
     if col_ok.button("💾 Salvar", use_container_width=True, type="primary", key=f"salvar_data_{row['rowid']}"):
-        # Se a tarefa for de Confecção, aplica a regra de exclusividade do dia
-        # (com senha ADM em caso de conflito). Provas não têm limite, então
-        # não há validação para elas aqui.
+        # Se a tarefa for de Confecção, aplica a regra de duplicidade do
+        # dia (pergunta sim/não em caso de conflito). Provas não têm
+        # limite, então não há validação para elas aqui.
         tarefa_txt_check = str(row["tarefa"])
         enc_id_check = row.get("encomenda_id")
 
         if tarefa_txt_check.startswith("🪡 Confecção:"):
             df_check_tarefa = encomendas_listar(cancelado=False)
-            if _checar_confeccao_com_senha(
+            if _checar_confeccao_confirmavel(
                 df_check_tarefa, nova_data,
                 escopo_key=f"tarefa_{row['rowid']}",
                 excluir_id=str(enc_id_check) if enc_id_check else None,
@@ -1634,10 +1678,11 @@ def _dialog_editar_data_tarefa(row):
         else:
             _salvar_data_tarefa(nova_data)
 
-    # ── Se há um conflito pendente desta tarefa, mostra o campo de senha
-    #    ADM. Só salva de fato (usando a data tirada em foto) quando a
-    #    senha correta é confirmada. ────────────────────────────────────
-    dados_pend_tarefa = _render_confirmacao_senha_confeccao(f"tarefa_{row['rowid']}")
+    # ── Se há uma pendência de Data da Confecção para esta tarefa, mostra
+    #    o aviso (e, se for duplicidade, os botões sim/não). Só salva de
+    #    fato (usando a data tirada em foto) quando o usuário confirma com
+    #    "Sim". ────────────────────────────────────
+    dados_pend_tarefa = _render_confirmacao_duplicidade_confeccao(f"tarefa_{row['rowid']}")
     if dados_pend_tarefa is not None:
         _salvar_data_tarefa(dados_pend_tarefa.get("data", nova_data))
 
