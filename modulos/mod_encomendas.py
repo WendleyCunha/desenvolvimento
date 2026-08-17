@@ -871,7 +871,11 @@ def dialog_nova_encomenda(data_pre: date | None = None, nome_fixo: str | None = 
             st.info("💡 Preencha CPF e RG para gerar o contrato automaticamente.")
         if st.button("✅ Fechar", use_container_width=True, type="primary", key="dlg_btn_fechar_imediato"):
             del st.session_state["_dlg_enc_resultado"]
-            st.rerun()
+            # [Correção] scope="app": a encomenda já foi criada acima —
+            # precisa de um rerun da página inteira para "Entregas
+            # Urgentes"/"Tarefas para Hoje" (fora deste popup) enxergarem
+            # a novidade, e não só o fragment onde o popup foi aberto.
+            st.rerun(scope="app")
 
     st.markdown("")
     col_ok, col_cancel = st.columns(2)
@@ -1113,7 +1117,10 @@ def secao_nova_encomenda_inline():
         st.session_state["_ne_resultado"] = {
             "cliente": nome_final, "peca": f_peca.strip(), "pdf_bytes": pdf_bytes_dlg,
         }
-        st.rerun()
+        # [Correção] scope="app": garante que "Entregas Urgentes"/"Tarefas
+        # para Hoje" (se estiverem em outro fragment do main.py) já vejam
+        # a encomenda recém-criada, e não só a tela de Nova Encomenda.
+        st.rerun(scope="app")
 
     st.markdown("")
     if st.button("✅ Criar Encomenda", use_container_width=True, type="primary", key="ne_btn_ok"):
@@ -1528,7 +1535,13 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
             )
         else:
             st.success("✅ Pedido e lembretes atualizados!")
-        st.rerun()
+        # [Correção] scope="app": este popup normalmente é aberto de dentro
+        # de um fragment (Agenda/Tarefas para Hoje). Um st.rerun() sem
+        # escopo só atualiza aquele fragment — "Entregas Urgentes", que
+        # vive em outro trecho do main.py, continuava com a data antiga
+        # até a próxima interação por lá. scope="app" força a página
+        # inteira a reprocessar com o dado já salvo.
+        st.rerun(scope="app")
 
     if clicou_salvar:
         if not ed_cliente.strip():
@@ -1562,10 +1575,10 @@ def _conteudo_pedido(enc: dict, cancelado: bool):
 
     if clicou_concluir:
         encomendas_atualizar(str(enc["rowid"]), {"etapa": 4})
-        st.rerun()
+        st.rerun(scope="app")
     if clicou_cancelar_pedido:
         encomendas_cancelar(str(enc["rowid"]))
-        st.rerun()
+        st.rerun(scope="app")
 
 
 def _abrir_popup_pedido(enc: dict, cancelado: bool):
@@ -1650,11 +1663,31 @@ def _dialog_editar_data_tarefa(row):
         format="DD/MM/YYYY",
     )
 
-    def _salvar_data_tarefa(data_para_salvar: date | None = None):
+    # [v21 — NOVO] Flag "já foi feito": às vezes o ajuste de data acontece
+    # justamente porque a etapa já foi realizada na prática (ex.: as
+    # medidas já foram tiradas na prova, ou a confecção já começou) — só
+    # não tinha sido registrada a tempo. Marcando esta caixa, a tarefa é
+    # salva com `concluida=1` no cronograma, e some sozinha de "Tarefas
+    # para Hoje" / "Entregas Urgentes" (que só listam tarefas com
+    # `concluida=False`, ver `cronograma_listar`/`cronograma_com_cliente`
+    # em database.py) — sem precisar de nenhum lembrete futuro para ela.
+    concluida_atual = bool(int(row.get("concluida", 0) or 0))
+    marcar_concluida = st.checkbox(
+        "✅ Já foi feito (some da lista de lembretes/tarefas)",
+        value=concluida_atual,
+        key=f"concluida_tarefa_{row['rowid']}",
+    )
+
+    def _salvar_data_tarefa(data_para_salvar: date | None = None, concluida_flag: bool | None = None):
         if data_para_salvar is None:
             data_para_salvar = nova_data
+        if concluida_flag is None:
+            concluida_flag = marcar_concluida
 
-        cronograma_atualizar(str(row["rowid"]), {"data": data_para_salvar.isoformat()})
+        cronograma_atualizar(str(row["rowid"]), {
+            "data": data_para_salvar.isoformat(),
+            "concluida": 1 if concluida_flag else 0,
+        })
 
         enc_id_check = row.get("encomenda_id")
         tarefa_txt_check = str(row["tarefa"])
@@ -1664,8 +1697,14 @@ def _dialog_editar_data_tarefa(row):
                     encomendas_atualizar(str(enc_id_check), {campo_data: data_para_salvar.isoformat()})
                     break
 
-        st.success("✅ Data atualizada!")
-        st.rerun()
+        st.success("✅ Data atualizada!" if not concluida_flag else "✅ Data atualizada e etapa marcada como já feita!")
+        # [Correção] `scope="app"` força um rerun da PÁGINA INTEIRA, não só
+        # do fragment onde este popup foi aberto. Sem isso, "Tarefas para
+        # Hoje" (o fragment de onde este popup normalmente é chamado)
+        # atualizava, mas "Entregas Urgentes" — que vive em outro trecho/
+        # fragment do main.py — continuava com o dado antigo até a próxima
+        # interação naquela seção específica.
+        st.rerun(scope="app")
 
     col_ok, col_cancel = st.columns(2)
     if col_ok.button("💾 Salvar", use_container_width=True, type="primary", key=f"salvar_data_{row['rowid']}"):
@@ -1681,19 +1720,22 @@ def _dialog_editar_data_tarefa(row):
                 df_check_tarefa, nova_data,
                 escopo_key=f"tarefa_{row['rowid']}",
                 excluir_id=str(enc_id_check) if enc_id_check else None,
-                dados_para_salvar={"data": nova_data},
+                dados_para_salvar={"data": nova_data, "concluida": marcar_concluida},
             ):
-                _salvar_data_tarefa(nova_data)
+                _salvar_data_tarefa(nova_data, marcar_concluida)
         else:
-            _salvar_data_tarefa(nova_data)
+            _salvar_data_tarefa(nova_data, marcar_concluida)
 
     # ── Se há uma pendência de Data da Confecção para esta tarefa, mostra
     #    o aviso (e, se for duplicidade, os botões sim/não). Só salva de
-    #    fato (usando a data tirada em foto) quando o usuário confirma com
-    #    "Sim". ────────────────────────────────────
+    #    fato (usando a data e a flag tiradas em foto) quando o usuário
+    #    confirma com "Sim". ────────────────────────────────────
     dados_pend_tarefa = _render_confirmacao_duplicidade_confeccao(f"tarefa_{row['rowid']}")
     if dados_pend_tarefa is not None:
-        _salvar_data_tarefa(dados_pend_tarefa.get("data", nova_data))
+        _salvar_data_tarefa(
+            dados_pend_tarefa.get("data", nova_data),
+            dados_pend_tarefa.get("concluida", marcar_concluida),
+        )
 
     if col_cancel.button("❌ Cancelar", use_container_width=True, key=f"cancelar_data_{row['rowid']}"):
         st.rerun()
@@ -1748,7 +1790,7 @@ def _card_pedido(enc: dict, idx: int):
         ):
             encomendas_atualizar(str(enc["rowid"]), {"etapa": 4})
             st.success(f"✅ Pedido de {enc['cliente']} marcado como Concluído!")
-            st.rerun()
+            st.rerun(scope="app")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
