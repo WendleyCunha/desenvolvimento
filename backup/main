@@ -67,7 +67,7 @@ Histórico de versões (changelog):
 
   [v13] MEDIDAS ENXUTO / GERENCIAR PEDIDOS — ajustes de UX e filtros padrão.
 
-  [v14] SENHA ADM PARA CONFLITO DE CONFECÇÃO.
+  [v14] SENHA ADM PARA CONFLITO DE CONFECÇÃO (removida no v20 — ver abaixo).
 
   [v15] MODULARIZAÇÃO — BLOCO ENCOMENDAS extraído para
         `modulos/mod_encomendas.py`.
@@ -143,6 +143,24 @@ Histórico de versões (changelog):
         reaberta ou se a página for atualizada manualmente (F5) — é uma
         limitação inerente de qualquer proteção baseada em sessão do
         navegador (sem cookie/login de verdade), não um defeito.
+
+  [v20 — NOVO] FIM DA SENHA ADM PARA DUPLICIDADE DE CONFECÇÃO (ver changelog
+        completo em `modulos/mod_encomendas.py` e `modulos/regras_agenda.py`):
+        marcar uma segunda encomenda no mesmo dia de confecção não pede mais
+        a senha `SENHA_DELETE` — o sistema avisa quantas encomendas já
+        existem naquele dia e pergunta sim/não se o usuário quer confirmar
+        mesmo assim. `SENHA_DELETE` continua existindo e sendo usada
+        normalmente nas Exclusões Permanentes desta tela (Configurações),
+        só não é mais usada para a Data da Confecção. O texto informativo
+        da caixa "📏 Regras Fixas da Agenda" (`renderizar_configuracoes`)
+        foi atualizado para não mencionar mais senha nesse contexto.
+        Também foi adicionado, no popup de editar a data de uma tarefa
+        (`_dialog_editar_data_tarefa`, em mod_encomendas.py), um checkbox
+        "✅ Já foi feito" — vale para qualquer tipo de tarefa (Tecido,
+        Confecção, Prova, 2ª Prova, Entrega): marca a tarefa como concluída
+        no cronograma, e ela some sozinha de "Tarefas para Hoje", do
+        Calendário e da Agenda de Trabalho Pendente, sem precisar de mais
+        nenhum lembrete futuro para aquela etapa específica.
 """
 
 import streamlit as st
@@ -1315,18 +1333,34 @@ def renderizar_configuracoes():
 
     st.markdown("---")
     st.markdown("#### 📏 Regras Fixas da Agenda")
+    # [v20 — CORRIGIDO] Este texto ainda descrevia o fluxo ANTIGO de senha
+    # de administrador para liberar duas encomendas na mesma Data da
+    # Confecção. Isso não existe mais: o sistema agora avisa quantas
+    # encomendas já existem naquele dia e pergunta sim/não se o usuário
+    # quer confirmar mesmo assim — sem senha nenhuma. A senha
+    # (SENHA_DELETE) continua existindo só para as Exclusões Permanentes
+    # logo abaixo nesta mesma tela.
     st.info(
         f"**Provas não têm limite** — você pode marcar quantas quiser no mesmo dia. "
         f"Mas um dia com **mais de {LIMITE_PROVAS_PARA_CONFECCAO} provas** fica "
-        f"bloqueado para receber **Data da Confecção**. A regra de **nunca dois "
-        f"clientes com Confecção no mesmo dia** também é fixa, mas pode ser liberada "
-        f"pontualmente com a senha de administrador (a mesma usada em Exclusão "
-        f"Permanente) — sem a senha correta, o sistema não deixa salvar."
+        f"bloqueado para receber **Data da Confecção** — esse bloqueio é definitivo, "
+        f"sem opção de confirmar (escolha outro dia)."
+    )
+    st.info(
+        "🔁 **Duas encomendas na mesma Data da Confecção não são mais bloqueadas.** "
+        "O sistema avisa quantas encomendas já existem naquele dia e pergunta "
+        "**sim/não** se você quer confirmar mesmo assim — sem precisar de senha."
     )
     st.info(
         "🔒 **A etapa 'Concluído' só pode ser definida por um humano** — clicando em "
         "\"✅ Marcar Concluído\" dentro do próprio pedido. Marcar tarefas do dia como "
         "\"Feito\" na Agenda avança a régua no máximo até a etapa Entrega."
+    )
+    st.info(
+        "✅ **Marcar uma tarefa como 'já foi feito'** (botão 📅 Data, em qualquer "
+        "tarefa — Tecido, Confecção, Prova, 2ª Prova ou Entrega) faz o lembrete "
+        "sumir sozinho de Tarefas para Hoje, do Calendário e da Agenda de Trabalho, "
+        "sem precisar aparecer de novo."
     )
 
     st.markdown("---")
@@ -1556,4 +1590,4 @@ elif st.session_state.pagina == "financeiro":
 elif st.session_state.pagina == "configuracoes":
     renderizar_configuracoes()
 
-st.caption("v19.0.0 | Lila Closet Atelier | Firestore · Horário de Brasília · wendleydesenvolvimento")
+st.caption("v20.0.0 | Lila Closet Atelier | Firestore · Horário de Brasília · wendleydesenvolvimento")
