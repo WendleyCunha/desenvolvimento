@@ -144,7 +144,7 @@ Histórico de versões (changelog):
         limitação inerente de qualquer proteção baseada em sessão do
         navegador (sem cookie/login de verdade), não um defeito.
 
-  [v20 — NOVO] FIM DA SENHA ADM PARA DUPLICIDADE DE CONFECÇÃO (ver changelog
+  [v20] FIM DA SENHA ADM PARA DUPLICIDADE DE CONFECÇÃO (ver changelog
         completo em `modulos/mod_encomendas.py` e `modulos/regras_agenda.py`):
         marcar uma segunda encomenda no mesmo dia de confecção não pede mais
         a senha `SENHA_DELETE` — o sistema avisa quantas encomendas já
@@ -161,6 +161,19 @@ Histórico de versões (changelog):
         no cronograma, e ela some sozinha de "Tarefas para Hoje", do
         Calendário e da Agenda de Trabalho Pendente, sem precisar de mais
         nenhum lembrete futuro para aquela etapa específica.
+
+  [v20.1 — NOVO] FONTES DOS VALORES FINANCEIROS REDUZIDAS: os números do
+        `st.metric()` (Valor Total/Recebido/Saldo Restante/Entrega no
+        pedido, Receita/Gastos/Lucro/Margem no Relatório Mensal, etc.)
+        estavam usando o tamanho padrão gigante do Streamlit (não havia
+        nenhuma regra de CSS para `stMetricValue` — só para o container).
+        Adicionada uma regra `div[data-testid="stMetricValue"]` reduzindo
+        para 1.35rem (e o rótulo para 0.78rem). Também foram reduzidos
+        `.kpi-value` (cards do Resumo do Fechamento — "A receber no mês",
+        "Saldo Disponível no Final do Mês" etc.: de 1.3rem para 1.05rem) e
+        `.kcard-title` (cards "Total reservado" / "Fundos realmente
+        disponíveis": de 1rem para 0.92rem). Nenhuma lógica foi alterada,
+        só o CSS.
 """
 
 import streamlit as st
@@ -457,7 +470,7 @@ div[class*="st-key-topo_fixo"] {
   box-shadow: 0 2px 12px rgba(0,0,0,0.07); border-left: 4px solid #c9a227;
   margin-bottom: 0.75rem;
 }
-.kcard-title { font-family: 'Playfair Display', serif; font-size: 1rem; font-weight: 600; color: #1a0f0a; }
+.kcard-title { font-family: 'Playfair Display', serif; font-size: 0.92rem; font-weight: 600; color: #1a0f0a; }
 .kcard-sub { font-size: 0.78rem; color: #8b7355; margin-top: 3px; }
 
 /* ── Progresso campo ── */
@@ -515,6 +528,19 @@ div[class*="st-key-topo_fixo"] {
 div[data-testid="metric-container"] {
   background: white; border: 1px solid #ededed; padding: 14px;
   border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+/* [v20.1 — NOVO] O Streamlit não trazia nenhuma regra própria limitando o
+   tamanho do VALOR de um st.metric() — só o container acima era
+   estilizado. Isso fazia os números (Valor Total, Recebido, Saldo
+   Restante, Entrega, Receita do Mês, A Receber no mês etc.) saírem no
+   tamanho padrão gigante do Streamlit. Reduzido aqui para 1.35rem (rótulo
+   para 0.78rem) — ajuste estes dois valores em rem se quiser ainda menor
+   ou maior. */
+div[data-testid="stMetricValue"] {
+  font-size: 1.35rem !important;
+}
+div[data-testid="stMetricLabel"] {
+  font-size: 0.78rem !important;
 }
 
 /* ── Alertas financeiros ── */
@@ -654,7 +680,7 @@ div[class*="st-key-pedcard_"] button:hover {
   font-size: 0.62rem; font-weight: 700; text-transform: uppercase;
   letter-spacing: 0.5px; opacity: 0.88;
 }
-.kpi-value { font-size: 1.3rem; font-weight: 800; line-height: 1.1; margin-top: 2px; }
+.kpi-value { font-size: 1.05rem; font-weight: 800; line-height: 1.1; margin-top: 2px; }
 .kpi-sub { font-size: 0.62rem; opacity: 0.85; margin-top: 3px; }
 .kpi-bar { background: rgba(0,0,0,0.08); border-radius: 4px; height: 5px; margin: 5px 0 1px; }
 .kpi-bar > div {
@@ -1590,4 +1616,4 @@ elif st.session_state.pagina == "financeiro":
 elif st.session_state.pagina == "configuracoes":
     renderizar_configuracoes()
 
-st.caption("v20.0.0 | Lila Closet Atelier | Firestore · Horário de Brasília · wendleydesenvolvimento")
+st.caption("v20.1.0 | Lila Closet Atelier | Firestore · Horário de Brasília · wendleydesenvolvimento")
