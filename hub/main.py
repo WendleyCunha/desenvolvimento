@@ -59,7 +59,12 @@ VERSAO = "1.0.0"
 
 BASE = Path(__file__).resolve().parent
 PASTA_MODULOS = BASE / "modulos"
-HOME_HTML = BASE / "home.html"
+# aceita hub/static/home.html (preferido) ou hub/home.html
+HOME_CANDIDATOS = [BASE / "static" / "home.html", BASE / "home.html"]
+
+
+def _home_html() -> Path | None:
+    return next((p for p in HOME_CANDIDATOS if p.is_file()), None)
 
 SLUG_OK = re.compile(r"^[a-z0-9][a-z0-9_-]{0,60}$")
 SEM_CACHE = {"Cache-Control": "no-cache, must-revalidate"}
@@ -247,9 +252,10 @@ def healthz():
 
 @app.get("/")
 def home():
-    if not HOME_HTML.is_file():
-        raise HTTPException(500, "home.html não encontrado ao lado do main.py")
-    return FileResponse(HOME_HTML, media_type="text/html", headers=SEM_CACHE)
+    home_html = _home_html()
+    if home_html is None:
+        raise HTTPException(500, "home.html não encontrado (procurei em hub/static/ e hub/)")
+    return FileResponse(home_html, media_type="text/html", headers=SEM_CACHE)
 
 
 @app.get("/api/modulos")
