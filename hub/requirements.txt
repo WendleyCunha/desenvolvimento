@@ -1,1 +1,3 @@
-que vai subir no hub
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+google-cloud-firestore==2.19.0
