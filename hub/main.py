@@ -55,8 +55,9 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
-VERSAO = "2.0.0"
+VERSAO = "2.1.0"
 
 BASE = Path(__file__).resolve().parent
 PASTA_MODULOS = BASE / "modulos"
@@ -314,3 +315,10 @@ def diag():
         finally:
             ex.shutdown(wait=False)
     return resultado
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# KIT VISUAL COMPARTILHADO — /static/aurora.css e /static/aurora.js
+# (usado por todos os módulos: <link href="/static/aurora.css?v=1">)
+# ══════════════════════════════════════════════════════════════════════════════
+app.mount("/static", StaticFiles(directory=str(BASE / "static"), check_dir=False), name="static")
