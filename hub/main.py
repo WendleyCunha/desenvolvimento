@@ -23,7 +23,8 @@ COMO ADICIONAR UM MÓDULO NOVO (sem mexer neste arquivo):
 
     No <head> do módulo, opcionalmente:
         <title>Painel do Dia</title>
-        <meta name="hub-icone"     content="📊">
+        <meta name="hub-icone"     content="grafico">   ← nome de ícone ou emoji
+        <meta name="hub-cor"       content="#22d3ee">   ← cor do brilho (opcional)
         <meta name="hub-grupo"     content="Operacional">
         <meta name="hub-ordem"     content="10">
         <meta name="hub-descricao" content="Tudo que vence hoje">
@@ -55,7 +56,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 
-VERSAO = "1.0.0"
+VERSAO = "2.0.0"
 
 BASE = Path(__file__).resolve().parent
 PASTA_MODULOS = BASE / "modulos"
@@ -78,7 +79,8 @@ SISTEMAS_EXTERNOS_PADRAO = [
     {
         "id": "lila-closet",
         "titulo": "Lila Closet Atelier",
-        "icone": "🧵",
+        "icone": "tesoura",
+        "cor": "#fb7185",
         "grupo": "Sistemas",
         "ordem": 50,
         "descricao": "Gestão do atelier (Streamlit Cloud).",
@@ -111,7 +113,8 @@ def sistemas_externos() -> list[dict]:
         saida.append({
             "id": str(s["id"]),
             "titulo": s.get("titulo") or s["id"],
-            "icone": s.get("icone") or "🌐",
+            "icone": s.get("icone") or "globo",
+            "cor": s.get("cor") or "",
             "grupo": s.get("grupo") or "Sistemas",
             "ordem": int(s.get("ordem", 0)),
             "descricao": s.get("descricao") or "",
@@ -205,7 +208,8 @@ def modulos_internos() -> list[dict]:
         saida.append({
             "id": slug,
             "titulo": m.get("titulo") or slug.replace("-", " ").replace("_", " ").title(),
-            "icone": m.get("icone") or "📄",
+            "icone": m.get("icone") or "documento",
+            "cor": m.get("cor") or "",
             "grupo": m.get("grupo") or "Módulos",
             "ordem": ordem,
             "descricao": m.get("descricao") or "",
