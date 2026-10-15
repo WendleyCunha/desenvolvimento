@@ -1,5 +1,5 @@
 """
-hub/main.py — Hub Lila Closet (Menu Túnel)
+hub/main.py — Hub Wendley Desenvolvimento (Menu Túnel)
 ─────────────────────────────────────────────────────────────────────────────
 Casca em FastAPI que roda no Render (plano Free) e serve:
 
@@ -10,8 +10,9 @@ Casca em FastAPI que roda no Render (plano Free) e serve:
     /healthz          → health check do Render (obrigatório)
     /api/diag         → diagnóstico (Firestore conecta? quantos módulos?)
 
-O main.py do Streamlit (raiz do repo) NÃO é tocado. Ele continua no Streamlit
-Cloud e aparece aqui dentro como um "sistema externo" (iframe).
+O main.py da RAIZ do repo (Streamlit) NÃO é usado nem tocado por este serviço.
+Ele continua no Streamlit Cloud e aparece aqui dentro como um "sistema
+externo" (iframe). O Render roda SÓ esta pasta (Root Directory = hub).
 
 COMO ADICIONAR UM MÓDULO NOVO (sem mexer neste arquivo):
     Opção A — arquivo único:   hub/modulos/painel-do-dia.html
@@ -34,7 +35,8 @@ Render — configuração do Web Service:
     Start Command  : uvicorn main:app --host 0.0.0.0 --port $PORT
     Instance Type  : Free
     Health Check   : /healthz
-    Env vars       : LILA_STREAMLIT_URL = https://<seu-app>.streamlit.app/?embed=true
+    Env vars       : LILA_STREAMLIT_URL = https://<seu-app>.streamlit.app/
+                                          (o ?embed=true é colocado sozinho)
                      FIRESTORE_CREDS    = JSON cru da service account (opcional
                                           por enquanto; só os módulos com API
                                           vão precisar)
@@ -69,17 +71,23 @@ SEM_CACHE = {"Cache-Control": "no-cache, must-revalidate"}
 # ══════════════════════════════════════════════════════════════════════════════
 SISTEMAS_EXTERNOS_PADRAO = [
     {
-        "id": "lila-sistema",
-        "titulo": "Sistema Lila",
+        "id": "lila-closet",
+        "titulo": "Lila Closet Atelier",
         "icone": "🧵",
         "grupo": "Sistemas",
-        "ordem": 0,
-        "descricao": "Encomendas, Agenda, Medidas, Pedidos, Financeiro — o sistema atual (Streamlit).",
-        "url": os.environ.get(
-            "LILA_STREAMLIT_URL", "https://SEU-APP.streamlit.app/?embed=true"
-        ),
+        "ordem": 50,
+        "descricao": "Gestão do atelier (Streamlit Cloud).",
+        "url": os.environ.get("LILA_STREAMLIT_URL", ""),
     },
 ]
+
+
+def _com_embed(url: str) -> str:
+    """Apps do Streamlit Cloud abrem sem a barra/menu do Streamlit quando
+    recebem ?embed=true — colocado aqui para não depender da env var."""
+    if ".streamlit.app" in url and "embed=" not in url:
+        url += ("&" if "?" in url else "?") + "embed=true"
+    return url
 
 
 def sistemas_externos() -> list[dict]:
@@ -93,7 +101,8 @@ def sistemas_externos() -> list[dict]:
     saida = []
     for s in lista:
         if not s.get("id") or not s.get("url"):
-            continue
+            continue  # sem URL configurada → não aparece no menu
+        s = {**s, "url": _com_embed(s["url"])}
         saida.append({
             "id": str(s["id"]),
             "titulo": s.get("titulo") or s["id"],
@@ -226,7 +235,7 @@ def db():
 # ══════════════════════════════════════════════════════════════════════════════
 # APP
 # ══════════════════════════════════════════════════════════════════════════════
-app = FastAPI(title="Hub Lila Closet", version=VERSAO, docs_url=None, redoc_url=None)
+app = FastAPI(title="Wendley Desenvolvimento", version=VERSAO, docs_url=None, redoc_url=None)
 _inicio = time.time()
 
 
