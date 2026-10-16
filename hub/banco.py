@@ -24,6 +24,41 @@ def configurado() -> bool:
     return bool(os.environ.get("FIRESTORE_CREDS", "").strip())
 
 
+def ler_credenciais(bruto: str) -> dict:
+    """Aceita o JSON da service account mesmo colado "torto" no Render:
+    com quebras de linha reais dentro da private_key, entre aspas extras,
+    ou no formato TOML dos secrets do Streamlit ([firebase] chave = "...")."""
+    t = bruto.strip()
+    if len(t) > 1 and t[0] == t[-1] and t[0] in "'\"" and not t.startswith('{"'):
+        t = t[1:-1].strip()
+    info = None
+    if t.startswith("{"):
+        try:
+            info = json.loads(t, strict=False)  # strict=False: tolera quebras de linha reais
+        except json.JSONDecodeError as e:
+            raise SemBanco(f"FIRESTORE_CREDS não é um JSON válido (linha {e.lineno}, coluna {e.colno}). "
+                           "Cole o conteúdo do arquivo .json inteiro, de { até }.") from None
+    else:
+        try:
+            import tomllib
+            dados = tomllib.loads(t)
+        except Exception:
+            raise SemBanco("FIRESTORE_CREDS precisa ser o conteúdo do arquivo .json da service account "
+                           "(começa com { e termina com }).") from None
+        info = dados if "private_key" in dados else next(
+            (v for v in dados.values() if isinstance(v, dict) and "private_key" in v), None)
+        if info is None:
+            raise SemBanco("FIRESTORE_CREDS: não achei a private_key no texto colado.")
+    if not isinstance(info, dict):
+        raise SemBanco("FIRESTORE_CREDS: formato inesperado.")
+    if isinstance(info.get("private_key"), str):
+        info["private_key"] = info["private_key"].replace("\\n", "\n")
+    faltam = [k for k in ("project_id", "private_key", "client_email") if not info.get(k)]
+    if faltam:
+        raise SemBanco("FIRESTORE_CREDS: faltam os campos " + ", ".join(faltam) + ".")
+    return info
+
+
 def db():
     global _db
     if _db is None:
@@ -35,7 +70,7 @@ def db():
                 from google.cloud import firestore
                 from google.oauth2 import service_account
 
-                info = json.loads(bruto)
+                info = ler_credenciais(bruto)
                 cred = service_account.Credentials.from_service_account_info(info)
                 _db = firestore.Client(credentials=cred, project=info["project_id"])
     return _db
