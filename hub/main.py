@@ -71,7 +71,7 @@ import acesso
 import banco
 import dados
 
-VERSAO = "3.0.0"
+VERSAO = "3.0.1"
 
 BASE = Path(__file__).resolve().parent
 PASTA_MODULOS = BASE / "modulos"
@@ -303,6 +303,25 @@ _SEM_ACESSO = """<!doctype html><meta charset="utf-8"><title>Sem acesso</title>
 # APP
 # ══════════════════════════════════════════════════════════════════════════════
 app = FastAPI(title="Wendley Desenvolvimento", version=VERSAO, docs_url=None, redoc_url=None)
+
+
+@app.exception_handler(Exception)
+async def _erro_inesperado(request: Request, exc: Exception):
+    """Em vez de um "HTTP 500" mudo, devolve o motivo — aparece na tela e no log do Render."""
+    import traceback
+    traceback.print_exc()
+    if isinstance(exc, banco.SemBanco):
+        return JSONResponse({"detail": str(exc)}, status_code=503)
+    nome = type(exc).__name__
+    msg = str(exc).split("\n")[0][:300]
+    dica = ""
+    if "Permission" in nome or "403" in msg:
+        dica = " — a service account não tem permissão no Firestore (papel 'Cloud Datastore User')."
+    elif "Deadline" in nome or "Timeout" in nome:
+        dica = " — o Firestore demorou a responder; tente de novo em alguns segundos."
+    elif "NotFound" in nome:
+        dica = " — o banco Firestore não existe nesse projeto (crie em Firebase → Firestore Database)."
+    return JSONResponse({"detail": f"Erro no servidor: {nome}: {msg}{dica}"}, status_code=500)
 app.include_router(acesso.router)
 app.include_router(dados.router)
 _inicio = time.time()
