@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#05060a">
+<title>Entrar · Wendley Desenvolvimento</title>
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/aurora.css?v=3">
+<style>
+body{min-height:100vh;display:grid;place-items:center;padding:20px}
+.cartao{position:relative;z-index:1;width:min(420px,100%);border-radius:28px;padding:34px 30px 28px;text-align:center;animation:aurEntra .8s var(--suave)}
+.cartao .atomo{margin:0 auto 6px}
+h1{font:700 1.5rem var(--titulo);margin:8px 0 4px;letter-spacing:-.02em}
+.sub{font-size:.62rem;letter-spacing:2.6px;text-transform:uppercase;font-weight:700;background:var(--grad-ouro);-webkit-background-clip:text;background-clip:text;color:transparent}
+form{display:flex;flex-direction:column;gap:12px;margin-top:26px;text-align:left}
+.lembrar{display:flex;align-items:center;justify-content:space-between;margin:4px 2px 6px}
+.erro{min-height:20px;font-size:.8rem;color:#fda4af;text-align:center}
+.btn{width:100%;padding:13px 16px;font-size:.92rem}
+.rodape{margin-top:18px;font-size:.72rem;color:var(--txt3);line-height:1.6}
+.aviso-config{margin-top:16px;padding:12px 14px;border-radius:14px;font-size:.78rem;line-height:1.6;color:var(--txt2);text-align:left;
+  background:rgba(var(--ouro-rgb),.08);border:1px dashed rgba(var(--ouro-rgb),.4)}
+.aviso-config code{color:var(--ouro2)}
+</style>
+</head>
+<body>
+<main class="cartao vidro vidro-borda-viva">
+  <div id="logo"></div>
+  <h1>Wendley Desenvolvimento</h1>
+  <div class="sub">Acesso aos sistemas</div>
+  <form id="form" autocomplete="on">
+    <label class="campo">Usuário<input id="login" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus></label>
+    <label class="campo">Senha<input id="senha" name="password" type="password" autocomplete="current-password" required></label>
+    <div class="lembrar"><label class="chave"><input type="checkbox" id="lembrar" checked><span class="trilho"></span>Manter conectado por 30 dias</label></div>
+    <div class="erro" id="erro" role="alert"></div>
+    <button class="btn" id="bt" type="submit">Entrar</button>
+  </form>
+  <div id="avisoConfig"></div>
+  <div class="rodape">Esqueceu a senha? Fale com o administrador.</div>
+</main>
+<script src="/static/aurora.js?v=3"></script>
+<script>
+(() => {
+  const A = Aurora;
+  A.fundo();
+  document.getElementById("logo").outerHTML = A.atomo(118);
+  document.querySelector('link[rel="icon"]').href = A.ATOMO_SVG;
+  const volta = new URLSearchParams(location.search).get("volta") || "/";
+  const destino = volta.startsWith("/") && !volta.startsWith("//") ? volta : "/";
+  const f = document.getElementById("form"), bt = document.getElementById("bt"), erro = document.getElementById("erro");
+  f.onsubmit = async (e) => {
+    e.preventDefault();
+    erro.textContent = ""; bt.disabled = true; bt.textContent = "Entrando…";
+    try {
+      await A.api("/api/auth/entrar", { method: "POST", body: { login: f.login.value, senha: f.senha.value, lembrar: document.getElementById("lembrar").checked } });
+      location.href = destino;
+    } catch (err) {
+      erro.textContent = err.message;
+      document.querySelector(".cartao").animate([{ transform: "translateX(0)" }, { transform: "translateX(-8px)" }, { transform: "translateX(8px)" }, { transform: "translateX(0)" }], { duration: 320 });
+      bt.disabled = false; bt.textContent = "Entrar"; f.senha.select();
+    }
+  };
+  // ajuda para o primeiro acesso: mostra o que falta configurar no Render
+  A.api("/api/diag").then((d) => {
+    const falta = [];
+    if (!d.admin_fabrica_configurado) falta.push("<code>HUB_ADMIN_USUARIO</code> e <code>HUB_ADMIN_SENHA</code> (seu acesso de administrador)");
+    if (d.segredo_temporario) falta.push("<code>HUB_SEGREDO</code> (sem ele o login cai toda vez que o servidor reinicia)");
+    if (!d.firestore_configurado) falta.push("<code>FIRESTORE_CREDS</code> (para salvar usuários e dados)");
+    if (falta.length) document.getElementById("avisoConfig").innerHTML = `<div class="aviso-config"><b>Configuração pendente no Render → Environment:</b><br>• ${falta.join("<br>• ")}</div>`;
+  }).catch(() => {});
+})();
+</script>
+</body>
+</html>
