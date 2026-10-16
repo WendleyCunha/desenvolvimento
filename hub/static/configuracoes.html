@@ -485,7 +485,7 @@ async function rSistema() {
     <div class="cab">${A.orbe("ajustes", "#94a3b8")}<h2>Sistema</h2><span class="etq">hub v${esc(DIAG.versao || "?")}</span></div>
     <p class="desc">O que está configurado no Render (Environment). Mudou uma variável? O Render reinicia o serviço sozinho.</p>
     <div class="info-g">
-      ${item("Banco de dados", DIAG.firestore_configurado, DIAG.firestore_configurado ? "Conectado" : "Não configurado", "<code>FIRESTORE_CREDS</code> — guarda usuários, permissões e os dados dos módulos.")}
+      ${item("Banco de dados", DIAG.firestore === "ok", !DIAG.firestore_configurado ? "Não configurado" : DIAG.firestore === "ok" ? "Conectado" : "Com erro", "<code>FIRESTORE_CREDS</code> — guarda usuários, permissões e os dados dos módulos." + (DIAG.firestore_configurado && DIAG.firestore !== "ok" ? `<br><b style="color:#fda4af">${esc(DIAG.firestore)}</b>` : ""))}
       ${item("Administrador de fábrica", DIAG.admin_fabrica_configurado, DIAG.admin_fabrica_configurado ? "Configurado" : "Faltando", "<code>HUB_ADMIN_USUARIO</code> + <code>HUB_ADMIN_SENHA</code> — a chave reserva para nunca ficar trancado de fora.")}
       ${item("Assinatura das sessões", !DIAG.segredo_temporario, DIAG.segredo_temporario ? "Temporária" : "Fixa", "<code>HUB_SEGREDO</code> — sem ela, todo mundo precisa entrar de novo sempre que o servidor reinicia.")}
       ${item("No ar há", true, Math.round((DIAG.no_ar_ha_seg || 0) / 60) + " min", "No plano Free o servidor dorme após ~15 min sem uso e acorda no primeiro acesso.")}
