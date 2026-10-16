@@ -16,6 +16,74 @@
 (() => {
   "use strict";
   const embutido = new URLSearchParams(location.search).has("hub") || window.top !== window;
+
+  /* ══════ API (sempre com o cookie de sessão) ══════ */
+  async function api(url, { method = "GET", body } = {}) {
+    const r = await fetch(url, { method, credentials: "same-origin", cache: "no-store",
+      headers: body !== undefined ? { "Content-Type": "application/json" } : {}, body: body !== undefined ? JSON.stringify(body) : undefined });
+    let d = null;
+    try { d = await r.json(); } catch (_) {}
+    if (!r.ok) { const e = new Error((d && d.detail) || ("HTTP " + r.status)); e.status = r.status; e.dados = d; throw e; }
+    return d;
+  }
+
+  /* ══════ TEMA — calibração "debaixo d'água" (Configurações → Aparência) ══════
+     Fica salvo no navegador (e na sua conta, quando há banco). Toda página do
+     hub (túnel, módulos, login) lê a mesma chave e muda junto, ao vivo.     */
+  const TEMA_CHAVE = "wd.tema.v1";
+  const PRESETS = {
+    abismo:   { nome: "Abismo dourado",   desc: "O original: ouro, violeta e ciano",  noite: "#05060a", aur: ["232,179,61", "139,92,246", "34,211,238", "251,113,133"], ouro: ["#e8b33d", "#f5d27a", "#a77a1c"] },
+    oceano:   { nome: "Oceano profundo",  desc: "Azul e ciano, como mar aberto",      noite: "#030812", aur: ["34,211,238", "59,130,246", "16,185,129", "99,102,241"],   ouro: ["#38bdf8", "#bae6fd", "#0369a1"] },
+    recife:   { nome: "Recife de coral",  desc: "Coral, turquesa e sol",              noite: "#07070c", aur: ["251,113,133", "45,212,191", "251,191,36", "168,85,247"], ouro: ["#fb923c", "#fed7aa", "#c2410c"] },
+    lagoa:    { nome: "Lagoa esmeralda",  desc: "Verde-água e luz dourada",           noite: "#030a08", aur: ["52,211,153", "34,211,238", "163,230,53", "232,179,61"],   ouro: ["#34d399", "#a7f3d0", "#047857"] },
+    ametista: { nome: "Ametista abissal", desc: "Violeta e magenta profundos",        noite: "#07040d", aur: ["168,85,247", "236,72,153", "99,102,241", "34,211,238"],   ouro: ["#c084fc", "#e9d5ff", "#7e22ce"] },
+    polar:    { nome: "Meia-noite polar", desc: "Prata, gelo e azul",                 noite: "#04060a", aur: ["148,163,184", "96,165,250", "226,232,240", "34,211,238"], ouro: ["#cbd5e1", "#f1f5f9", "#64748b"] },
+  };
+  const TEMA_PADRAO = { preset: "abismo", prof: 0, aur: 0.55, vidro: 0.34, blur: 22, vel: 1, luz: 0, part: 1, grao: 0.06 };
+  const hexRgb = (h) => { const m = h.replace("#", ""), n = parseInt(m.length === 3 ? m.split("").map((x) => x + x).join("") : m, 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255].join(","); };
+  function carregarTema() { try { return { ...TEMA_PADRAO, ...JSON.parse(localStorage.getItem(TEMA_CHAVE) || "{}") }; } catch (_) { return { ...TEMA_PADRAO }; } }
+  function aplicarTema(t) {
+    t = { ...TEMA_PADRAO, ...t };
+    const p = PRESETS[t.preset] || PRESETS.abismo, r = document.documentElement.style;
+    r.setProperty("--noite", p.noite);
+    p.aur.forEach((c, i) => r.setProperty("--aur" + (i + 1), c));
+    r.setProperty("--ouro", p.ouro[0]); r.setProperty("--ouro2", p.ouro[1]); r.setProperty("--ouro3", p.ouro[2]); r.setProperty("--ouro-rgb", hexRgb(p.ouro[0]));
+    r.setProperty("--aur-op", t.aur);
+    r.setProperty("--vidro-a", (0.02 + 0.16 * t.vidro).toFixed(3)); r.setProperty("--vidro-b", (0.005 + 0.06 * t.vidro).toFixed(3));
+    r.setProperty("--vidro-blur", t.blur + "px"); r.setProperty("--vel", t.vel); r.setProperty("--causticas", t.luz);
+    r.setProperty("--prof", t.prof); r.setProperty("--grao", t.grao); r.setProperty("--particulas", t.part);
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", p.noite);
+    dispatchEvent(new CustomEvent("wd-tema", { detail: t }));
+    return t;
+  }
+  function salvarTema(t, { conta = true } = {}) {
+    t = { ...TEMA_PADRAO, ...t };
+    try { localStorage.setItem(TEMA_CHAVE, JSON.stringify(t)); } catch (_) {}
+    aplicarTema(t);
+    if (conta) { clearTimeout(salvarTema._t); salvarTema._t = setTimeout(() => api("/api/eu/preferencias", { method: "PUT", body: { tema: t } }).catch(() => {}), 900); }
+    return t;
+  }
+  /** Se a conta tem um tema salvo (outro computador), usa ele aqui também. */
+  function temaDaConta(prefs) {
+    const t = prefs && prefs.tema;
+    if (t && JSON.stringify({ ...TEMA_PADRAO, ...t }) !== JSON.stringify(carregarTema())) salvarTema(t, { conta: false });
+  }
+  aplicarTema(carregarTema());
+  addEventListener("storage", (e) => { if (e.key === TEMA_CHAVE) aplicarTema(carregarTema()); });
+  const tema = { PRESETS, PADRAO: TEMA_PADRAO, carregar: carregarTema, aplicar: aplicarTema, salvar: salvarTema, daConta: temaDaConta };
+
+  /* ══════ LUZ QUE ACOMPANHA O MOUSE (.wg e .luz) ══════ */
+  let quadroLuz = 0;
+  addEventListener("pointermove", (e) => {
+    if (e.pointerType && e.pointerType !== "mouse") return;
+    const alvos = [e.target.closest?.(".luz"), e.target.closest?.(".wg")].filter(Boolean);
+    if (!alvos.length) return;
+    cancelAnimationFrame(quadroLuz);
+    quadroLuz = requestAnimationFrame(() => alvos.forEach((el) => {
+      const r = el.getBoundingClientRect();
+      el.style.setProperty("--mx", (e.clientX - r.left) + "px"); el.style.setProperty("--my", (e.clientY - r.top) + "px");
+    }));
+  }, { passive: true });
   const reduzido = matchMedia("(prefers-reduced-motion: reduce)").matches;
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
@@ -68,6 +136,10 @@
     adiar:'<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M5 3 2 6M19 3l3 3"/>',
     filtro:'<path d="M3 5h18l-7 8v6l-4 2v-8z"/>',
     widgets:'<rect x="3" y="3" width="8" height="10" rx="2"/><rect x="13" y="3" width="8" height="6" rx="2"/><rect x="13" y="11" width="8" height="10" rx="2"/><rect x="3" y="15" width="8" height="6" rx="2"/>',
+    cadeado:'<rect x="4" y="10" width="16" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
+    sair:'<path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l5-5-5-5M15 12H4"/>',
+    paleta:'<path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.6-.9 1.2-1.9-.5-1 .2-2.1 1.3-2.1H17a4 4 0 0 0 4-4c0-5.5-4-10-9-10z"/><circle cx="7.5" cy="11" r="1.2"/><circle cx="10" cy="7" r="1.2"/><circle cx="15" cy="7.5" r="1.2"/>',
+    onda:'<path d="M2 12c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/><path d="M2 17c2-2 4-2 6 0s4 2 6 0 4-2 6 0" opacity=".6"/><path d="M2 7c2-2 4-2 6 0s4 2 6 0 4-2 6 0" opacity=".35"/>',
     atencao:'<path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17h.01"/>',
   };
   const svg = (nome) => `<svg viewBox="0 0 24 24" class="i" aria-hidden="true">${ICONES[nome] || ICONES.documento}</svg>`;
@@ -92,19 +164,25 @@
     const f = document.createElement("div");
     f.className = "aur-fundo";
     f.setAttribute("aria-hidden", "true");
-    f.innerHTML = `<div class="bolha b1"></div><div class="bolha b2"></div><div class="bolha b3"></div><div class="bolha b4"></div><div class="grade"></div>${embutido ? "" : "<canvas></canvas>"}<div class="grao"></div><div class="vinheta"></div>`;
+    f.innerHTML = `<div class="bolha b1"></div><div class="bolha b2"></div><div class="bolha b3"></div><div class="bolha b4"></div><div class="raios"></div><div class="causticas"><i></i><i></i></div><div class="grade"></div>${embutido ? "" : "<canvas></canvas>"}<div class="prof"></div><div class="grao"></div><div class="vinheta"></div>`;
     document.body.prepend(f);
     const cv = f.querySelector("canvas");
     if (cv) constelacao(cv);
   }
   function constelacao(cv) {
     const cx = cv.getContext("2d");
-    let W, H, pts = [], rato = { x: -999, y: -999 };
-    const cores = ["232,179,61", "167,139,250", "34,211,238", "255,255,255"];
+    let W, H, pts = [], rato = { x: -999, y: -999 }, cores = [], linha = "232,179,61";
+    const lerCores = () => {
+      const cs = getComputedStyle(document.documentElement), v = (n, d) => (cs.getPropertyValue(n).trim() || d);
+      linha = v("--ouro-rgb", "232,179,61");
+      cores = [linha, v("--aur2", "167,139,250"), v("--aur3", "34,211,238"), "255,255,255"];
+    };
     const medir = () => {
-      const dpr = Math.min(devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight;
+      lerCores();
+      const dpr = Math.min(devicePixelRatio || 1, 2), dens = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--particulas")) || 0;
+      W = innerWidth; H = innerHeight;
       cv.width = W * dpr; cv.height = H * dpr; cx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      pts = Array.from({ length: Math.round(Math.min(80, (W * H) / 17000)) }, () => ({
+      pts = Array.from({ length: Math.round(Math.min(120, (W * H) / 17000) * dens) }, () => ({
         x: Math.random() * W, y: Math.random() * H, vx: (Math.random() - .5) * .22, vy: (Math.random() - .5) * .22,
         r: Math.random() * 1.5 + .4, c: cores[(Math.random() * 4) | 0], f: Math.random() * 6.3 }));
     };
@@ -118,7 +196,7 @@
       }
       for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) {
         const a = pts[i], b = pts[j], d = Math.hypot(a.x - b.x, a.y - b.y);
-        if (d < 120) { cx.strokeStyle = `rgba(232,179,61,${(1 - d / 120) * .12})`; cx.lineWidth = .6; cx.beginPath(); cx.moveTo(a.x, a.y); cx.lineTo(b.x, b.y); cx.stroke(); }
+        if (d < 120) { cx.strokeStyle = `rgba(${linha},${(1 - d / 120) * .12})`; cx.lineWidth = .6; cx.beginPath(); cx.moveTo(a.x, a.y); cx.lineTo(b.x, b.y); cx.stroke(); }
       }
       for (const p of pts) {
         cx.fillStyle = `rgba(${p.c},${.35 + Math.sin(p.f) * .3})`; cx.shadowColor = `rgba(${p.c},.9)`; cx.shadowBlur = 8;
@@ -127,7 +205,7 @@
       cx.shadowBlur = 0;
     };
     const laco = () => { if (!document.hidden) desenhar(); requestAnimationFrame(laco); };
-    medir(); addEventListener("resize", medir);
+    medir(); addEventListener("resize", medir); addEventListener("wd-tema", medir);
     addEventListener("pointermove", (e) => { rato.x = e.clientX; rato.y = e.clientY; }, { passive: true });
     reduzido ? desenhar() : laco();
   }
@@ -223,8 +301,8 @@
      g.adicionar({ id, x, y, w, h, minW, minH, el })   // el precisa ter .wg-cab e .wg-redim
      g.remover(id) · g.layout() · g.aplicar() · g.max(id)                                    */
   class Grade {
-    constructor(area, { colunas = 12, linha = 44, espaco = 14, limiteUma = 760, aoMudar } = {}) {
-      Object.assign(this, { area, colunas, linha, espaco, limiteUma, aoMudar, itens: [] });
+    constructor(area, { colunas = 12, linha = 44, espaco = 14, limiteUma = 760, aoMudar, travado = false } = {}) {
+      Object.assign(this, { area, colunas, linha, espaco, limiteUma, aoMudar, travado, itens: [] });
       area.classList.add("wg-area");
       this.sombra = document.createElement("div");
       this.sombra.className = "wg-sombra";
@@ -277,6 +355,7 @@
       this.sombra.classList.add("on");
     }
     layout() { return this.itens.map(({ id, x, y, w, h }) => ({ id, x, y, w, h })); }
+    travar(sim) { this.travado = !!sim; this.area.classList.toggle("travada", this.travado); }
     salvar() { this.aoMudar && this.aoMudar(this.layout()); }
     adicionar(def) {
       const it = { minW: 2, minH: 3, ...def };
@@ -310,7 +389,7 @@
     ligar(it) {
       const cab = it.el.querySelector(".wg-cab"), redim = it.el.querySelector(".wg-redim");
       const inicio = (e, modo) => {
-        if (this.uma || it.el.classList.contains("max") || e.button > 0) return;
+        if (this.travado || this.uma || it.el.classList.contains("max") || e.button > 0) return;
         if (modo === "mover" && e.target.closest("button,input,select,textarea,a,label")) return;
         e.preventDefault();
         const g = this.geo(it), base = this.itens.map((o) => ({ o, x: o.x, y: o.y }));
@@ -369,5 +448,107 @@
   }
 
   const modalAberto = () => pilhaModais.length > 0;
-  window.Aurora = { embutido, esc, ICONES, svg, orbe, atomo, ATOMO_SVG, fundo, modal, modalAberto, confirmar, toast, som, notificar, avisarHub, Grade };
+
+  /* ══════ PERMISSÕES DO USUÁRIO NO MÓDULO ══════
+     const P = await Aurora.permissoes.carregar("lila")
+     P.pode("excluir") · P.nivel("titulo") → "editar" | "ver" | "oculto"
+     Administrador: "Modo permissões" (Configurações) mostra um escudo em cada
+     elemento com data-perm="campo:xxx" | "acao:yyy" — clique para liberar ou
+     bloquear aquele ponto para cada usuário.                                */
+  const MODO_CHAVE = "wd.modoPerm";
+  const iniciais = (n) => String(n || "?").trim().split(/\s+/).filter(Boolean).map((x) => x[0]).slice(0, 2).join("").toUpperCase() || "?";
+  const permissoes = {
+    estado: null, modulo: "",
+    async carregar(modulo) {
+      this.modulo = modulo;
+      try { this.estado = await api("/api/eu?modulo=" + encodeURIComponent(modulo)); }
+      catch (e) {
+        if (e.status === 401) { const w = window.top || window; w.location.href = "/login?volta=" + encodeURIComponent(w.location.pathname + w.location.hash); }
+        throw e;
+      }
+      temaDaConta(this.estado.preferencias);
+      if (this.admin) {
+        this._modo(localStorage.getItem(MODO_CHAVE) === "1");
+        addEventListener("storage", (e) => { if (e.key === MODO_CHAVE) this._modo(e.newValue === "1"); });
+      }
+      return this.estado;
+    },
+    get usuario() { return this.estado?.usuario || null; },
+    get admin() { return !!this.estado?.usuario?.admin; },
+    pode(a) { return !!this.estado?.perm?.acoes?.[a]; },
+    nivel(c) { return this.estado?.perm?.campos?.[c] || "editar"; },
+    _modo(on) {
+      document.body.classList.toggle("modo-permissoes", on);
+      clearInterval(this._iv);
+      this._camada?.remove(); this._faixa?.remove(); this._camada = null;
+      if (!on) return;
+      this._camada = document.createElement("div"); this._camada.className = "perm-camada";
+      this._faixa = document.createElement("div"); this._faixa.className = "perm-faixa";
+      this._faixa.innerHTML = `${svg("escudo")} Modo permissões — clique num escudo para liberar ou bloquear <button type="button">Sair</button>`;
+      this._faixa.querySelector("button").onclick = () => { try { localStorage.setItem(MODO_CHAVE, "0"); } catch (_) {} this._modo(false); };
+      document.body.append(this._camada, this._faixa);
+      const botoes = new Map();
+      const tick = () => {
+        if (!this._camada) return;
+        const topo = pilhaModais[pilhaModais.length - 1], vistos = new Set();
+        document.querySelectorAll("[data-perm]").forEach((el) => {
+          if (topo && !topo.contains(el)) return;
+          const r = el.getBoundingClientRect();
+          if (r.width < 2 || r.height < 2 || r.bottom < 0 || r.top > innerHeight) return;
+          let b = botoes.get(el);
+          if (!b) {
+            const [tipo] = el.dataset.perm.split(":");
+            b = document.createElement("button"); b.type = "button"; b.className = "perm-escudo" + (tipo === "acao" ? " acao" : "");
+            b.innerHTML = svg(tipo === "acao" ? "raio" : "escudo");
+            b.onclick = (ev) => { ev.stopPropagation(); this.editar(el.dataset.perm); };
+            this._camada.appendChild(b); botoes.set(el, b);
+          }
+          const [tipo, k] = el.dataset.perm.split(":"), esq = this.estado.esquema || {};
+          b.title = (tipo === "acao" ? "Ação: " : "Campo: ") + (((tipo === "acao" ? esq.acoes : esq.campos) || {})[k] || k);
+          b.style.left = Math.min(innerWidth - 28, Math.max(4, r.right - 14)) + "px";
+          b.style.top = Math.max(4, r.top - 10) + "px";
+          vistos.add(el);
+        });
+        botoes.forEach((b, el) => { if (!vistos.has(el)) { b.remove(); botoes.delete(el); } });
+      };
+      tick(); this._iv = setInterval(tick, 200);
+    },
+    async editar(chave) {
+      const [tipo, k] = chave.split(":"), esq = this.estado.esquema || {};
+      const rot = ((tipo === "acao" ? esq.acoes : esq.campos) || {})[k] || k;
+      let lista;
+      try { lista = (await api("/api/admin/usuarios")).usuarios.filter((u) => !u.admin); }
+      catch (e) { toast("Não consegui carregar os usuários: " + esc(e.message), [], { cor: "var(--rosa)" }); return; }
+      if (!lista.length) { toast("Ainda não há usuários (além de administradores). Crie em ⚙ Configurações → Usuários.", [], { cor: "var(--violeta)", duracao: 7000 }); return; }
+      const mod = this.modulo;
+      const perm = (u) => (u.modulos || {})[mod] || {};
+      const opcoes = tipo === "acao" ? [["1", "Permitir", "#34d399"], ["0", "Negar", "#fb7185"]] : [["editar", "Editar", "#34d399"], ["ver", "Só ver", "#60a5fa"], ["oculto", "Oculto", "#fb7185"]];
+      const escolha = {};
+      lista.forEach((u) => { escolha[u.login] = tipo === "acao" ? ((perm(u).acoes || {})[k] ? "1" : "0") : ((perm(u).campos || {})[k] || "editar"); });
+      const seg = (login) => `<div class="seg" data-u="${esc(login)}">${opcoes.map(([v, r, c]) => `<button type="button" data-v="${v}" style="--c:${c}" class="${escolha[login] === v ? "ativo" : ""}">${r}</button>`).join("")}</div>`;
+      modal({
+        titulo: (tipo === "acao" ? "Ação · " : "Campo · ") + rot, icone: tipo === "acao" ? "raio" : "escudo", largura: 640,
+        html: `<p style="margin:0 0 14px;color:var(--txt2);font-size:.84rem;line-height:1.6">${tipo === "acao" ? `Quem pode <b>${esc(rot)}</b>` : `O que cada pessoa pode fazer com o campo <b>${esc(rot)}</b>`} neste módulo.
+            Vale a partir do próximo carregamento da pessoa e é conferido no servidor.</p>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:.75rem;color:var(--txt3)">Todos:
+            ${opcoes.map(([v, r, c]) => `<button type="button" class="chip" data-todos="${v}" style="--c:${c}">${r}</button>`).join("")}</div>
+          ${lista.map((u) => `<div class="perm-linha"><span class="av">${iniciais(u.nome)}</span><div><b>${esc(u.nome)}</b><small>@${esc(u.login)}${k !== "acessar" && !(perm(u).acoes || {}).acessar ? " · ainda sem acesso ao módulo" : ""}${u.ativo ? "" : " · inativo"}</small></div>${seg(u.login)}</div>`).join("")}`,
+        botoes: [{ rotulo: "Cancelar" }, { rotulo: "Salvar", classe: "btn", icone: "check", principal: true, acao: async () => {
+          const valores = {};
+          Object.entries(escolha).forEach(([l, v]) => { valores[l] = tipo === "acao" ? v === "1" : v; });
+          try { await api("/api/admin/permissao", { method: "PUT", body: { modulo: mod, tipo, chave: k, valores } }); toast(`✓ <b>${esc(rot)}</b> atualizado para ${lista.length} usuário(s).`, [], { cor: "var(--verde)" }); }
+          catch (e) { toast("Não salvou: " + esc(e.message), [], { cor: "var(--rosa)" }); return false; }
+        } }],
+        aoAbrir(cx) {
+          cx.addEventListener("click", (ev) => {
+            const b = ev.target.closest(".seg[data-u] button");
+            if (b) { escolha[b.parentElement.dataset.u] = b.dataset.v; b.parentElement.querySelectorAll("button").forEach((x) => x.classList.toggle("ativo", x === b)); }
+            const t = ev.target.closest("[data-todos]");
+            if (t) { Object.keys(escolha).forEach((l) => (escolha[l] = t.dataset.todos)); cx.querySelectorAll(".seg[data-u] button").forEach((x) => x.classList.toggle("ativo", x.dataset.v === t.dataset.todos)); }
+          });
+        },
+      });
+    },
+  };
+  window.Aurora = { embutido, esc, api, tema, permissoes, iniciais, ICONES, svg, orbe, atomo, ATOMO_SVG, fundo, modal, modalAberto, confirmar, toast, som, notificar, avisarHub, Grade };
 })();
