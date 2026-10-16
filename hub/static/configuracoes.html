@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#05060a">
+<title>Configurações</title>
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/aurora.css?v=3">
+<!--
+═══════════════════════════════════════════════════════════════════════════════
+ configuracoes.html — a engrenagem do hub
+   Aparência ........ presets "debaixo d'água" + calibração fina (ao vivo, no hub todo)
+   Usuários ......... criar, editar, desativar, excluir; acesso por módulo/ação/campo
+   Permissões ....... matriz rápida por módulo + "Modo permissões" (escudo em cada campo)
+   Minha conta ...... trocar senha, sair
+   Sistema .......... o que está configurado no Render
+═══════════════════════════════════════════════════════════════════════════════
+-->
+<style>
+body{padding:14px;min-height:100vh}
+.app{position:relative;z-index:1;max-width:1300px;margin:0 auto;display:grid;grid-template-columns:240px minmax(0,1fr);gap:14px;align-items:start}
+.lado{position:sticky;top:14px;border-radius:22px;padding:16px 10px}
+.lado .marca{display:flex;align-items:center;gap:12px;padding:4px 8px 16px}
+.lado .marca b{display:block;font:700 1.05rem var(--titulo)}
+.lado .marca small{display:block;font-size:.6rem;letter-spacing:2.2px;text-transform:uppercase;font-weight:700;background:var(--grad-ouro);-webkit-background-clip:text;background-clip:text;color:transparent}
+.nav-cfg{display:flex;flex-direction:column;gap:3px}
+.nav-cfg button{display:flex;align-items:center;gap:11px;padding:8px 10px 8px 8px;border-radius:14px;text-align:left;font-size:.86rem;font-weight:550;color:var(--txt2);transition:.2s}
+.nav-cfg button:hover{background:rgba(255,255,255,.05);color:var(--txt)}
+.nav-cfg button.ativo{color:var(--txt);background:linear-gradient(90deg,color-mix(in srgb,var(--c) 22%,transparent),rgba(255,255,255,.03))}
+.nav-cfg .orbe{--t:32px;border-radius:10px}
+.nav-cfg .orbe::after{display:none}
+.quem{margin-top:14px;padding:12px;border-radius:16px;background:rgba(255,255,255,.03);border:1px solid var(--vidro-borda);display:flex;align-items:center;gap:10px}
+.quem .av{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font:700 .8rem var(--titulo);color:#1a1206;background:var(--grad-ouro);flex:none}
+.quem div{flex:1;min-width:0;line-height:1.25}
+.quem b{display:block;font-size:.84rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.quem small{font-size:.7rem;color:var(--txt3)}
+.conteudo{min-width:0}
+.secao{border-radius:24px;padding:24px;animation:aurEntra .5s var(--suave)}
+.secao+.secao{margin-top:14px}
+.cab{display:flex;align-items:center;gap:14px;margin-bottom:6px}
+.cab h2{flex:1;margin:0;font:600 1.3rem var(--titulo);letter-spacing:-.01em}
+.desc{margin:0 0 20px;color:var(--txt2);font-size:.85rem;line-height:1.65;max-width:760px}
+.sub-t{display:flex;align-items:center;gap:10px;margin:26px 0 12px;font-size:.68rem;font-weight:700;letter-spacing:1.8px;text-transform:uppercase;color:var(--txt3)}
+.sub-t::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,var(--vidro-borda-forte),transparent)}
+
+/* aparência */
+.presets{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px}
+.preset{position:relative;text-align:left;border-radius:18px;overflow:hidden;border:1px solid var(--vidro-borda);background:rgba(255,255,255,.03);transition:transform .3s var(--mola),border-color .2s}
+.preset:hover{transform:translateY(-3px);border-color:var(--vidro-borda-forte)}
+.preset.ativo{border-color:var(--c);box-shadow:0 0 0 1px var(--c),0 14px 34px -14px var(--c)}
+.preset .ver{height:86px;position:relative;overflow:hidden}
+.preset .ver::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 40%,rgba(0,0,0,.4))}
+.preset .txt{padding:12px 14px 14px}
+.preset b{display:block;font-size:.88rem}
+.preset small{display:block;font-size:.72rem;color:var(--txt3);margin-top:2px}
+.preset .ok{position:absolute;top:10px;right:10px;width:24px;height:24px;border-radius:50%;display:none;place-items:center;color:#0b0b0d;background:var(--c);z-index:1}
+.preset .ok svg.i{width:14px;height:14px;stroke-width:3}
+.preset.ativo .ok{display:grid}
+.ambientes{display:flex;flex-wrap:wrap;gap:8px}
+.reguas{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px 26px}
+.rg{padding:14px 16px;border-radius:16px;background:rgba(255,255,255,.03);border:1px solid var(--vidro-borda)}
+.rg .t{display:flex;align-items:baseline;gap:10px;margin-bottom:10px}
+.rg .t b{flex:1;font-size:.86rem;font-weight:600}
+.rg .t span{font:600 .78rem var(--titulo);color:var(--ouro2);font-variant-numeric:tabular-nums}
+.rg .lim{display:flex;justify-content:space-between;font-size:.66rem;color:var(--txt3);margin-top:7px}
+
+/* usuários */
+.barra{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:16px}
+.barra .entrada{flex:1;min-width:200px;max-width:360px}
+.usuarios{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:12px}
+.u-card{display:flex;flex-direction:column;gap:12px;padding:16px;border-radius:18px;background:rgba(255,255,255,.035);border:1px solid var(--vidro-borda);transition:.25s}
+.u-card:hover{border-color:var(--vidro-borda-forte)}
+.u-card.inativo{opacity:.55}
+.u-top{display:flex;align-items:center;gap:12px}
+.u-top .av{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;font:700 .9rem var(--titulo);color:var(--ouro2);background:rgba(var(--ouro-rgb),.12);border:1px solid rgba(var(--ouro-rgb),.3);flex:none}
+.u-top div{flex:1;min-width:0}
+.u-top b{display:block;font-size:.92rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.u-top small{color:var(--txt3);font-size:.74rem}
+.u-mods{display:flex;flex-wrap:wrap;gap:5px}
+.u-acoes{display:flex;gap:6px;margin-top:auto}
+.alerta{padding:14px 16px;border-radius:16px;font-size:.84rem;line-height:1.6;color:var(--txt2);background:rgba(var(--ouro-rgb),.07);border:1px dashed rgba(var(--ouro-rgb),.4);margin-bottom:16px}
+.alerta code{color:var(--ouro2)}
+
+/* editor de usuário */
+.ed-g{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.ed-ch{display:flex;flex-wrap:wrap;gap:22px;margin-top:16px}
+.mods{display:flex;flex-direction:column;gap:10px;margin-top:6px}
+.mods.desligado{opacity:.35;pointer-events:none}
+.mod{border-radius:16px;background:rgba(255,255,255,.03);border:1px solid var(--vidro-borda);overflow:hidden}
+.mod-cab{display:flex;align-items:center;gap:12px;padding:12px 14px;flex-wrap:wrap}
+.mod-cab .nm{flex:1;min-width:140px}
+.mod-cab .nm b{display:block;font-size:.9rem}
+.mod-cab .nm small{font-size:.72rem;color:var(--txt3)}
+.mod-cab .abrir{transition:transform .3s}
+.mod.aberto .mod-cab .abrir{transform:rotate(90deg)}
+.mod-corpo{display:none;padding:4px 16px 16px;border-top:1px solid var(--vidro-borda)}
+.mod.aberto .mod-corpo{display:block}
+.acoes-g{display:flex;flex-wrap:wrap;gap:10px 22px;margin:12px 0 6px}
+.campos-g{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:6px 14px;margin-top:8px}
+.campo-l{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 8px;border-radius:10px}
+.campo-l:hover{background:rgba(255,255,255,.03)}
+.campo-l span{font-size:.82rem;color:var(--txt2)}
+.seg.p button{padding:5px 9px;font-size:.72rem}
+.mini-t{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:.66rem;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:var(--txt3)}
+.mini-t .chip{padding:3px 9px;font-size:.66rem;letter-spacing:0;text-transform:none}
+
+/* matriz */
+.mod-esc{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+.mod-esc button{display:flex;align-items:center;gap:9px;padding:6px 14px 6px 6px;border-radius:14px;border:1px solid var(--vidro-borda);background:rgba(255,255,255,.03);font-size:.84rem;font-weight:550;color:var(--txt2);transition:.2s}
+.mod-esc button.ativo{color:var(--txt);border-color:var(--c);box-shadow:0 0 0 1px var(--c)}
+.mod-esc .orbe{--t:28px;border-radius:9px}
+.mod-esc .orbe::after{display:none}
+.tabela{overflow:auto;border-radius:16px;border:1px solid var(--vidro-borda);background:rgba(5,6,10,.25)}
+table{border-collapse:collapse;width:100%;font-size:.8rem}
+th,td{padding:10px 12px;border-bottom:1px solid var(--vidro-borda);text-align:center;white-space:nowrap}
+th{position:sticky;top:0;background:rgba(14,16,22,.95);font-weight:600;color:var(--txt2);font-size:.74rem}
+th:first-child,td:first-child{text-align:left;position:sticky;left:0;background:rgba(14,16,22,.95);z-index:1}
+tr:hover td{background:rgba(255,255,255,.025)}
+.nv{min-width:62px;padding:5px 9px;border-radius:9px;font-weight:700;font-size:.7rem;--c:#34d399;color:var(--c);background:color-mix(in srgb,var(--c) 12%,transparent);border:1px solid color-mix(in srgb,var(--c) 32%,transparent);transition:.2s}
+.nv:hover{box-shadow:0 0 14px -4px var(--c)}
+.nv.ver{--c:#60a5fa}.nv.oculto{--c:#fb7185}
+.legenda{display:flex;flex-wrap:wrap;gap:14px;margin:12px 2px 0;font-size:.74rem;color:var(--txt3)}
+.info-g{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.info{padding:16px;border-radius:16px;background:rgba(255,255,255,.03);border:1px solid var(--vidro-borda)}
+.info small{display:block;font-size:.66rem;font-weight:700;letter-spacing:1.3px;text-transform:uppercase;color:var(--txt3)}
+.info b{display:block;margin-top:8px;font:600 1rem var(--titulo)}
+.info p{margin:6px 0 0;font-size:.78rem;color:var(--txt2);line-height:1.55}
+.vazio{text-align:center;color:var(--txt3);padding:30px 10px;font-size:.86rem}
+
+@media (max-width:900px){
+  .app{grid-template-columns:1fr}
+  .lado{position:static}
+  .nav-cfg{flex-direction:row;overflow-x:auto}
+  .nav-cfg button{flex:none}
+  .quem{display:none}
+  .ed-g{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="lado vidro">
+    <div class="marca"><span id="logo"></span><span><b>Configurações</b><small>Wendley Desenvolvimento</small></span></div>
+    <nav class="nav-cfg" id="nav"></nav>
+    <div class="quem" id="quem"></div>
+  </aside>
+  <main class="conteudo" id="conteudo"></main>
+</div>
+
+<script src="/static/aurora.js?v=3"></script>
+<script>
+(() => {
+"use strict";
+const A = Aurora, { svg, esc, api } = A;
+A.fundo();
+document.getElementById("logo").outerHTML = A.atomo(40);
+document.querySelector('link[rel="icon"]').href = A.ATOMO_SVG;
+
+let EU = null, DIAG = {}, USERS = [], MODS = [], BANCO = false, secao = "aparencia";
+try { secao = sessionStorage.getItem("wd.cfg.secao") || "aparencia"; } catch (_) {}
+const elC = document.getElementById("conteudo");
+const SECOES = [
+  { id: "aparencia",  nome: "Aparência",           ic: "paleta",  cor: "#22d3ee" },
+  { id: "usuarios",   nome: "Usuários",            ic: "usuarios", cor: "#e8b33d", admin: true },
+  { id: "permissoes", nome: "Permissões",          ic: "escudo",  cor: "#a78bfa", admin: true },
+  { id: "conta",      nome: "Minha conta",         ic: "usuario", cor: "#34d399" },
+  { id: "sistema",    nome: "Sistema",             ic: "ajustes", cor: "#94a3b8" },
+];
+const NIVEL = { editar: ["Editar", "#34d399"], ver: ["Só ver", "#60a5fa"], oculto: ["Oculto", "#fb7185"] };
+
+function nav() {
+  const vis = SECOES.filter((s) => !s.admin || EU.admin);
+  if (!vis.some((s) => s.id === secao)) secao = "aparencia";
+  document.getElementById("nav").innerHTML = vis.map((s) => `<button type="button" data-s="${s.id}" class="${s.id === secao ? "ativo" : ""}" style="--c:${s.cor}">${A.orbe(s.ic, s.cor)}${s.nome}</button>`).join("");
+  document.getElementById("quem").innerHTML = `<span class="av">${A.iniciais(EU.nome)}</span><div><b>${esc(EU.nome)}</b><small>${EU.admin ? "Administrador" : "@" + esc(EU.login)}</small></div>
+    <button type="button" class="btn-ic p" id="btSair" title="Sair">${svg("sair")}</button>`;
+  document.getElementById("btSair").onclick = sair;
+}
+document.getElementById("nav").onclick = (e) => { const b = e.target.closest("[data-s]"); if (!b) return; secao = b.dataset.s; try { sessionStorage.setItem("wd.cfg.secao", secao); } catch (_) {} render(); };
+async function sair() { try { await api("/api/auth/sair", { method: "POST" }); } catch (_) {} (window.top || window).location.href = "/login"; }
+function render() { nav(); ({ aparencia: rAparencia, usuarios: rUsuarios, permissoes: rPermissoes, conta: rConta, sistema: rSistema }[secao] || rAparencia)(); }
+
+/* ═════════ APARÊNCIA ═════════ */
+const REGUAS = [
+  ["prof", "Profundidade", 0, 0.7, 0.01, "superfície", "abismo", (v) => Math.round(v / 0.7 * 100) + "%"],
+  ["aur", "Luz da aurora", 0.1, 1, 0.01, "suave", "intensa", (v) => Math.round(v * 100) + "%"],
+  ["luz", "Luz da superfície", 0, 1, 0.01, "desligada", "sol forte", (v) => v ? Math.round(v * 100) + "%" : "desligada"],
+  ["vidro", "Vidro", 0, 1, 0.01, "cristal", "fosco", (v) => Math.round(v * 100) + "%"],
+  ["blur", "Desfoque do vidro", 0, 40, 1, "nítido", "embaçado", (v) => v + " px"],
+  ["vel", "Correntes", 0.3, 2.5, 0.05, "calmas", "fortes", (v) => v.toFixed(2).replace(".", ",") + "×"],
+  ["part", "Partículas", 0, 1.6, 0.05, "nenhuma", "muitas", (v) => Math.round(v * 100) + "%"],
+  ["grao", "Textura", 0, 0.15, 0.005, "lisa", "granulada", (v) => Math.round(v / 0.15 * 100) + "%"],
+];
+const AMBIENTES = [
+  ["Mergulho raso", { prof: 0, aur: 0.75, luz: 0.7, vel: 1.1, vidro: 0.3, blur: 20, part: 1 }],
+  ["Mar aberto", { prof: 0.15, aur: 0.55, luz: 0.35, vel: 0.9, vidro: 0.34, blur: 22, part: 0.8 }],
+  ["Fossa abissal", { prof: 0.55, aur: 0.35, luz: 0.08, vel: 0.55, vidro: 0.25, blur: 26, part: 1.3 }],
+  ["Cristal", { vidro: 0.08, blur: 32, aur: 0.6, luz: 0.25 }],
+  ["Foco total", { aur: 0.25, luz: 0, part: 0, vel: 0.5, prof: 0.3, grao: 0.03 }],
+];
+function previaPreset(p) {
+  return `background:radial-gradient(circle at 15% 20%,rgba(${p.aur[0]},.75),transparent 55%),radial-gradient(circle at 85% 10%,rgba(${p.aur[1]},.7),transparent 55%),
+    radial-gradient(circle at 60% 100%,rgba(${p.aur[2]},.55),transparent 55%),radial-gradient(circle at 95% 90%,rgba(${p.aur[3]},.4),transparent 50%),${p.noite}`;
+}
+function rAparencia() {
+  const t = A.tema.carregar(), P = A.tema.PRESETS;
+  elC.innerHTML = `<section class="secao vidro vidro-borda-viva">
+    <div class="cab">${A.orbe("onda", "#22d3ee")}<h2>Aparência</h2><button type="button" class="btn v p" id="apRest">${svg("repetir")}Restaurar o original</button></div>
+    <p class="desc">Escolha o mar e calibre a luz. Muda ao vivo no hub inteiro — menu, abas e todos os módulos — e fica salvo ${EU.fabrica || !BASE_OK() ? "neste navegador" : "na sua conta (vale em qualquer computador)"}.</p>
+    <div class="sub-t">Mares</div>
+    <div class="presets">${Object.entries(P).map(([k, p]) => `<button type="button" class="preset${t.preset === k ? " ativo" : ""}" data-p="${k}" style="--c:${p.ouro[0]}">
+        <span class="ok">${svg("check")}</span><div class="ver" style="${previaPreset(p)}"></div><div class="txt"><b>${p.nome}</b><small>${p.desc}</small></div></button>`).join("")}</div>
+    <div class="sub-t">Ambientes prontos</div>
+    <div class="ambientes">${AMBIENTES.map(([n], i) => `<button type="button" class="chip" data-amb="${i}">${svg("onda")}${n}</button>`).join("")}</div>
+    <div class="sub-t">Calibração</div>
+    <div class="reguas">${REGUAS.map(([k, r, mi, ma, pa, l1, l2]) => `<div class="rg"><div class="t"><b>${r}</b><span id="v_${k}"></span></div>
+        <input class="regua" type="range" min="${mi}" max="${ma}" step="${pa}" value="${t[k]}" data-k="${k}" aria-label="${r}">
+        <div class="lim"><span>${l1}</span><span>${l2}</span></div></div>`).join("")}</div>
+  </section>`;
+  const pinta = () => {
+    const t2 = A.tema.carregar();
+    REGUAS.forEach(([k, , mi, ma, , , , f]) => {
+      const i = elC.querySelector(`[data-k="${k}"]`); i.value = t2[k];
+      i.style.setProperty("--p", ((t2[k] - mi) / (ma - mi)) * 100 + "%");
+      elC.querySelector("#v_" + k).textContent = f(+t2[k]);
+    });
+    elC.querySelectorAll(".preset").forEach((b) => b.classList.toggle("ativo", b.dataset.p === t2.preset));
+  };
+  let q = 0;
+  elC.querySelectorAll(".regua").forEach((i) => i.addEventListener("input", () => {
+    cancelAnimationFrame(q); q = requestAnimationFrame(() => { A.tema.salvar({ ...A.tema.carregar(), [i.dataset.k]: +i.value }); pinta(); });
+  }));
+  elC.querySelectorAll(".preset").forEach((b) => (b.onclick = () => { A.tema.salvar({ ...A.tema.carregar(), preset: b.dataset.p }); pinta(); }));
+  elC.querySelectorAll("[data-amb]").forEach((b) => (b.onclick = () => { A.tema.salvar({ ...A.tema.carregar(), ...AMBIENTES[+b.dataset.amb][1] }); pinta(); A.toast(`Ambiente <b>${AMBIENTES[+b.dataset.amb][0]}</b> aplicado.`, [], { cor: "var(--ciano)", duracao: 2500 }); }));
+  elC.querySelector("#apRest").onclick = () => { A.tema.salvar({ ...A.tema.PADRAO }); pinta(); };
+  pinta();
+}
+const BASE_OK = () => BANCO;
+
+/* ═════════ USUÁRIOS ═════════ */
+async function carregarAdmin() {
+  const d = await api("/api/admin/usuarios");
+  USERS = d.usuarios; MODS = d.modulos; BANCO = d.banco;
+}
+function presetDe(mod, p) {
+  const acoes = Object.keys(mod.esquema.acoes), campos = Object.keys(mod.esquema.campos);
+  if (!p || !(p.acoes || {}).acessar) return "nenhum";
+  const todasA = acoes.every((a) => (p.acoes || {})[a]), todosE = campos.every((c) => ((p.campos || {})[c] || "editar") === "editar");
+  if (todasA && todosE) return "completo";
+  const soVer = acoes.every((a) => a === "acessar" || !(p.acoes || {})[a]) && campos.every((c) => ((p.campos || {})[c] || "editar") === "ver");
+  if (soVer) return "ver";
+  return "custom";
+}
+function aplicarPreset(mod, tipo) {
+  const acoes = Object.keys(mod.esquema.acoes), campos = Object.keys(mod.esquema.campos);
+  if (tipo === "nenhum") return { acoes: {}, campos: {} };
+  if (tipo === "ver") return { acoes: { acessar: true }, campos: Object.fromEntries(campos.map((c) => [c, "ver"])) };
+  return { acoes: Object.fromEntries(acoes.map((a) => [a, true])), campos: Object.fromEntries(campos.map((c) => [c, "editar"])) };
+}
+function resumoAcesso(u) {
+  if (u.admin) return `<span class="etq" style="--c:#e8b33d">${svg("escudo")}Acesso total</span>`;
+  const l = MODS.filter((m) => ((u.modulos || {})[m.id] || {}).acoes?.acessar);
+  return l.length ? l.map((m) => `<span class="etq" style="--c:${m.cor || "#94a3b8"}">${esc(m.titulo)}${presetDe(m, u.modulos[m.id]) === "custom" ? " · personalizado" : presetDe(m, u.modulos[m.id]) === "ver" ? " · ver" : ""}</span>`).join("")
+    : `<span class="etq">sem acesso a módulos</span>`;
+}
+async function rUsuarios() {
+  elC.innerHTML = `<section class="secao vidro"><div class="vazio">Carregando usuários…</div></section>`;
+  try { await carregarAdmin(); } catch (e) { elC.innerHTML = `<section class="secao vidro"><div class="vazio">Não consegui carregar: ${esc(e.message)}</div></section>`; return; }
+  const busca = (rUsuarios.busca || "").toLowerCase();
+  const lista = USERS.filter((u) => !busca || (u.nome + " " + u.login).toLowerCase().includes(busca));
+  elC.innerHTML = `<section class="secao vidro vidro-borda-viva">
+    <div class="cab">${A.orbe("usuarios", "#e8b33d")}<h2>Usuários</h2>${BANCO ? `<button type="button" class="btn" id="uNovo">${svg("mais")}Novo usuário</button>` : ""}</div>
+    <p class="desc">Cada pessoa entra com o próprio login. Você decide, módulo por módulo, o que ela pode abrir, criar, editar, excluir — e até campo por campo: editar, só ver ou nem enxergar.
+      As regras são conferidas no servidor: o que estiver bloqueado não passa, nem mexendo no navegador.</p>
+    ${BANCO ? "" : `<div class="alerta"><b>Falta o banco de dados.</b> Para criar usuários, configure <code>FIRESTORE_CREDS</code> no Render (Environment). Enquanto isso, só o administrador de fábrica (<code>HUB_ADMIN_USUARIO</code>) entra.</div>`}
+    ${BANCO ? `<div class="barra"><input class="entrada" id="uBusca" placeholder="Buscar por nome ou login…" value="${esc(rUsuarios.busca || "")}"></div>` : ""}
+    <div class="usuarios">${lista.map((u) => `<div class="u-card luz${u.ativo ? "" : " inativo"}">
+        <div class="u-top"><span class="av">${A.iniciais(u.nome)}</span><div><b>${esc(u.nome)}</b><small>@${esc(u.login)}${u.ultimo_acesso ? " · último acesso " + esc(u.ultimo_acesso.slice(0, 16).replace("T", " ")) : " · nunca entrou"}</small></div>
+          ${u.admin ? `<span class="etq" style="--c:#e8b33d">Admin</span>` : ""}${u.ativo ? "" : `<span class="etq" style="--c:#fb7185">Inativo</span>`}</div>
+        <div class="u-mods">${resumoAcesso(u)}</div>
+        <div class="u-acoes"><button type="button" class="btn v p" data-ed="${esc(u.login)}">${svg("lapis")}Editar acesso</button>
+          ${u.login !== EU.login ? `<button type="button" class="btn perigo p" data-del="${esc(u.login)}">${svg("lixo")}</button>` : ""}</div></div>`).join("")
+      || (BANCO ? `<div class="vazio">${busca ? "Ninguém encontrado." : "Nenhum usuário ainda. Clique em <b>Novo usuário</b>."}</div>` : "")}</div>
+  </section>`;
+  elC.querySelector("#uNovo")?.addEventListener("click", () => editorUsuario(null));
+  elC.querySelector("#uBusca")?.addEventListener("input", (e) => { rUsuarios.busca = e.target.value; const p = e.target.selectionStart; rUsuarios().then(() => { const i = elC.querySelector("#uBusca"); i?.focus(); i?.setSelectionRange(p, p); }); });
+  elC.querySelectorAll("[data-ed]").forEach((b) => (b.onclick = () => editorUsuario(USERS.find((u) => u.login === b.dataset.ed))));
+  elC.querySelectorAll("[data-del]").forEach((b) => (b.onclick = async () => {
+    const u = USERS.find((x) => x.login === b.dataset.del);
+    if (!(await A.confirmar(`Excluir <b>${esc(u.nome)}</b> (@${esc(u.login)})? A pessoa perde o acesso na hora.`, { titulo: "Excluir usuário", rotulo: "Excluir", perigo: true }))) return;
+    try { await api("/api/admin/usuarios/" + encodeURIComponent(u.login), { method: "DELETE" }); A.toast("Usuário excluído.", [], { cor: "var(--rosa)" }); rUsuarios(); }
+    catch (e) { A.toast("Não excluiu: " + esc(e.message), [], { cor: "var(--rosa)" }); }
+  }));
+}
+
+function editorUsuario(u) {
+  const novo = !u;
+  const d = u ? JSON.parse(JSON.stringify(u)) : { login: "", nome: "", admin: false, ativo: true, modulos: {} };
+  d.modulos = d.modulos || {};
+  const segPreset = (m) => `<div class="seg p" data-preset="${m.id}">${[["nenhum", "Sem acesso", "#94a3b8"], ["ver", "Visualizar", "#60a5fa"], ["completo", "Completo", "#34d399"], ["custom", "Personalizado", "#a78bfa"]]
+      .map(([v, r, c]) => `<button type="button" data-v="${v}" style="--c:${c}">${r}</button>`).join("")}</div>`;
+  const corpoMod = (m) => {
+    const p = d.modulos[m.id] || { acoes: {}, campos: {} }, ac = Object.entries(m.esquema.acoes), ca = Object.entries(m.esquema.campos);
+    return `<div class="mini-t">Ações</div>
+      <div class="acoes-g">${ac.map(([a, r]) => `<label class="chave" style="--c:${a === "excluir" ? "#fb7185" : "#34d399"}"><input type="checkbox" data-a="${a}" ${(p.acoes || {})[a] ? "checked" : ""}><span class="trilho"></span>${esc(r)}</label>`).join("")}</div>
+      ${ca.length ? `<div class="mini-t">Campos <span style="flex:1"></span>todos:
+          ${Object.entries(NIVEL).map(([v, [r, c]]) => `<button type="button" class="chip" data-todos="${v}" style="--c:${c}">${r}</button>`).join("")}</div>
+        <div class="campos-g">${ca.map(([c, r]) => `<div class="campo-l"><span>${esc(r)}</span><div class="seg p" data-c="${c}">${Object.entries(NIVEL).map(([v, [rr, cc]]) =>
+          `<button type="button" data-v="${v}" style="--c:${cc}" class="${((p.campos || {})[c] || "editar") === v ? "ativo" : ""}">${rr}</button>`).join("")}</div></div>`).join("")}</div>`
+        : `<p style="font-size:.78rem;color:var(--txt3);margin:8px 0 0">Este módulo só tem a opção de abrir (sistema hospedado fora do hub).</p>`}`;
+  };
+  const html = `
+    <div class="ed-g">
+      <label class="campo">Login (para entrar)<input id="uLogin" ${novo ? "" : "disabled"} autocapitalize="none" spellcheck="false" placeholder="ex.: maria"></label>
+      <label class="campo">Nome<input id="uNome" placeholder="ex.: Maria Silva"></label>
+      <label class="campo">${novo ? "Senha" : "Nova senha"}<input id="uSenha" type="password" autocomplete="new-password" placeholder="${novo ? "mínimo 6 caracteres" : "deixe em branco para manter"}"></label></div>
+    <div class="ed-ch">
+      <label class="chave" style="--c:#34d399"><input type="checkbox" id="uAtivo"><span class="trilho"></span>Ativo (pode entrar)</label>
+      <label class="chave" style="--c:#e8b33d"><input type="checkbox" id="uAdmin"><span class="trilho"></span>Administrador — acesso total a tudo</label></div>
+    <div class="sub-t">Acesso por módulo</div>
+    <div class="mods" id="uMods">${MODS.map((m) => `<div class="mod" data-m="${m.id}">
+        <div class="mod-cab">${A.orbe(m.icone, m.cor || "#94a3b8")}<div class="nm"><b>${esc(m.titulo)}</b><small>${esc(m.grupo || "")} · ${Object.keys(m.esquema.acoes).length} ações · ${Object.keys(m.esquema.campos).length} campos</small></div>
+          ${segPreset(m)}<button type="button" class="btn-ic p abrir" data-abrir title="Detalhar">${svg("avancar")}</button></div>
+        <div class="mod-corpo" data-corpo></div></div>`).join("") || `<div class="vazio">Nenhum módulo no hub ainda.</div>`}</div>`;
+
+  A.modal({
+    titulo: novo ? "Novo usuário" : "Acesso de " + d.nome, icone: novo ? "mais" : "usuario", largura: 960, html,
+    botoes: [{ rotulo: "Cancelar" }, { rotulo: novo ? "Criar usuário" : "Salvar", classe: "btn", icone: "check", principal: true, acao: async (cx) => {
+      const $ = (s) => cx.querySelector(s);
+      d.login = $("#uLogin").value.trim().toLowerCase(); d.nome = $("#uNome").value.trim();
+      const senha = $("#uSenha").value;
+      if (novo && senha.length < 6) { A.toast("A senha precisa de pelo menos 6 caracteres.", [], { cor: "var(--rosa)" }); return false; }
+      const corpo = { nome: d.nome, admin: d.admin, ativo: d.ativo, modulos: d.modulos, ...(senha ? { senha } : {}) };
+      try {
+        if (novo) await api("/api/admin/usuarios", { method: "POST", body: { login: d.login, ...corpo } });
+        else await api("/api/admin/usuarios/" + encodeURIComponent(d.login), { method: "PUT", body: corpo });
+        A.toast(`✓ ${novo ? "Usuário criado" : "Acesso atualizado"}: <b>${esc(d.nome || d.login)}</b>.${!novo && senha ? " Senha trocada — as sessões dele foram encerradas." : ""}`, [], { cor: "var(--verde)" });
+        rUsuarios();
+      } catch (e) { A.toast("Não salvou: " + esc(e.message), [], { cor: "var(--rosa)" }); return false; }
+    } }],
+    aoAbrir(cx) {
+      const $ = (s) => cx.querySelector(s);
+      $("#uLogin").value = d.login; $("#uNome").value = d.nome; $("#uAtivo").checked = d.ativo; $("#uAdmin").checked = d.admin;
+      const mods = $("#uMods");
+      const sinc = () => {
+        mods.classList.toggle("desligado", d.admin);
+        cx.querySelectorAll(".mod").forEach((el) => {
+          const m = MODS.find((x) => x.id === el.dataset.m), pr = presetDe(m, d.modulos[m.id]);
+          el.querySelectorAll("[data-preset] button").forEach((b) => b.classList.toggle("ativo", b.dataset.v === pr));
+          if (el.classList.contains("aberto")) {
+            const corpo = el.querySelector("[data-corpo]"), y = corpo.scrollTop;
+            corpo.innerHTML = corpoMod(m); corpo.scrollTop = y;
+          }
+        });
+      };
+      $("#uAdmin").onchange = (e) => { d.admin = e.target.checked; sinc(); };
+      $("#uAtivo").onchange = (e) => { d.ativo = e.target.checked; };
+      mods.addEventListener("click", (e) => {
+        const el = e.target.closest(".mod"); if (!el) return;
+        const m = MODS.find((x) => x.id === el.dataset.m), p = (d.modulos[m.id] = d.modulos[m.id] || { acoes: {}, campos: {} });
+        p.acoes = p.acoes || {}; p.campos = p.campos || {};
+        let b;
+        if ((b = e.target.closest("[data-preset] button"))) {
+          if (b.dataset.v === "custom") { el.classList.add("aberto"); if (!p.acoes.acessar) p.acoes.acessar = true; }
+          else d.modulos[m.id] = aplicarPreset(m, b.dataset.v);
+          sinc(); return;
+        }
+        if (e.target.closest("[data-abrir]")) { el.classList.toggle("aberto"); sinc(); return; }
+        if ((b = e.target.closest("[data-todos]"))) { Object.keys(m.esquema.campos).forEach((c) => (p.campos[c] = b.dataset.todos)); if (!p.acoes.acessar) p.acoes.acessar = true; sinc(); return; }
+        if ((b = e.target.closest("[data-c] button"))) { p.campos[b.parentElement.dataset.c] = b.dataset.v; if (!p.acoes.acessar) p.acoes.acessar = true; sinc(); }
+      });
+      mods.addEventListener("change", (e) => {
+        const i = e.target.closest("[data-a]"); if (!i) return;
+        const el = i.closest(".mod"), m = MODS.find((x) => x.id === el.dataset.m), p = (d.modulos[m.id] = d.modulos[m.id] || { acoes: {}, campos: {} });
+        p.acoes = p.acoes || {}; p.acoes[i.dataset.a] = i.checked;
+        if (i.checked && i.dataset.a !== "acessar") p.acoes.acessar = true;
+        if (!i.checked && i.dataset.a === "acessar") Object.keys(p.acoes).forEach((a) => (p.acoes[a] = false));
+        sinc();
+      });
+      sinc();
+      setTimeout(() => (novo ? $("#uLogin") : $("#uNome")).focus(), 80);
+    },
+  });
+}
+
+/* ═════════ PERMISSÕES (matriz rápida) ═════════ */
+async function rPermissoes() {
+  if (rPermissoes._ch) { elC.removeEventListener("change", rPermissoes._ch); elC.removeEventListener("click", rPermissoes._cl); }
+  elC.innerHTML = `<section class="secao vidro"><div class="vazio">Carregando…</div></section>`;
+  try { await carregarAdmin(); } catch (e) { elC.innerHTML = `<section class="secao vidro"><div class="vazio">Não consegui carregar: ${esc(e.message)}</div></section>`; return; }
+  const modoOn = localStorage.getItem("wd.modoPerm") === "1";
+  const mods = MODS.filter((m) => Object.keys(m.esquema.acoes).length > 1 || Object.keys(m.esquema.campos).length);
+  let atual = rPermissoes.mod && MODS.find((m) => m.id === rPermissoes.mod) ? rPermissoes.mod : (mods[0] || MODS[0] || {}).id;
+  const pessoas = USERS.filter((u) => !u.admin);
+  const desenhar = () => {
+    const m = MODS.find((x) => x.id === atual);
+    const tab = m ? `
+      <div class="sub-t">Ações · ${esc(m.titulo)}</div>
+      <div class="tabela"><table><thead><tr><th>Pessoa</th>${Object.values(m.esquema.acoes).map((r) => `<th>${esc(r)}</th>`).join("")}</tr></thead><tbody>
+        ${pessoas.map((u) => { const p = (u.modulos || {})[m.id] || {}; return `<tr><td><b>${esc(u.nome)}</b> <small style="color:var(--txt3)">@${esc(u.login)}</small></td>${Object.keys(m.esquema.acoes).map((a) =>
+          `<td><label class="chave" style="--c:${a === "excluir" ? "#fb7185" : "#34d399"}"><input type="checkbox" data-u="${esc(u.login)}" data-a="${a}" ${(p.acoes || {})[a] && (p.acoes || {}).acessar ? "checked" : ""}><span class="trilho"></span></label></td>`).join("")}</tr>`; }).join("")}
+      </tbody></table></div>
+      ${Object.keys(m.esquema.campos).length ? `<div class="sub-t">Campos · ${esc(m.titulo)}</div>
+      <div class="tabela"><table><thead><tr><th>Pessoa</th>${Object.values(m.esquema.campos).map((r) => `<th>${esc(r)}</th>`).join("")}</tr></thead><tbody>
+        ${pessoas.map((u) => { const p = (u.modulos || {})[m.id] || {}; return `<tr><td><b>${esc(u.nome)}</b></td>${Object.keys(m.esquema.campos).map((c) => { const v = (p.campos || {})[c] || "editar";
+          return `<td><button type="button" class="nv ${v}" data-u="${esc(u.login)}" data-c="${c}" data-v="${v}" title="Clique para trocar">${NIVEL[v][0]}</button></td>`; }).join("")}</tr>`; }).join("")}
+      </tbody></table></div>
+      <div class="legenda"><span><b style="color:#34d399">Editar</b> pode alterar</span><span><b style="color:#60a5fa">Só ver</b> enxerga, não altera</span><span><b style="color:#fb7185">Oculto</b> nem aparece para a pessoa</span><span>· clique para alternar · salva na hora</span></div>` : ""}` : "";
+    elC.innerHTML = `<section class="secao vidro vidro-borda-viva">
+      <div class="cab">${A.orbe("escudo", "#a78bfa")}<h2>Permissões</h2></div>
+      <p class="desc">Duas formas de controlar: a <b>matriz</b> abaixo (pessoa × ação × campo, por módulo) ou o <b>Modo permissões</b>, que coloca um escudo em cada campo e botão dentro dos próprios módulos — você clica no escudo e decide quem pode o quê, ali mesmo.</p>
+      <div class="rg" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <label class="chave" style="--c:#e8b33d"><input type="checkbox" id="pModo" ${modoOn ? "checked" : ""}><span class="trilho"></span><b style="color:var(--txt)">Modo permissões nos campos</b></label>
+        <span style="font-size:.78rem;color:var(--txt3);flex:1;min-width:220px">Ligado: abra qualquer módulo e clique nos escudos dourados (campos) ou roxos (ações). Só você, administrador, vê os escudos.</span></div>
+      ${pessoas.length ? "" : `<div class="alerta" style="margin-top:16px">Ainda não há usuários além de administradores. Crie em <b>Usuários</b>.</div>`}
+      <div class="sub-t">Módulo</div>
+      <div class="mod-esc">${MODS.map((x) => `<button type="button" data-mod="${x.id}" class="${x.id === atual ? "ativo" : ""}" style="--c:${x.cor || "#94a3b8"}">${A.orbe(x.icone, x.cor || "#94a3b8")}${esc(x.titulo)}</button>`).join("")}</div>
+      ${pessoas.length ? tab : ""}
+    </section>`;
+    elC.querySelector("#pModo").onchange = (e) => {
+      try { localStorage.setItem("wd.modoPerm", e.target.checked ? "1" : "0"); } catch (_) {}
+      A.toast(e.target.checked ? "🛡 Modo permissões ligado — abra um módulo e clique nos escudos." : "Modo permissões desligado.", [], { cor: "var(--ouro)" });
+    };
+    elC.querySelectorAll("[data-mod]").forEach((b) => (b.onclick = () => { atual = rPermissoes.mod = b.dataset.mod; desenhar(); }));
+  };
+  const salvar = async (login, tipo, chave, valor) => {
+    const u = USERS.find((x) => x.login === login), m = MODS.find((x) => x.id === atual);
+    const valores = { [login]: valor };
+    try {
+      if (tipo === "acao" && valor && chave !== "acessar" && !(((u.modulos || {})[atual] || {}).acoes || {}).acessar)
+        await api("/api/admin/permissao", { method: "PUT", body: { modulo: atual, tipo: "acao", chave: "acessar", valores: { [login]: true } } });
+      await api("/api/admin/permissao", { method: "PUT", body: { modulo: atual, tipo, chave, valores } });
+      const p = ((u.modulos = u.modulos || {})[atual] = u.modulos[atual] || { acoes: {}, campos: {} });
+      p.acoes = p.acoes || {}; p.campos = p.campos || {};
+      if (tipo === "acao") { p.acoes[chave] = valor; if (valor) p.acoes.acessar = true; } else p.campos[chave] = valor;
+      A.toast(`✓ ${esc(u.nome)} · ${esc((tipo === "acao" ? m.esquema.acoes : m.esquema.campos)[chave])}: <b>${tipo === "acao" ? (valor ? "permitido" : "negado") : NIVEL[valor][0]}</b>`, [], { cor: "var(--verde)", duracao: 2200 });
+    } catch (e) { A.toast("Não salvou: " + esc(e.message), [], { cor: "var(--rosa)" }); }
+    desenhar();
+  };
+  elC.addEventListener("change", rPermissoes._ch = (e) => {
+    const i = e.target.closest("input[data-a]"); if (!i) return;
+    salvar(i.dataset.u, "acao", i.dataset.a, i.checked);
+  });
+  elC.addEventListener("click", rPermissoes._cl = (e) => {
+    const b = e.target.closest("button.nv"); if (!b) return;
+    const ord = ["editar", "ver", "oculto"], prox = ord[(ord.indexOf(b.dataset.v) + 1) % 3];
+    salvar(b.dataset.u, "campo", b.dataset.c, prox);
+  });
+  desenhar();
+}
+
+/* ═════════ MINHA CONTA ═════════ */
+function rConta() {
+  elC.innerHTML = `<section class="secao vidro vidro-borda-viva">
+    <div class="cab">${A.orbe("usuario", "#34d399")}<h2>Minha conta</h2><button type="button" class="btn v p" id="cSair">${svg("sair")}Sair</button></div>
+    <p class="desc">Você entrou como <b>${esc(EU.nome)}</b> (@${esc(EU.login)})${EU.admin ? " — administrador" : ""}.</p>
+    ${EU.fabrica ? `<div class="alerta">Este é o <b>administrador de fábrica</b>. A senha dele é a variável <code>HUB_ADMIN_SENHA</code> do Render — troque por lá.
+        Dica: crie um usuário administrador com o seu nome em <b>Usuários</b> e use o de fábrica só para emergência.</div>` : `
+      <div class="sub-t">Trocar senha</div>
+      <form id="fSenha" class="ed-g" style="max-width:820px">
+        <label class="campo">Senha atual<input type="password" name="atual" autocomplete="current-password" required></label>
+        <label class="campo">Nova senha<input type="password" name="nova" autocomplete="new-password" minlength="6" required></label>
+        <label class="campo">Repita a nova senha<input type="password" name="nova2" autocomplete="new-password" minlength="6" required></label>
+        <div><button class="btn" type="submit">${svg("cadeado")}Trocar senha</button></div></form>`}
+  </section>`;
+  elC.querySelector("#cSair").onclick = sair;
+  const f = elC.querySelector("#fSenha");
+  if (f) f.onsubmit = async (e) => {
+    e.preventDefault();
+    if (f.nova.value !== f.nova2.value) { A.toast("As duas senhas novas não são iguais.", [], { cor: "var(--rosa)" }); return; }
+    try { await api("/api/eu/senha", { method: "POST", body: { atual: f.atual.value, nova: f.nova.value } }); f.reset(); A.toast("✓ Senha trocada. Outras sessões suas foram encerradas.", [], { cor: "var(--verde)" }); }
+    catch (err) { A.toast(esc(err.message), [], { cor: "var(--rosa)" }); }
+  };
+}
+
+/* ═════════ SISTEMA ═════════ */
+async function rSistema() {
+  try { DIAG = await api("/api/diag"); } catch (_) {}
+  const item = (t, ok, v, p) => `<div class="info luz" style="--c:${ok ? "#34d399" : "#fb7185"}"><small>${t}</small><b style="color:${ok ? "#34d399" : "#fda4af"}">${v}</b><p>${p}</p></div>`;
+  elC.innerHTML = `<section class="secao vidro vidro-borda-viva">
+    <div class="cab">${A.orbe("ajustes", "#94a3b8")}<h2>Sistema</h2><span class="etq">hub v${esc(DIAG.versao || "?")}</span></div>
+    <p class="desc">O que está configurado no Render (Environment). Mudou uma variável? O Render reinicia o serviço sozinho.</p>
+    <div class="info-g">
+      ${item("Banco de dados", DIAG.firestore_configurado, DIAG.firestore_configurado ? "Conectado" : "Não configurado", "<code>FIRESTORE_CREDS</code> — guarda usuários, permissões e os dados dos módulos.")}
+      ${item("Administrador de fábrica", DIAG.admin_fabrica_configurado, DIAG.admin_fabrica_configurado ? "Configurado" : "Faltando", "<code>HUB_ADMIN_USUARIO</code> + <code>HUB_ADMIN_SENHA</code> — a chave reserva para nunca ficar trancado de fora.")}
+      ${item("Assinatura das sessões", !DIAG.segredo_temporario, DIAG.segredo_temporario ? "Temporária" : "Fixa", "<code>HUB_SEGREDO</code> — sem ela, todo mundo precisa entrar de novo sempre que o servidor reinicia.")}
+      ${item("No ar há", true, Math.round((DIAG.no_ar_ha_seg || 0) / 60) + " min", "No plano Free o servidor dorme após ~15 min sem uso e acorda no primeiro acesso.")}
+    </div></section>`;
+}
+
+/* ═════════ INÍCIO ═════════ */
+(async () => {
+  try { const d = await api("/api/eu"); EU = d.usuario; BANCO = d.banco; A.tema.daConta(d.preferencias); }
+  catch (e) { if (e.status === 401) { (window.top || window).location.href = "/login"; return; } elC.innerHTML = `<div class="vazio">Erro: ${esc(e.message)}</div>`; return; }
+  render();
+})();
+})();
+</script>
+</body>
+</html>
