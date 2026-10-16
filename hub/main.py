@@ -7,6 +7,10 @@ Casca em FastAPI que roda no Render (plano Free) e serve:
     /api/modulos      → catálogo de tudo que aparece no menu
     /m/<slug>         → um módulo HTML descoberto automaticamente
     /m/<slug>/<arq>   → arquivos auxiliares de um módulo em pasta (css, js, img)
+    /login            → tela de entrada (todo o resto exige login)
+    /configuracoes    → engrenagem: aparência, usuários e permissões, conta
+    /api/auth/*  /api/eu  /api/admin/*   → acesso.py (login, usuários, permissões)
+    /api/dados/<modulo>/<colecao>        → dados.py  (dados com permissão por campo)
     /healthz          → health check do Render (obrigatório)
     /api/diag         → diagnóstico (Firestore conecta? quantos módulos?)
 
@@ -30,17 +34,23 @@ COMO ADICIONAR UM MÓDULO NOVO (sem mexer neste arquivo):
         <meta name="hub-descricao" content="Tudo que vence hoje">
         <meta name="hub-oculto"    content="1">   ← não aparece no menu
 
+    Permissões controláveis (aparecem em Configurações → Usuários):
+        <script type="application/json" id="hub-permissoes">
+          {"acoes":{"acessar":"Abrir","incluir":"Criar","editar":"Editar","excluir":"Excluir"},
+           "campos":{"titulo":"Título","valor":"Valor"}}
+        </script>
+
 Render — configuração do Web Service:
     Root Directory : hub
     Build Command  : pip install -r requirements.txt
     Start Command  : uvicorn main:app --host 0.0.0.0 --port $PORT
     Instance Type  : Free
     Health Check   : /healthz
-    Env vars       : LILA_STREAMLIT_URL = https://<seu-app>.streamlit.app/
-                                          (o ?embed=true é colocado sozinho)
-                     FIRESTORE_CREDS    = JSON cru da service account (opcional
-                                          por enquanto; só os módulos com API
-                                          vão precisar)
+    Env vars       : HUB_ADMIN_USUARIO  = seu login de administrador de fábrica
+                     HUB_ADMIN_SENHA    = a senha dele (forte!)
+                     HUB_SEGREDO        = texto longo e aleatório (assina as sessões)
+                     FIRESTORE_CREDS    = JSON cru da service account (usuários e dados)
+                     LILA_STREAMLIT_URL = https://<seu-app>.streamlit.app/
 """
 
 from __future__ import annotations
@@ -53,11 +63,15 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutTimeout
 from html.parser import HTMLParser
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-VERSAO = "2.1.0"
+import acesso
+import banco
+import dados
+
+VERSAO = "3.0.0"
 
 BASE = Path(__file__).resolve().parent
 PASTA_MODULOS = BASE / "modulos"
@@ -135,12 +149,16 @@ class _LeitorMeta(HTMLParser):
         super().__init__()
         self.meta: dict[str, str] = {}
         self.titulo = ""
+        self.permissoes = ""
         self._no_title = False
+        self._no_perm = False
 
     def handle_starttag(self, tag, attrs):
         a = dict(attrs)
         if tag == "title":
             self._no_title = True
+        elif tag == "script" and a.get("id") == "hub-permissoes":
+            self._no_perm = True
         elif tag == "meta":
             nome = (a.get("name") or "").lower()
             if nome.startswith("hub-"):
@@ -149,10 +167,14 @@ class _LeitorMeta(HTMLParser):
     def handle_endtag(self, tag):
         if tag == "title":
             self._no_title = False
+        elif tag == "script":
+            self._no_perm = False
 
     def handle_data(self, data):
         if self._no_title:
             self.titulo += data
+        elif self._no_perm:
+            self.permissoes += data
 
 
 def _ler_metadados(arquivo: Path) -> dict:
@@ -162,7 +184,13 @@ def _ler_metadados(arquivo: Path) -> dict:
             leitor.feed(f.read(64_000))  # o <head> basta
     except OSError:
         pass
-    return {"titulo": leitor.titulo.strip(), **leitor.meta}
+    esquema = None
+    if leitor.permissoes.strip():
+        try:
+            esquema = json.loads(leitor.permissoes)
+        except json.JSONDecodeError:
+            print(f"[hub] JSON de permissões inválido em {arquivo.name} — usando só 'acessar'.")
+    return {"titulo": leitor.titulo.strip(), **leitor.meta, "_esquema": esquema}
 
 
 def _arquivo_do_modulo(slug: str) -> Path | None:
@@ -216,6 +244,7 @@ def modulos_internos() -> list[dict]:
             "descricao": m.get("descricao") or "",
             "url": f"/m/{slug}",
             "tipo": "interno",
+            "_esquema": m.get("_esquema"),
         })
     return saida
 
@@ -223,29 +252,59 @@ def modulos_internos() -> list[dict]:
 # ══════════════════════════════════════════════════════════════════════════════
 # FIRESTORE — criado sob demanda (NUNCA no import: no PQI isso travava o gRPC)
 # ══════════════════════════════════════════════════════════════════════════════
-_db = None
+db = banco.db  # conexão única (banco.py)
 
 
-def db():
-    """Cliente Firestore compartilhado pelos futuros endpoints /api/*."""
-    global _db
-    if _db is None:
-        bruto = os.environ.get("FIRESTORE_CREDS", "").strip()
-        if not bruto:
-            raise RuntimeError("FIRESTORE_CREDS não configurada no Render.")
-        from google.cloud import firestore
-        from google.oauth2 import service_account
+# ══════════════════════════════════════════════════════════════════════════════
+# CATÁLOGO + ESQUEMAS DE PERMISSÃO
+# ══════════════════════════════════════════════════════════════════════════════
+def catalogo() -> list[dict]:
+    itens = sistemas_externos() + modulos_internos()
+    itens.sort(key=lambda i: (i["ordem"], i["titulo"].lower()))
+    return itens
 
-        info = json.loads(bruto)
-        cred = service_account.Credentials.from_service_account_info(info)
-        _db = firestore.Client(credentials=cred, project=info["project_id"])
-    return _db
+
+def esquema_do_modulo(slug: str) -> dict | None:
+    for i in catalogo():
+        if i["id"] == slug:
+            return acesso.normalizar_esquema(i.get("_esquema"))
+    return None
+
+
+def modulos_com_esquema() -> list[dict]:
+    return [{k: v for k, v in i.items() if k != "_esquema"} | {"esquema": acesso.normalizar_esquema(i.get("_esquema"))}
+            for i in catalogo()]
+
+
+acesso.obter_esquema = esquema_do_modulo
+acesso.listar_modulos = modulos_com_esquema
+
+
+def _pagina(nome: str) -> FileResponse:
+    arq = BASE / "static" / nome
+    if not arq.is_file():
+        raise HTTPException(500, f"static/{nome} não encontrado")
+    return FileResponse(arq, media_type="text/html", headers=SEM_CACHE)
+
+
+def _ir_para_login(request: Request) -> RedirectResponse:
+    from urllib.parse import quote
+    return RedirectResponse("/login?volta=" + quote(request.url.path), status_code=303)
+
+
+_SEM_ACESSO = """<!doctype html><meta charset="utf-8"><title>Sem acesso</title>
+<body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#05060a;color:#eef0f5;font:15px Inter,system-ui,sans-serif">
+<div style="text-align:center;max-width:380px;padding:24px"><div style="font-size:2.4rem">🔒</div>
+<h2 style="font-weight:600;margin:10px 0 6px">Sem acesso a este módulo</h2>
+<p style="color:#a3a9b8;line-height:1.6">Peça ao administrador para liberar o acesso em Configurações → Usuários.</p></div>"""
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # APP
 # ══════════════════════════════════════════════════════════════════════════════
 app = FastAPI(title="Wendley Desenvolvimento", version=VERSAO, docs_url=None, redoc_url=None)
+app.include_router(acesso.router)
+app.include_router(dados.router)
 _inicio = time.time()
 
 
@@ -255,8 +314,24 @@ def healthz():
     return {"ok": True}
 
 
+@app.get("/login")
+def login(request: Request):
+    if acesso.usuario_da_requisicao(request):
+        return RedirectResponse("/", status_code=303)
+    return _pagina("login.html")
+
+
+@app.get("/configuracoes")
+def configuracoes(request: Request):
+    if not acesso.usuario_da_requisicao(request):
+        return _ir_para_login(request)
+    return _pagina("configuracoes.html")
+
+
 @app.get("/")
-def home():
+def home(request: Request):
+    if not acesso.usuario_da_requisicao(request):
+        return _ir_para_login(request)
     home_html = _home_html()
     if home_html is None:
         raise HTTPException(500, "home.html não encontrado (procurei em hub/static/ e hub/)")
@@ -264,24 +339,31 @@ def home():
 
 
 @app.get("/api/modulos")
-def api_modulos():
-    itens = sistemas_externos() + modulos_internos()
-    itens.sort(key=lambda i: (i["ordem"], i["titulo"].lower()))
-    return JSONResponse({"versao": VERSAO, "itens": itens}, headers=SEM_CACHE)
+def api_modulos(request: Request):
+    u = acesso.exigir_usuario(request)
+    itens = [{k: v for k, v in i.items() if k != "_esquema"} for i in catalogo() if acesso.pode_acessar(u, i["id"])]
+    return JSONResponse({"versao": VERSAO, "itens": itens, "usuario": acesso.publico(u)}, headers=SEM_CACHE)
 
 
 @app.get("/m/{slug}")
-def modulo(slug: str):
+def modulo(slug: str, request: Request):
+    u = acesso.usuario_da_requisicao(request)
+    if not u:
+        return _ir_para_login(request)
     arq = _arquivo_do_modulo(slug)
     if arq is None:
         raise HTTPException(404, f"Módulo '{slug}' não encontrado em hub/modulos/")
+    if not acesso.pode_acessar(u, slug):
+        return HTMLResponse(_SEM_ACESSO, status_code=403)
     return FileResponse(arq, media_type="text/html", headers=SEM_CACHE)
 
 
 @app.get("/m/{slug}/{caminho:path}")
-def arquivo_do_modulo(slug: str, caminho: str):
+def arquivo_do_modulo(slug: str, caminho: str, request: Request):
     if not SLUG_OK.match(slug):
         raise HTTPException(404)
+    if not acesso.pode_acessar(acesso.usuario_da_requisicao(request), slug):
+        raise HTTPException(403)
     pasta = (PASTA_MODULOS / slug).resolve()
     alvo = (pasta / caminho).resolve()
     # trava contra "../" — só serve o que está dentro da pasta do módulo
@@ -291,15 +373,19 @@ def arquivo_do_modulo(slug: str, caminho: str):
 
 
 @app.get("/api/diag")
-def diag():
+def diag(request: Request):
+    u = acesso.usuario_da_requisicao(request)
     resultado = {
         "versao": VERSAO,
         "no_ar_ha_seg": int(time.time() - _inicio),
-        "modulos_internos": [m["id"] for m in modulos_internos()],
-        "sistemas_externos": [s["id"] for s in sistemas_externos()],
-        "firestore_configurado": bool(os.environ.get("FIRESTORE_CREDS")),
+        "firestore_configurado": banco.configurado(),
         "firestore": "não testado",
+        "admin_fabrica_configurado": bool(acesso.ADMIN_FAB_LOGIN and acesso.ADMIN_FAB_SENHA),
+        "segredo_temporario": acesso.SEGREDO_TEMPORARIO,
     }
+    if u and u.get("admin"):
+        resultado["modulos_internos"] = [m["id"] for m in modulos_internos()]
+        resultado["sistemas_externos"] = [s["id"] for s in sistemas_externos()]
     if resultado["firestore_configurado"]:
         # timeout para nunca pendurar a rota se o gRPC travar
         # (sem "with": o with esperaria a thread travada e penduraria a rota)
