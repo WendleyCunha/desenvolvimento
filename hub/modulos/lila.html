@@ -9,11 +9,33 @@
 <meta name="hub-grupo" content="Produtividade">
 <meta name="hub-ordem" content="5">
 <meta name="hub-descricao" content="Tarefas, lembretes e pendências do dia — em widgets que você move e redimensiona.">
+<script type="application/json" id="hub-permissoes">
+{
+  "acoes": {
+    "acessar": "Abrir o módulo", "incluir": "Criar tarefas", "editar": "Editar tarefas",
+    "concluir": "Concluir e reabrir", "lembrar": "Adiar lembretes", "excluir": "Excluir tarefas",
+    "exportar": "Exportar e importar backup", "widgets": "Organizar widgets"
+  },
+  "campos": {
+    "titulo": "Título", "notas": "Detalhes", "prioridade": "Prioridade", "status": "Status",
+    "prazo": "Prazo", "hora": "Hora", "lembrete": "Lembrete", "lista": "Lista", "quem": "Responsável",
+    "recorrencia": "Repetição", "subtarefas": "Subtarefas", "andamento": "Andamento"
+  },
+  "regras": {
+    "concluir": { "campos": ["status", "concluido_em"], "cria": true },
+    "lembrar":  { "campos": ["lembrete"] }
+  },
+  "padroes": {
+    "prioridade": "P3", "status": "afazer", "lista": "Geral", "recorrencia": "nenhuma", "notas": "",
+    "prazo": "", "hora": "", "lembrete": "", "quem": "", "subtarefas": [], "andamento": []
+  }
+}
+</script>
 <link rel="icon" href="data:,">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/aurora.css?v=1">
+<link rel="stylesheet" href="/static/aurora.css?v=3">
 <!--
 ═══════════════════════════════════════════════════════════════════════════════
  lila.html — TAREFAS · módulo do hub Wendley Desenvolvimento (kit Aurora Glass)
@@ -28,8 +50,10 @@
      calendário, todas as tarefas com filtros, listas e concluídas
    • WIDGETS: arraste pelo título para mover, pelo canto para redimensionar,
      ⤢ para expandir, ✕ para remover; botão "Widgets" adiciona/restaura.
- Dados: neste navegador (localStorage) — use "Dados → Exportar backup".
-        Próximo passo: gravar no Firestore pelo hub (mesma interface).
+ Dados: no servidor (Firestore, via /api/dados/lila/tarefas) — cada usuário vê e
+        mexe só no que a permissão dele deixa (validado no servidor). Sem banco
+        configurado, cai para "só neste navegador" automaticamente.
+ Permissões: ver o bloco "hub-permissoes" acima — aparece em ⚙ Configurações.
 ═══════════════════════════════════════════════════════════════════════════════
 -->
 <style>
@@ -54,10 +78,21 @@ kbd{font:600 .64rem var(--sans);color:var(--txt3);border:1px solid var(--vidro-b
 .previa .dica{margin-top:10px;font-size:.72rem;color:var(--txt3);line-height:1.6}
 .previa code{color:var(--ouro2);background:rgba(255,255,255,.05);border-radius:5px;padding:0 5px}
 .acoes-topo{display:flex;gap:8px;align-items:center}
-.exemplo{display:inline-flex;align-items:center;gap:8px;font-size:.72rem;color:var(--txt2);padding:6px 6px 6px 12px;border-radius:999px;border:1px dashed rgba(232,179,61,.4);background:rgba(232,179,61,.06)}
+.exemplo{display:inline-flex;align-items:center;gap:8px;font-size:.72rem;color:var(--txt2);padding:6px 6px 6px 12px;border-radius:999px;border:1px dashed rgba(var(--ouro-rgb),.4);background:rgba(var(--ouro-rgb),.06)}
 .exemplo button{color:var(--ouro2);font-weight:600;padding:2px 8px;border-radius:999px}
-.exemplo button:hover{background:rgba(232,179,61,.15)}
-#btSino.on{color:var(--ouro2);border-color:rgba(232,179,61,.5)}
+.exemplo button:hover{background:rgba(var(--ouro-rgb),.15)}
+#btSino.on{color:var(--ouro2);border-color:rgba(var(--ouro-rgb),.5)}
+.tf-check:disabled{opacity:.35;cursor:not-allowed;transform:none!important;box-shadow:none!important}
+.ed-oculto{display:none!important}
+.sem-widgets [data-wfechar]{display:none}
+.sem-widgets .wg-cab{cursor:default}
+.travado{opacity:.55;pointer-events:none}
+.travado-campo{opacity:.6}
+.sync{display:inline-flex;align-items:center;gap:6px}
+.sync i{width:7px;height:7px;border-radius:50%;background:var(--verde);box-shadow:0 0 8px var(--verde)}
+.sync.salvando i{background:var(--ouro);box-shadow:0 0 8px var(--ouro);animation:aurRespira 1s infinite}
+.sync.erro i{background:var(--rosa);box-shadow:0 0 8px var(--rosa)}
+.sync.local i{background:#94a3b8;box-shadow:none}
 main{margin-top:16px}
 
 /* ── cartão de tarefa ── */
@@ -70,7 +105,7 @@ main{margin-top:16px}
 .tf-check svg.i{width:13px;height:13px;stroke-width:3}
 .tf-check:hover{color:var(--pc);box-shadow:0 0 14px -2px var(--pc);transform:scale(1.1)}
 .tf.concl .tf-check{background:var(--verde);border-color:var(--verde);color:#06120c}
-.tf-tit{font-weight:560;font-size:.88rem;line-height:1.4;word-break:break-word}
+.tf-tit{font-weight:560;font-size:.88rem;line-height:1.4;overflow-wrap:break-word}
 .tf.concl .tf-tit{text-decoration:line-through;color:var(--txt3)}
 .tf-meta{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
 .tf-prio{font:700 .62rem var(--titulo);padding:3px 7px;border-radius:7px;color:var(--pc);background:color-mix(in srgb,var(--pc) 14%,transparent);border:1px solid color-mix(in srgb,var(--pc) 30%,transparent)}
@@ -102,7 +137,10 @@ main{margin-top:16px}
 .kpi.alerta b{color:var(--c)}
 
 /* ── quadro ── */
-.quadro{display:grid;grid-template-columns:repeat(4,minmax(190px,1fr));gap:10px;height:100%;overflow-x:auto}
+.quadro{display:grid;grid-template-columns:repeat(4,minmax(200px,1fr));gap:10px;height:100%;overflow-x:auto}
+.col .tf{grid-template-columns:auto minmax(0,1fr);padding:9px 10px;gap:9px}
+.col .tf-prio{display:none}
+.col .tf-tit{font-size:.84rem}
 .col{display:flex;flex-direction:column;min-height:0;border-radius:15px;background:rgba(5,6,10,.28);border:1px solid var(--vidro-borda);transition:.2s}
 .col.sobre{border-color:var(--c);box-shadow:inset 0 0 0 1px var(--c),0 0 26px -10px var(--c);background:color-mix(in srgb,var(--c) 7%,rgba(5,6,10,.3))}
 .col-cab{display:flex;align-items:center;gap:8px;padding:10px 12px 8px;font-size:.78rem;font-weight:650}
@@ -134,7 +172,7 @@ main{margin-top:16px}
 .cal .d{position:relative;aspect-ratio:1;max-height:44px;border-radius:10px;display:grid;place-items:center;font-size:.8rem;font-weight:550;color:var(--txt2);transition:.2s;border:1px solid transparent}
 .cal .d:hover{background:rgba(255,255,255,.06);color:var(--txt)}
 .cal .d.fora{opacity:.25}
-.cal .d.hoje{color:var(--ouro2);border-color:rgba(232,179,61,.6);box-shadow:0 0 16px -6px var(--ouro)}
+.cal .d.hoje{color:var(--ouro2);border-color:rgba(var(--ouro-rgb),.6);box-shadow:0 0 16px -6px var(--ouro)}
 .cal .d.sel{background:var(--grad-ouro);color:#1a1206;font-weight:700}
 .cal .d .pt{position:absolute;bottom:4px;left:50%;transform:translateX(-50%);display:flex;gap:2px}
 .cal .d .pt i{width:4px;height:4px;border-radius:50%;background:var(--ciano);box-shadow:0 0 6px var(--ciano)}
@@ -183,6 +221,10 @@ main{margin-top:16px}
 }
 @media (max-width:640px){
   body{padding:8px}
+  .exemplo,.marca small{display:none}
+  .resumo{flex-direction:column;align-items:stretch;gap:12px}
+  .anel-prog{margin:0 auto;width:104px;height:104px}
+  .kpis{grid-template-columns:1fr 1fr}
   .acoes-topo .btn span{display:none}
   .ed-grade{grid-template-columns:1fr 1fr}
   .quadro{grid-template-columns:repeat(4,minmax(220px,1fr))}
@@ -194,7 +236,7 @@ main{margin-top:16px}
   <header class="topo vidro vidro-borda-viva">
     <div class="marca" id="marca"><span id="logo"></span><span><b>Tarefas</b><small>Wendley Desenvolvimento</small></span></div>
 
-    <div class="captura">
+    <div class="captura" id="captura" data-perm="acao:incluir">
       <svg viewBox="0 0 24 24" class="i"><path d="M12 5v14M5 12h14"/></svg>
       <input class="entrada" id="rapido" autocomplete="off" spellcheck="false" placeholder='Nova tarefa… ex.: "Ligar fornecedor amanhã 14h !1 #trabalho"'>
       <kbd>Enter</kbd>
@@ -202,11 +244,13 @@ main{margin-top:16px}
     </div>
 
     <div class="acoes-topo">
-      <span class="exemplo" id="exemplo" hidden><span>Dados de exemplo</span><button type="button" id="btLimparEx">limpar</button></span>
+      <span class="somente-leitura" id="chLeitura" hidden></span>
+      <span class="exemplo" id="exemplo" hidden><span>Dados de exemplo</span><button type="button" id="btLimparEx" data-perm="acao:excluir">limpar</button></span>
+      <span class="etq" id="chModo" hidden></span>
       <button type="button" class="btn-ic" id="btSino" title="Notificações"></button>
-      <button type="button" class="btn v" id="btWidgets" title="Adicionar ou remover widgets"></button>
-      <button type="button" class="btn-ic" id="btDados" title="Dados e backup"></button>
-      <button type="button" class="btn" id="btNova"></button>
+      <button type="button" class="btn v" id="btWidgets" title="Adicionar ou remover widgets" data-perm="acao:widgets"></button>
+      <button type="button" class="btn-ic" id="btDados" title="Dados e backup" data-perm="acao:exportar"></button>
+      <button type="button" class="btn" id="btNova" data-perm="acao:incluir"></button>
     </div>
   </header>
 
@@ -214,7 +258,7 @@ main{margin-top:16px}
 </div>
 <input type="file" id="arqImport" accept=".json,application/json" hidden>
 
-<script src="/static/aurora.js?v=1"></script>
+<script src="/static/aurora.js?v=3"></script>
 <script>
 (() => {
 "use strict";
@@ -255,21 +299,92 @@ function rotuloData(s) {
 const rotuloLembrete = (l) => (l ? `${rotuloData(l.slice(0, 10))} ${l.slice(11, 16)}` : "");
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
+/* ══════════════ PERMISSÕES ══════════════
+   Vêm do servidor (Aurora.permissoes). O servidor TAMBÉM confere cada gravação —
+   aqui só deixamos a tela coerente (esconde/trava o que não é permitido).   */
+const PERM = A.permissoes;
+const pode = (a) => (PERM.estado ? PERM.pode(a) : true);
+const nivel = (c) => (PERM.estado ? PERM.nivel(c) : "editar");
+const visivel = (c) => nivel(c) !== "oculto";
+const podeCampo = (c, novo = false) => pode(novo ? "incluir" : "editar") && nivel(c) === "editar";
+const podeConcluir = () => pode("concluir") || podeCampo("status");
+const podeLembrar = () => pode("lembrar") || podeCampo("lembrete");
+
 /* ══════════════ DADOS ══════════════
-   Hoje: localStorage (este navegador). Para ir para o Firestore, basta trocar
-   carregar() e persistir() por chamadas ao hub — o resto não muda.        */
+   MODO "servidor": cada tarefa é um registro em /api/dados/lila/tarefas.
+     A tela trabalha numa cópia em memória (DB) e, a cada mudança, envia só o
+     que mudou (cria / altera / exclui) — comparando com a última "foto".
+   MODO "local": sem banco no hub → guarda neste navegador (como antes).    */
+const URL_API = "/api/dados/lila/tarefas";
 let DB = { tarefas: [], listas: ["Geral", "Trabalho", "Pessoal"] };
+let MODO = "local", FOTO = new Map(), FILA = Promise.resolve(), PENDENTES = 0;
 const nova = (d = {}) => ({ id: uid(), titulo: "", notas: "", prioridade: "P3", status: "afazer", prazo: "", hora: "", lembrete: "", lista: "Geral",
   quem: "", subtarefas: [], recorrencia: "nenhuma", andamento: [], criado_em: agoraLocal(), concluido_em: "", ...d });
-function carregar() {
+const semMeta = (o) => Object.fromEntries(Object.entries(o).filter(([k]) => !k.startsWith("_")));
+const normalizar = (t) => { const n = nova(semMeta(t)); n.subtarefas = Array.isArray(n.subtarefas) ? n.subtarefas : []; n.andamento = Array.isArray(n.andamento) ? n.andamento : []; return n; };
+const semOcultos = (t) => Object.fromEntries(Object.entries(t).filter(([k]) => visivel(k)));
+const assinatura = (t) => JSON.stringify(semOcultos(t));
+function tirarFoto() { FOTO = new Map(DB.tarefas.map((t) => [t.id, assinatura(t)])); }
+
+function carregarLocal() {
   try { const j = JSON.parse(localStorage.getItem(K.dados) || "null"); if (j && Array.isArray(j.tarefas)) { DB = j; DB.listas = DB.listas || ["Geral"]; return; } } catch (_) {}
   semear();
 }
-function persistir() {
-  try { localStorage.setItem(K.dados, JSON.stringify(DB)); }
-  catch (e) { A.toast("Não consegui salvar neste navegador: " + esc(e.message), [], { cor: "var(--rosa)" }); }
+async function carregarServidor() {
+  const d = await A.api(URL_API);
+  DB.tarefas = (d.itens || []).map(normalizar);
+  tirarFoto();
 }
-function mudou() { persistir(); renderTudo(); }
+function statusSync(estado, texto) {
+  const ch = document.getElementById("chModo");
+  ch.hidden = false;
+  ch.className = "etq sync " + estado;
+  ch.innerHTML = `<i></i>${texto}`;
+}
+async function recarregar(silencioso = true) {
+  if (MODO !== "servidor") return;
+  try {
+    const antes = JSON.stringify(DB.tarefas);
+    await carregarServidor();
+    if (JSON.stringify(DB.tarefas) !== antes) renderTudo();
+    statusSync("", "salvo no servidor");
+  } catch (e) { if (!silencioso) A.toast("Não consegui atualizar: " + esc(e.message), [], { cor: "var(--rosa)" }); statusSync("erro", "sem conexão"); }
+}
+function persistir(acao = "") {
+  if (MODO === "local") {
+    try { localStorage.setItem(K.dados, JSON.stringify(DB)); }
+    catch (e) { A.toast("Não consegui salvar neste navegador: " + esc(e.message), [], { cor: "var(--rosa)" }); }
+    return;
+  }
+  const atual = new Map(DB.tarefas.map((t) => [t.id, assinatura(t)])), ops = [];
+  for (const [id, j] of atual) { if (!FOTO.has(id)) ops.push(["POST", id, j]); else if (FOTO.get(id) !== j) ops.push(["PUT", id, j]); }
+  for (const id of FOTO.keys()) if (!atual.has(id)) ops.push(["DELETE", id]);
+  FOTO = atual;
+  if (!ops.length) return;
+  PENDENTES += ops.length; statusSync("salvando", "salvando…");
+  FILA = FILA.then(async () => {
+    let erro = null;
+    for (const [m, id, j] of ops) {
+      try {
+        let r = null;
+        if (m === "POST") r = await A.api(URL_API, { method: "POST", body: { id, dados: JSON.parse(j), acao } });
+        else if (m === "PUT") r = await A.api(URL_API + "/" + encodeURIComponent(id), { method: "PUT", body: { dados: JSON.parse(j), acao } });
+        else await A.api(URL_API + "/" + encodeURIComponent(id), { method: "DELETE" });
+        if (r && r.item) {   // o servidor pode ter aplicado valores padrão — a tela adota a versão dele
+          const t = porId(id), n = normalizar(r.item);
+          if (t) { Object.assign(t, n); FOTO.set(id, assinatura(t)); }
+        }
+      } catch (e) { erro = e; }
+      PENDENTES--;
+    }
+    if (erro) {
+      A.toast(`⚠ <b>Não foi salvo:</b> ${esc(erro.message)}<br><span style="color:var(--txt3);font-size:.76rem">A tela voltou para a versão do servidor.</span>`, [], { cor: "var(--rosa)", duracao: 8000 });
+      await recarregar();
+    } else if (!PENDENTES) statusSync("", "salvo no servidor");
+    renderTudo();
+  });
+}
+function mudou(acao = "") { persistir(acao); renderTudo(); }
 const porId = (id) => DB.tarefas.find((t) => t.id === id);
 const abertas = () => DB.tarefas.filter((t) => t.status !== "concluida");
 const atrasada = (t) => t.status !== "concluida" && !!t.prazo && (t.prazo < hoje() || (t.prazo === hoje() && !!t.hora && t.hora < agoraHM()));
@@ -297,7 +412,7 @@ function semear() {
     nova({ ...ex, titulo: "Organizar o estoque", prioridade: "P4", prazo: somaDias(h, 6), lista: "Atelier" }),
     nova({ ...ex, titulo: "Atualizar a planilha de pedidos", prioridade: "P3", status: "concluida", prazo: h, concluido_em: L(h, "08:30"), lista: "Trabalho" }),
   ] };
-  persistir();
+  if (MODO === "local") persistir();
 }
 
 /* ══════════════ AÇÕES ══════════════ */
@@ -325,32 +440,37 @@ function proximaOcorrencia(t) {
 }
 function concluir(id, el) {
   const t = porId(id); if (!t) return;
-  if (t.status === "concluida") { t.status = "afazer"; t.concluido_em = ""; mudou(); A.toast(`↺ <b>${esc(t.titulo)}</b> reaberta.`); return; }
+  if (!podeConcluir()) { A.toast("Você não tem permissão para concluir tarefas.", [], { cor: "var(--rosa)" }); return; }
+  if (t.status === "concluida") { t.status = "afazer"; t.concluido_em = ""; mudou("concluir"); A.toast(`↺ <b>${esc(t.titulo)}</b> reaberta.`); return; }
   const antes = JSON.stringify(DB);
   t.status = "concluida"; t.concluido_em = agoraLocal();
   let msg = `✓ <b>${esc(t.titulo)}</b> concluída.`;
   if (t.recorrencia !== "nenhuma") { const p = proximaOcorrencia(t); DB.tarefas.push(p); msg += ` Próxima: ${rotuloData(p.prazo)}.`; }
-  const fim = () => { mudou(); A.toast(msg, [["Desfazer", () => { DB = JSON.parse(antes); mudou(); }]], { cor: "var(--verde)", duracao: 6000 }); };
+  const fim = () => { mudou("concluir"); A.toast(msg, [["Desfazer", () => { DB = JSON.parse(antes); mudou("concluir"); }]], { cor: "var(--verde)", duracao: 6000 }); };
   if (el) { el.classList.add("saindo"); setTimeout(fim, 480); } else fim();
 }
 function moverStatus(id, st) {
   const t = porId(id); if (!t || t.status === st) return;
-  if (st === "concluida") return concluir(id);
-  t.status = st; t.concluido_em = ""; mudou();
+  if (st === "concluida" || t.status === "concluida") return concluir(id);
+  if (!podeCampo("status") && !pode("concluir")) { A.toast("Você não tem permissão para mudar o status.", [], { cor: "var(--rosa)" }); return; }
+  t.status = st; t.concluido_em = ""; mudou(pode("concluir") ? "concluir" : "");
 }
 function adiar(id, min) {
   const t = porId(id); if (!t) return;
-  t.lembrete = localDe(new Date(Date.now() + min * 60000)); mudou();
+  if (!podeLembrar()) { A.toast("Você não tem permissão para mexer em lembretes.", [], { cor: "var(--rosa)" }); return; }
+  t.lembrete = localDe(new Date(Date.now() + min * 60000)); mudou("lembrar");
   A.toast(`⏰ Lembrete de <b>${esc(t.titulo)}</b> para ${rotuloLembrete(t.lembrete)}.`, [], { cor: "var(--violeta)" });
 }
 function adiarAmanha(id) {
   const t = porId(id); if (!t) return;
-  t.lembrete = somaDias(hoje(), 1) + "T09:00"; mudou();
+  if (!podeLembrar()) { A.toast("Você não tem permissão para mexer em lembretes.", [], { cor: "var(--rosa)" }); return; }
+  t.lembrete = somaDias(hoje(), 1) + "T09:00"; mudou("lembrar");
   A.toast(`⏰ Lembrete de <b>${esc(t.titulo)}</b> para amanhã 09:00.`, [], { cor: "var(--violeta)" });
 }
-function semLembrete(id) { const t = porId(id); if (t) { t.lembrete = ""; mudou(); } }
+function semLembrete(id) { const t = porId(id); if (t && podeLembrar()) { t.lembrete = ""; mudou("lembrar"); } }
 async function excluir(id) {
   const t = porId(id); if (!t) return false;
+  if (!pode("excluir")) { A.toast("Você não tem permissão para excluir.", [], { cor: "var(--rosa)" }); return false; }
   if (!(await A.confirmar(`Excluir <b>${esc(t.titulo)}</b>?`, { titulo: "Excluir tarefa", rotulo: "Excluir", perigo: true }))) return false;
   const antes = JSON.stringify(DB);
   DB.tarefas = DB.tarefas.filter((x) => x !== t); mudou();
@@ -358,7 +478,7 @@ async function excluir(id) {
   return true;
 }
 function duplicar(id) {
-  const t = porId(id); if (!t) return;
+  const t = porId(id); if (!t || !pode("incluir")) return;
   const c = nova({ ...JSON.parse(JSON.stringify(t)), id: uid(), titulo: t.titulo + " (cópia)", status: "afazer", concluido_em: "", criado_em: agoraLocal(), andamento: [] });
   DB.tarefas.push(c); mudou(); editor(c.id);
 }
@@ -377,7 +497,7 @@ function disparar(t) {
   A.notificar("🔔 " + t.titulo, [t.prazo ? "Prazo: " + rotuloData(t.prazo) + (t.hora ? " " + t.hora : "") : "", t.quem ? "Com: " + t.quem : ""].filter(Boolean).join(" · ") || "Lembrete");
   A.avisarHub("🔔 Lembrete: " + t.titulo);
   A.toast(`🔔 <b>${esc(t.titulo)}</b><br><span style="color:var(--txt3);font-size:.76rem">${t.prazo ? "Prazo " + rotuloData(t.prazo) + (t.hora ? " " + t.hora : "") : "Lembrete"}${t.quem ? " · " + esc(t.quem) : ""}</span>`,
-    [["Concluir", () => concluir(t.id)], ["+10 min", () => adiar(t.id, 10)], ["+1 h", () => adiar(t.id, 60)], ["Amanhã", () => adiarAmanha(t.id)]],
+    [...(podeConcluir() ? [["Concluir", () => concluir(t.id)]] : []), ...(podeLembrar() ? [["+10 min", () => adiar(t.id, 10)], ["+1 h", () => adiar(t.id, 60)], ["Amanhã", () => adiarAmanha(t.id)]] : [])],
     { cor: p.cor, duracao: 0 });
 }
 function verificar(inicial = false) {
@@ -447,6 +567,7 @@ function desenharPrevia() {
   elPrevia.classList.add("on");
 }
 function criarRapido(abrirCompleto) {
+  if (!pode("incluir")) return;
   const v = elRapido.value.trim();
   if (!v) { if (abrirCompleto) editor(); return; }
   const r = interpretar(v);
@@ -468,19 +589,20 @@ elRapido.addEventListener("keydown", (e) => {
 
 /* ══════════════ CARTÃO DE TAREFA ══════════════ */
 function cartao(t, { data = true, arrastar = false } = {}) {
-  const p = PRIO[t.prioridade] || PRIO.P3, at = atrasada(t), c = t.status === "concluida", subs = t.subtarefas || [], m = [];
+  const p = (visivel("prioridade") && PRIO[t.prioridade]) || PRIO.P3, at = atrasada(t), c = t.status === "concluida", subs = (visivel("subtarefas") && t.subtarefas) || [], m = [];
+  arrastar = arrastar && podeConcluir();
   if (data && t.prazo) m.push(`<span class="etq" style="--c:${at ? "#fb7185" : "#a3a9b8"}">${svg("calendario")}${at ? "Atrasada · " : ""}${rotuloData(t.prazo)}${t.hora ? " " + t.hora : ""}</span>`);
   else if (t.hora) m.push(`<span class="etq" style="--c:${at ? "#fb7185" : "#a3a9b8"}">${svg("relogio")}${t.hora}</span>`);
   if (!c && t.status !== "afazer") m.push(`<span class="etq" style="--c:${STATUS[t.status].cor}">${svg(STATUS[t.status].ic)}${STATUS[t.status].nome}</span>`);
-  if (!c && t.lembrete) m.push(`<span class="etq" style="--c:#a78bfa">${svg("sino")}${rotuloLembrete(t.lembrete)}</span>`);
+  if (!c && t.lembrete && visivel("lembrete")) m.push(`<span class="etq" style="--c:#a78bfa">${svg("sino")}${rotuloLembrete(t.lembrete)}</span>`);
   if (t.lista && t.lista !== "Geral") m.push(`<span class="etq" style="--c:${corLista(t.lista)}">#${esc(t.lista)}</span>`);
-  if (t.quem) m.push(`<span class="etq" style="--c:#22d3ee">${svg("usuario")}${esc(t.quem)}</span>`);
+  if (t.quem && visivel("quem")) m.push(`<span class="etq" style="--c:#22d3ee">${svg("usuario")}${esc(t.quem)}</span>`);
   if (subs.length) m.push(`<span class="etq">${svg("lista")}${subs.filter((s) => s.feito).length}/${subs.length}</span>`);
   if (t.recorrencia && t.recorrencia !== "nenhuma") m.push(`<span class="etq" style="--c:#34d399" title="${RECOR[t.recorrencia]}">${svg("repetir")}</span>`);
   return `<div class="tf${c ? " concl" : ""}${at ? " atras" : ""}" data-abrir="${t.id}" tabindex="0" role="button" style="--pc:${p.cor}"${arrastar ? ` draggable="true" data-arr="${t.id}"` : ""}>
-    <button type="button" class="tf-check" data-concluir="${t.id}" aria-label="${c ? "Reabrir" : "Concluir"}">${svg("check")}</button>
-    <div><div class="tf-tit">${esc(t.titulo)}</div>${m.length ? `<div class="tf-meta">${m.join("")}</div>` : ""}</div>
-    <span class="tf-prio" title="${p.nome}">${t.prioridade}</span></div>`;
+    <button type="button" class="tf-check" ${podeConcluir() ? `data-concluir="${t.id}"` : "disabled"} aria-label="${c ? "Reabrir" : "Concluir"}">${svg("check")}</button>
+    <div><div class="tf-tit">${visivel("titulo") ? esc(t.titulo) : "<i style='color:var(--txt3)'>tarefa</i>"}</div>${m.length ? `<div class="tf-meta">${m.join("")}</div>` : ""}</div>
+    ${visivel("prioridade") ? `<span class="tf-prio" title="${p.nome}">${t.prioridade}</span>` : "<span></span>"}</div>`;
 }
 const vazio = (titulo, sub, cor = "#34d399", ic = "check") => `<div class="vazio">${A.orbe(ic, cor)}<b>${titulo}</b><span>${sub}</span></div>`;
 
@@ -496,7 +618,7 @@ function wResumo(c) {
     <div class="anel-prog" title="Concluídas hoje ÷ (concluídas + pendentes de hoje)">
       <svg viewBox="0 0 120 120"><defs><linearGradient id="gProg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f5d27a"/><stop offset="1" stop-color="#34d399"/></linearGradient></defs>
         <circle cx="60" cy="60" r="${R}" fill="none" stroke="rgba(255,255,255,.07)" stroke-width="10"/>
-        <circle cx="60" cy="60" r="${R}" fill="none" stroke="url(#gProg)" stroke-width="10" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - pct / 100)}" style="filter:drop-shadow(0 0 6px rgba(232,179,61,.6))"/></svg>
+        <circle cx="60" cy="60" r="${R}" fill="none" stroke="url(#gProg)" stroke-width="10" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - pct / 100)}" style="filter:drop-shadow(0 0 6px rgba(var(--ouro-rgb),.6))"/></svg>
       <div class="val"><div><b>${pct}%</b><small>do dia</small></div></div></div>
     <div class="kpis">
       ${kpi("Pendências hoje", ph.length, "#e8b33d", "sino")}${kpi("Atrasadas", at.length, "#fb7185", "atencao", true)}
@@ -530,14 +652,15 @@ function wQuadro(c) {
   return abertas().length;
 }
 function wLembretes(c) {
+  if (!visivel("lembrete")) { c.innerHTML = vazio("Lembretes ocultos", "Seu acesso não mostra lembretes.", "#a78bfa", "cadeado"); return 0; }
   const agora = agoraLocal(), l = abertas().filter((t) => t.lembrete).sort((a, b) => a.lembrete.localeCompare(b.lembrete));
   const venc = l.filter((t) => t.lembrete <= agora), prox = l.filter((t) => t.lembrete > agora);
   const linha = (t, v) => `<div class="lem${v ? " vencido" : ""}" style="${v ? "" : `--c:${PRIO[t.prioridade].cor}`}">
       <div class="hr"><b>${t.lembrete.slice(11, 16)}</b><small>${rotuloData(t.lembrete.slice(0, 10))}</small></div>
       <div class="t" data-abrir="${t.id}">${esc(t.titulo)}</div>
-      <div class="bts"><button type="button" class="btn-ic p" data-adiar="${t.id}|60" title="+1 hora">${svg("adiar")}</button>
+      <div class="bts">${podeLembrar() ? `<button type="button" class="btn-ic p" data-adiar="${t.id}|60" title="+1 hora">${svg("adiar")}</button>
         <button type="button" class="btn-ic p" data-adiar="${t.id}|amanha" title="Amanhã 9h">${svg("avancar")}</button>
-        <button type="button" class="btn-ic p" data-adiar="${t.id}|sem" title="Tirar o lembrete">${svg("fechar")}</button></div></div>`;
+        <button type="button" class="btn-ic p" data-adiar="${t.id}|sem" title="Tirar o lembrete">${svg("fechar")}</button>` : ""}</div></div>`;
   if (!l.length) { c.innerHTML = vazio("Sem lembretes", "Adicione pelo formulário da tarefa ou escrevendo um horário na captura rápida (ex.: 15h).", "#a78bfa", "sino"); return 0; }
   c.innerHTML = (venc.length ? `<div class="sec" style="--c:#fb7185">Já passaram <b>${venc.length}</b></div>${venc.map((t) => linha(t, true)).join("")}` : "") +
     (prox.length ? `<div class="sec" style="--c:#a78bfa">Próximos <b>${prox.length}</b></div>${prox.map((t) => linha(t, false)).join("")}` : "");
@@ -612,10 +735,10 @@ function wConcluidas(c) {
 }
 
 const WIDGETS = {
-  resumo:     { titulo: "Visão do dia",        icone: "alvo",       cor: "#e8b33d", desc: "Progresso do dia e números principais", w: 12, h: 3, minW: 4, minH: 3, render: wResumo },
-  hoje:       { titulo: "Pendências de hoje",  icone: "sino",       cor: "#fb7185", desc: "Atrasadas + o que vence hoje",          w: 5,  h: 9, minW: 3, minH: 4, render: wHoje },
-  quadro:     { titulo: "Quadro",              icone: "kanban",     cor: "#60a5fa", desc: "Kanban: arraste as tarefas entre colunas", w: 7, h: 9, minW: 4, minH: 5, render: wQuadro },
-  lembretes:  { titulo: "Lembretes",           icone: "relogio",    cor: "#a78bfa", desc: "Próximos avisos, com adiar",            w: 4,  h: 7, minW: 3, minH: 4, render: wLembretes },
+  resumo:     { titulo: "Visão do dia",        icone: "alvo",       cor: "#e8b33d", desc: "Progresso do dia e números principais", w: 12, h: 3, minW: 4, minH: 3, hUma: 9, render: wResumo },
+  hoje:       { titulo: "Pendências de hoje",  icone: "sino",       cor: "#fb7185", desc: "Atrasadas + o que vence hoje",          w: 5,  h: 9, minW: 3, minH: 4, perm: "acao:concluir", render: wHoje },
+  quadro:     { titulo: "Quadro",              icone: "kanban",     cor: "#60a5fa", desc: "Kanban: arraste as tarefas entre colunas", w: 7, h: 9, minW: 4, minH: 5, perm: "campo:status", render: wQuadro },
+  lembretes:  { titulo: "Lembretes",           icone: "relogio",    cor: "#a78bfa", desc: "Próximos avisos, com adiar",            w: 4,  h: 7, minW: 3, minH: 4, perm: "acao:lembrar", render: wLembretes },
   semana:     { titulo: "Próximos 7 dias",     icone: "calendario", cor: "#22d3ee", desc: "O que vem pela frente, dia a dia",      w: 4,  h: 7, minW: 3, minH: 4, render: wSemana },
   calendario: { titulo: "Calendário",          icone: "grade",      cor: "#34d399", desc: "Mês com os prazos marcados",            w: 4,  h: 7, minW: 3, minH: 6, render: wCalendario },
   todas:      { titulo: "Todas as tarefas",    icone: "lista",      cor: "#e8b33d", desc: "Busca e filtros por status, prioridade e lista", w: 8, h: 8, minW: 4, minH: 4, render: wTodas },
@@ -630,11 +753,12 @@ const PADRAO = [
 
 /* ── montagem da grade ── */
 const area = document.getElementById("area");
-const grade = new A.Grade(area, { colunas: 12, linha: 44, espaco: 14, aoMudar: (l) => { try { localStorage.setItem(K.layout, JSON.stringify(l)); } catch (_) {} } });
+let chaveLayout = K.layout;
+const grade = new A.Grade(area, { colunas: 12, linha: 44, espaco: 14, aoMudar: (l) => { try { localStorage.setItem(chaveLayout, JSON.stringify(l)); } catch (_) {} } });
 function quadroWidget(id) {
   const d = WIDGETS[id], el = document.createElement("section");
   el.className = "wg vidro"; el.dataset.wg = id; el.style.setProperty("--c", d.cor);
-  el.innerHTML = `<header class="wg-cab" title="Arraste para mover">${A.orbe(d.icone, d.cor, "p")}<h3>${d.titulo}</h3><span class="cont" hidden></span>
+  el.innerHTML = `<header class="wg-cab" title="Arraste para mover">${A.orbe(d.icone, d.cor, "p")}<h3${d.perm ? ` data-perm="${d.perm}"` : ""}>${d.titulo}</h3><span class="cont" hidden></span>
     <span class="acs"><button type="button" class="btn-ic p" data-wmax="${id}" title="Expandir">${svg("maximizar")}</button>
     <button type="button" class="btn-ic p" data-wfechar="${id}" title="Remover widget">${svg("fechar")}</button></span></header>
     <div class="wg-corpo"></div><span class="wg-redim" title="Arraste para redimensionar"></span>`;
@@ -642,15 +766,13 @@ function quadroWidget(id) {
 }
 function adicionarWidget(l) {
   const d = WIDGETS[l.id]; if (!d || grade.itens.some((i) => i.id === l.id)) return;
-  grade.adicionar({ id: l.id, x: l.x ?? 0, y: l.y, w: l.w ?? d.w, h: l.h ?? d.h, minW: d.minW, minH: d.minH, el: quadroWidget(l.id) });
+  grade.adicionar({ id: l.id, x: l.x ?? 0, y: l.y, w: l.w ?? d.w, h: l.h ?? d.h, minW: d.minW, minH: d.minH, hUma: d.hUma, el: quadroWidget(l.id) });
 }
 function montar(layout) {
   grade.itens.slice().forEach((i) => i.el.remove()); grade.itens.length = 0;
   layout.forEach(adicionarWidget);
   renderTudo();
 }
-let layoutSalvo = null;
-try { layoutSalvo = JSON.parse(localStorage.getItem(K.layout) || "null"); } catch (_) {}
 
 function renderTudo() {
   const ae = document.activeElement, idAtivo = ae && ae.id, sel = idAtivo && typeof ae.selectionStart === "number" ? [ae.selectionStart, ae.selectionEnd] : null;
@@ -659,7 +781,7 @@ function renderTudo() {
     const cont = it.el.querySelector(".cont");
     cont.hidden = n == null || n === 0; if (n) cont.textContent = n;
   }
-  document.getElementById("exemplo").hidden = !DB.tarefas.some((t) => t.exemplo);
+  document.getElementById("exemplo").hidden = !DB.tarefas.some((t) => t.exemplo) || !pode("excluir");
   if (idAtivo && ae.closest(".wg")) {
     const novo = document.getElementById(idAtivo);
     if (novo && novo !== ae) { novo.focus(); if (sel && novo.setSelectionRange) try { novo.setSelectionRange(...sel); } catch (_) {} }
@@ -674,50 +796,75 @@ function editor(id, pre = {}) {
   const segPrio = Object.entries(PRIO).map(([k, p]) => `<button type="button" data-v="${k}" style="--c:${p.cor}">${k} · ${p.nome}</button>`).join("");
   const segSt = Object.entries(STATUS).map(([k, s]) => `<button type="button" data-v="${k}" style="--c:${s.cor}">${s.nome}</button>`).join("");
   const html = `
-    <input class="entrada ed-tit" id="edTit" placeholder="O que precisa ser feito?" autofocus>
-    <textarea class="entrada ed-notas" id="edNotas" placeholder="Detalhes, links, observações…"></textarea>
-    <div class="ed-linha"><div><span class="rot">Prioridade</span><div class="seg" id="edPrio">${segPrio}</div></div>
-      <div><span class="rot">Status</span><div class="seg" id="edSt">${segSt}</div></div></div>
+    <input class="entrada ed-tit" id="edTit" placeholder="O que precisa ser feito?" autofocus data-campo="titulo" data-perm="campo:titulo">
+    <textarea class="entrada ed-notas" id="edNotas" placeholder="Detalhes, links, observações…" data-campo="notas" data-perm="campo:notas"></textarea>
+    <div class="ed-linha"><div data-campo="prioridade"><span class="rot">Prioridade</span><div class="seg" id="edPrio" data-perm="campo:prioridade">${segPrio}</div></div>
+      <div data-campo="status"><span class="rot">Status</span><div class="seg" id="edSt" data-perm="campo:status">${segSt}</div></div></div>
     <div class="ed-grade">
-      <label class="campo">Prazo<input type="date" id="edPrazo"></label>
-      <label class="campo">Hora<input type="time" id="edHora"></label>
-      <label class="campo">Repetir<select id="edRec">${Object.entries(RECOR).map(([k, r]) => `<option value="${k}">${r}</option>`).join("")}</select></label>
-      <label class="campo">Lista<input id="edLista" list="dlListas" placeholder="Geral"></label>
-      <label class="campo">Responsável / depende de<input id="edQuem" placeholder="Opcional"></label>
-      <label class="campo">Lembrete<input type="datetime-local" id="edLemb"></label></div>
-    <div class="ed-rap" id="edRap">
+      <label class="campo" data-campo="prazo">Prazo<input type="date" id="edPrazo" data-perm="campo:prazo"></label>
+      <label class="campo" data-campo="hora">Hora<input type="time" id="edHora" data-perm="campo:hora"></label>
+      <label class="campo" data-campo="recorrencia">Repetir<select id="edRec" data-perm="campo:recorrencia">${Object.entries(RECOR).map(([k, r]) => `<option value="${k}">${r}</option>`).join("")}</select></label>
+      <label class="campo" data-campo="lista">Lista<input id="edLista" list="dlListas" placeholder="Geral" data-perm="campo:lista"></label>
+      <label class="campo" data-campo="quem">Responsável / depende de<input id="edQuem" placeholder="Opcional" data-perm="campo:quem"></label>
+      <label class="campo" data-campo="lembrete">Lembrete<input type="datetime-local" id="edLemb" data-perm="campo:lembrete"></label></div>
+    <div class="ed-rap" id="edRap" data-campo="lembrete">
       <button type="button" class="chip" data-r="30">${svg("sino")}Em 30 min</button><button type="button" class="chip" data-r="60">Em 1 h</button>
       <button type="button" class="chip" data-r="hoje18">Hoje 18h</button><button type="button" class="chip" data-r="amanha9">Amanhã 9h</button>
       <button type="button" class="chip" data-r="antes">1 h antes do prazo</button><button type="button" class="chip" data-r="prazo">No horário do prazo</button>
       <button type="button" class="chip" data-r="sem">Sem lembrete</button></div>
-    <div class="ed-bloco"><span class="rot">Subtarefas <span id="edSubN"></span></span><div id="edSubs"></div>
+    <div class="ed-bloco" data-campo="subtarefas"><span class="rot" data-perm="campo:subtarefas">Subtarefas <span id="edSubN"></span></span><div id="edSubs"></div>
       <input class="entrada" id="edSubIn" placeholder="+ Adicionar subtarefa (Enter)" style="margin-top:6px"></div>
-    <div class="ed-bloco"><span class="rot">Andamento</span><ul class="hist" id="edHist"></ul>
+    <div class="ed-bloco" data-campo="andamento"><span class="rot" data-perm="campo:andamento">Andamento</span><ul class="hist" id="edHist"></ul>
       <input class="entrada" id="edHistIn" placeholder="+ Registrar andamento (Enter) — ex.: liguei, prometeu para sexta" style="margin-top:6px"></div>
     <datalist id="dlListas">${listas().map((l) => `<option value="${esc(l)}">`).join("")}</datalist>`;
 
+  const novo = !original;
+  const pe = (c) => podeCampo(c, novo);                       // pode editar este campo agora?
+  const algumEditavel = Object.keys(PERM.estado?.esquema?.campos || { titulo: 1 }).some(pe);
   const salvar = (cx) => {
     const $ = (s) => cx.querySelector(s);
-    t.titulo = $("#edTit").value.trim();
-    if (!t.titulo) { const i = $("#edTit"); i.classList.add("tremer"); i.focus(); setTimeout(() => i.classList.remove("tremer"), 400); return false; }
-    t.notas = $("#edNotas").value.trim(); t.prazo = $("#edPrazo").value; t.hora = $("#edHora").value; t.recorrencia = $("#edRec").value;
-    t.lista = $("#edLista").value.trim() || "Geral"; t.quem = $("#edQuem").value.trim(); t.lembrete = $("#edLemb").value;
+    t.titulo = pe("titulo") ? $("#edTit").value.trim() : t.titulo || $("#edTit").value.trim();
+    if (!t.titulo && pe("titulo")) { const i = $("#edTit"); i.classList.add("tremer"); i.focus(); setTimeout(() => i.classList.remove("tremer"), 400); return false; }
+    if (pe("notas")) t.notas = $("#edNotas").value.trim();
+    if (pe("prazo")) t.prazo = $("#edPrazo").value;
+    if (pe("hora")) t.hora = $("#edHora").value;
+    if (pe("recorrencia")) t.recorrencia = $("#edRec").value;
+    if (pe("lista")) t.lista = $("#edLista").value.trim() || "Geral";
+    if (pe("quem")) t.quem = $("#edQuem").value.trim();
+    if (pe("lembrete") || (!novo && pode("lembrar"))) t.lembrete = $("#edLemb").value;
     const eraConcl = original && original.status === "concluida", virouConcl = t.status === "concluida" && !eraConcl;
     if (virouConcl) t.concluido_em = agoraLocal();
     if (t.status !== "concluida") t.concluido_em = "";
     if (!DB.listas.includes(t.lista)) DB.listas.push(t.lista);
     if (original) Object.assign(original, t); else DB.tarefas.push(t);
     if (virouConcl && t.recorrencia !== "nenhuma") DB.tarefas.push(proximaOcorrencia(t));
-    mudou();
+    const so = (lista) => Object.keys(t).every((k) => !original || JSON.stringify(t[k]) === JSON.stringify(original[k]) || lista.includes(k));
+    mudou(!novo && !pode("editar") ? (so(["status", "concluido_em"]) && pode("concluir") ? "concluir" : so(["lembrete"]) && pode("lembrar") ? "lembrar" : "") : virouConcl && pode("concluir") ? "concluir" : "");
     if (!original) A.toast(`＋ <b>${esc(t.titulo)}</b> criada.`, [], { cor: PRIO[t.prioridade].cor });
   };
 
   A.modal({
     titulo: original ? "Editar tarefa" : "Nova tarefa", icone: original ? STATUS[t.status].ic : "mais", cor: PRIO[t.prioridade].cor, largura: 760, html,
-    botoes: [{ rotulo: "Cancelar" }, { rotulo: original ? "Salvar" : "Criar tarefa", classe: "btn", icone: "check", principal: true, acao: salvar }],
-    esquerda: original ? [{ rotulo: "Excluir", classe: "btn perigo p", icone: "lixo", acao: () => excluir(id) }, { rotulo: "Duplicar", classe: "btn v p", icone: "copiar", acao: () => duplicar(id) }] : [],
+    botoes: algumEditavel || (!novo && (pode("concluir") || pode("lembrar")))
+      ? [{ rotulo: "Cancelar" }, { rotulo: original ? "Salvar" : "Criar tarefa", classe: "btn", icone: "check", principal: true, acao: salvar }]
+      : [{ rotulo: "Fechar" }],
+    esquerda: original ? [...(pode("excluir") ? [{ rotulo: "Excluir", classe: "btn perigo p", icone: "lixo", acao: () => excluir(id) }] : []),
+      ...(pode("incluir") ? [{ rotulo: "Duplicar", classe: "btn v p", icone: "copiar", acao: () => duplicar(id) }] : [])] : [],
     aoAbrir(cx) {
       const $ = (s) => cx.querySelector(s);
+      // permissões campo a campo: oculto some, "só ver" fica travado
+      cx.querySelectorAll("[data-campo]").forEach((box) => {
+        const c = box.dataset.campo, ok = pe(c) || (c === "status" && !novo && pode("concluir")) || (c === "lembrete" && !novo && pode("lembrar"));
+        if (!visivel(c)) { box.classList.add("ed-oculto"); return; }
+        if (!ok) {
+          box.classList.add("travado-campo");
+          box.querySelectorAll("input,textarea,select").forEach((i) => (i.disabled = true));
+          box.querySelectorAll(".seg,.chip,#edRap").forEach((i) => i.classList.add("travado"));
+          if (box.matches(".seg")) box.classList.add("travado");
+        }
+      });
+      cx.querySelector('[data-b="e0"]')?.setAttribute("data-perm", pode("excluir") ? "acao:excluir" : "acao:incluir");
+      cx.querySelector('[data-b="e1"]')?.setAttribute("data-perm", "acao:incluir");
       $("#edTit").value = t.titulo; $("#edNotas").value = t.notas || ""; $("#edPrazo").value = t.prazo || ""; $("#edHora").value = t.hora || "";
       $("#edRec").value = t.recorrencia || "nenhuma"; $("#edLista").value = t.lista || ""; $("#edQuem").value = t.quem || ""; $("#edLemb").value = t.lembrete || "";
       const seg = (sel, campo) => {
@@ -743,8 +890,9 @@ function editor(id, pre = {}) {
       const subs = () => {
         const box = $("#edSubs"), l = t.subtarefas;
         $("#edSubN").textContent = l.length ? `${l.filter((s) => s.feito).length}/${l.length}` : "";
-        box.innerHTML = l.map((s, i) => `<div class="sub${s.feito ? " feito" : ""}"><input type="checkbox" data-i="${i}" ${s.feito ? "checked" : ""}><span>${esc(s.texto)}</span>
-          <button type="button" class="btn-ic p" data-x="${i}" title="Remover">${svg("fechar")}</button></div>`).join("");
+        const ed = pe("subtarefas");
+        box.innerHTML = l.map((s, i) => `<div class="sub${s.feito ? " feito" : ""}"><input type="checkbox" data-i="${i}" ${s.feito ? "checked" : ""} ${ed ? "" : "disabled"}><span>${esc(s.texto)}</span>
+          ${ed ? `<button type="button" class="btn-ic p" data-x="${i}" title="Remover">${svg("fechar")}</button>` : ""}</div>`).join("");
         box.querySelectorAll("[data-i]").forEach((c) => (c.onchange = () => { l[+c.dataset.i].feito = c.checked; subs(); }));
         box.querySelectorAll("[data-x]").forEach((b) => (b.onclick = () => { l.splice(+b.dataset.x, 1); subs(); }));
       };
@@ -795,21 +943,26 @@ function baixar(nome, texto) {
   a.href = u; a.download = nome; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 1500);
 }
 btDados.onclick = () => A.modal({
-  titulo: "Dados e backup", icone: "camadas", cor: "#22d3ee", largura: 520,
-  html: `<p style="margin:0 0 16px;color:var(--txt2);font-size:.84rem;line-height:1.6">As tarefas ficam guardadas <b>neste navegador</b>. Faça backup de vez em quando — ou para levar para outro computador.
+  titulo: "Dados e backup", icone: "camadas", cor: "#22d3ee", largura: 540,
+  html: `<p style="margin:0 0 16px;color:var(--txt2);font-size:.84rem;line-height:1.6">${MODO === "servidor"
+      ? "As tarefas ficam <b>no servidor</b> — aparecem em qualquer computador, para quem tiver permissão."
+      : "As tarefas ficam <b>só neste navegador</b> (o hub ainda não tem banco configurado). Faça backup de vez em quando."}
     <br><span style="color:var(--txt3)">${DB.tarefas.length} tarefa(s) · ${abertas().length} em aberto</span></p>
     <div style="display:flex;flex-wrap:wrap;gap:8px">
-      <button type="button" class="btn v" id="dxExp">${svg("baixar")}Exportar backup</button>
-      <button type="button" class="btn v" id="dxImp">${svg("subir")}Importar backup</button>
-      <button type="button" class="btn v" id="dxEx">${svg("lixo")}Limpar exemplos</button>
-      <button type="button" class="btn perigo" id="dxTudo">${svg("atencao")}Apagar tudo</button></div>`,
+      ${pode("exportar") ? `<button type="button" class="btn v" id="dxExp" data-perm="acao:exportar">${svg("baixar")}Exportar backup</button>` : ""}
+      ${pode("exportar") && pode("incluir") ? `<button type="button" class="btn v" id="dxImp" data-perm="acao:exportar">${svg("subir")}Importar backup</button>` : ""}
+      ${pode("incluir") && !DB.tarefas.length ? `<button type="button" class="btn v" id="dxSem">${svg("estrela")}Criar exemplos</button>` : ""}
+      ${pode("excluir") ? `<button type="button" class="btn v" id="dxEx" data-perm="acao:excluir">${svg("lixo")}Limpar exemplos</button>
+      <button type="button" class="btn perigo" id="dxTudo" data-perm="acao:excluir">${svg("atencao")}Apagar tudo</button>` : ""}</div>
+    ${!pode("exportar") && !pode("excluir") ? `<p style="margin:12px 0 0;font-size:.78rem;color:var(--txt3)">Seu acesso não inclui backup nem exclusão.</p>` : ""}`,
   botoes: [{ rotulo: "Fechar" }],
   aoAbrir(cx) {
-    cx.querySelector("#dxExp").onclick = () => { baixar(`tarefas-backup-${hoje()}.json`, JSON.stringify({ versao: 1, exportado_em: agoraLocal(), ...DB }, null, 2)); A.toast("⬇ Backup baixado."); };
-    cx.querySelector("#dxImp").onclick = () => document.getElementById("arqImport").click();
-    cx.querySelector("#dxEx").onclick = limparExemplos;
-    cx.querySelector("#dxTudo").onclick = async () => {
-      if (!(await A.confirmar("Apagar <b>todas</b> as tarefas deste navegador? Faça um backup antes.", { titulo: "Apagar tudo", rotulo: "Apagar tudo", perigo: true }))) return;
+    cx.querySelector("#dxExp")?.addEventListener("click", () => { baixar(`tarefas-backup-${hoje()}.json`, JSON.stringify({ versao: 1, exportado_em: agoraLocal(), tarefas: DB.tarefas.map(semOcultos), listas: DB.listas }, null, 2)); A.toast("⬇ Backup baixado."); });
+    cx.querySelector("#dxImp")?.addEventListener("click", () => document.getElementById("arqImport").click());
+    cx.querySelector("#dxSem")?.addEventListener("click", () => { const antes = DB.tarefas.slice(); semear(); DB.tarefas = [...antes, ...DB.tarefas]; mudou(); A.toast("Tarefas de exemplo criadas."); });
+    cx.querySelector("#dxEx")?.addEventListener("click", limparExemplos);
+    if (cx.querySelector("#dxTudo")) cx.querySelector("#dxTudo").onclick = async () => {
+      if (!(await A.confirmar(`Apagar <b>todas</b> as tarefas${MODO === "servidor" ? " do servidor (para todos os usuários)" : " deste navegador"}? Faça um backup antes.`, { titulo: "Apagar tudo", rotulo: "Apagar tudo", perigo: true }))) return;
       DB = { tarefas: [], listas: ["Geral", "Trabalho", "Pessoal"] }; mudou(); A.toast("Tudo apagado.", [], { cor: "var(--rosa)" });
     };
   },
@@ -820,7 +973,7 @@ document.getElementById("arqImport").onchange = async (e) => {
     const j = JSON.parse(await f.text());
     if (!j || !Array.isArray(j.tarefas)) throw new Error("arquivo sem a lista de tarefas");
     if (!(await A.confirmar(`Substituir as tarefas atuais pelas <b>${j.tarefas.length}</b> do backup?`, { titulo: "Importar backup", rotulo: "Importar" }))) return;
-    DB = { tarefas: j.tarefas, listas: j.listas || ["Geral"] }; mudou(); A.toast(`⬆ ${j.tarefas.length} tarefa(s) importada(s).`, [], { cor: "var(--verde)" });
+    DB = { tarefas: j.tarefas.map(normalizar), listas: j.listas || ["Geral"] }; mudou(); A.toast(`⬆ ${j.tarefas.length} tarefa(s) importada(s).`, [], { cor: "var(--verde)" });
   } catch (err) { A.toast("Não consegui importar: " + esc(err.message), [], { cor: "var(--rosa)" }); }
 };
 async function limparExemplos() {
@@ -879,13 +1032,50 @@ document.addEventListener("keydown", (e) => {
 });
 
 /* ══════════════ INÍCIO ══════════════ */
-carregar();
-sino();
-montar(Array.isArray(layoutSalvo) && layoutSalvo.length ? layoutSalvo : PADRAO);
-verificar(true);
-setInterval(() => verificar(false), 15000);
-setInterval(() => { if (!A.modalAberto() && !document.querySelector(".wg.arrastando,.wg.redimensionando")) renderTudo(); }, 60000);
-addEventListener("storage", (e) => { if (e.key === K.dados) { carregar(); renderTudo(); } });
+function aplicarPermissoesNaTela() {
+  document.getElementById("captura").hidden = !pode("incluir");
+  btNova.hidden = !pode("incluir");
+  btWidgets.hidden = !pode("widgets");
+  grade.travar(!pode("widgets"));
+  document.body.classList.toggle("sem-widgets", !pode("widgets"));
+  const leitura = !pode("incluir") && !pode("editar");
+  const ch = document.getElementById("chLeitura");
+  ch.hidden = !leitura; ch.innerHTML = `${svg("cadeado")}Somente leitura`;
+}
+(async () => {
+  try { await PERM.carregar("lila"); }
+  catch (e) { if (e.status === 401) return; /* sem hub (arquivo aberto solto): segue no modo local */ }
+  const login = PERM.usuario?.login || "local";
+  chaveLayout = K.layout + "." + login;
+  let layoutSalvo = null;
+  try { layoutSalvo = JSON.parse(localStorage.getItem(chaveLayout) || localStorage.getItem(K.layout) || "null"); } catch (_) {}
+  try {
+    if (!PERM.estado || !PERM.estado.banco) throw Object.assign(new Error("sem_banco"), { status: 503 });
+    await carregarServidor(); MODO = "servidor"; statusSync("", "salvo no servidor");
+  } catch (e) {
+    if (e.status === 503 || !PERM.estado) { MODO = "local"; carregarLocal(); statusSync("local", "só neste navegador"); }
+    else { MODO = "servidor"; DB.tarefas = []; tirarFoto(); statusSync("erro", "sem conexão"); A.toast("Não consegui carregar as tarefas: " + esc(e.message), [], { cor: "var(--rosa)" }); }
+  }
+  aplicarPermissoesNaTela();
+  sino();
+  montar(Array.isArray(layoutSalvo) && layoutSalvo.length ? layoutSalvo : PADRAO);
+  verificar(true);
+  setInterval(() => verificar(false), 15000);
+  setInterval(() => { if (!A.modalAberto() && !document.querySelector(".wg.arrastando,.wg.redimensionando")) renderTudo(); }, 60000);
+  // outras pessoas mexendo ao mesmo tempo: atualiza a cada 40 s (só quando nada está sendo salvo)
+  setInterval(() => { if (MODO === "servidor" && !PENDENTES && !A.modalAberto() && !document.querySelector(".wg.arrastando,.wg.redimensionando")) recarregar(); }, 40000);
+  addEventListener("storage", (e) => { if (e.key === K.dados && MODO === "local") { carregarLocal(); renderTudo(); } });
+  // tarefas que estavam só neste navegador → oferece enviar para o servidor
+  if (MODO === "servidor" && !DB.tarefas.length && pode("incluir")) {
+    let loc = null; try { loc = JSON.parse(localStorage.getItem(K.dados) || "null"); } catch (_) {}
+    const n = (loc?.tarefas || []).filter((t) => !t.exemplo).length;
+    if (n) A.toast(`Você tem <b>${n}</b> tarefa(s) guardadas só neste navegador. Enviar para o servidor?`, [["Enviar", () => {
+      DB.tarefas = loc.tarefas.filter((t) => !t.exemplo).map(normalizar); mudou();
+      try { localStorage.setItem(K.dados + ".enviado", localStorage.getItem(K.dados)); localStorage.removeItem(K.dados); } catch (_) {}
+      A.toast(`⬆ ${n} tarefa(s) enviadas.`, [], { cor: "var(--verde)" });
+    }]], { cor: "var(--ciano)", duracao: 0 });
+  }
+})();
 })();
 </script>
 </body>
