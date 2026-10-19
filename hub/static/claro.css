@@ -1,0 +1,82 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   claro.css — "Águas claras": os temas de fundo claro do kit Aurora Glass
+   ───────────────────────────────────────────────────────────────────────────
+   Liga sozinho quando o mar escolhido em Configurações → Aparência é claro
+   (Aurora.tema.aplicar marca <html data-claro>). Vale para o túnel (home),
+   login, configurações e todos os módulos — aurora.css importa este arquivo.
+   A ideia é a mesma "debaixo d'água", só que em água rasa e iluminada:
+   vidro branco leitoso, aurora em aquarela e texto escuro para leitura.
+   ═══════════════════════════════════════════════════════════════════════════ */
+html[data-claro]{
+  color-scheme:light;
+  --noite2:#ffffff;
+  --txt:#162033; --txt2:#475369; --txt3:#7b8598;
+  --vidro-borda:rgba(22,32,51,.11); --vidro-borda-forte:rgba(22,32,51,.19); --vidro-forte:rgba(22,32,51,.06);
+  --sombra:0 18px 44px -22px rgba(30,45,80,.28);
+  --verde:#0f9f6e; --rosa:#e0435f; --azul:#2f6fe0; --ciano:#0b98b8; --violeta:#6d48e0; --laranja:#e2731c;
+}
+html[data-claro] body{background:var(--noite)}
+html[data-claro] *{scrollbar-color:rgba(22,32,51,.22) transparent}
+html[data-claro] ::-webkit-scrollbar-thumb{background:rgba(22,32,51,.2)}
+
+/* ── fundo: aurora em aquarela (multiplica em vez de somar luz) ── */
+html[data-claro] .aur-fundo .bolha,html[data-claro] .fundo .aurora{mix-blend-mode:multiply;opacity:calc(var(--aur-op) * .62);filter:blur(100px)}
+html[data-claro] .aur-fundo .grade,html[data-claro] .grade-fundo{background-image:linear-gradient(rgba(22,32,51,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(22,32,51,.045) 1px,transparent 1px)}
+html[data-claro] .aur-fundo .causticas,html[data-claro] .fundo .causticas{mix-blend-mode:multiply;filter:invert(1) hue-rotate(180deg) saturate(.6);opacity:calc(var(--causticas) * .22)}
+html[data-claro] .aur-fundo .raios,html[data-claro] .fundo .raios{mix-blend-mode:normal;opacity:calc(var(--causticas) * .9)}
+html[data-claro] .aur-fundo .prof,html[data-claro] .fundo .prof{background:radial-gradient(ellipse at 50% 0%,rgba(40,70,110,calc(var(--prof) * .12)),rgba(30,55,95,calc(var(--prof) * .35)) 75%)}
+html[data-claro] .aur-fundo .vinheta,html[data-claro] .fundo .vinheta{background:radial-gradient(ellipse at center,transparent 50%,rgba(60,85,130,.10) 100%)}
+html[data-claro] .aur-fundo .grao,html[data-claro] .fundo .grao{mix-blend-mode:multiply;opacity:calc(var(--grao) * .7)}
+
+/* ── vidro branco leitoso ── */
+html[data-claro] .vidro{
+  background:linear-gradient(160deg,rgba(255,255,255,calc(.5 + var(--vidro-a) * 2)),rgba(255,255,255,calc(.3 + var(--vidro-b) * 3)));
+  border-color:rgba(255,255,255,.75);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.9),0 0 0 1px var(--vidro-borda),var(--sombra)}
+html[data-claro] .vidro-borda-viva::after{background:linear-gradient(135deg,rgba(var(--ouro-rgb),.55),rgba(255,255,255,.2) 35%,rgba(109,72,224,.28) 70%,rgba(11,152,184,.32))}
+html[data-claro] .topo.vidro{background:rgba(255,255,255,.82)}
+
+/* ── superfícies que eram "véu escuro" ── */
+html[data-claro] .entrada,html[data-claro] .campo input,html[data-claro] .campo select,html[data-claro] .campo textarea{background:rgba(255,255,255,.85);border-color:var(--vidro-borda-forte)}
+html[data-claro] .campo select option,html[data-claro] select.entrada option{background:#fff;color:var(--txt)}
+html[data-claro] .seg{background:rgba(22,32,51,.05)}
+html[data-claro] .seg button.ativo,html[data-claro] .nav button.ativo{color:#fff}
+html[data-claro] .aur-modal-fundo,html[data-claro] .paleta-fundo,html[data-claro] .veu{background:rgba(40,55,85,.28)}
+html[data-claro] .aur-modal{box-shadow:0 40px 80px -24px rgba(30,45,80,.45),0 0 0 1px color-mix(in srgb,var(--c,var(--ouro)) 45%,transparent)}
+html[data-claro] table.t th{background:rgba(246,248,252,.97)}
+html[data-claro] .tabela,html[data-claro] .col,html[data-claro] .busca-grande{background:rgba(255,255,255,.55)}
+html[data-claro] .carregando{background:radial-gradient(ellipse at center,rgba(255,255,255,.7),rgba(240,244,250,.95))}
+html[data-claro] .preset .ver::after{background:linear-gradient(180deg,transparent 50%,rgba(255,255,255,.35))}
+
+/* cartões que usavam branco quase transparente: ganham corpo no claro */
+html[data-claro] :is(.kpi,.card-p,.pax,.tf,.grupo,.bloco,.cartao,.carga,.coluna,.peca,.parada,.linha,.frota,.u-card,.info,.mod,.rg,.dia,.alerta-l,.tent,.perm-linha,.wg){
+  background-color:rgba(255,255,255,.62)}
+html[data-claro] :is(.kpi,.card-p,.pax,.tf,.cartao,.peca,.dia,.alerta-l):hover{background-color:rgba(255,255,255,.9)}
+html[data-claro] .nav-item:hover,html[data-claro] .aba:hover{background:rgba(22,32,51,.05)}
+html[data-claro] .aba.ativa{background:rgba(255,255,255,.85)}
+html[data-claro] .btn.v,html[data-claro] .btn.fantasma,html[data-claro] .btn-ic,html[data-claro] .chip,html[data-claro] .mini{background:rgba(255,255,255,.7)}
+
+/* ── cores de destaque: um tom mais escuro para ler bem no fundo claro ── */
+html[data-claro] :is(.etq,.mini.c,.kpi b,.coluna h4,.peca .q,.bxs button,.valor,.col h4,.chip.ativo,.alerta-l b,.sec b,.tf-prio){color:color-mix(in srgb,var(--c,var(--ouro)) 70%,#101828)}
+html[data-claro] .btn.perigo{color:#b4233f}
+html[data-claro] .aviso.ok{color:#0b6b4a}
+html[data-claro] .aviso.mal{color:#a3203a}
+html[data-claro] .aviso.at{color:#7a5208}
+html[data-claro] .mini.pend{color:#a3203a}
+html[data-claro] .mini.ok{color:#0b6b4a}
+html[data-claro] .mini.bus{color:#1d4fb8}
+html[data-claro] table.t .baixo{color:#c0263f}
+html[data-claro] .somente-leitura{color:#7a5208}
+html[data-claro] .orbe{background:radial-gradient(circle at 30% 22%,color-mix(in srgb,var(--c) 30%,#fff),color-mix(in srgb,var(--c) 10%,#fff) 70%);color:color-mix(in srgb,var(--c) 75%,#101828)}
+html[data-claro] .orbe svg.i{filter:none}
+
+/* marca: o átomo continua dourado, só ganha contorno para não "sumir" */
+html[data-claro] .atomo .halo{opacity:.55}
+html[data-claro] .atomo .anel{border-color:rgba(167,122,28,.7)}
+html[data-claro] .atomo .anel.r2{border-color:rgba(109,72,224,.55)}
+html[data-claro] .atomo .anel.r3{border-color:rgba(11,152,184,.6)}
+
+/* textos com reflexo (túnel) */
+html[data-claro] .brilho-txt{background-image:linear-gradient(100deg,var(--txt) 0%,var(--txt) 30%,var(--ouro) 45%,var(--txt) 55%,#3a465c 70%,var(--ouro3) 100%)}
+html[data-claro] .hero h1 .ouro{filter:none}
+html[data-claro] :is(.totais b,.rodape-total b,.code,code){color:var(--ouro3)}
