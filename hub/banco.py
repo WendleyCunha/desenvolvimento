@@ -45,8 +45,22 @@ def ler_credenciais(bruto: str) -> dict:
         except Exception:
             raise SemBanco("FIRESTORE_CREDS precisa ser o conteúdo do arquivo .json da service account "
                            "(começa com { e termina com }).") from None
-        info = dados if "private_key" in dados else next(
-            (v for v in dados.values() if isinstance(v, dict) and "private_key" in v), None)
+        def _achar(d):
+            if isinstance(d, dict):
+                if "private_key" in d:
+                    return d
+                for v in d.values():
+                    r = _achar(v)
+                    if r:
+                        return r
+            elif isinstance(d, str) and "private_key" in d:
+                # ex.: textkey = """{ ...json... }"""  (secrets do Parque Aliança)
+                try:
+                    return json.loads(d, strict=False)
+                except json.JSONDecodeError:
+                    return None
+            return None
+        info = _achar(dados)
         if info is None:
             raise SemBanco("FIRESTORE_CREDS: não achei a private_key no texto colado.")
     if not isinstance(info, dict):
