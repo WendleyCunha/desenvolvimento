@@ -203,6 +203,8 @@ const AMBIENTES = [
   ["Foco total", { aur: 0.25, luz: 0, part: 0, vel: 0.5, prof: 0.3, grao: 0.03 }],
 ];
 function previaPreset(p) {
+  if (p.claro) return `background:radial-gradient(circle at 15% 20%,rgba(${p.aur[0]},.45),transparent 55%),radial-gradient(circle at 85% 10%,rgba(${p.aur[1]},.4),transparent 55%),
+    radial-gradient(circle at 60% 100%,rgba(${p.aur[2]},.35),transparent 55%),radial-gradient(circle at 95% 90%,rgba(${p.aur[3]},.3),transparent 50%),${p.noite}`;
   return `background:radial-gradient(circle at 15% 20%,rgba(${p.aur[0]},.75),transparent 55%),radial-gradient(circle at 85% 10%,rgba(${p.aur[1]},.7),transparent 55%),
     radial-gradient(circle at 60% 100%,rgba(${p.aur[2]},.55),transparent 55%),radial-gradient(circle at 95% 90%,rgba(${p.aur[3]},.4),transparent 50%),${p.noite}`;
 }
@@ -211,9 +213,9 @@ function rAparencia() {
   elC.innerHTML = `<section class="secao vidro vidro-borda-viva">
     <div class="cab">${A.orbe("onda", "#22d3ee")}<h2>Aparência</h2><button type="button" class="btn v p" id="apRest">${svg("repetir")}Restaurar o original</button></div>
     <p class="desc">Escolha o mar e calibre a luz. Muda ao vivo no hub inteiro — menu, abas e todos os módulos — e fica salvo ${EU.fabrica || !BASE_OK() ? "neste navegador" : "na sua conta (vale em qualquer computador)"}.</p>
-    <div class="sub-t">Mares</div>
-    <div class="presets">${Object.entries(P).map(([k, p]) => `<button type="button" class="preset${t.preset === k ? " ativo" : ""}" data-p="${k}" style="--c:${p.ouro[0]}">
-        <span class="ok">${svg("check")}</span><div class="ver" style="${previaPreset(p)}"></div><div class="txt"><b>${p.nome}</b><small>${p.desc}</small></div></button>`).join("")}</div>
+    ${[["Mares profundos · fundo escuro", false], ["Águas claras · fundo claro", true]].map(([tit, claro]) => `<div class="sub-t">${tit}</div>
+    <div class="presets">${Object.entries(P).filter(([, p]) => !!p.claro === claro).map(([k, p]) => `<button type="button" class="preset${t.preset === k ? " ativo" : ""}" data-p="${k}" style="--c:${p.ouro[0]}">
+        <span class="ok">${svg("check")}</span><div class="ver" style="${previaPreset(p)}"></div><div class="txt"><b>${p.nome}</b><small>${p.desc}</small></div></button>`).join("")}</div>`).join("")}
     <div class="sub-t">Ambientes prontos</div>
     <div class="ambientes">${AMBIENTES.map(([n], i) => `<button type="button" class="chip" data-amb="${i}">${svg("onda")}${n}</button>`).join("")}</div>
     <div class="sub-t">Calibração</div>
