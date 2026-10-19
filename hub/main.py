@@ -70,8 +70,9 @@ from fastapi.staticfiles import StaticFiles
 import acesso
 import banco
 import dados
+import passagens
 
-VERSAO = "3.0.1"
+VERSAO = "3.1.0"
 
 BASE = Path(__file__).resolve().parent
 PASTA_MODULOS = BASE / "modulos"
@@ -324,6 +325,7 @@ async def _erro_inesperado(request: Request, exc: Exception):
     return JSONResponse({"detail": f"Erro no servidor: {nome}: {msg}{dica}"}, status_code=500)
 app.include_router(acesso.router)
 app.include_router(dados.router)
+app.include_router(passagens.router)
 _inicio = time.time()
 
 
