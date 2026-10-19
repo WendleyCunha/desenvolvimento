@@ -140,6 +140,7 @@
     sair:'<path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l5-5-5-5M15 12H4"/>',
     paleta:'<path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.6-.9 1.2-1.9-.5-1 .2-2.1 1.3-2.1H17a4 4 0 0 0 4-4c0-5.5-4-10-9-10z"/><circle cx="7.5" cy="11" r="1.2"/><circle cx="10" cy="7" r="1.2"/><circle cx="15" cy="7.5" r="1.2"/>',
     onda:'<path d="M2 12c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/><path d="M2 17c2-2 4-2 6 0s4 2 6 0 4-2 6 0" opacity=".6"/><path d="M2 7c2-2 4-2 6 0s4 2 6 0 4-2 6 0" opacity=".35"/>',
+    onibus:'<rect x="4" y="3" width="16" height="15" rx="3"/><path d="M4 11h16M9 3v8M15 3v8"/><circle cx="8" cy="15" r=".8"/><circle cx="16" cy="15" r=".8"/><path d="M7 18v3M17 18v3"/>',
     atencao:'<path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17h.01"/>',
   };
   const svg = (nome) => `<svg viewBox="0 0 24 24" class="i" aria-hidden="true">${ICONES[nome] || ICONES.documento}</svg>`;
