@@ -38,6 +38,11 @@
     lagoa:    { nome: "Lagoa esmeralda",  desc: "Verde-água e luz dourada",           noite: "#030a08", aur: ["52,211,153", "34,211,238", "163,230,53", "232,179,61"],   ouro: ["#34d399", "#a7f3d0", "#047857"] },
     ametista: { nome: "Ametista abissal", desc: "Violeta e magenta profundos",        noite: "#07040d", aur: ["168,85,247", "236,72,153", "99,102,241", "34,211,238"],   ouro: ["#c084fc", "#e9d5ff", "#7e22ce"] },
     polar:    { nome: "Meia-noite polar", desc: "Prata, gelo e azul",                 noite: "#04060a", aur: ["148,163,184", "96,165,250", "226,232,240", "34,211,238"], ouro: ["#cbd5e1", "#f1f5f9", "#64748b"] },
+    // ── Águas claras: fundo claro (claro.css) ──
+    areia:    { claro: true, nome: "Areia dourada",  desc: "Praia ao sol: areia, ouro e turquesa",  noite: "#f6f1e6", aur: ["232,179,61", "56,189,248", "251,146,60", "167,139,250"], ouro: ["#c48a12", "#e3a92e", "#8a5f08"] },
+    rasas:    { claro: true, nome: "Águas rasas",    desc: "Piscina natural: ciano e azul-claro",   noite: "#eaf4f8", aur: ["34,211,238", "59,130,246", "45,212,191", "232,179,61"],  ouro: ["#0b8fb2", "#22b5d6", "#075e78"] },
+    perola:   { claro: true, nome: "Pérola rosé",    desc: "Madrepérola: rosé, lilás e champanhe",  noite: "#f8f1f4", aur: ["244,114,182", "167,139,250", "251,191,36", "56,189,248"], ouro: ["#c03f78", "#e0659c", "#86214f"] },
+    nevoa:    { claro: true, nome: "Névoa da manhã", desc: "Branco gelo, índigo suave e prata",     noite: "#eef1f7", aur: ["148,163,184", "99,102,241", "34,211,238", "232,179,61"],  ouro: ["#4c5bd4", "#6f7ce6", "#3237a6"] },
   };
   const TEMA_PADRAO = { preset: "abismo", prof: 0, aur: 0.55, vidro: 0.34, blur: 22, vel: 1, luz: 0, part: 1, grao: 0.06 };
   const hexRgb = (h) => { const m = h.replace("#", ""), n = parseInt(m.length === 3 ? m.split("").map((x) => x + x).join("") : m, 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255].join(","); };
@@ -46,6 +51,7 @@
     t = { ...TEMA_PADRAO, ...t };
     const p = PRESETS[t.preset] || PRESETS.abismo, r = document.documentElement.style;
     r.setProperty("--noite", p.noite);
+    if (p.claro) document.documentElement.setAttribute("data-claro", ""); else document.documentElement.removeAttribute("data-claro");
     p.aur.forEach((c, i) => r.setProperty("--aur" + (i + 1), c));
     r.setProperty("--ouro", p.ouro[0]); r.setProperty("--ouro2", p.ouro[1]); r.setProperty("--ouro3", p.ouro[2]); r.setProperty("--ouro-rgb", hexRgb(p.ouro[0]));
     r.setProperty("--aur-op", t.aur);
