@@ -71,8 +71,9 @@ import acesso
 import banco
 import dados
 import passagens
+import erp
 
-VERSAO = "3.1.1"
+VERSAO = "3.2.0"
 
 BASE = Path(__file__).resolve().parent
 PASTA_MODULOS = BASE / "modulos"
@@ -326,6 +327,7 @@ async def _erro_inesperado(request: Request, exc: Exception):
 app.include_router(acesso.router)
 app.include_router(dados.router)
 app.include_router(passagens.router)
+app.include_router(erp.router)
 _inicio = time.time()
 
 
