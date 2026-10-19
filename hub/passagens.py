@@ -59,9 +59,12 @@ def _db():
 
 
 def _json_seguro(v):
-    """Firestore devolve datetime (DatetimeWithNanoseconds) — vira texto ISO."""
+    """Firestore devolve datetime (DatetimeWithNanoseconds) — vira texto ISO.
+    NaN/infinito (que o JSON não aceita) viram vazio."""
     if isinstance(v, datetime):
         return v.isoformat()
+    if isinstance(v, float) and (v != v or v in (float("inf"), float("-inf"))):
+        return None  # NaN gravado pelo pandas (importação de planilha no Streamlit)
     if isinstance(v, dict):
         return {k: _json_seguro(x) for k, x in v.items()}
     if isinstance(v, (list, tuple)):
