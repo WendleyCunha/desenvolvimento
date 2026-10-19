@@ -72,7 +72,7 @@ import banco
 import dados
 import passagens
 
-VERSAO = "3.1.0"
+VERSAO = "3.1.1"
 
 BASE = Path(__file__).resolve().parent
 PASTA_MODULOS = BASE / "modulos"
