@@ -573,7 +573,7 @@ function novaReserva() {
         grupo: grupoSel(cx), dias_onibus: lerViagens(cx), pago: !!cx.querySelector("#nrPago")?.checked };
       if (!dados.nome || !dados.dias_onibus.length) { A.toast("Informe o nome e selecione ao menos um dia.", [], { cor: "var(--rosa)" }); return false; }
       try { const r = await chamar(`/eventos/${encodeURIComponent(S.evId)}/passageiros`, { method: "POST", body: { dados } });
-        S.pax.push(r.passageiro); S.pax.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")); render();
+        S.pax.push(r.passageiro); S.pax.sort((a, b) => String(a.nome || "").localeCompare(String(b.nome || ""), "pt-BR")); render();
         A.toast(`✓ Reserva de <b>${esc(dados.nome)}</b> gravada.`, [], { cor: "var(--verde)" }); }
       catch (e) { falha(e); return false; }
     } }],
@@ -709,7 +709,7 @@ function abaChamada(wb, nome, colunas, linhas) {
 async function excelChamada() {
   try {
     const X = await carregarExcel(), wb = new X.Workbook(), ev = S.ev;
-    const ord = [...S.pax].sort((a, b) => (a.grupo || "").localeCompare(b.grupo || "") || a.nome.localeCompare(b.nome, "pt-BR"));
+    const ord = [...S.pax].sort((a, b) => (a.grupo || "").localeCompare(b.grupo || "") || String(a.nome || "").localeCompare(String(b.nome || ""), "pt-BR"));
     (ev.datas || []).forEach((dia) => {
       const l = ord.map((p) => ({ p, v: (p.dias_onibus || []).find((x) => x.dia === dia) })).filter((x) => x.v)
         .map(({ p, v }) => ({ Grupo: p.grupo || "Geral", Nome: p.nome, RG: p.rg || "", "Ônibus": v.bus, Pago: p.pago ? "Sim" : "Não", Embarcou: p.embarcou ? "Sim" : "Não" }));
