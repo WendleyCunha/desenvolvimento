@@ -120,7 +120,7 @@ async def conectar(request: Request):
     if not cookie:
         raise HTTPException(502, "O PQI aceitou o login, mas não devolveu a sessão.")
     pub = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
-    s = {"cookie": cookie, "email": email, "nome": pub.get("nome") or email, "em": time.strftime("%Y-%m-%d %H:%M:%S"), "hub": u["login"]}
+    s = {"cookie": cookie, "email": email, "nome": (pub.get("usuario") or pub).get("nome") or email, "em": time.strftime("%Y-%m-%d %H:%M:%S"), "hub": u["login"]}
     _gravar(u["login"], s)
     return {"ok": True, "email": email, "nome": s["nome"]}
 
