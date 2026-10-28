@@ -58,7 +58,7 @@ body{margin:0;display:flex;flex-direction:column;overflow:hidden}
     <h2>Abra um site aqui dentro</h2>
     <p>Digite o endereço (por exemplo <b>google.com.br</b>) ou o que quer pesquisar e aperte Enter. Alguns sites não permitem ser abertos dentro de outra página (bancos, Gmail, WhatsApp Web, YouTube…) — nesses, use o botão ↗ para abrir numa aba do navegador.</p>
   </div>
-  <div class="dica-bloq vidro" id="dicaBloq"><span>Apareceu “recusou a conexão”? Esse site não deixa abrir aqui dentro.</span><button type="button" class="btn p" id="btFora2">Abrir em nova aba ↗</button><button type="button" class="btn-ic p" id="fechaDica" title="Fechar"></button></div>
+  <div class="dica-bloq vidro" id="dicaBloq"><span>Apareceu “recusou a conexão”? Esse site não deixa abrir aqui dentro — instale a extensão “liberar sites” do hub ou use ↗.</span><button type="button" class="btn p" id="btFora2">Abrir em nova aba ↗</button><button type="button" class="btn-ic p" id="fechaDica" title="Fechar"></button></div>
 </div>
 
 <script src="/static/aurora.js?v=3"></script>
@@ -79,6 +79,8 @@ let atual = "";
 function normalizar(t) {
   t = String(t || "").trim();
   if (!t) return "";
+  // "kingstarcolchoes.com,br" → vírgula digitada no lugar do ponto
+  if (!/\s/.test(t) && /^[\w-]+([.,][\w-]+)+(\/.*)?$/.test(t) && t.includes(",") && !t.includes("/")) t = t.replace(/,/g, ".");
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(t)) return t;
   if (/^(localhost|[\w-]+(\.[\w-]+)+)(:\d+)?(\/.*)?$/i.test(t) && !/\s/.test(t)) return "https://" + t;
   return "https://www.google.com/search?igu=1&q=" + encodeURIComponent(t);
@@ -104,6 +106,8 @@ function abrir(t) {
   gravar(K.ult, u);
   clearTimeout(timerDica);
   timerDica = setTimeout(() => { if (!/google\./.test(new URL(u).hostname)) $("#dicaBloq").classList.add("mostra"); }, 2500);
+  // com a extensão "liberar sites" instalada, quase tudo abre: a dica some quando o site carrega de verdade
+  $("#quadro").onload = () => { try { void $("#quadro").contentWindow.length; } catch (_) {} };
   renderFavs();
 }
 function fora() { if (atual) window.open(atual, "_blank", "noopener"); }
