@@ -76,8 +76,9 @@ import secretaria
 import tickets
 import pqi_ponte
 import web_proxy
+import atelier
 
-VERSAO = "3.5.0"
+VERSAO = "3.6.0"
 
 BASE = Path(__file__).resolve().parent
 PASTA_MODULOS = BASE / "modulos"
@@ -96,18 +97,9 @@ SEM_CACHE = {"Cache-Control": "no-cache, must-revalidate"}
 # Para trocar sem mexer no código: env var SISTEMAS_EXTERNOS_JSON com uma lista
 # no mesmo formato abaixo.
 # ══════════════════════════════════════════════════════════════════════════════
-SISTEMAS_EXTERNOS_PADRAO = [
-    {
-        "id": "lila-closet",
-        "titulo": "Lila Closet Atelier",
-        "icone": "tesoura",
-        "cor": "#fb7185",
-        "grupo": "Sistemas",
-        "ordem": 50,
-        "descricao": "Gestão do atelier (Streamlit Cloud).",
-        "url": os.environ.get("LILA_STREAMLIT_URL", ""),
-    },
-]
+# O Lila Closet virou módulo de verdade (modulos/lila-closet.html, mesmo id) —
+# por isso não há mais sistema externo padrão.
+SISTEMAS_EXTERNOS_PADRAO: list[dict] = []
 
 
 def _com_embed(url: str) -> str:
@@ -265,7 +257,9 @@ db = banco.db  # conexão única (banco.py)
 # CATÁLOGO + ESQUEMAS DE PERMISSÃO
 # ══════════════════════════════════════════════════════════════════════════════
 def catalogo() -> list[dict]:
-    itens = sistemas_externos() + modulos_internos()
+    internos = modulos_internos()
+    ids = {i["id"] for i in internos}
+    itens = [e for e in sistemas_externos() if e["id"] not in ids] + internos   # módulo interno tem prioridade
     itens.sort(key=lambda i: (i["ordem"], i["titulo"].lower()))
     return itens
 
@@ -336,6 +330,7 @@ app.include_router(secretaria.router)
 app.include_router(tickets.router)
 app.include_router(pqi_ponte.router)
 app.include_router(web_proxy.router)
+app.include_router(atelier.router)
 _inicio = time.time()
 
 

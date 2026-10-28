@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lila Closet</title>
+<meta name="hub-icone" content="tesoura">
+<meta name="hub-cor" content="#fb7185">
+<meta name="hub-grupo" content="Sistemas">
+<meta name="hub-ordem" content="50">
+<meta name="hub-descricao" content="Lila Closet Atelier: pedidos, agenda de produção, medidas, contratos, prospects e financeiro com fechamento de caixa — os mesmos dados do app antigo.">
+<script type="application/json" id="hub-permissoes">
+{
+  "acoes": {
+    "acessar": "Abrir o atelier (ver pedidos e agenda)",
+    "pedidos": "Criar e editar pedidos, clientes, medidas, prospects e tarefas",
+    "contratos": "Ver CPF/RG e gerar o contrato em PDF",
+    "financeiro": "Ver e lançar no financeiro",
+    "fechar": "Fechar e reabrir o mês do caixa",
+    "pessoal": "Vida pessoal (serviço de campo e peso)",
+    "excluir": "Excluir pedidos e cadastros para sempre",
+    "configurar": "Configurações (empresa, metas, alerta de entrega)"
+  },
+  "campos": {}
+}
+</script>
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/aurora.css?v=3">
+<!--
+═══════════════════════════════════════════════════════════════════════════════
+ lila-closet.html — LILA CLOSET ATELIER (módulo do hub)
+───────────────────────────────────────────────────────────────────────────────
+ Hoje · Pedidos · Agenda · Clientes & medidas · Prospects · Financeiro · Ajustes
+ API: /api/atelier (hub/atelier.py) — mesmas coleções lila_* do app Streamlit.
+ Regras (atelier_regras.py): régua 1 Confecção · 2 Prova · 3 Entrega · 4 Concluído
+ (o 4 é sempre humano); Data da Confecção pergunta se o dia já tem encomenda e
+ bloqueia se o dia tiver mais de 3 provas; consertos não disputam o dia.
+═══════════════════════════════════════════════════════════════════════════════
+-->
+<style>
+body{padding:14px;min-height:100vh}
+.app{position:relative;z-index:1;max-width:1500px;margin:0 auto}
+.topo{position:sticky;top:10px;z-index:40;display:flex;align-items:center;gap:10px;padding:8px 10px 8px 12px;border-radius:20px;flex-wrap:wrap}
+.topo.vidro{background:linear-gradient(135deg,rgba(26,14,18,.9),rgba(10,8,12,.86))}
+html[data-claro] .topo.vidro{background:rgba(255,255,255,.82)}
+.marca{display:flex;align-items:center;gap:10px;margin-right:6px}
+.marca b{display:block;font:700 1.08rem 'Playfair Display',serif}
+.marca small{display:block;font-size:.55rem;letter-spacing:2.2px;text-transform:uppercase;font-weight:700;color:#fda4af}
+.nav{display:flex;gap:2px;flex-wrap:wrap;flex:1}
+.nav button{padding:8px 12px;border-radius:11px;font-size:.8rem;font-weight:650;color:var(--txt2);position:relative}
+.nav button:hover{color:var(--txt);background:rgba(255,255,255,.05)}
+.nav button.ativo{color:#fecdd3;background:rgba(251,113,133,.13);box-shadow:inset 0 0 0 1px rgba(251,113,133,.45)}
+html[data-claro] .nav button.ativo{color:#be123c}
+.nav button em{font-style:normal;font-size:.62rem;font-weight:700;margin-left:5px;padding:1px 6px;border-radius:9px;background:var(--rosa);color:#1a0a0e}
+.sync{display:inline-flex;align-items:center;gap:6px;font-size:.7rem;color:var(--txt3)}
+.sync i{width:7px;height:7px;border-radius:50%;background:var(--verde);box-shadow:0 0 8px var(--verde)}
+.sync.salvando i{background:var(--ouro)} .sync.erro i{background:var(--rosa)}
+main{margin-top:14px}
+.painel{border-radius:22px;padding:16px;margin-bottom:14px}
+.cab{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.cab h2{margin:0;font:700 1.25rem var(--titulo)} .cab p{margin:2px 0 0;font-size:.8rem;color:var(--txt3)}
+.cab .dir{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.sec{display:flex;align-items:center;gap:8px;margin:16px 2px 10px;font-size:.64rem;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:var(--txt3)}
+.sec::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,var(--vidro-borda),transparent)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
+.kpi{position:relative;padding:12px 14px;border-radius:15px;background:rgba(255,255,255,.035);border:1px solid var(--vidro-borda);--c:var(--rosa);text-align:left;overflow:hidden}
+button.kpi{cursor:pointer;width:100%;font:inherit;color:inherit} button.kpi:hover{border-color:color-mix(in srgb,var(--c) 50%,transparent)}
+.kpi small{display:block;font-size:.6rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--txt3)}
+.kpi b{display:block;font:700 1.35rem/1.15 var(--titulo);margin-top:6px;color:var(--c)}
+.kpi span{display:block;font-size:.68rem;color:var(--txt3);margin-top:3px}
+.barra-p{height:6px;border-radius:4px;background:rgba(255,255,255,.07);margin-top:7px;overflow:hidden}
+.barra-p i{display:block;height:100%;border-radius:4px;background:linear-gradient(90deg,var(--ouro),var(--rosa))}
+.vazio{display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;color:var(--txt3);font-size:.84rem;padding:26px 10px}
+.vazio b{color:var(--txt);font:600 1rem var(--titulo)}
+.aviso{font-size:.82rem;padding:10px 12px;border-radius:12px;line-height:1.5;margin:6px 0}
+.aviso.ok{color:#bbf7d0;background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.3)}
+.aviso.ouro{color:var(--ouro2);background:rgba(var(--ouro-rgb),.07);border:1px solid rgba(var(--ouro-rgb),.3)}
+.aviso.mal{color:#fecdd3;background:rgba(251,113,133,.08);border:1px solid rgba(251,113,133,.35)}
+html[data-claro] .aviso.ok{color:#065f46} html[data-claro] .aviso.mal{color:#9f1239} html[data-claro] .aviso.ouro{color:#7a5300}
+.dica{font-size:.72rem;color:var(--txt3);line-height:1.5;margin:0}
+.lin{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;background:rgba(255,255,255,.03);border:1px solid var(--vidro-borda);margin-bottom:7px;--c:var(--ouro)}
+.lin .t{flex:1;min-width:0} .lin .t b{display:block;font-size:.88rem} .lin .t small{display:block;color:var(--txt3);font-size:.74rem;margin-top:2px}
+.lin.atraso{border-color:rgba(251,113,133,.45);background:rgba(251,113,133,.06)}
+.lin .acoes{display:flex;gap:6px;flex-wrap:wrap}
+.mini{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:8px;font-size:.66rem;font-weight:650;white-space:nowrap;--c:var(--txt2);color:var(--c);background:color-mix(in srgb,var(--c) 13%,transparent);border:1px solid color-mix(in srgb,var(--c) 32%,transparent)}
+.grid-ped{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.ped{border-radius:18px;padding:14px;background:rgba(255,255,255,.035);border:1px solid var(--vidro-borda);cursor:pointer;transition:.2s;display:flex;flex-direction:column;gap:8px;--c:var(--ouro)}
+.ped:hover{border-color:color-mix(in srgb,var(--c) 55%,transparent);transform:translateY(-2px)}
+.ped .t1{display:flex;gap:8px;align-items:flex-start} .ped .t1 b{font:700 .98rem var(--titulo);flex:1}
+.ped .sub{font-size:.76rem;color:var(--txt3)}
+.ped .badges{display:flex;gap:5px;flex-wrap:wrap}
+.trilha{display:flex;align-items:center;margin:4px 0 2px}
+.trilha .ep{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;position:relative;font-size:.64rem;color:var(--txt3)}
+.trilha .ep i{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-style:normal;font-size:.8rem;border:2px solid var(--vidro-borda-forte);background:rgba(0,0,0,.2);z-index:1}
+.trilha .ep:not(:last-child)::after{content:"";position:absolute;top:13px;left:55%;right:-45%;height:2px;background:var(--vidro-borda-forte)}
+.trilha .ep.feita i{background:var(--ouro);border-color:var(--ouro)} .trilha .ep.feita::after{background:var(--ouro)!important}
+.trilha .ep.atual i{border-color:var(--rosa);box-shadow:0 0 12px rgba(251,113,133,.5)} .trilha .ep.atual{color:#fecdd3;font-weight:700}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:8px} .g3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px} .g4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.filtros{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.filtros .entrada{width:auto;min-width:220px;flex:1}
+/* calendário */
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+.cal .h{font-size:.62rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--ouro2);text-align:center;padding:4px 0}
+.cal .dia{min-height:96px;border-radius:12px;padding:6px;background:rgba(255,255,255,.03);border:1px solid var(--vidro-borda);display:flex;flex-direction:column;gap:3px;cursor:pointer;overflow:hidden}
+.cal .dia:hover{border-color:rgba(251,113,133,.45)} .cal .dia.fora{opacity:.3;cursor:default} .cal .dia.hoje{border-color:var(--rosa);box-shadow:inset 0 0 0 1px var(--rosa)}
+.cal .dia > b{font-size:.78rem}
+.cal .tg{font-size:.6rem;line-height:1.25;padding:2px 5px;border-radius:6px;background:color-mix(in srgb,var(--c,var(--ouro)) 15%,transparent);color:var(--c,var(--ouro2));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cal .tg.atraso{--c:var(--rosa)}
+.oc{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;font-size:.7rem;text-align:center}
+.oc .h{font-size:.58rem;color:var(--txt3);font-weight:700}
+.oc .d{padding:5px 0;border-radius:7px;background:rgba(255,255,255,.03);cursor:pointer;border:1px solid transparent}
+.oc .d.conf{background:rgba(251,113,133,.16);color:#fecdd3} .oc .d.lot{background:rgba(var(--ouro-rgb),.18);color:var(--ouro2)} .oc .d.sel{border-color:var(--ciano)}
+.oc .d.v{visibility:hidden}
+/* medidas */
+.medidas{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}
+.campo small.v{color:var(--txt3);font-weight:400}
+/* tabelas */
+.tab{width:100%;border-collapse:collapse;font-size:.8rem}
+.tab th{font-size:.6rem;letter-spacing:1px;text-transform:uppercase;color:var(--txt3);text-align:left;padding:7px;border-bottom:1px solid var(--vidro-borda);white-space:nowrap}
+.tab td{padding:7px;border-bottom:1px solid var(--vidro-borda);vertical-align:middle}
+.tab td.n,.tab th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tab input.entrada{padding:5px 7px;font-size:.78rem}
+.tab tr.conc td{opacity:.75}
+.res{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
+.oculto{display:none!important}
+.subnav{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px}
+.subnav button{padding:8px 13px;border-radius:11px;font-size:.8rem;font-weight:650;color:var(--txt2);border:1px solid transparent}
+.subnav button.ativo{color:var(--txt);border-color:var(--vidro-borda-forte);background:rgba(255,255,255,.06)}
+@media (max-width:900px){.g4,.g3{grid-template-columns:1fr 1fr}.cal .dia{min-height:64px}.cal .tg{font-size:.52rem}}
+@media (max-width:620px){.g2,.g3,.g4{grid-template-columns:1fr}.topo{position:relative;top:0}.cal{gap:3px}.cal .dia{padding:3px;min-height:52px}.cal .tg{display:none}.cal .dia .qt{display:block}}
+.cal .dia .qt{display:none;font-size:.6rem;color:var(--rosa)}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topo vidro vidro-borda-viva">
+    <div class="marca"><span id="logo"></span><span><b>Lila Closet</b><small>Atelier · sob medida</small></span></div>
+    <nav class="nav" id="nav"></nav>
+    <button type="button" class="btn p" id="btNovoTopo"></button>
+    <span class="sync" id="sync"><i></i><span>…</span></span>
+  </header>
+  <main id="main"><div class="vazio"><b>Carregando o atelier…</b></div></main>
+</div>
+<script src="/static/aurora.js?v=3"></script>
+<script>
+(() => {
+"use strict";
+const A = Aurora, esc = A.esc, svg = A.svg, $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
+A.fundo();
+$("#logo").outerHTML = A.orbe("tesoura", "#fb7185");
+document.querySelector('link[rel="icon"]').href = A.ATOMO_SVG;
+const API = "/api/atelier";
+const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+const ETAPA = { 1: ["🪡", "Confecção", "#60a5fa"], 2: ["👗", "Prova", "#a78bfa"], 3: ["🎁", "Entrega", "#e8b33d"], 4: ["✅", "Concluído", "#34d399"] };
+const ls = { get(k, d) { try { return localStorage.getItem(k) ?? d; } catch (_) { return d; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (_) {} } };
+const S = { e: null, sec: ls.get("wd.lila.sec", "hoje"), filtroPed: "andamento", busca: "", calRef: null, finSub: "visao", fin: null, mesRel: "", mesFech: "", projIdx: 0,
+  cliSel: "", vidaPessoal: ls.get("wd.lila.pessoal", "0") === "1" };
+
+/* ══════ HELPERS ══════ */
+const pode = (a) => !!S.e?.perm?.acoes?.[a];
+const num = (v) => { const n = parseFloat(String(v ?? "").replace(",", ".")); return isFinite(n) ? n : 0; };
+const brl = (v) => num(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const dbr = (s) => { s = String(s || ""); return s.length >= 10 ? `${s.slice(8, 10)}/${s.slice(5, 7)}/${s.slice(0, 4)}` : "—"; };
+const dcurta = (s) => { s = String(s || ""); return s.length >= 10 ? `${s.slice(8, 10)}/${s.slice(5, 7)}` : "—"; };
+const iso = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+const somaDias = (s, n) => { const d = new Date(s + "T12:00:00"); d.setDate(d.getDate() + n); return iso(d); };
+const hoje = () => S.e?.hoje || iso(new Date());
+const nomeMes = (m) => `${MESES[+m.slice(5, 7) - 1]}/${m.slice(0, 4)}`;
+const mesMais = (m, n) => { let a = +m.slice(0, 4), mm = +m.slice(5, 7) - 1 + n; a += Math.floor(mm / 12); mm = ((mm % 12) + 12) % 12; return `${a}-${String(mm + 1).padStart(2, "0")}`; };
+const norm = (t) => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+const mini = (t, c) => `<span class="mini" style="--c:${c}">${esc(t)}</span>`;
+const ehConserto = (e) => String(e.peca || "").startsWith("[Conserto]");
+const saldo = (e) => Math.max(num(e.valor_total) - num(e.valor_recebido), 0);
+const etapa = (e) => +e.etapa || 1;
+const ativo = (e) => !+e.cancelado;
+function sync(estado, txt) { const el = $("#sync"); el.className = "sync " + (estado || ""); el.lastElementChild.textContent = txt; }
+async function api(url, op = {}, msg = "salvando…") {
+  sync("salvando", msg);
+  try { const r = await A.api(API + url, op); sync("", "atualizado " + new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })); return r; }
+  catch (e) { sync("erro", "erro"); if (e.status === 401) { const w = window.top || window; w.location.href = "/login?volta=" + encodeURIComponent(w.location.pathname); } throw e; }
+}
+const ok = (t) => A.toast(t, [], { cor: "var(--verde)", duracao: 3500 });
+const falha = (e) => A.toast("⚠ " + esc(typeof e === "string" ? e : (e.dados?.detail?.mensagem || e.message)), [], { cor: "var(--rosa)", duracao: 9000 });
+/* Grava com a regra da Data da Confecção: se o dia já tem encomenda, pergunta; se tem mais de 3 provas, bloqueia. */
+async function comAgenda(url, op) {
+  try { return await api(url, op); }
+  catch (e) {
+    const ag = e.dados?.detail;
+    if (e.status === 409 && ag?.agenda === "confirmar") {
+      if (await A.confirmar(esc(ag.mensagem), { titulo: "Data da Confecção", rotulo: "Sim, marcar mesmo assim" })) return api(url, { ...op, body: { ...op.body, confirmar: true } });
+      return null;
+    }
+    if (e.status === 409 && ag?.agenda === "bloqueado") { A.toast("⛔ " + esc(ag.mensagem), [], { cor: "var(--rosa)", duracao: 10000 }); return null; }
+    throw e;
+  }
+}
+
+/* ══════ CARREGAR ══════ */
+async function carregar(fresco = 0) {
+  try { S.e = await api("/estado" + (fresco ? "?fresco=1" : ""), {}, "carregando…"); }
+  catch (e) { $("#main").innerHTML = `<div class="vazio">${A.orbe("atencao", "var(--rosa)")}<b>Não foi possível abrir o atelier</b>${esc(e.message)}</div>`; return; }
+  S.e.encById = Object.fromEntries(S.e.encomendas.map((x) => [x.id, x]));
+  if (S.fin && pode("financeiro")) S.fin = null;
+  render();
+}
+function ir(sec) { S.sec = sec; ls.set("wd.lila.sec", sec); render(); scrollTo(0, 0); }
+
+/* ══════ NAV ══════ */
+function nav() {
+  const encs = S.e.encomendas.filter(ativo), h = hoje();
+  const tarefasHoje = S.e.cronograma.filter((t) => !+t.concluida && (t.tipo_agenda || "Trabalho") === "Trabalho" && String(t.data) <= h).length;
+  const itens = [["hoje", "Hoje", tarefasHoje], ["pedidos", "Pedidos"], ["agenda", "Agenda"], ["clientes", "Clientes & medidas"], ["prospects", "Prospects", S.e.prospects.length],
+    ["financeiro", "Financeiro", 0, "financeiro"], ["ajustes", "Ajustes", 0, "configurar"]];
+  $("#nav").innerHTML = itens.filter((i) => !i[3] || pode(i[3])).map((i) => `<button type="button" data-sec="${i[0]}" class="${S.sec === i[0] ? "ativo" : ""}">${i[1]}${i[2] ? `<em>${i[2]}</em>` : ""}</button>`).join("");
+  $$("#nav [data-sec]").forEach((b) => (b.onclick = () => ir(b.dataset.sec)));
+  const bn = $("#btNovoTopo"); bn.innerHTML = `${svg("mais")} Novo pedido`; bn.classList.toggle("oculto", !pode("pedidos")); bn.onclick = () => novoPedido();
+}
+function render() {
+  if (!S.e) return;
+  nav();
+  const m = $("#main");
+  ({ hoje: telaHoje, pedidos: telaPedidos, agenda: telaAgenda, clientes: telaClientes, prospects: telaProspects, financeiro: telaFinanceiro, ajustes: telaAjustes }[S.sec] || telaHoje)(m);
+}
+
+/* ══════ HOJE ══════ */
+function linhaTarefa(t, comAcoes = true) {
+  const enc = t.encomenda_id ? S.e.encById[t.encomenda_id] : null, atraso = String(t.data) < hoje();
+  return `<div class="lin ${atraso ? "atraso" : ""}"><div class="t"><b>${esc(t.tarefa)}</b><small>${esc(t.categoria || "")} · ${num(t.horas)}h · ${dbr(t.data)}${enc ? " · 👤 " + esc(enc.cliente) : ""} ${atraso ? mini("atrasada", "#fb7185") : ""}</small></div>
+    ${comAcoes ? `<div class="acoes">${enc ? `<button type="button" class="btn v p" data-ped="${enc.id}">Abrir pedido</button>` : ""}<button type="button" class="btn v p" data-tdata="${t.id}">${svg("calendario")} Data</button><button type="button" class="btn p" data-tfeito="${t.id}">${svg("check")} Feito</button></div>` : ""}</div>`;
+}
+function ligarTarefas(m) {
+  $$("[data-ped]", m).forEach((b) => (b.onclick = (ev) => { ev.stopPropagation(); abrirPedido(b.dataset.ped); }));
+  $$("[data-tfeito]", m).forEach((b) => (b.onclick = async () => { try { await api(`/tarefas/${b.dataset.tfeito}/feito`, { method: "POST" }); await carregar(); ok("Feito!"); } catch (e) { falha(e); } }));
+  $$("[data-tdata]", m).forEach((b) => (b.onclick = () => editarDataTarefa(b.dataset.tdata)));
+}
+function telaHoje(m) {
+  const e = S.e, h = hoje(), encs = e.encomendas.filter(ativo), cfg = e.cfg;
+  const ativos = encs.filter((x) => etapa(x) < 4).length, meta = +cfg.meta_pedidos_mes || 8;
+  const doMes = encs.filter((x) => String(x.criado_em || x._criado_em || "").slice(0, 7) === h.slice(0, 7)).length, pct = Math.min(doMes / meta * 100, 100);
+  const dias = +cfg.alerta_entrega_dias || 7;
+  const urg = encs.filter((x) => etapa(x) < 4 && x.data_entrega).map((x) => ({ ...x, _d: Math.round((new Date(x.data_entrega + "T12:00") - new Date(h + "T12:00")) / 864e5) })).filter((x) => x._d <= dias).sort((a, b) => a._d - b._d);
+  const tarefas = e.cronograma.filter((t) => !+t.concluida && (t.tipo_agenda || "Trabalho") === "Trabalho" && String(t.data) <= h).sort((a, b) => String(a.data).localeCompare(b.data));
+  const entregasHoje = encs.filter((x) => x.data_entrega === h && etapa(x) >= 3);
+  const hora = new Date().getHours();
+  m.innerHTML = `<section class="painel vidro">
+    <div class="cab"><div><h2>${hora < 12 ? "Bom dia" : hora < 18 ? "Boa tarde" : "Boa noite"} ✂️</h2><p>${new Date(h + "T12:00").toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" })}</p></div></div>
+    <div class="kpis">
+      <button type="button" class="kpi" style="--c:#fb7185" data-ir="pedidos"><small>🛍️ Pedidos ativos</small><b>${ativos}</b><span>em andamento agora</span></button>
+      <div class="kpi" style="--c:var(--ouro)"><small>📋 Meta de pedidos / mês</small><b>${doMes} / ${meta}</b><div class="barra-p"><i style="width:${pct}%"></i></div><span>${pct.toFixed(0)}% da meta deste mês</span></div>
+      <button type="button" class="kpi" style="--c:#60a5fa" data-ir="agenda"><small>⚡ Tarefas até hoje</small><b>${tarefas.length}</b><span>${tarefas.filter((t) => String(t.data) < h).length} atrasada(s)</span></button>
+      <div class="kpi" style="--c:var(--verde)"><small>🎁 Entregas hoje</small><b>${entregasHoje.length}</b><span>${entregasHoje.map((x) => esc(x.cliente)).join(", ") || "nenhuma"}</span></div>
+    </div>
+    ${urg.length ? `<div class="sec" style="color:var(--rosa)">🚨 Entregas urgentes — prioridade máxima (até ${dias} dias)</div>
+      ${urg.map((x) => `<div class="lin atraso"><div class="t"><b>${esc(x.cliente)} — ${esc(x.peca)}</b><small>🎁 Entrega ${dbr(x.data_entrega)} · <b style="color:var(--rosa)">${x._d < 0 ? `ATRASADO há ${-x._d} dia(s)` : x._d === 0 ? "ENTREGA É HOJE" : `faltam ${x._d} dia(s)`}</b> · ${ETAPA[etapa(x)][0]} ${ETAPA[etapa(x)][1]}</small></div><div class="acoes"><button type="button" class="btn v p" data-ped="${x.id}">Ver pedido</button></div></div>`).join("")}` : ""}
+    <div class="sec">⚡ Tarefas para hoje</div>
+    ${tarefas.length ? tarefas.map((t) => linhaTarefa(t, pode("pedidos"))).join("") : `<div class="aviso ok">✅ Tudo em dia! Nenhuma tarefa pendente para hoje.</div>`}
+    <p class="dica">“Feito” avança o pedido no máximo até <b>Entrega</b> — o <b>Concluído</b> é sempre você que marca, dentro do pedido.</p>
+  </section>`;
+  $$("[data-ir]", m).forEach((b) => (b.onclick = () => ir(b.dataset.ir)));
+  ligarTarefas(m);
+}
+
+/* ══════ PEDIDOS ══════ */
+function cardPedido(x) {
+  const canc = !ativo(x), et = ETAPA[etapa(x)], s = saldo(x), cor = canc ? "#6b7183" : et[2];
+  const contrato = x.cpf_cliente && x.rg_cliente;
+  return `<div class="ped" data-ped="${x.id}" style="--c:${cor}">
+    <div class="t1"><b>${esc(x.cliente)} — ${esc(x.peca)}</b>${canc ? mini("Cancelado", "#6b7183") : mini(et[0] + " " + et[1], et[2])}</div>
+    <div class="sub">💰 ${brl(x.valor_total)} · 🎁 entrega ${dbr(x.data_entrega)}${ehConserto(x) ? " · conserto" : ""}</div>
+    ${canc ? "" : `<div class="barra-p"><i style="width:${etapa(x) / 4 * 100}%"></i></div>`}
+    <div class="badges">${mini("Recebido " + brl(x.valor_recebido), "#34d399")}${!canc && s > 0.01 ? mini("Saldo " + brl(s), "#fb923c") : ""}${pode("contratos") && !ehConserto(x) ? (contrato ? mini("📄 Contrato pronto", "#60a5fa") : mini("⏳ Falta CPF/RG", "#94a3b8")) : ""}</div>
+    ${!canc && etapa(x) === 3 && pode("pedidos") ? `<button type="button" class="btn v p" data-concluir="${x.id}">${svg("check")} Marcar como concluído</button>` : ""}
+  </div>`;
+}
+function telaPedidos(m) {
+  const f = S.filtroPed, q = norm(S.busca);
+  let l = S.e.encomendas.slice();
+  const filtros = { andamento: (x) => ativo(x) && etapa(x) < 4, entrega: (x) => ativo(x) && etapa(x) === 3, concluidos: (x) => ativo(x) && etapa(x) === 4, cancelados: (x) => !ativo(x), todos: () => true };
+  const cont = Object.fromEntries(Object.entries(filtros).map(([k, fn]) => [k, l.filter(fn).length]));
+  l = l.filter(filtros[f] || filtros.andamento);
+  if (q) l = l.filter((x) => norm(`${x.cliente} ${x.peca}`).includes(q));
+  l.sort((a, b) => String(a.data_entrega || "9999").localeCompare(String(b.data_entrega || "9999")));
+  m.innerHTML = `<section class="painel vidro">
+    <div class="cab"><div><h2>📋 Pedidos</h2><p>Clique num pedido para ver e editar tudo — régua, valores, datas, contrato e medidas.</p></div></div>
+    <div class="filtros"><input class="entrada" id="busca" placeholder="Buscar cliente ou peça…" value="${esc(S.busca)}">
+      <div class="seg">${[["andamento", "Em andamento"], ["entrega", "Na entrega"], ["concluidos", "Concluídos"], ["cancelados", "Cancelados"], ["todos", "Todos"]].map(([k, r]) => `<button type="button" data-f="${k}" class="${f === k ? "ativo" : ""}">${r} <small>${cont[k]}</small></button>`).join("")}</div></div>
+    ${l.length ? `<div class="grid-ped">${l.map(cardPedido).join("")}</div>` : `<div class="vazio">${A.orbe("tesoura", "#fb7185")}<b>Nenhum pedido aqui</b>Troque o filtro ou crie um novo pedido.</div>`}
+  </section>`;
+  $("#busca").oninput = (ev) => { S.busca = ev.target.value; clearTimeout(telaPedidos._t); telaPedidos._t = setTimeout(() => { telaPedidos(m); const b = $("#busca"); b.focus(); b.setSelectionRange(b.value.length, b.value.length); }, 250); };
+  $$("[data-f]", m).forEach((b) => (b.onclick = () => { S.filtroPed = b.dataset.f; telaPedidos(m); }));
+  $$(".ped[data-ped]", m).forEach((c) => (c.onclick = (ev) => { if (ev.target.closest("[data-concluir]")) return; abrirPedido(c.dataset.ped); }));
+  $$("[data-concluir]", m).forEach((b) => (b.onclick = async (ev) => { ev.stopPropagation(); try { await api(`/encomendas/${b.dataset.concluir}/concluir`, { method: "POST" }); await carregar(); ok("Pedido concluído!"); } catch (e) { falha(e); } }));
+}
+
+/* ── mini-calendário de ocupação da Data da Confecção ── */
+async function miniOcupacao(el, mes, excluir, aoEscolher, selecionado) {
+  el.innerHTML = `<p class="dica">carregando a agenda…</p>`;
+  let r; try { r = await api(`/ocupacao?mes=${mes}${excluir ? "&excluir=" + excluir : ""}`, {}, "agenda…"); } catch (e) { el.innerHTML = ""; return; }
+  const p = new Date(mes + "-01T12:00"), ini = (p.getDay() + 6) % 7, dias = new Date(p.getFullYear(), p.getMonth() + 1, 0).getDate();
+  let h = `<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px"><button type="button" class="btn-ic p" data-mm="-1">${svg("voltar")}</button><b style="flex:1;text-align:center;font-size:.8rem">${nomeMes(mes)}</b><button type="button" class="btn-ic p" data-mm="1">${svg("avancar")}</button></div><div class="oc">`;
+  h += ["S", "T", "Q", "Q", "S", "S", "D"].map((d) => `<span class="h">${d}</span>`).join("");
+  for (let i = 0; i < ini; i++) h += `<span class="d v">.</span>`;
+  for (let dd = 1; dd <= dias; dd++) {
+    const k = `${mes}-${String(dd).padStart(2, "0")}`, o = r.dias[k];
+    const cls = o?.lotado ? "lot" : o?.confeccoes?.length ? "conf" : "";
+    const tip = o ? `${o.confeccoes.length ? "Confecção: " + o.confeccoes.join(", ") : ""}${o.provas ? (o.confeccoes.length ? " · " : "") + o.provas + " prova(s)" : ""}` : "livre";
+    h += `<span class="d ${cls} ${k === selecionado ? "sel" : ""}" data-dia="${k}" title="${esc(tip)}">${dd}</span>`;
+  }
+  h += `</div><p class="dica" style="margin-top:6px"><span style="color:#fda4af">●</span> já tem confecção (dá para confirmar mais uma) · <span style="color:var(--ouro2)">●</span> mais de ${r.limite} provas (bloqueado para confecção). Clique num dia para escolher.</p>`;
+  el.innerHTML = h;
+  $$("[data-mm]", el).forEach((b) => (b.onclick = () => miniOcupacao(el, mesMais(mes, +b.dataset.mm), excluir, aoEscolher, selecionado)));
+  $$("[data-dia]", el).forEach((d) => (d.onclick = () => { aoEscolher(d.dataset.dia); $$(".sel", el).forEach((x) => x.classList.remove("sel")); d.classList.add("sel"); }));
+}
+
+/* ── Novo pedido ── */
+function novoPedido(pre = {}) {
+  if (!pode("pedidos")) return;
+  const h = hoje(), clientes = S.e.clientes.slice().sort((a, b) => norm(a.nome).localeCompare(norm(b.nome)));
+  const md = A.modal({ titulo: pre.prospect_id ? `Converter prospect em pedido` : "Novo pedido", icone: "tesoura", cor: "#fb7185", largura: 820,
+    html: `${pre.prospect_id ? `<div class="aviso ouro">Convertendo <b>${esc(pre.cliente)}</b> — o prospect sai da lista quando o pedido for criado.</div>` : ""}
+    <div class="sec">👤 Cliente</div>
+    <div class="g2"><label class="campo">Cliente *<input id="nCli" list="lstCli" value="${esc(pre.cliente || "")}" placeholder="Digite: se não existir, é cadastrada"><datalist id="lstCli">${clientes.map((c) => `<option value="${esc(c.nome)}">`).join("")}</datalist></label>
+      <label class="campo">Telefone / WhatsApp <small class="v">(cliente nova)</small><input id="nTel" value="${esc(pre.telefone || "")}"></label></div>
+    <div class="sec">🧵 Peça / serviço</div>
+    <label class="campo">Peça / serviço *<input id="nPeca" placeholder="Ex.: Vestido de festa"></label>
+    <label class="campo" style="margin-top:8px">Descrição<textarea id="nDesc" rows="2"></textarea></label>
+    <div class="sec">💰 Valores</div>
+    <div class="g3"><label class="campo">Valor total (R$)<input id="nTot" type="number" min="0" step="10"></label><label class="campo">Sinal / entrada (R$)<input id="nSin" type="number" min="0" step="10"></label>
+      <label class="campo">Forma de pagamento<select id="nForma">${S.e.const.formas_pedido.map((f) => `<option${f === "PIX" ? " selected" : ""}>${f}</option>`).join("")}</select></label></div>
+    ${pode("financeiro") ? `<label class="chk" style="margin-top:6px"><input type="checkbox" id="nLanca" checked> lançar o sinal no caixa como entrada de hoje</label>` : ""}
+    <div class="sec">📅 Datas</div>
+    <div class="g2" style="align-items:start"><div>
+      <label class="campo">🪡 Data da confecção<input type="date" id="nConf" value="${somaDias(h, 7)}"></label>
+      <label class="campo" style="margin-top:8px">👗 Data da prova<input type="date" id="nProva" value="${somaDias(h, 25)}"></label>
+      <label class="chk" style="margin-top:6px"><input type="checkbox" id="nTemP2"> precisa de 2ª prova</label>
+      <label class="campo oculto" id="wP2" style="margin-top:6px">👗 Data da 2ª prova<input type="date" id="nP2" value="${somaDias(h, 32)}"></label>
+      <label class="chk" style="margin-top:6px"><input type="checkbox" id="nTec"> precisa comprar tecido</label>
+      <label class="campo oculto" id="wTec" style="margin-top:6px">🛍️ Compra do tecido<input type="date" id="nDTec" value="${somaDias(h, 3)}"></label>
+      <label class="campo" style="margin-top:8px">🎁 Data de entrega<input type="date" id="nEnt" value="${somaDias(h, 30)}"></label>
+    </div><div id="nOcup"></div></div>
+    ${pode("contratos") ? `<div class="sec">📄 Contrato</div><div class="g2"><label class="campo">CPF da cliente<input id="nCpf" placeholder="000.000.000-00"></label><label class="campo">RG da cliente<input id="nRg"></label></div><p class="dica">Com CPF e RG, o contrato em PDF fica pronto na hora.</p>` : ""}
+    <label class="campo" style="margin-top:8px">Observações<textarea id="nObs" rows="2"></textarea></label>`,
+    botoes: [{ rotulo: "Cancelar" }, { rotulo: "Criar pedido", classe: "btn", principal: true, acao: async () => {
+      const body = { cliente: $("#nCli").value, telefone: $("#nTel").value, peca: $("#nPeca").value, descricao: $("#nDesc").value, valor_total: $("#nTot").value, sinal: $("#nSin").value,
+        forma_pagamento: $("#nForma").value, lancar_sinal: !!$("#nLanca")?.checked, data_confeccao: $("#nConf").value, data_prova: $("#nProva").value, tem_prova2: $("#nTemP2").checked,
+        data_prova2: $("#nP2").value, precisa_tecido: $("#nTec").checked, data_tecido: $("#nDTec").value, data_entrega: $("#nEnt").value,
+        cpf: $("#nCpf")?.value || "", rg: $("#nRg")?.value || "", observacoes: $("#nObs").value, prospect_id: pre.prospect_id || "" };
+      if (!body.cliente.trim() || !body.peca.trim()) { A.toast("Informe a cliente e a peça."); return false; }
+      try { const r = await comAgenda("/encomendas", { method: "POST", body }); if (!r) return false;
+        await carregar(); ok("Pedido criado!");
+        if (r.contrato) A.toast("📄 Contrato pronto.", [{ rotulo: "Abrir PDF", acao: () => window.open(`${API}/encomendas/${r.id}/contrato.pdf`, "_blank") }], { duracao: 9000 });
+      } catch (e) { falha(e); return false; }
+    } }] });
+  $("#nTemP2").onchange = (e) => $("#wP2").classList.toggle("oculto", !e.target.checked);
+  $("#nTec").onchange = (e) => $("#wTec").classList.toggle("oculto", !e.target.checked);
+  const oc = () => miniOcupacao($("#nOcup"), $("#nConf").value.slice(0, 7), "", (d) => ($("#nConf").value = d), $("#nConf").value);
+  $("#nConf").onchange = oc; oc();
+  setTimeout(() => (pre.cliente ? $("#nPeca") : $("#nCli")).focus(), 60);
+  return md;
+}
+
+/* ── Detalhe do pedido ── */
+function abrirPedido(id) {
+  const x = S.e.encById[id]; if (!x) { A.toast("Pedido não encontrado."); return; }
+  const canc = !ativo(x), et = etapa(x), s = saldo(x), tarefas = S.e.cronograma.filter((t) => t.encomenda_id === id).sort((a, b) => String(a.data).localeCompare(b.data));
+  const cli = S.e.clientes.find((c) => norm(c.nome) === norm(x.cliente));
+  const editar = pode("pedidos") && !canc;
+  const medidasHtml = cli ? `<div class="medidas">${Object.entries(S.e.const.medidas).map(([r, k]) => `<label class="campo">${r}<input data-med="${k}" value="${esc(fmtMed(cli[k]))}" placeholder="—" ${pode("pedidos") ? "" : "disabled"}></label>`).join("")}</div>
+      <label class="campo" style="margin-top:8px">Observações de modelagem<textarea data-med="outro" rows="2" ${pode("pedidos") ? "" : "disabled"}>${esc(cli.outro || "")}</textarea></label>
+      ${pode("pedidos") ? `<button type="button" class="btn v p" id="pSalvaMed" style="margin-top:8px">${svg("check")} Salvar medidas</button>` : ""}`
+    : `<div class="aviso ouro"><b>${esc(x.cliente)}</b> não está no cadastro de clientes — sem cadastro não há onde guardar as medidas.${pode("pedidos") ? ` <button type="button" class="btn v p" id="pCadCli">Cadastrar cliente</button>` : ""}</div>`;
+  const md = A.modal({ titulo: `${x.cliente} — ${x.peca}`, icone: "tesoura", cor: canc ? "#6b7183" : ETAPA[et][2], largura: 900,
+    html: `${canc ? `<div class="aviso mal">Pedido cancelado.</div>` : `<div class="trilha">${[1, 2, 3, 4].map((n) => `<div class="ep ${n < et ? "feita" : n === et ? "atual" : ""}"><i>${ETAPA[n][0]}</i>${ETAPA[n][1]}</div>`).join("")}</div>`}
+    <p class="dica" style="margin-top:4px">Registrado em ${dbr(x.criado_em || x._criado_em)}${ehConserto(x) ? " · conserto (não disputa a agenda de confecção)" : ""}</p>
+    <div class="kpis" style="margin-top:10px"><div class="kpi" style="--c:var(--ouro)"><small>Valor total</small><b>${brl(x.valor_total)}</b></div><div class="kpi" style="--c:var(--verde)"><small>Recebido</small><b>${brl(x.valor_recebido)}</b></div>
+      <div class="kpi" style="--c:${s > 0.01 ? "var(--laranja)" : "var(--verde)"}"><small>Saldo</small><b>${brl(s)}</b></div><div class="kpi" style="--c:#60a5fa"><small>Entrega</small><b>${dbr(x.data_entrega)}</b></div></div>
+    ${pode("financeiro") && !canc && s > 0.01 ? `<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><button type="button" class="btn v p" id="pReceber">${svg("dinheiro")} Recebimento parcial</button><button type="button" class="btn p" id="pQuitar">${svg("check")} Quitar saldo (${brl(s)})</button></div>` : ""}
+    ${pode("contratos") && !ehConserto(x) ? `<div class="sec">📄 Contrato</div><div class="g2"><label class="campo">CPF<input id="pCpf" value="${esc(x.cpf_cliente || "")}" ${pode("pedidos") ? "" : "disabled"}></label><label class="campo">RG<input id="pRg" value="${esc(x.rg_cliente || "")}" ${pode("pedidos") ? "" : "disabled"}></label></div>
+      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">${pode("pedidos") ? `<button type="button" class="btn v p" id="pSalvaDoc">Salvar CPF/RG</button>` : ""}<a class="btn v p ${x.cpf_cliente && x.rg_cliente ? "" : "oculto"}" id="pPdf" href="${API}/encomendas/${id}/contrato.pdf" target="_blank">${svg("documento")} Baixar contrato PDF</a><a class="btn v p" href="https://assinador.iti.br/assinatura/index.xhtml" target="_blank" rel="noopener">✍️ Assinar via GOV.BR</a></div>` : ""}
+    <details style="margin-top:12px"${cli ? "" : " open"}><summary class="sec" style="cursor:pointer;margin:0">📏 Medidas da cliente ${cli ? "(abrir)" : ""}</summary><div style="margin-top:8px">${medidasHtml}</div></details>
+    <div class="sec">✏️ ${editar ? "Editar pedido" : "Dados do pedido"}</div>
+    <div class="g2"><label class="campo">Cliente<input id="eCli" value="${esc(x.cliente || "")}" ${editar ? "" : "disabled"}></label><label class="campo">Peça<input id="ePeca" value="${esc(x.peca || "")}" ${editar ? "" : "disabled"}></label></div>
+    <label class="campo" style="margin-top:8px">Descrição<textarea id="eDesc" rows="2" ${editar ? "" : "disabled"}>${esc(x.descricao || "")}</textarea></label>
+    <div class="g3" style="margin-top:8px"><label class="campo">Valor total (R$)<input id="eTot" type="number" min="0" step="10" value="${num(x.valor_total)}" ${editar ? "" : "disabled"}></label>
+      <label class="campo">Forma de pagamento<select id="eForma" ${editar ? "" : "disabled"}>${S.e.const.formas_pedido.map((f) => `<option${f === (x.forma_pagamento || "A combinar") ? " selected" : ""}>${f}</option>`).join("")}</select></label>
+      <label class="campo">Observações<input id="eObs" value="${esc(x.observacoes || "")}" ${editar ? "" : "disabled"}></label></div>
+    ${canc ? "" : `<div class="g2" style="margin-top:10px;align-items:start"><div>
+      <label class="campo">🪡 Data da confecção<input type="date" id="eConf" value="${esc(x.data_confeccao || "")}" ${editar ? "" : "disabled"}></label>
+      <label class="campo" style="margin-top:6px">👗 Data da prova<input type="date" id="eProva" value="${esc(x.data_prova || "")}" ${editar ? "" : "disabled"}></label>
+      <label class="chk" style="margin-top:6px"><input type="checkbox" id="eTemP2" ${+x.tem_prova2 || x.data_prova2 ? "checked" : ""} ${editar ? "" : "disabled"}> 2ª prova</label>
+      <label class="campo ${+x.tem_prova2 || x.data_prova2 ? "" : "oculto"}" id="wEP2" style="margin-top:6px">👗 Data da 2ª prova<input type="date" id="eP2" value="${esc(x.data_prova2 || somaDias(x.data_prova || hoje(), 7))}" ${editar ? "" : "disabled"}></label>
+      <label class="chk" style="margin-top:6px"><input type="checkbox" id="eTec" ${+x.precisa_tecido ? "checked" : ""} ${editar ? "" : "disabled"}> compra de tecido</label>
+      <label class="campo ${+x.precisa_tecido ? "" : "oculto"}" id="wETec" style="margin-top:6px">🛍️ Compra do tecido<input type="date" id="eTecD" value="${esc(x.data_tecido || "")}" ${editar ? "" : "disabled"}></label>
+      <label class="campo" style="margin-top:6px">🎁 Data de entrega<input type="date" id="eEnt" value="${esc(x.data_entrega || "")}" ${editar ? "" : "disabled"}></label>
+    </div><div id="eOcup"></div></div>`}
+    ${tarefas.length ? `<div class="sec">🗓️ Lembretes deste pedido</div>${tarefas.map((t) => `<div class="lin" style="padding:7px 10px"><div class="t"><b style="font-size:.8rem">${esc(t.tarefa.split(":")[0])}</b><small>${dbr(t.data)} ${+t.concluida ? mini("feito", "#34d399") : String(t.data) < hoje() ? mini("atrasado", "#fb7185") : mini("pendente", "#e8b33d")}</small></div>${editar && !+t.concluida ? `<button type="button" class="btn v p" data-tdata="${t.id}">Data</button>` : ""}</div>`).join("")}` : ""}`,
+    esquerda: editar ? [{ rotulo: "Cancelar pedido", classe: "btn perigo", acao: async () => {
+      if (!(await A.confirmar("Cancelar este pedido? As tarefas e os gastos não pagos dele saem; o dinheiro já recebido continua no caixa.", { perigo: true, rotulo: "Cancelar pedido" }))) return false;
+      try { await api(`/encomendas/${id}/cancelar`, { method: "POST" }); await carregar(); ok("Pedido cancelado."); } catch (e) { falha(e); return false; } } }] : [],
+    botoes: [{ rotulo: "Fechar" },
+      ...(pode("pedidos") && !canc && et === 4 ? [{ rotulo: "Reabrir", classe: "btn v", acao: async () => { try { await api(`/encomendas/${id}/reabrir`, { method: "POST" }); await carregar(); abrirPedido(id); } catch (e) { falha(e); } } }] : []),
+      ...(editar && et < 4 ? [{ rotulo: "Marcar concluído", classe: "btn v", acao: async () => { try { await api(`/encomendas/${id}/concluir`, { method: "POST" }); await carregar(); ok("Pedido concluído!"); } catch (e) { falha(e); return false; } } }] : []),
+      ...(editar ? [{ rotulo: "Salvar", classe: "btn", principal: true, acao: async () => {
+        const body = { cliente: $("#eCli").value, peca: $("#ePeca").value, descricao: $("#eDesc").value, valor_total: $("#eTot").value, forma_pagamento: $("#eForma").value, observacoes: $("#eObs").value,
+          data_confeccao: $("#eConf").value, data_prova: $("#eProva").value, data_entrega: $("#eEnt").value, tem_prova2: $("#eTemP2").checked, data_prova2: $("#eP2").value,
+          precisa_tecido: $("#eTec").checked, data_tecido: $("#eTecD").value };
+        try { const r = await comAgenda(`/encomendas/${id}`, { method: "PUT", body }); if (!r) return false; await carregar();
+          ok(r.etapa_ajustada ? `Salvo! A régua voltou para ${r.etapa_nome}, porque ainda há etapas com data futura.` : "Pedido e lembretes atualizados!"); } catch (e) { falha(e); return false; }
+      } }] : [])] });
+  const el = md.el;
+  $("#eTemP2", el)?.addEventListener("change", (e) => $("#wEP2", el).classList.toggle("oculto", !e.target.checked));
+  $("#eTec", el)?.addEventListener("change", (e) => $("#wETec", el).classList.toggle("oculto", !e.target.checked));
+  if ($("#eOcup", el) && editar) { const oc = () => miniOcupacao($("#eOcup", el), ($("#eConf", el).value || hoje()).slice(0, 7), id, (d) => ($("#eConf", el).value = d), $("#eConf", el).value); $("#eConf", el).onchange = oc; oc(); }
+  $("#pSalvaDoc", el)?.addEventListener("click", async () => { try { await api(`/encomendas/${id}`, { method: "PUT", body: { cpf: $("#pCpf", el).value, rg: $("#pRg", el).value } }); await carregar(); ok("CPF/RG salvos."); $("#pPdf", el).classList.toggle("oculto", !($("#pCpf", el).value.trim() && $("#pRg", el).value.trim())); } catch (e) { falha(e); } });
+  $("#pSalvaMed", el)?.addEventListener("click", async () => { const body = {}; $$("[data-med]", el).forEach((i) => (body[i.dataset.med] = i.value)); try { await api(`/clientes/${cli.id}`, { method: "PUT", body }); await carregar(); ok("Medidas salvas."); } catch (e) { falha(e); } });
+  $("#pCadCli", el)?.addEventListener("click", async () => { try { await api("/clientes", { method: "POST", body: { nome: x.cliente } }); await carregar(); md.fechar(); abrirPedido(id); } catch (e) { falha(e); } });
+  $("#pReceber", el)?.addEventListener("click", () => receberPedido(id));
+  $("#pQuitar", el)?.addEventListener("click", async () => { if (!(await A.confirmar(`Registrar a quitação de <b>${brl(s)}</b> hoje?`, { rotulo: "Quitar" }))) return;
+    try { await api("/recebimentos", { method: "POST", body: { encomenda_id: id, valor: s, descricao: `Quitação – ${x.cliente}: ${x.peca}`, forma_pagamento: "Pix" } }); md.fechar(); await carregar(); ok("Pedido quitado!"); } catch (e) { falha(e); } });
+  $$("[data-tdata]", el).forEach((b) => (b.onclick = () => editarDataTarefa(b.dataset.tdata)));
+}
+function fmtMed(v) { if (v === null || v === undefined || v === "") return ""; if (typeof v === "number") return v === 0 ? "" : Number.isInteger(v) ? String(v) : String(v).replace(".", ","); return String(v); }
+function receberPedido(id) {
+  const x = S.e.encById[id], s = saldo(x);
+  A.modal({ titulo: "Recebimento parcial", icone: "dinheiro", largura: 440,
+    html: `<p><b>${esc(x.cliente)}</b> — ${esc(x.peca)}<br><span class="dica">Total ${brl(x.valor_total)} · recebido ${brl(x.valor_recebido)} · saldo ${brl(s)}</span></p>
+      <div class="g2"><label class="campo">Quanto entra agora (R$)<input id="rVal" type="number" min="0.01" step="10" value="${s.toFixed(2)}"></label><label class="campo">Forma<select id="rForma">${S.e.const.formas.map((f) => `<option>${f}</option>`).join("")}</select></label></div>
+      <label class="campo" style="margin-top:8px">Data<input id="rData" type="date" value="${hoje()}"></label>`,
+    botoes: [{ rotulo: "Cancelar" }, { rotulo: "Confirmar recebimento", classe: "btn", principal: true, acao: async () => {
+      try { await api("/recebimentos", { method: "POST", body: { encomenda_id: id, valor: $("#rVal").value, forma_pagamento: $("#rForma").value, data: $("#rData").value, descricao: `Pagamento parcial – ${x.cliente}: ${x.peca}` } });
+        await carregar(); ok("Recebimento registrado."); } catch (e) { falha(e); return false; } } }] });
+}
+function editarDataTarefa(tid) {
+  const t = S.e.cronograma.find((x) => x.id === tid); if (!t) return;
+  const enc = t.encomenda_id ? S.e.encById[t.encomenda_id] : null;
+  A.modal({ titulo: "Editar data da tarefa", icone: "calendario", largura: 420,
+    html: `<p><b>${esc(t.tarefa)}</b>${enc ? `<br><span class="dica">👤 ${esc(enc.cliente)}</span>` : ""}</p><p class="dica">Muda só a data desta etapa (e a data correspondente do pedido).</p>
+      <label class="campo" style="margin-top:8px">Nova data<input type="date" id="tData" value="${esc(t.data || "")}"></label>
+      <label class="chk" style="margin-top:8px"><input type="checkbox" id="tFeito" ${+t.concluida ? "checked" : ""}> ✅ já foi feito (some dos lembretes)</label>`,
+    botoes: [{ rotulo: "Cancelar" }, { rotulo: "Salvar", classe: "btn", principal: true, acao: async () => {
+      try { const r = await comAgenda(`/tarefas/${tid}`, { method: "PUT", body: { data: $("#tData").value, concluida: $("#tFeito").checked } }); if (!r) return false; await carregar(); ok("Data atualizada."); } catch (e) { falha(e); return false; } } }] });
+}
+
+/* ══════ AGENDA ══════ */
+function telaAgenda(m) {
+  const h = hoje(); S.calRef = S.calRef || h.slice(0, 7);
+  const mes = S.calRef, p = new Date(mes + "-01T12:00"), ini = (p.getDay() + 6) % 7, dias = new Date(p.getFullYear(), p.getMonth() + 1, 0).getDate();
+  const mostrarPessoal = S.vidaPessoal && pode("pessoal");
+  const tarefas = S.e.cronograma.filter((t) => !+t.concluida && ((t.tipo_agenda || "Trabalho") === "Trabalho" || mostrarPessoal));
+  const porDia = {}; tarefas.forEach((t) => (porDia[t.data] = porDia[t.data] || []).push(t));
+  const cor = (t) => (t.tipo_agenda === "Pessoal" ? "#22d3ee" : /^🪡/.test(t.tarefa) ? "#60a5fa" : /^👗/.test(t.tarefa) ? "#a78bfa" : /^🎁/.test(t.tarefa) ? "#e8b33d" : /^🛍️/.test(t.tarefa) ? "#34d399" : "#fb7185");
+  let cal = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((d) => `<div class="h">${d}</div>`).join("");
+  for (let i = 0; i < ini; i++) cal += `<div class="dia fora"></div>`;
+  for (let d = 1; d <= dias; d++) {
+    const k = `${mes}-${String(d).padStart(2, "0")}`, ts = porDia[k] || [];
+    cal += `<div class="dia ${k === h ? "hoje" : ""}" data-dia="${k}"><b>${d}</b>${ts.slice(0, 4).map((t) => { const enc = t.encomenda_id ? S.e.encById[t.encomenda_id] : null; return `<span class="tg ${k < h ? "atraso" : ""}" style="--c:${cor(t)}" title="${esc(t.tarefa)}">${esc(t.tarefa.split(":")[0])}${enc ? " · " + esc(String(enc.cliente).split(" ")[0]) : ""}</span>`; }).join("")}${ts.length > 4 ? `<span class="dica">+${ts.length - 4}</span>` : ""}${ts.length ? `<span class="qt">● ${ts.length}</span>` : ""}</div>`;
+  }
+  const pend = S.e.cronograma.filter((t) => !+t.concluida && (t.tipo_agenda || "Trabalho") === "Trabalho").sort((a, b) => String(a.data).localeCompare(b.data));
+  m.innerHTML = `<section class="painel vidro">
+    <div class="cab"><div><h2>📅 Agenda</h2><p>Clique num dia para ver e editar o que tem nele.</p></div>
+      <div class="dir">${pode("pessoal") ? `<label class="chk"><input type="checkbox" id="tgPessoal" ${S.vidaPessoal ? "checked" : ""}> vida pessoal</label>` : ""}
+        <button type="button" class="btn-ic" id="mAnt">${svg("voltar")}</button><b style="min-width:150px;text-align:center">${nomeMes(mes)}</b><button type="button" class="btn-ic" id="mProx">${svg("avancar")}</button><button type="button" class="btn v p" id="mHoje">Hoje</button></div></div>
+    <div class="chips" style="margin-bottom:10px">${mini("🪡 Confecção", "#60a5fa")}${mini("👗 Prova", "#a78bfa")}${mini("🎁 Entrega", "#e8b33d")}${mini("🛍️ Tecido", "#34d399")}${mostrarPessoal ? mini("Pessoal", "#22d3ee") : ""}${mini("atrasada", "#fb7185")}</div>
+    <div class="cal">${cal}</div></section>
+  <section class="painel vidro"><div class="cab"><div><h2>🛠️ Trabalho pendente</h2><p>${pend.length} tarefa(s), da mais antiga para a mais nova.</p></div></div>
+    ${pend.length ? pend.map((t) => linhaTarefa(t, pode("pedidos"))).join("") : `<div class="aviso ok">Nenhuma tarefa pendente!</div>`}</section>
+  ${mostrarPessoal ? `<section class="painel vidro" id="vidaP"></section>` : ""}`;
+  $("#mAnt").onclick = () => { S.calRef = mesMais(mes, -1); telaAgenda(m); };
+  $("#mProx").onclick = () => { S.calRef = mesMais(mes, 1); telaAgenda(m); };
+  $("#mHoje").onclick = () => { S.calRef = h.slice(0, 7); telaAgenda(m); };
+  const tg = $("#tgPessoal"); if (tg) tg.onchange = () => { S.vidaPessoal = tg.checked; ls.set("wd.lila.pessoal", tg.checked ? "1" : "0"); telaAgenda(m); };
+  $$(".dia[data-dia]", m).forEach((dv) => (dv.onclick = () => abrirDia(dv.dataset.dia, porDia[dv.dataset.dia] || [])));
+  ligarTarefas(m);
+  if (mostrarPessoal) vidaPessoal($("#vidaP"));
+}
+function abrirDia(dia, ts) {
+  const encs = [...new Set(ts.map((t) => t.encomenda_id).filter(Boolean))].map((id) => S.e.encById[id]).filter(Boolean);
+  const md = A.modal({ titulo: new Date(dia + "T12:00").toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" }), icone: "calendario", largura: 620,
+    html: `${ts.length ? ts.map((t) => linhaTarefa(t, pode("pedidos") || (t.tipo_agenda === "Pessoal" && pode("pessoal")))).join("") : `<p class="dica">Nada marcado neste dia.</p>`}
+      ${encs.length ? `<div class="sec">Pedidos do dia</div>${encs.map((x) => `<div class="lin"><div class="t"><b>${esc(x.cliente)} — ${esc(x.peca)}</b><small>${ETAPA[etapa(x)][0]} ${ETAPA[etapa(x)][1]} · entrega ${dbr(x.data_entrega)}</small></div><button type="button" class="btn v p" data-ped="${x.id}">Abrir</button></div>`).join("")}` : ""}`,
+    botoes: [{ rotulo: "Fechar" }, ...(pode("pedidos") ? [{ rotulo: "Novo pedido com confecção neste dia", classe: "btn", acao: () => { setTimeout(() => { const md2 = novoPedido(); if (md2) { $("#nConf").value = dia; $("#nConf").dispatchEvent(new Event("change")); } }, 50); } }] : [])] });
+  ligarTarefas(md.el);
+  $$("[data-ped]", md.el).forEach((b) => b.addEventListener("click", () => md.fechar()));
+}
+function vidaPessoal(el) {
+  const e = S.e, h = hoje(), mes = h.slice(0, 7), C = e.const;
+  const pend = e.cronograma.filter((t) => t.tipo_agenda === "Pessoal" && !+t.concluida).sort((a, b) => String(a.data).localeCompare(b.data));
+  const campo = (e.campo || []), hm = campo.filter((x) => x.mes_ano === mes).reduce((s, x) => s + num(x.horas), 0), pctC = Math.min(hm / C.meta_campo * 100, 100);
+  const hist = {}; campo.forEach((x) => (hist[x.mes_ano] = (hist[x.mes_ano] || 0) + num(x.horas)));
+  const peso = (e.peso || []).slice().sort((a, b) => String(a.mes_ano).localeCompare(b.mes_ano)), atual = peso.length ? num(peso[peso.length - 1].peso_kg) : null;
+  const perdido = atual !== null ? C.peso_inicial - atual : 0, pctP = atual !== null ? Math.min(Math.max(perdido / (C.peso_inicial - C.meta_peso), 0), 1) * 100 : 0;
+  el.innerHTML = `<div class="cab"><div><h2>🏠 Vida pessoal</h2><p>Atividades, serviço de campo e acompanhamento de peso.</p></div></div>
+    <div class="g2" style="align-items:start"><div>
+      <div class="sec">➕ Nova atividade</div>
+      <div class="g2"><label class="campo">O que precisa fazer?<input id="vpDesc"></label><label class="campo">Categoria<select id="vpCat">${C.cat_pessoal.map((c) => `<option>${c}</option>`).join("")}</select></label></div>
+      <div class="g2" style="margin-top:6px"><label class="campo">Data<input type="date" id="vpData" value="${h}"></label><label class="campo">Duração (h)<input type="number" id="vpHoras" min="0.5" step="0.5" value="1"></label></div>
+      <button type="button" class="btn p" id="vpAdd" style="margin-top:8px">${svg("calendario")} Agendar</button>
+      <div class="sec">⏳ Pendentes</div>${pend.length ? pend.map((t) => `<div class="lin"><div class="t"><b>${esc(t.tarefa)}</b><small>${dbr(t.data)} · ${esc(t.categoria)}</small></div><button type="button" class="btn v p" data-vpok="${t.id}">${svg("check")}</button></div>`).join("") : `<p class="dica">Tudo em dia ✅</p>`}
+    </div><div>
+      <div class="sec">📖 Serviço de campo — ${nomeMes(mes)}</div>
+      <div class="kpi" style="--c:#60a5fa"><small>Horas no mês</small><b>${hm.toFixed(1)}h / ${C.meta_campo}h</b><div class="barra-p"><i style="width:${pctC}%"></i></div><span>faltam ${Math.max(C.meta_campo - hm, 0).toFixed(1)}h</span></div>
+      <div class="g3" style="margin-top:8px"><label class="campo">Data<input type="date" id="cpData" value="${h}"></label><label class="campo">Horas<input type="number" id="cpHoras" min="0.5" step="0.5" value="1"></label><label class="campo">Obs.<input id="cpDesc"></label></div>
+      <button type="button" class="btn v p" id="cpAdd" style="margin-top:6px">${svg("mais")} Lançar horas</button>
+      ${Object.keys(hist).length ? `<table class="tab" style="margin-top:8px"><thead><tr><th>Mês</th><th class="n">Total</th><th>Meta</th></tr></thead><tbody>${Object.entries(hist).sort((a, b) => b[0].localeCompare(a[0])).slice(0, 8).map(([k, v]) => `<tr><td>${nomeMes(k)}</td><td class="n">${v.toFixed(1)}h</td><td>${v >= C.meta_campo ? "🏆" : `faltaram ${(C.meta_campo - v).toFixed(1)}h`}</td></tr>`).join("")}</tbody></table>` : ""}
+      ${campo.filter((x) => x.mes_ano === mes).length ? `<details style="margin-top:6px"><summary class="dica" style="cursor:pointer">Lançamentos do mês</summary>${campo.filter((x) => x.mes_ano === mes).sort((a, b) => String(a.data).localeCompare(b.data)).map((x) => `<div class="lin" style="padding:6px 10px"><div class="t"><b style="font-size:.8rem">${dbr(x.data)} · ${num(x.horas)}h</b><small>${esc(x.descricao || "—")}</small></div><button type="button" class="btn-ic p" data-cpdel="${x.id}">${svg("lixo")}</button></div>`).join("")}</details>` : ""}
+      <div class="sec">⚖️ Peso</div>
+      ${atual !== null ? `<div class="kpi" style="--c:var(--verde)"><small>Atual</small><b>${atual.toFixed(1)} kg</b><div class="barra-p"><i style="width:${pctP}%"></i></div><span>−${perdido.toFixed(1)} kg · faltam ${Math.max(atual - C.meta_peso, 0).toFixed(1)} kg até ${C.meta_peso} kg</span></div>` : `<p class="dica">Nenhum peso registrado ainda.</p>`}
+      <div class="g2" style="margin-top:8px"><label class="campo">Data<input type="date" id="psData" value="${h}"></label><label class="campo">Peso (kg)<input type="number" id="psKg" min="30" max="200" step="0.1" value="${atual ?? 70}"></label></div>
+      <button type="button" class="btn v p" id="psAdd" style="margin-top:6px">${svg("check")} Registrar peso</button>
+      ${peso.length > 1 ? `<div style="margin-top:8px">${graficoLinha(peso.map((x) => [x.mes_ano.slice(5) + "/" + x.mes_ano.slice(2, 4), num(x.peso_kg)]))}</div>` : ""}
+    </div></div>`;
+  const recarregar = async () => { await carregar(); };
+  $("#vpAdd").onclick = async () => { if (!$("#vpDesc").value.trim()) return; try { await api("/tarefas", { method: "POST", body: { tipo_agenda: "Pessoal", tarefa: $("#vpDesc").value, categoria: $("#vpCat").value, data: $("#vpData").value, horas: $("#vpHoras").value } }); await recarregar(); ok("Agendado!"); } catch (er) { falha(er); } };
+  $$("[data-vpok]", el).forEach((b) => (b.onclick = async () => { try { await api(`/tarefas/${b.dataset.vpok}`, { method: "PUT", body: { concluida: true } }); await recarregar(); } catch (er) { falha(er); } }));
+  $("#cpAdd").onclick = async () => { try { await api("/campo", { method: "POST", body: { data: $("#cpData").value, horas: $("#cpHoras").value, descricao: $("#cpDesc").value } }); await recarregar(); ok("Horas lançadas!"); } catch (er) { falha(er); } };
+  $$("[data-cpdel]", el).forEach((b) => (b.onclick = async () => { if (!(await A.confirmar("Apagar este lançamento de horas?", { perigo: true, rotulo: "Apagar" }))) return; try { await api(`/campo/${b.dataset.cpdel}`, { method: "DELETE" }); await recarregar(); } catch (er) { falha(er); } }));
+  $("#psAdd").onclick = async () => { try { await api("/peso", { method: "POST", body: { data: $("#psData").value, peso_kg: $("#psKg").value } }); await recarregar(); ok("Peso registrado!"); } catch (er) { falha(er); } };
+}
+function graficoLinha(pts) {
+  const W = 420, H = 120, vs = pts.map((p) => p[1]), mn = Math.min(...vs) - 1, mx = Math.max(...vs) + 1;
+  const x = (i) => 20 + (i / Math.max(pts.length - 1, 1)) * (W - 40), y = (v) => H - 20 - ((v - mn) / (mx - mn || 1)) * (H - 40);
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto"><polyline fill="none" stroke="var(--verde)" stroke-width="2.5" points="${pts.map((p, i) => `${x(i)},${y(p[1])}`).join(" ")}"/>${pts.map((p, i) => `<circle cx="${x(i)}" cy="${y(p[1])}" r="3.5" fill="var(--verde)"/><text x="${x(i)}" y="${H - 4}" font-size="9" text-anchor="middle" fill="currentColor" opacity=".6">${p[0]}</text><text x="${x(i)}" y="${y(p[1]) - 7}" font-size="9" text-anchor="middle" fill="currentColor">${p[1].toFixed(1)}</text>`).join("")}</svg>`;
+}
+
+/* ══════ CLIENTES & MEDIDAS ══════ */
+function telaClientes(m) {
+  const cl = S.e.clientes.slice().sort((a, b) => norm(a.nome).localeCompare(norm(b.nome)));
+  const q = norm(S.buscaCli || "");
+  const lista = q ? cl.filter((c) => norm(`${c.nome} ${c.telefone || ""}`).includes(q)) : cl;
+  const sel = cl.find((c) => c.id === S.cliSel) || null;
+  const pedidosDe = (c) => S.e.encomendas.filter((x) => norm(x.cliente) === norm(c.nome));
+  m.innerHTML = `<section class="painel vidro"><div class="cab"><div><h2>📏 Clientes & medidas</h2><p>${cl.length} cliente(s). Clientes novas também nascem sozinhas ao criar um pedido.</p></div>
+      ${pode("pedidos") ? `<div class="dir"><button type="button" class="btn v p" id="cNova">${svg("mais")} Cliente</button></div>` : ""}</div>
+    <div class="g2" style="grid-template-columns:minmax(0,1fr) minmax(0,1.6fr);align-items:start">
+      <div><input class="entrada" id="cBusca" placeholder="Buscar pelo nome ou telefone…" value="${esc(S.buscaCli || "")}">
+        <div style="margin-top:8px;max-height:65vh;overflow:auto">${lista.map((c) => { const n = pedidosDe(c).length; return `<div class="lin" style="cursor:pointer;${c.id === S.cliSel ? "border-color:#fb7185" : ""}" data-cli="${c.id}"><div class="t"><b>${esc(c.nome || "—")}</b><small>${esc(c.telefone || "sem telefone")} · ${n} pedido(s)</small></div></div>`; }).join("") || `<p class="dica">Ninguém encontrado.</p>`}</div></div>
+      <div>${sel ? `<div class="cab"><div><h2 style="font-size:1.05rem">${esc(sel.nome)}</h2><p>${esc(sel.telefone || "")}</p></div></div>
+        <div class="g2"><label class="campo">Nome<input id="cNome" value="${esc(sel.nome || "")}" ${pode("pedidos") ? "" : "disabled"}></label><label class="campo">Telefone / WhatsApp<input id="cTel" value="${esc(sel.telefone || "")}" ${pode("pedidos") ? "" : "disabled"}></label></div>
+        <div class="sec">Medidas (cm) — aceita “36” ou “25/33”</div>
+        <div class="medidas">${Object.entries(S.e.const.medidas).map(([r, k]) => `<label class="campo">${r}<input data-med="${k}" value="${esc(fmtMed(sel[k]))}" ${pode("pedidos") ? "" : "disabled"}></label>`).join("")}</div>
+        <label class="campo" style="margin-top:8px">Observações de modelagem<textarea data-med="outro" rows="3" ${pode("pedidos") ? "" : "disabled"}>${esc(sel.outro || "")}</textarea></label>
+        ${pode("pedidos") ? `<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><button type="button" class="btn" id="cSalvar">${svg("check")} Salvar</button><button type="button" class="btn v" id="cPedido">${svg("mais")} Novo pedido para ela</button></div>` : ""}
+        <div class="sec">Pedidos</div>${pedidosDe(sel).map((x) => `<div class="lin" style="cursor:pointer" data-ped="${x.id}"><div class="t"><b>${esc(x.peca)}</b><small>${!ativo(x) ? "cancelado" : ETAPA[etapa(x)][1]} · entrega ${dbr(x.data_entrega)} · ${brl(x.valor_total)}</small></div></div>`).join("") || `<p class="dica">Nenhum pedido ainda.</p>`}`
+        : `<div class="vazio">${A.orbe("regua", "#fb7185")}<b>Escolha uma cliente</b>As medidas aparecem aqui.</div>`}</div></div></section>`;
+  $("#cBusca").oninput = (ev) => { S.buscaCli = ev.target.value; clearTimeout(telaClientes._t); telaClientes._t = setTimeout(() => { telaClientes(m); const b = $("#cBusca"); b.focus(); b.setSelectionRange(b.value.length, b.value.length); }, 250); };
+  $$("[data-cli]", m).forEach((d) => (d.onclick = () => { S.cliSel = d.dataset.cli; telaClientes(m); }));
+  $$("[data-ped]", m).forEach((d) => (d.onclick = () => abrirPedido(d.dataset.ped)));
+  $("#cNova")?.addEventListener("click", () => A.modal({ titulo: "Nova cliente", icone: "usuario", largura: 420, html: `<label class="campo">Nome *<input id="ncN"></label><label class="campo" style="margin-top:8px">Telefone / WhatsApp<input id="ncT"></label>`,
+    botoes: [{ rotulo: "Cancelar" }, { rotulo: "Cadastrar", classe: "btn", principal: true, acao: async () => { try { const r = await api("/clientes", { method: "POST", body: { nome: $("#ncN").value, telefone: $("#ncT").value } }); S.cliSel = r.id; await carregar(); } catch (e) { falha(e); return false; } } }] }));
+  $("#cSalvar")?.addEventListener("click", async () => { const body = { nome: $("#cNome").value, telefone: $("#cTel").value }; $$("[data-med]", m).forEach((i) => (body[i.dataset.med] = i.value));
+    try { await api(`/clientes/${sel.id}`, { method: "PUT", body }); await carregar(); ok("Cliente salva."); } catch (e) { falha(e); } });
+  $("#cPedido")?.addEventListener("click", () => novoPedido({ cliente: sel.nome, telefone: sel.telefone }));
+}
+
+/* ══════ PROSPECTS ══════ */
+function telaProspects(m) {
+  const ps = S.e.prospects.slice().sort((a, b) => norm(a.nome).localeCompare(norm(b.nome)));
+  m.innerHTML = `<section class="painel vidro"><div class="cab"><div><h2>🌱 Prospects</h2><p>Quem está interessada mas ainda não fechou. Na hora de fechar: <b>converter em pedido</b> ou <b>conserto</b>.</p></div></div>
+    ${pode("pedidos") ? `<div class="g3" style="grid-template-columns:2fr 1.2fr auto;align-items:end"><label class="campo">Nome *<input id="pN" placeholder="Ex.: Fernanda Souza"></label><label class="campo">Telefone (opcional)<input id="pT"></label><button type="button" class="btn" id="pAdd">${svg("mais")} Adicionar</button></div>` : ""}
+    <div class="sec">${ps.length} na lista</div>
+    ${ps.map((p) => `<div class="lin"><div class="t"><b>${esc(p.nome)}</b><small>${esc(p.telefone || "sem telefone")} · desde ${dbr(p.criado_em || p._criado_em)}</small></div>${pode("pedidos") ? `<div class="acoes"><button type="button" class="btn p" data-conv="${p.id}">🪡 Converter em pedido</button><button type="button" class="btn v p" data-cons="${p.id}">✂️ Conserto</button><button type="button" class="btn-ic p" data-rm="${p.id}" title="Remover">${svg("lixo")}</button></div>` : ""}</div>`).join("") || `<div class="vazio">${A.orbe("estrela", "#fb7185")}<b>Lista vazia</b>Cadastre só o nome de quem demonstrar interesse.</div>`}
+  </section>`;
+  $("#pAdd")?.addEventListener("click", async () => { if (!$("#pN").value.trim()) { A.toast("Informe o nome."); return; } try { await api("/prospects", { method: "POST", body: { nome: $("#pN").value, telefone: $("#pT").value } }); await carregar(); ok("Adicionado à lista!"); } catch (e) { falha(e); } });
+  $$("[data-conv]", m).forEach((b) => (b.onclick = () => { const p = S.e.prospects.find((x) => x.id === b.dataset.conv); novoPedido({ cliente: p.nome, telefone: p.telefone, prospect_id: p.id }); }));
+  $$("[data-cons]", m).forEach((b) => (b.onclick = () => conserto(S.e.prospects.find((x) => x.id === b.dataset.cons))));
+  $$("[data-rm]", m).forEach((b) => (b.onclick = async () => { if (!(await A.confirmar("Remover da lista de prospects?", { perigo: true, rotulo: "Remover" }))) return; try { await api(`/prospects/${b.dataset.rm}`, { method: "DELETE" }); await carregar(); } catch (e) { falha(e); } }));
+}
+function conserto(p) {
+  A.modal({ titulo: `Conserto — ${p.nome}`, icone: "tesoura", largura: 440,
+    html: `<p class="dica">Consertos entram direto na agenda (só a etapa de confecção) e no financeiro — não disputam o dia com os pedidos.</p>
+      <div class="g2" style="margin-top:8px"><label class="campo">Tipo<select id="ksT"><option>Barra</option><option>Zíper</option><option>Ajuste</option><option>Outro</option></select></label><label class="campo">Valor (R$)<input id="ksV" type="number" min="0" step="10"></label></div>
+      <label class="campo" style="margin-top:8px">Data<input id="ksD" type="date" value="${hoje()}"></label><label class="campo" style="margin-top:8px">Detalhes<input id="ksX"></label>`,
+    botoes: [{ rotulo: "Cancelar" }, { rotulo: "Agendar conserto", classe: "btn", principal: true, acao: async () => {
+      try { await api("/consertos", { method: "POST", body: { prospect_id: p.id, cliente: p.nome, telefone: p.telefone, tipo: $("#ksT").value, valor: $("#ksV").value, data: $("#ksD").value, descricao: $("#ksX").value } }); await carregar(); ok("Conserto na agenda e no financeiro!"); } catch (e) { falha(e); return false; } } }] });
+}
+
+/* ══════ FINANCEIRO ══════ */
+async function telaFinanceiro(m) {
+  if (!pode("financeiro")) { m.innerHTML = `<div class="vazio"><b>Sem acesso ao financeiro</b></div>`; return; }
+  S.mesRel = S.mesRel || hoje().slice(0, 7); S.mesFech = S.mesFech || hoje().slice(0, 7);
+  m.innerHTML = `<section class="painel vidro"><div class="cab"><div><h2>💰 Financeiro</h2><p>Dinheiro real (o que entrou e saiu) separado do que ainda vai acontecer (pela agenda).</p></div></div>
+    <div class="subnav">${[["visao", "Visão geral"], ["lanc", "Lançamentos"], ["proj", "Projeção"], ["fech", "Fechamento & conciliação"]].map(([k, r]) => `<button type="button" data-fs="${k}" class="${S.finSub === k ? "ativo" : ""}">${r}</button>`).join("")}</div>
+    <div id="finCorpo"><div class="vazio"><b>Calculando…</b></div></div></section>`;
+  $$("[data-fs]", m).forEach((b) => (b.onclick = () => { S.finSub = b.dataset.fs; telaFinanceiro(m); }));
+  const corpo = $("#finCorpo");
+  try {
+    if (S.finSub === "fech") return await finFechamento(corpo);
+    S.fin = await api(`/financeiro?mes=${S.mesRel}`, {}, "calculando…");
+    ({ visao: finVisao, lanc: finLanc, proj: finProj }[S.finSub] || finVisao)(corpo, S.fin);
+  } catch (e) { corpo.innerHTML = `<div class="aviso mal">${esc(e.message)}</div>`; }
+}
+const refin = () => telaFinanceiro($("#main"));
+function finVisao(el, F) {
+  const v = F.visao, pctMeta = v.meta_faturamento > 0 ? Math.min(v.receita_total / v.meta_faturamento * 100, 100) : 0;
+  const k = (r, val, sub, c) => `<div class="kpi" style="--c:${c}"><small>${r}</small><b>${brl(val)}</b><span>${sub || ""}</span></div>`;
+  el.innerHTML = `<div class="kpis">${k("💵 Saldo em caixa", v.saldo_caixa, v.mes_corte ? `herdado do fechamento de ${nomeMes(v.mes_corte)}` : "nenhum mês fechado ainda", "var(--ouro)")}
+      ${k("📥 A receber (mês)", v.receber_mes, "saldo de pedidos com entrega neste mês", "#60a5fa")}${k("📤 A pagar (mês)", v.pagar_mes, "despesas em aberto do mês", "var(--laranja)")}${k("🔮 Saldo projetado (fim do mês)", v.saldo_projetado_mes, "caixa + a receber − a pagar", "var(--violeta)")}</div>
+    ${!v.mes_corte ? `<div class="aviso ouro" style="margin-top:10px">📌 Nenhum fechamento de caixa ainda. Feche o primeiro mês em <b>Fechamento & conciliação</b> para ter um saldo confiável mês a mês.</div>` : ""}
+    ${v.n_receber_atrasado || v.n_pagar_atrasado ? `<div class="g2" style="margin-top:8px">${v.n_receber_atrasado ? `<div class="aviso mal">🔴 <b>${brl(v.receber_atrasado)}</b> atrasado para receber (${v.n_receber_atrasado} pedido(s)). Baixe na Projeção.</div>` : `<div class="aviso ok">Nenhum recebimento atrasado.</div>`}${v.n_pagar_atrasado ? `<div class="aviso mal">🔴 <b>${brl(v.pagar_atrasado)}</b> em despesas vencidas (${v.n_pagar_atrasado}).</div>` : `<div class="aviso ok">Nenhuma despesa vencida.</div>`}</div>` : ""}
+    <div class="sec">Histórico real</div>
+    <div class="kpis">${k("💰 Receita recebida", v.receita_total, "", "var(--verde)")}${k("📉 Gastos pagos", v.gastos_pagos, "", "var(--rosa)")}${k("✅ Lucro real", v.lucro_real, v.receita_total > 0 ? `${(v.lucro_real / v.receita_total * 100).toFixed(1)}% de margem` : "", "var(--verde)")}${k("🔮 Lucro previsto (mês)", v.lucro_previsto_mes, "lucro real + saldo a receber do mês", "#60a5fa")}</div>
+    <div class="kpi" style="--c:var(--ouro);margin-top:10px"><small>Faturamento × meta</small><b>${brl(v.receita_total)} / ${brl(v.meta_faturamento)}</b><div class="barra-p"><i style="width:${pctMeta}%"></i></div></div>
+    <div class="sec">Saúde do negócio</div>
+    <div class="kpis">${k("💡 Capital de giro", v.capital_giro, `${v.capital_pct.toFixed(0)}% da receita · ${v.lucro_real - v.capital_giro >= 0 ? "adequado ✅" : "faltam " + brl(v.capital_giro - v.lucro_real)}`, "#22d3ee")}
+      ${k("🛡️ Reserva de emergência", v.reserva, `${v.reserva_meses} meses de custos · ${v.lucro_real >= v.reserva ? "coberta ✅" : "faltam " + brl(v.reserva - v.lucro_real)}`, "#a78bfa")}
+      ${k("🎯 Teto de gastos", v.teto_gastos, `margem mínima ${v.margem_min.toFixed(0)}% · ${v.gastos_pagos <= v.teto_gastos ? "dentro ✅" : "acima em " + brl(v.gastos_pagos - v.teto_gastos)}`, "var(--laranja)")}</div>`;
+}
+function finLanc(el, F) {
+  const R = F.relatorio, encs = S.e.encomendas.filter(ativo).sort((a, b) => norm(a.cliente).localeCompare(norm(b.cliente)));
+  el.innerHTML = `<div class="sec">➕ Novo lançamento</div>
+    <div class="g4"><label class="campo">Tipo<select id="lTipo"><option value="e">💰 Entrada</option><option value="s">📉 Saída</option></select></label><label class="campo">Descrição *<input id="lDesc"></label>
+      <label class="campo">Valor (R$) *<input id="lVal" type="number" min="0.01" step="10"></label><label class="campo">Data<input id="lData" type="date" value="${hoje()}"></label></div>
+    <div class="g4" style="margin-top:6px"><label class="campo">Categoria<select id="lCat"></select></label><label class="campo" id="wForma">Forma<select id="lForma"><option></option>${S.e.const.formas.map((f) => `<option>${f}</option>`).join("")}</select></label>
+      <label class="campo">Vincular a um pedido <small class="v">(saída = custo do pedido)</small><select id="lPed"><option value="">— avulso —</option>${encs.map((x) => `<option value="${x.id}">${esc(x.cliente)} – ${esc(x.peca)}</option>`).join("")}</select></label>
+      <label class="campo" id="wPago">Situação<select id="lPago"><option value="1">já paga</option><option value="0">a pagar (vence na data)</option></select></label></div>
+    <button type="button" class="btn" id="lOk" style="margin-top:8px">${svg("check")} Lançar</button>
+    <p class="dica" style="margin-top:6px">Entrada ligada a um pedido abate o saldo dele. Para editar, excluir ou conciliar um lançamento, use <b>Fechamento & conciliação</b>.</p>
+    <div class="sec">📋 Relatório do mês</div>
+    <div class="filtros"><input type="month" class="entrada" id="lMes" value="${S.mesRel}" style="min-width:auto;flex:none"></div>
+    <div class="kpis"><div class="kpi" style="--c:var(--verde)"><small>Receita</small><b>${brl(R.receita)}</b></div><div class="kpi" style="--c:var(--rosa)"><small>Gastos pagos</small><b>${brl(R.gastos)}</b></div>
+      <div class="kpi" style="--c:var(--ouro)"><small>Lucro líquido</small><b>${brl(R.lucro)}</b></div><div class="kpi" style="--c:#60a5fa"><small>Margem</small><b>${R.margem.toFixed(1)}%</b></div></div>
+    ${R.receita >= F.visao.meta_faturamento ? `<div class="aviso ok" style="margin-top:8px">🏆 Meta de ${brl(F.visao.meta_faturamento)} atingida!</div>` : `<div class="aviso ouro" style="margin-top:8px">Faltam ${brl(F.visao.meta_faturamento - R.receita)} para a meta de ${brl(F.visao.meta_faturamento)}.</div>`}
+    <div class="g2" style="margin-top:10px;align-items:start"><div><b style="font-size:.85rem">Entradas</b>${tabLanc(R.entradas, false)}</div><div><b style="font-size:.85rem">Saídas</b>${tabLanc(R.saidas, true)}</div></div>
+    <div class="sec">💳 Pedidos com saldo a receber</div>
+    ${F.pedidos.filter((x) => x.saldo > 0.01).map((x) => `<div class="lin"><div class="t"><b>${esc(x.cliente)} — ${esc(x.peca)}</b><small>recebido ${brl(x.recebido)} de ${brl(x.total)} · custo direto ${brl(x.custo)} · margem ${x.margem.toFixed(0)}% ${x.recebido > 0 && x.margem < F.margem_min ? mini("abaixo do mínimo", "#fb7185") : ""} · entrega ${dbr(x.entrega)}</small></div>
+      <div class="acoes"><button type="button" class="btn v p" data-rp="${x.id}">Parcial</button><button type="button" class="btn p" data-rq="${x.id}" data-v="${x.saldo}">Quitar ${brl(x.saldo)}</button></div></div>`).join("") || `<div class="aviso ok">Todos os pedidos estão quitados.</div>`}`;
+  const cats = () => { const s = $("#lTipo").value === "s"; $("#lCat").innerHTML = (s ? S.e.const.cat_gastos : S.e.const.cat_receitas).map((c) => `<option>${c}</option>`).join(""); $("#wPago").classList.toggle("oculto", !s); };
+  $("#lTipo").onchange = cats; cats();
+  $("#lMes").onchange = (ev) => { S.mesRel = ev.target.value; refin(); };
+  $("#lOk").onclick = async () => {
+    const s = $("#lTipo").value === "s", body = { descricao: $("#lDesc").value, valor: $("#lVal").value, data: $("#lData").value, categoria: $("#lCat").value, encomenda_id: $("#lPed").value, forma_pagamento: $("#lForma").value };
+    if (!body.descricao.trim() || num(body.valor) <= 0) { A.toast("Preencha descrição e valor."); return; }
+    try { await api(s ? "/gastos" : "/recebimentos", { method: "POST", body: s ? { ...body, pago: $("#lPago").value === "1" } : body }); await carregar(); S.finSub = "lanc"; ok(s ? "Saída lançada!" : "Entrada lançada!"); } catch (e) { falha(e); }
+  };
+  $$("[data-rp]", el).forEach((b) => (b.onclick = () => receberPedido(b.dataset.rp)));
+  $$("[data-rq]", el).forEach((b) => (b.onclick = async () => { const x = S.e.encById[b.dataset.rq]; if (!(await A.confirmar(`Quitar <b>${brl(b.dataset.v)}</b> de ${esc(x.cliente)} hoje?`, { rotulo: "Quitar" }))) return;
+    try { await api("/recebimentos", { method: "POST", body: { encomenda_id: x.id, valor: b.dataset.v, descricao: `Quitação – ${x.cliente}: ${x.peca}`, forma_pagamento: "Pix" } }); await carregar(); ok("Quitado!"); } catch (e) { falha(e); } }));
+}
+function tabLanc(l, saida) {
+  if (!l.length) return `<p class="dica">Nada neste mês.</p>`;
+  return `<table class="tab"><thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th class="n">Valor</th>${saida ? "<th>Pago</th>" : ""}</tr></thead><tbody>${l.slice().sort((a, b) => String(a.data).localeCompare(b.data)).map((x) => `<tr><td>${dcurta(x.data)}</td><td>${esc(x.descricao || "")}</td><td>${esc(x.categoria || "")}</td><td class="n">${brl(x.valor)}</td>${saida ? `<td>${+x.pago ? "✅" : "⏳"}</td>` : ""}</tr>`).join("")}</tbody></table>`;
+}
+function finProj(el, F) {
+  const P = F.projecoes[S.projIdx] || F.projecoes[0];
+  el.innerHTML = `<div class="seg" style="margin-bottom:10px">${F.projecoes.map((p, i) => `<button type="button" data-pi="${i}" class="${i === S.projIdx ? "ativo" : ""}">${i === 0 ? "Este mês" : i === 1 ? "Próximo" : "Depois"} · ${nomeMes(p.mes)}</button>`).join("")}</div>
+    <div class="kpis"><div class="kpi" style="--c:#60a5fa"><small>📥 A receber</small><b>${brl(P.receber)}</b></div><div class="kpi" style="--c:var(--laranja)"><small>📤 A pagar</small><b>${brl(P.pagar)}</b></div>
+      <div class="kpi" style="--c:var(--ouro)"><small>🔮 Resultado</small><b>${brl(P.lucro)}</b></div><div class="kpi" style="--c:var(--violeta)"><small>💵 Saldo ao fim do mês</small><b>${brl(P.saldo_fim)}</b><span>${S.projIdx ? "já soma os meses do meio" : "caixa de hoje + resultado"}</span></div></div>
+    <p class="dica" style="margin-top:6px">Lê a agenda ao vivo: mudou a data de entrega, a projeção muda junto. Atrasados ficam de fora (abaixo).</p>
+    <div class="g2" style="margin-top:10px;align-items:start"><div><b style="font-size:.85rem">Pedidos com entrega no mês</b>${P.pedidos.length ? `<table class="tab"><tbody>${P.pedidos.map((x) => `<tr><td>${esc(x.cliente)}<br><small class="dica">${esc(x.peca)}</small></td><td>${dcurta(x.entrega)}</td><td class="n">${brl(x.saldo)}</td></tr>`).join("")}</tbody></table>` : `<p class="dica">Nenhum.</p>`}</div>
+      <div><b style="font-size:.85rem">Despesas em aberto no mês</b>${P.despesas.length ? `<table class="tab"><tbody>${P.despesas.map((g) => `<tr><td>${esc(g.descricao)}<br><small class="dica">${esc(g.categoria || "")}</small></td><td>${dcurta(g.data)}</td><td class="n">${brl(g.valor)}</td></tr>`).join("")}</tbody></table>` : `<p class="dica">Nenhuma.</p>`}</div></div>
+    <div class="sec" style="color:var(--rosa)">⚠️ Em atraso — não somem daqui até a baixa</div>
+    <div class="g2" style="align-items:start"><div>${F.atrasados_receber.map((x) => `<div class="lin atraso"><div class="t"><b>${esc(x.cliente)} — ${esc(x.peca)}</b><small>entrega ${dbr(x.entrega)} · ${brl(x.saldo)}</small></div><button type="button" class="btn p" data-br="${x.id}" data-v="${x.saldo}">Dar baixa</button></div>`).join("") || `<div class="aviso ok">Nenhum recebimento atrasado.</div>`}</div>
+      <div>${F.atrasados_pagar.map((g) => `<div class="lin atraso"><div class="t"><b>${esc(g.descricao)}</b><small>venceu ${dbr(g.data)} · ${brl(g.valor)}</small></div><button type="button" class="btn p" data-bp="${g.id}">Paguei</button></div>`).join("") || `<div class="aviso ok">Nenhuma despesa vencida.</div>`}</div></div>`;
+  $$("[data-pi]", el).forEach((b) => (b.onclick = () => { S.projIdx = +b.dataset.pi; finProj(el, F); }));
+  $$("[data-br]", el).forEach((b) => (b.onclick = async () => { const x = S.e.encById[b.dataset.br]; try { await api("/recebimentos", { method: "POST", body: { encomenda_id: x.id, valor: b.dataset.v, descricao: `Quitação (atraso) – ${x.cliente}: ${x.peca}`, forma_pagamento: "Pix" } }); await carregar(); ok("Baixado!"); } catch (e) { falha(e); } }));
+  $$("[data-bp]", el).forEach((b) => (b.onclick = async () => { try { await api(`/gastos/${b.dataset.bp}`, { method: "PUT", body: { pago: true } }); await carregar(); ok("Despesa baixada!"); } catch (e) { falha(e); } }));
+}
+async function finFechamento(el) {
+  const mes = S.mesFech, si = S.saldoIniDigitado?.[mes];
+  const R = await api(`/fechamento/${mes}${si !== undefined ? "?saldo_inicial=" + si : ""}`, {}, "calculando…");
+  const f = R.fechamento || {}, travado = R.ja_fechado, pctC = R.total_itens ? R.conciliados / R.total_itens * 100 : 0;
+  const extrato = travado ? num(f.saldo_extrato_informado) : (S.extrato?.[mes] ?? R.saldo_teorico), dif = R.saldo_teorico - num(extrato);
+  const linhas = (l, tipo) => l.length ? `<table class="tab"><thead><tr><th>✔</th><th>Data</th><th>Descrição</th><th class="n">Valor</th><th></th></tr></thead><tbody>${l.slice().sort((a, b) => String(a.data).localeCompare(b.data)).map((x) => `<tr class="${+x.conciliado ? "conc" : ""}" data-lt="${tipo}" data-lid="${x.id}">
+      <td><input type="checkbox" data-conc ${+x.conciliado ? "checked" : ""} ${travado ? "disabled" : ""}></td>
+      <td>${travado ? dcurta(x.data) : `<input class="entrada" type="date" data-k="data" value="${esc(x.data || "")}" style="width:128px">`}</td>
+      <td>${travado ? esc(x.descricao || "") : `<input class="entrada" data-k="descricao" value="${esc(x.descricao || "")}">`}</td>
+      <td class="n">${travado ? brl(x.valor) : `<input class="entrada" type="number" step="0.01" data-k="valor" value="${num(x.valor)}" style="width:96px;text-align:right">`}</td>
+      <td>${travado ? "" : `<button type="button" class="btn-ic p" data-del title="Excluir">${svg("lixo")}</button>`}</td></tr>`).join("")}</tbody></table>` : `<p class="dica">Nada neste mês.</p>`;
+  el.innerHTML = `<div class="filtros"><button type="button" class="btn-ic" id="fAnt">${svg("voltar")}</button><b style="min-width:150px;text-align:center">${nomeMes(mes)}</b><button type="button" class="btn-ic" id="fProx">${svg("avancar")}</button>
+      ${travado ? mini(`🔒 fechado em ${dbr(f.data_fechamento)}`, "#34d399") : mini("⏳ em conferência", "#e8b33d")}
+      <div style="margin-left:auto;display:flex;gap:6px"><a class="btn v p" target="_blank" href="${API}/fechamento/${mes}/pdf?saldo_inicial=${encodeURIComponent(si ?? "")}&saldo_extrato=${encodeURIComponent(travado ? "" : extrato)}">${svg("documento")} PDF ${travado ? "do fechamento" : "(prévia)"}</a></div></div>
+    <div class="sec">📋 Resumo — saldo anterior + entradas − despesas = saldo final</div>
+    ${R.saldo_inicial_editavel ? `<label class="campo" style="max-width:320px">Saldo inicial do mês (R$) <small class="v">primeiro mês controlado: digite o saldo real do dia 1</small><input type="number" step="0.01" id="fSi" value="${R.saldo_inicial}"></label>` : ""}
+    <div class="res" style="margin-top:8px"><div class="kpi" style="--c:var(--txt2)"><small>📦 Saldo do mês anterior</small><b>${brl(R.saldo_inicial)}</b><span>${R.tem_anterior ? "transportado do fechamento anterior" : "informado"}</span></div>
+      <div class="kpi" style="--c:var(--verde)"><small>📥 (+) Entradas</small><b>${brl(R.entradas)}</b><span>${R.recebimentos.length} lançamento(s)</span></div>
+      <div class="kpi" style="--c:var(--rosa)"><small>📤 (−) Despesas pagas</small><b>${brl(R.despesas)}</b><span>${R.gastos.length} lançamento(s)</span></div>
+      <div class="kpi" style="--c:${R.resultado >= 0 ? "var(--verde)" : "var(--rosa)"}"><small>${R.resultado >= 0 ? "✅ Saldo positivo do mês" : "⚠️ Saldo negativo do mês"}</small><b>${brl(R.resultado)}</b></div>
+      <div class="kpi" style="--c:var(--ouro)"><small>💰 Saldo disponível no fim do mês</small><b>${brl(travado ? f.saldo_final : R.saldo_teorico)}</b><span>vira o saldo inicial de ${nomeMes(mesMais(mes, 1))}</span></div></div>
+    <div class="sec">✏️ Extrato do mês — confira com o banco e marque ✔</div>
+    <div class="g2" style="align-items:start"><div><b style="font-size:.85rem">📥 Entradas</b>${linhas(R.recebimentos, "r")}</div><div><b style="font-size:.85rem">📤 Saídas pagas</b>${linhas(R.gastos, "g")}</div></div>
+    <div class="kpi" style="--c:#60a5fa;margin-top:10px"><small>✅ Progresso da conferência</small><b>${R.conciliados} de ${R.total_itens}</b><div class="barra-p"><i style="width:${pctC}%"></i></div></div>
+    <div class="sec">🎯 Grandes despesas previstas (dinheiro reservado)</div>
+    ${R.grandes.map((g) => `<div class="lin"><div class="t"><b>${esc(g.descricao)}</b><small>${dbr(g.data)} · ${brl(g.valor)}</small></div><button type="button" class="btn v p" data-gpaga="${g.id}">Já paguei</button></div>`).join("") || `<p class="dica">Nenhuma em aberto.</p>`}
+    <div class="g3" style="margin-top:6px"><div class="kpi" style="--c:var(--laranja)"><small>Reservado</small><b>${brl(R.total_grandes)}</b></div><div class="kpi" style="--c:${R.fundos_disponiveis < 0 ? "var(--rosa)" : "var(--verde)"}"><small>Fundos realmente disponíveis</small><b>${brl(R.fundos_disponiveis)}</b></div>
+      <button type="button" class="kpi" style="--c:var(--ouro)" id="gNova"><small>➕</small><b style="font-size:1rem">Reservar grande despesa</b></button></div>
+    <div class="sec">🏦 Confronto com o saldo do banco</div>
+    <div class="g2" style="align-items:end"><label class="campo">Saldo do extrato no último dia do mês (R$)<input type="number" step="0.01" id="fExt" value="${extrato}" ${travado ? "disabled" : ""}></label>
+      <div class="aviso ${Math.abs(dif) < 0.01 ? "ok" : "mal"}">${Math.abs(dif) < 0.01 ? "✅ Bateu certinho com o banco." : `⚠️ Diferença de <b>${brl(Math.abs(dif))}</b> (${dif > 0 ? "a mais no sistema" : "a mais no banco"}). Confira lançamentos faltando, tarifas ou duplicados.`}</div></div>
+    <label class="campo" style="margin-top:8px">Observações do fechamento<textarea id="fObs" rows="2" ${travado ? "disabled" : ""}>${esc(travado ? f.observacoes || "" : S.obsFech?.[mes] || "")}</textarea></label>
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">${pode("fechar") ? (travado ? `<button type="button" class="btn v" id="fReabrir">🔓 Reabrir (só para corrigir erro)</button>` : `<button type="button" class="btn" id="fFechar">🔒 Fechar o mês e ir para o próximo</button>`) : `<p class="dica">Fechar o mês é para quem tem a permissão “fechar”.</p>`}</div>
+    <div class="sec">🗓️ Histórico de fechamentos</div>
+    ${(S.e.fechamentos || []).filter((x) => +x.fechado).sort((a, b) => String(b.mes).localeCompare(a.mes)).map((x) => `<div class="lin" style="cursor:pointer" data-hm="${x.mes}"><div class="t"><b>${nomeMes(x.mes)}</b><small>anterior ${brl(x.saldo_inicial)} · entradas ${brl(x.receitas_mes)} · despesas ${brl(x.despesas_mes)} · final <b>${brl(x.saldo_final)}</b></small></div></div>`).join("") || `<p class="dica">Nenhum mês fechado ainda.</p>`}`;
+  $("#fAnt").onclick = () => { S.mesFech = mesMais(mes, -1); finFechamento(el); };
+  $("#fProx").onclick = () => { S.mesFech = mesMais(mes, 1); finFechamento(el); };
+  $$("[data-hm]", el).forEach((d) => (d.onclick = () => { S.mesFech = d.dataset.hm; finFechamento(el); }));
+  $("#fSi")?.addEventListener("change", (ev) => { S.saldoIniDigitado = { ...(S.saldoIniDigitado || {}), [mes]: ev.target.value }; finFechamento(el); });
+  $("#fExt")?.addEventListener("change", (ev) => { S.extrato = { ...(S.extrato || {}), [mes]: ev.target.value }; finFechamento(el); });
+  $("#fObs")?.addEventListener("input", (ev) => { S.obsFech = { ...(S.obsFech || {}), [mes]: ev.target.value }; });
+  $$("tr[data-lid]", el).forEach((tr) => {
+    const url = (tr.dataset.lt === "r" ? "/recebimentos/" : "/gastos/") + tr.dataset.lid;
+    $("[data-conc]", tr).onchange = async (ev) => { try { await api(url, { method: "PUT", body: { conciliado: ev.target.checked } }); await carregar(); } catch (e) { falha(e); } };
+    $$("[data-k]", tr).forEach((i) => (i.onchange = async () => { try { await api(url, { method: "PUT", body: { [i.dataset.k]: i.value } }); await carregar(); ok("Lançamento atualizado."); } catch (e) { falha(e); } }));
+    $("[data-del]", tr)?.addEventListener("click", async () => { if (!(await A.confirmar("Excluir este lançamento?", { perigo: true, rotulo: "Excluir" }))) return; try { await api(url, { method: "DELETE" }); await carregar(); ok("Excluído."); } catch (e) { falha(e); } });
+  });
+  $$("[data-gpaga]", el).forEach((b) => (b.onclick = async () => { try { await api(`/gastos/${b.dataset.gpaga}`, { method: "PUT", body: { pago: true, data: hoje() } }); await carregar(); } catch (e) { falha(e); } }));
+  $("#gNova").onclick = () => A.modal({ titulo: "Reservar grande despesa", icone: "dinheiro", largura: 440,
+    html: `<label class="campo">Descrição *<input id="gdD"></label><div class="g2" style="margin-top:8px"><label class="campo">Valor (R$) *<input id="gdV" type="number" min="0.01" step="50"></label><label class="campo">Data prevista<input id="gdT" type="date" value="${hoje()}"></label></div>`,
+    botoes: [{ rotulo: "Cancelar" }, { rotulo: "Reservar", classe: "btn", principal: true, acao: async () => { try { await api("/gastos", { method: "POST", body: { descricao: $("#gdD").value, valor: $("#gdV").value, data: $("#gdT").value, grande_despesa_prevista: true, pago: false } }); await carregar(); ok("Reservado!"); } catch (e) { falha(e); return false; } } }] });
+  $("#fFechar")?.addEventListener("click", async () => {
+    const falta = R.total_itens - R.conciliados;
+    if (!(await A.confirmar(`${falta ? `<b>${falta} lançamento(s) ainda sem conferir.</b> ` : ""}Fechar <b>${nomeMes(mes)}</b>? O saldo final vira o saldo inicial de ${nomeMes(mesMais(mes, 1))} e os lançamentos do mês travam.`, { rotulo: "Fechar o mês" }))) return;
+    try { const r = await api(`/fechamento/${mes}/fechar`, { method: "POST", body: { saldo_inicial: R.saldo_inicial, saldo_extrato: $("#fExt").value, observacoes: $("#fObs").value } }); await carregar(); S.mesFech = r.proximo; ok(`Mês fechado: ${brl(r.saldo_final)} passa para ${nomeMes(r.proximo)}.`); } catch (e) { falha(e); }
+  });
+  $("#fReabrir")?.addEventListener("click", async () => { if (!(await A.confirmar("Reabrir este mês? Os lançamentos voltam a ser editáveis.", { rotulo: "Reabrir" }))) return; try { await api(`/fechamento/${mes}/reabrir`, { method: "POST" }); await carregar(); } catch (e) { falha(e); } });
+}
+
+/* ══════ AJUSTES ══════ */
+function telaAjustes(m) {
+  const c = S.e.cfg, todos = S.e.encomendas.slice().sort((a, b) => norm(a.cliente).localeCompare(norm(b.cliente))), cls = S.e.clientes.slice().sort((a, b) => norm(a.nome).localeCompare(norm(b.nome)));
+  m.innerHTML = `<section class="painel vidro"><div class="cab"><div><h2>⚙️ Ajustes</h2><p>Leituras do banco desde que o servidor ligou: ${S.e.leituras} · <a href="#" id="aRel">recarregar tudo do banco</a></p></div></div>
+    <div class="g2" style="align-items:start"><div>
+      <div class="sec">🏢 Empresa (vai no contrato)</div>
+      <label class="campo">CNPJ<input data-cfg="cnpj" value="${esc(c.cnpj || "")}"></label><label class="campo" style="margin-top:6px">Telefone<input data-cfg="telefone" value="${esc(c.telefone || "")}"></label><label class="campo" style="margin-top:6px">Endereço<input data-cfg="endereco" value="${esc(c.endereco || "")}"></label>
+      <div class="sec">🚨 Alerta de entrega urgente</div><label class="campo">Avisar quantos dias antes da entrega<input type="number" min="1" max="180" data-cfg="alerta_entrega_dias" value="${esc(c.alerta_entrega_dias || 7)}"></label>
+    </div><div>
+      <div class="sec">🎯 Metas e parâmetros</div>
+      <div class="g2"><label class="campo">Meta de faturamento / mês (R$)<input type="number" data-cfg="meta_faturamento" value="${esc(c.meta_faturamento || 5000)}"></label><label class="campo">Meta de pedidos / mês<input type="number" data-cfg="meta_pedidos_mes" value="${esc(c.meta_pedidos_mes || 8)}"></label>
+        <label class="campo">Margem mínima (%)<input type="number" data-cfg="margem_minima_pct" value="${esc(c.margem_minima_pct || 30)}"></label><label class="campo">Reserva de emergência (meses)<input type="number" data-cfg="reserva_emergencia_meses" value="${esc(c.reserva_emergencia_meses || 3)}"></label>
+        <label class="campo">Capital de giro (% da receita)<input type="number" data-cfg="capital_giro_pct" value="${esc(c.capital_giro_pct || 20)}"></label></div>
+      <div class="sec">📏 Regras fixas da agenda</div>
+      <p class="dica">• Provas não têm limite por dia — mas um dia com <b>mais de ${S.e.const.limite_provas} provas</b> fica bloqueado para receber <b>Confecção</b>.<br>• Duas encomendas na mesma Data da Confecção: o sistema avisa quantas já existem e pergunta sim/não.<br>• <b>Concluído</b> é sempre você que marca, dentro do pedido.<br>• Consertos não disputam a agenda de confecção.</p>
+    </div></div>
+    <button type="button" class="btn" id="aSalvar" style="margin-top:12px">${svg("check")} Salvar ajustes</button></section>
+  ${pode("excluir") ? `<section class="painel vidro"><div class="cab"><div><h2 style="color:var(--rosa)">🔐 Exclusões permanentes</h2><p>Não tem volta. Para pedidos: apaga também as tarefas e os gastos dele (o dinheiro já recebido continua no caixa).</p></div></div>
+    <div class="g2"><div><label class="campo">Pedido<select id="xPed">${todos.map((x) => `<option value="${x.id}">${esc(x.cliente)} | ${esc(x.peca)}${!ativo(x) ? " [CANCELADO]" : ""}</option>`).join("")}</select></label><button type="button" class="btn perigo p" id="xPedBt" style="margin-top:6px">Excluir pedido</button></div>
+      <div><label class="campo">Cliente (ficha + medidas)<select id="xCli">${cls.map((x) => `<option value="${x.id}">${esc(x.nome)}${x.telefone ? " · " + esc(x.telefone) : ""}</option>`).join("")}</select></label><button type="button" class="btn perigo p" id="xCliBt" style="margin-top:6px">Excluir cadastro</button></div></div></section>` : ""}`;
+  $("#aRel").onclick = async (ev) => { ev.preventDefault(); try { await api("/recarregar", { method: "POST" }, "relendo…"); await carregar(); ok("Relido do banco."); } catch (e) { falha(e); } };
+  $("#aSalvar").onclick = async () => { const body = {}; $$("[data-cfg]", m).forEach((i) => (body[i.dataset.cfg] = i.value)); try { await api("/config", { method: "PUT", body }); await carregar(); ok("Ajustes salvos."); } catch (e) { falha(e); } };
+  const excluir = (rotulo, url) => A.modal({ titulo: rotulo, icone: "atencao", cor: "var(--rosa)", largura: 420, html: `<label class="campo">Digite <b>EXCLUIR</b> para confirmar<input id="xConf" autocomplete="off"></label>`,
+    botoes: [{ rotulo: "Voltar" }, { rotulo: "Excluir para sempre", classe: "btn perigo", principal: true, acao: async () => { try { await api(url, { method: "DELETE", body: { confirmar: $("#xConf").value } }); await carregar(); ok("Excluído."); } catch (e) { falha(e); return false; } } }] });
+  $("#xPedBt")?.addEventListener("click", () => excluir("Excluir pedido", `/encomendas/${$("#xPed").value}`));
+  $("#xCliBt")?.addEventListener("click", () => excluir("Excluir cadastro de cliente", `/clientes/${$("#xCli").value}`));
+}
+
+/* ══════ INÍCIO ══════ */
+carregar(1);
+addEventListener("focus", () => { if (S.e && Date.now() / 1000 - S.e.lido_em > 120 && !document.querySelector(".aur-modal-fundo.aberto")) carregar(1); });
+})();
+</script>
+</body>
+</html>
