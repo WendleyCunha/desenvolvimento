@@ -74,8 +74,10 @@ import passagens
 import erp
 import secretaria
 import tickets
+import pqi_ponte
+import web_proxy
 
-VERSAO = "3.4.0"
+VERSAO = "3.5.0"
 
 BASE = Path(__file__).resolve().parent
 PASTA_MODULOS = BASE / "modulos"
@@ -332,13 +334,15 @@ app.include_router(passagens.router)
 app.include_router(erp.router)
 app.include_router(secretaria.router)
 app.include_router(tickets.router)
+app.include_router(pqi_ponte.router)
+app.include_router(web_proxy.router)
 _inicio = time.time()
 
 
 @app.get("/healthz")
 @app.get("/_stcore/health")
 def healthz():
-    return {"ok": True}
+    return {"ok": True, "versao": VERSAO}
 
 
 @app.get("/login")

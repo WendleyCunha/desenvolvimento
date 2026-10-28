@@ -47,6 +47,7 @@ body{margin:0;display:flex;flex-direction:column;overflow:hidden}
   </form>
   <button type="button" class="btn-ic" id="btRecarregar" title="Recarregar"></button>
   <button type="button" class="btn-ic" id="btFav" title="Guardar nos favoritos"></button>
+  <button type="button" class="btn-ic" id="btModo" title="Modo hub ⇄ direto"></button>
   <button type="button" class="btn-ic" id="btFora" title="Abrir numa aba do navegador"></button>
 </div>
 <div class="favs" id="favs"></div>
@@ -59,9 +60,9 @@ body{margin:0;display:flex;flex-direction:column;overflow:hidden}
   <div class="inicio" id="telaInicio">
     <span id="orbe"></span>
     <h2>Abra um site aqui dentro</h2>
-    <p>Digite o endereço (por exemplo <b>google.com.br</b>) ou o que quer pesquisar e aperte Enter. Alguns sites não permitem ser abertos dentro de outra página (bancos, Gmail, WhatsApp Web, YouTube…) — nesses, use o botão ↗ para abrir numa aba do navegador.</p>
+    <p>Digite o endereço (por exemplo <b>google.com.br</b>) ou o que quer pesquisar e aperte Enter. Os sites abrem pelo <b>modo hub</b>: o hub busca a página e libera os links — funciona em qualquer navegador, sem extensão. Sites com login (Outlook, Gmail, bancos, WhatsApp Web) podem não funcionar aqui dentro — nesses, use ↗.</p>
   </div>
-  <div class="dica-bloq vidro" id="dicaBloq"><span>Apareceu “recusou a conexão”? Esse site não deixa abrir aqui dentro — instale a extensão “liberar sites” do hub ou use ↗.</span><button type="button" class="btn p" id="btFora2">Abrir em nova aba ↗</button><button type="button" class="btn-ic p" id="fechaDica" title="Fechar"></button></div>
+  <div class="dica-bloq vidro" id="dicaBloq"><span id="dicaTxt">Não carregou direito? Troque o modo no botão ⇄ ou use ↗.</span><button type="button" class="btn p" id="btFora2">Abrir em nova aba ↗</button><button type="button" class="btn-ic p" id="fechaDica" title="Fechar"></button></div>
 </div>
 
 <script src="/static/aurora.js?v=3"></script>
@@ -77,6 +78,19 @@ const K = { favs: "wd.web.favs", ult: "wd.web.ultimo" };
 const ler = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch (_) { return d; } };
 const gravar = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} };
 let atual = "";
+const MODO = "wd.web.modo";   // { host: "direto" } — padrão é o modo hub
+let TOK = "";
+async function token() { if (!TOK) { try { TOK = (await A.api("/api/web/token")).token; setTimeout(() => (TOK = ""), 6 * 3600e3); } catch (_) {} } return TOK; }
+const hostDe = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch (_) { return ""; } };
+const ehGoogle = (u) => /(^|\.)google\.[a-z.]+$/i.test(hostDe(u));
+const direto = (u) => ehGoogle(u) || ler(MODO, {})[hostDe(u)] === "direto";
+async function srcDe(u) { if (direto(u)) return paraQuadro(u); const t = await token(); return "/web/p?t=" + encodeURIComponent(t) + "&u=" + encodeURIComponent(u); }
+function mostrarModo() { const b = $("#btModo"); if (!b) return; const d = atual && direto(atual); b.title = d ? "Modo direto (o site abre sozinho) — clique para usar o modo hub" : "Modo hub (o hub busca o site e libera os links) — clique para modo direto"; b.style.color = d ? "" : "var(--ciano)"; }
+// o site (no modo hub) avisa para qual página foi → atualiza a barra de endereço
+addEventListener("message", (e) => {
+  const d = e.data; if (!d || d.hubWeb !== "url" || e.source !== $("#quadro").contentWindow) return;
+  atual = d.url; $("#url").value = d.url; gravar(K.ult, d.url); $("#dicaBloq").classList.remove("mostra"); clearTimeout(timerDica); renderFavs(); mostrarModo();
+});
 
 /* Endereço digitado → URL. Sem ponto = pesquisa no Google. */
 function normalizar(t) {
@@ -105,11 +119,11 @@ function abrir(t) {
   $("#url").value = u.startsWith("https://www.google.com/search?igu=1&q=") ? decodeURIComponent(u.split("&q=")[1].replace(/\+/g, " ")) : u;
   $("#telaInicio").style.display = "none";
   $("#dicaBloq").classList.remove("mostra");
-  $("#quadro").src = paraQuadro(u);
+  srcDe(u).then((s) => ($("#quadro").src = s));
   gravar(K.ult, u);
   clearTimeout(timerDica);
-  timerDica = setTimeout(() => { if (!/google\./.test(new URL(u).hostname)) $("#dicaBloq").classList.add("mostra"); }, 2500);
-  renderFavs();
+  timerDica = setTimeout(() => { if (!ehGoogle(u)) $("#dicaBloq").classList.add("mostra"); }, direto(u) ? 2500 : 9000);
+  renderFavs(); mostrarModo();
 }
 function fora() { if (atual) window.open(atual, "_blank", "noopener"); }
 function renderFavs() {
@@ -119,7 +133,10 @@ function renderFavs() {
   $("#favs").querySelectorAll("[data-u]").forEach((b) => (b.onclick = (e) => { if (e.target.dataset.x !== undefined) { const l = ler(K.favs, []); l.splice(+e.target.dataset.x, 1); gravar(K.favs, l); renderFavs(); return; } abrir(b.dataset.u); }));
 }
 $("#form").onsubmit = (e) => { e.preventDefault(); abrir($("#url").value); };
-$("#btRecarregar").onclick = () => { if (atual) { $("#quadro").src = "about:blank"; setTimeout(() => ($("#quadro").src = paraQuadro(atual)), 50); } };
+$("#btRecarregar").onclick = () => { if (atual) { $("#quadro").src = "about:blank"; setTimeout(() => srcDe(atual).then((s) => ($("#quadro").src = s)), 50); } };
+$("#btModo").innerHTML = svg("escudo");
+$("#btModo").onclick = () => { if (!atual || ehGoogle(atual)) { A.toast("O Google já abre direto aqui."); return; } const m = ler(MODO, {}), h = hostDe(atual);
+  if (m[h] === "direto") delete m[h]; else m[h] = "direto"; gravar(MODO, m); A.toast(m[h] ? "Modo direto para " + h : "Modo hub para " + h); abrir(atual); };
 $("#btFora").onclick = fora; $("#btFora2").onclick = fora;
 $("#fechaDica").onclick = () => $("#dicaBloq").classList.remove("mostra");
 $("#btInicio").onclick = () => { atual = ""; $("#quadro").src = "about:blank"; $("#telaInicio").style.display = ""; $("#url").value = ""; $("#dicaBloq").classList.remove("mostra"); renderFavs(); $("#url").focus(); };

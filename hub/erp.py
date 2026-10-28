@@ -40,6 +40,8 @@ ao acordar lê produtos/parceiros/saldos + pedidos/cargas dos últimos 120 dias
 """
 from __future__ import annotations
 
+import json
+import logging
 import random
 import re
 import threading
@@ -47,12 +49,13 @@ import time
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 
 import acesso
 import banco
 
 router = APIRouter(prefix="/api/erp")
+log = logging.getLogger("erp")
 MOD = "erp"
 
 try:
@@ -294,12 +297,12 @@ def _pode_editar_campo(p: dict, c: str) -> bool:
 # ══════════════════════════════════════════════════════════════════════════════
 @router.get("/estado")
 def estado(request: Request):
-    _, p = _ctx(request)
+    u, p = _ctx(request)
     with ST.trava:
         out = {k: [_filtrar(p, k, {**v, "id": i}) for i, v in ST.dados[k].items()] for k in COLS}
         cfg = {k: v for k, v in ST.config.items() if k != "seq"}
     return {**out, "config": cfg, "perm": p, "locais": LOCAIS, "destinos": DESTINOS, "origens_destino": ORIGENS_DESTINO,
-            "hoje": hoje(), "agora": agora()}
+            "hoje": hoje(), "agora": agora(), "admin": bool(u.get("admin"))}
 
 
 @router.get("/kardex/{pid}")
@@ -1011,6 +1014,61 @@ async def salvar_config(request: Request):
                 cfg[k] = [str(x).strip()[:40] for x in c[k] if str(x).strip()][:30]
         tx.commit()
         return {"ok": True, "config": {k: v for k, v in ST.config.items() if k != "seq"}}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# BACKUP E ZERAR — começar do zero (só administrador)
+# ══════════════════════════════════════════════════════════════════════════════
+def _ler_tudo_do_banco() -> dict:
+    """Lê TODAS as coleções do ERP direto do banco (não só o que está na memória)."""
+    db = banco.db()
+    out = {k: {d.id: d.to_dict() or {} for d in db.collection(col).stream(timeout=120)} for k, col in COLS.items()}
+    snap = db.collection("erp_config").document("geral").get(timeout=banco.TIMEOUT)
+    out["config"] = snap.to_dict() if snap.exists else {}
+    return out
+
+
+@router.get("/backup")
+def backup(request: Request):
+    u, p = _ctx(request, "configurar", "baixar o backup")
+    dados = _ler_tudo_do_banco()
+    corpo = json.dumps({"gerado_em": datetime.now(FUSO).isoformat(timespec="seconds"), "por": u.get("login"), "dados": dados},
+                       ensure_ascii=False, default=str)
+    nome = "erp_backup_" + datetime.now(FUSO).strftime("%Y-%m-%d_%H%M") + ".json"
+    return Response(corpo, media_type="application/json", headers={"Content-Disposition": f'attachment; filename="{nome}"'})
+
+
+@router.post("/zerar")
+async def zerar(request: Request):
+    u, p = _ctx(request, "configurar", "zerar o ERP")
+    if not u.get("admin"):
+        raise HTTPException(403, "Só o administrador pode zerar o ERP.")
+    c = await request.json()
+    if str(c.get("confirmar") or "").strip().upper() != "ZERAR":
+        raise HTTPException(400, "Digite ZERAR para confirmar.")
+    manter_cfg = bool(c.get("manter_config", True))
+    db = banco.db()
+    apagados = {}
+    with ST.trava:
+        for k, col in COLS.items():
+            refs = [d.reference for d in db.collection(col).stream(timeout=120)]
+            for i in range(0, len(refs), 400):
+                lote = db.batch()
+                for r in refs[i:i + 400]:
+                    lote.delete(r)
+                lote.commit(timeout=120)
+            apagados[k] = len(refs)
+            ST.dados[k] = {}
+        cfg_ref = db.collection("erp_config").document("geral")
+        if manter_cfg:
+            ST.config["seq"] = {k: 0 for k in CONFIG_PADRAO["seq"]}
+            cfg_ref.set(ST.config, timeout=banco.TIMEOUT)
+        else:
+            cfg_ref.delete(timeout=banco.TIMEOUT)
+            ST.config = json.loads(json.dumps(CONFIG_PADRAO))
+        ST.carregado_em = time.time()
+    log.warning("ERP zerado por %s: %s", u.get("login"), apagados)
+    return {"ok": True, "apagados": apagados}
 
 
 # ══════════════════════════════════════════════════════════════════════════════

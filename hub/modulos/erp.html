@@ -294,7 +294,7 @@ const ok = (t) => A.toast("✓ " + t, [], { cor: "var(--verde)" });
 async function carregar() {
   const d = await api("/estado");
   COLS.forEach((col) => (S[col] = Object.fromEntries(d[col].map((x) => [x.id, x]))));
-  Object.assign(S, { config: d.config, perm: d.perm, locais: d.locais, destinos: d.destinos, hoje: d.hoje });
+  Object.assign(S, { config: d.config, perm: d.perm, locais: d.locais, destinos: d.destinos, hoje: d.hoje, admin: !!d.admin });
   if (!V.dia) V.dia = S.hoje;
   render();
 }
@@ -1000,8 +1000,19 @@ function rAjustes() {
       <div class="sep"><h4>Nomes dos locais de estoque</h4><div class="g2">${S.locais.map((l) => `<label class="campo"><span style="color:${COR_LOCAL[l]}">● ${l}</span><input data-rot="${l}" value="${esc(rot(l))}"></label>`).join("")}</div></div></div>
       <div class="bloco"><h3>${svg("lista")} Listas</h3><div class="g2">${lst("janelas", "Janelas de entrega")}${lst("categorias", "Categorias de produto")}${lst("motivos_ausencia", "Motivos de ausência")}${lst("motivos_avaria", "Motivos de avaria")}${lst("motivos_troca", "Motivos de troca")}</div></div></div>
     ${vazio ? `<div class="sep"><button type="button" class="btn v" id="btEx">${svg("foguete")}Carregar dados de exemplo</button><p class="dica">Cria um cenário completo para conhecer o sistema (só com o ERP vazio).</p></div>` : ""}
+    ${S.admin ? `<div class="sep"><h4 style="color:var(--rosa)">Começar do zero</h4><p class="dica">Baixe o backup antes. Zerar apaga produtos, clientes, saldos, pedidos, cargas e movimentos (os ajustes desta tela ficam e a numeração volta para 1). Não tem volta.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><a class="btn v" href="/api/erp/backup" download>${svg("baixar")}Baixar backup (JSON)</a><button type="button" class="btn perigo" id="btZerar">${svg("lixo")}Zerar ERP</button></div></div>` : ""}
     <div class="sep"><h4>Próximas etapas</h4><p class="dica">Pré-nota fiscal (DANFE de conferência, sem valor fiscal) · Financeiro (receber/pagar e conciliação) · RH (funcionários) — sobre este mesmo núcleo.</p></div></section>`;
   $("#btEx")?.addEventListener("click", carregarExemplo);
+  $("#btZerar")?.addEventListener("click", () => {
+    A.modal({ titulo: "Zerar o ERP", icone: "atencao", cor: "var(--rosa)", largura: 460,
+      html: `<p>Isto apaga <b>todos</b> os dados do ERP no banco. Já baixou o backup?</p><label class="campo" style="margin-top:10px">Digite <b>ZERAR</b> para confirmar<input id="zConf" autocomplete="off"></label>`,
+      botoes: [{ rotulo: "Voltar" }, { rotulo: "Zerar agora", classe: "btn perigo", principal: true, acao: async () => {
+        if ($("#zConf").value.trim().toUpperCase() !== "ZERAR") { A.toast("Digite ZERAR."); return false; }
+        try { const r = await api("/zerar", { method: "POST", body: { confirmar: "ZERAR", manter_config: true } });
+          ok(`ERP zerado: ${Object.values(r.apagados).reduce((a2, b2) => a2 + b2, 0)} registros apagados.`); await carregar(); } catch (e) { falha(e); return false; }
+      } }] });
+  });
   $("#btCfg").onclick = async () => {
     const body = { empresa: $("#cfEmp").value, rotulos: Object.fromEntries($$("[data-rot]").map((x) => [x.dataset.rot, x.value])) };
     $$("[data-cfg]").forEach((x) => (body[x.dataset.cfg] = x.value.split("\n").map((s) => s.trim()).filter(Boolean)));
