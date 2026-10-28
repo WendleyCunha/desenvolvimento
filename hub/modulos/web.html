@@ -51,7 +51,10 @@ body{margin:0;display:flex;flex-direction:column;overflow:hidden}
 </div>
 <div class="favs" id="favs"></div>
 <div class="quadro">
+  <!-- sandbox SEM allow-top-navigation: o site não consegue "sair" do quadro e trocar o hub inteiro;
+       links com target=_blank abrem em nova aba (allow-popups-to-escape-sandbox) -->
   <iframe id="quadro" title="Site" referrerpolicy="no-referrer-when-downgrade"
+    sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads allow-modals allow-presentation allow-storage-access-by-user-activation"
     allow="clipboard-read; clipboard-write; fullscreen; geolocation; camera; microphone; autoplay"></iframe>
   <div class="inicio" id="telaInicio">
     <span id="orbe"></span>
@@ -106,8 +109,6 @@ function abrir(t) {
   gravar(K.ult, u);
   clearTimeout(timerDica);
   timerDica = setTimeout(() => { if (!/google\./.test(new URL(u).hostname)) $("#dicaBloq").classList.add("mostra"); }, 2500);
-  // com a extensão "liberar sites" instalada, quase tudo abre: a dica some quando o site carrega de verdade
-  $("#quadro").onload = () => { try { void $("#quadro").contentWindow.length; } catch (_) {} };
   renderFavs();
 }
 function fora() { if (atual) window.open(atual, "_blank", "noopener"); }
