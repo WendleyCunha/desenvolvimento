@@ -265,3 +265,93 @@ def zip_visita(*, raiz: str, anos: list[int], membros: dict[str, dict], linhas: 
             if partes_:
                 z.writestr(f"{raiz}/Contas/" + "/".join(partes_), dados)
     return buf.getvalue()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# LEITURA de cartões S-21 (os que o JW Hub exporta) — para importar o cadastro
+# Lê direto as "anotações" da página: funciona também nos cartões em que o PDF
+# perdeu o formulário (AcroForm) mas os valores continuam nos campos.
+# ══════════════════════════════════════════════════════════════════════════════
+def _campos_pagina(dados: bytes) -> dict:
+    import logging
+    logging.getLogger("pypdf").setLevel(logging.ERROR)
+    leitor = PdfReader(io.BytesIO(dados))
+    if not leitor.pages:
+        return {}
+    campos = {}
+    for a in leitor.pages[0].get("/Annots") or []:
+        a = a.get_object()
+        nome = a.get("/T")
+        if nome is None and a.get("/Parent"):
+            nome = a["/Parent"].get_object().get("/T")
+        if nome is None:
+            continue
+        tipo = a.get("/FT") or (a["/Parent"].get_object().get("/FT") if a.get("/Parent") else None)
+        if tipo == "/Btn":
+            v = a.get("/V") or a.get("/AS")
+            campos[str(nome)] = v is not None and str(v) not in ("/Off", "Off", "")
+        else:
+            campos[str(nome)] = str(a.get("/V") or "").strip()
+    return campos
+
+
+def ler_s21(dados: bytes) -> dict | None:
+    """{nome, data_nascimento, data_batismo, genero, classe, cargo[], regular, ano, meses[]} ou None."""
+    try:
+        c = _campos_pagina(dados)
+    except Exception:  # noqa: BLE001
+        return None
+    nome = " ".join(str(c.get("900_1_Text_SanSerif", "")).split())
+    if not nome:
+        return None
+    marcado = lambda k: bool(c.get(k))  # noqa: E731
+    cargo = [rot for rot, campo in CARGO_CAMPO.items() if marcado(campo)]
+    try:
+        ano = int(str(c.get("900_13_Text_C_SanSerif", "")).strip()[:4])
+    except ValueError:
+        ano = 0
+
+    def n(v):
+        try:
+            return int(float(str(v).replace(",", ".")))
+        except ValueError:
+            return 0
+
+    meses = []
+    if ano:
+        for i, ch in enumerate(R.meses_do_as(ano)):
+            k = 20 + i
+            part = marcado(f"901_{k}_CheckBox")
+            est, hrs = n(c.get(f"902_{k}_Text_C_SanSerif", "")), n(c.get(f"904_{k}_S21_Value", ""))
+            obs = str(c.get(f"905_{k}_Text_SanSerif", "") or "").strip()
+            if part or est or hrs:
+                meses.append({"chave": ch, "participou": part, "estudos": est, "horas": hrs,
+                              "auxiliar": marcado(f"903_{k}_CheckBox"), "observacoes": obs})
+    total = R.normalizar(nome)
+    eh_total = any(total.startswith(x) for x in ("publicadores", "pioneiros regulares", "pioneiros auxiliares", "consolidado"))
+    return {"nome": nome, "data_nascimento": str(c.get("900_2_Text_SanSerif", "")).strip(),
+            "data_batismo": str(c.get("900_5_Text_SanSerif", "")).strip(),
+            "genero": "Masculino" if marcado("900_3_CheckBox") else "Feminino" if marcado("900_4_CheckBox") else "",
+            "classe": "Outras ovelhas" if marcado("900_6_CheckBox") else "Ungido" if marcado("900_7_CheckBox") else "",
+            "cargo": cargo, "regular": "Pioneiro regular" in cargo, "ano": ano, "meses": meses, "total": eh_total}
+
+
+def ler_arquivos(arquivos: list[tuple[str, bytes]]) -> list[dict]:
+    """Aceita PDFs soltos e ZIPs (com pastas). Devolve um item por cartão lido."""
+    saida = []
+    for nome, dados in arquivos:
+        if nome.lower().endswith(".zip") or dados[:2] == b"PK":
+            try:
+                z = zipfile.ZipFile(io.BytesIO(dados))
+            except zipfile.BadZipFile:
+                continue
+            for info in z.infolist():
+                if info.filename.lower().endswith(".pdf") and info.file_size < 15 * 1024 * 1024:
+                    saida.extend(ler_arquivos([(info.filename, z.read(info))]))
+        elif nome.lower().endswith(".pdf") or dados[:4] == b"%PDF":
+            lido = ler_s21(dados)
+            if lido:
+                caminho = nome.replace("\\", "/")
+                pasta = caminho.split("/")[-2] if "/" in caminho else ""
+                saida.append({**lido, "arquivo": caminho, "pasta": pasta})
+    return saida

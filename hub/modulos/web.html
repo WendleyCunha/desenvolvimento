@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Web</title>
+<meta name="hub-icone" content="globo">
+<meta name="hub-cor" content="#22d3ee">
+<meta name="hub-grupo" content="Ferramentas">
+<meta name="hub-ordem" content="90">
+<meta name="hub-descricao" content="Digite um endereço (ex.: google.com.br) e abra o site aqui dentro do portal.">
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/static/aurora.css?v=3">
+<!--
+ web.html — navegador simples dentro do hub.
+ Abre qualquer endereço num quadro (iframe). Sites que proíbem ser abertos
+ dentro de outra página (bancos, Gmail, WhatsApp Web, YouTube…) mostram
+ "recusou a conexão" — isso é proteção do próprio site; use ↗ para abrir
+ numa aba do navegador. O Google abre aqui pelo endereço próprio (?igu=1).
+ Favoritos e histórico ficam só neste navegador (localStorage).
+-->
+<style>
+html,body{height:100%}
+body{margin:0;display:flex;flex-direction:column;overflow:hidden}
+.barra{position:relative;z-index:2;display:flex;align-items:center;gap:8px;padding:10px 12px;margin:10px 10px 0;border-radius:18px}
+.barra form{flex:1;display:flex;gap:8px;min-width:0}
+.barra .entrada{flex:1;min-width:0;padding:10px 14px;border-radius:12px;font-size:.92rem}
+.favs{position:relative;z-index:2;display:flex;gap:6px;flex-wrap:wrap;padding:8px 14px 0}
+.favs .chip{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.favs .chip .x{margin-left:4px;opacity:.5}
+.favs .chip .x:hover{opacity:1}
+.quadro{position:relative;z-index:1;flex:1;margin:10px;border-radius:18px;overflow:hidden;border:1px solid var(--vidro-borda);background:#fff}
+.quadro iframe{width:100%;height:100%;border:0;display:block;background:#fff}
+.inicio{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;text-align:center;background:var(--noite);color:var(--txt)}
+.inicio h2{margin:0;font:700 1.4rem var(--titulo)}
+.inicio p{margin:0;color:var(--txt2);max-width:560px;line-height:1.6;font-size:.88rem}
+.dica-bloq{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:3;display:none;align-items:center;gap:10px;padding:9px 12px 9px 14px;border-radius:14px;font-size:.8rem;max-width:calc(100% - 28px)}
+.dica-bloq.mostra{display:flex}
+</style>
+</head>
+<body>
+<div class="barra vidro">
+  <button type="button" class="btn-ic" id="btInicio" title="Página inicial"></button>
+  <form id="form" autocomplete="off">
+    <input class="entrada" id="url" placeholder="Digite um endereço (google.com.br) ou o que quer pesquisar" spellcheck="false" autofocus>
+    <button type="submit" class="btn">Abrir</button>
+  </form>
+  <button type="button" class="btn-ic" id="btRecarregar" title="Recarregar"></button>
+  <button type="button" class="btn-ic" id="btFav" title="Guardar nos favoritos"></button>
+  <button type="button" class="btn-ic" id="btFora" title="Abrir numa aba do navegador"></button>
+</div>
+<div class="favs" id="favs"></div>
+<div class="quadro">
+  <iframe id="quadro" title="Site" referrerpolicy="no-referrer-when-downgrade"
+    allow="clipboard-read; clipboard-write; fullscreen; geolocation; camera; microphone; autoplay"></iframe>
+  <div class="inicio" id="telaInicio">
+    <span id="orbe"></span>
+    <h2>Abra um site aqui dentro</h2>
+    <p>Digite o endereço (por exemplo <b>google.com.br</b>) ou o que quer pesquisar e aperte Enter. Alguns sites não permitem ser abertos dentro de outra página (bancos, Gmail, WhatsApp Web, YouTube…) — nesses, use o botão ↗ para abrir numa aba do navegador.</p>
+  </div>
+  <div class="dica-bloq vidro" id="dicaBloq"><span>Apareceu “recusou a conexão”? Esse site não deixa abrir aqui dentro.</span><button type="button" class="btn p" id="btFora2">Abrir em nova aba ↗</button><button type="button" class="btn-ic p" id="fechaDica" title="Fechar"></button></div>
+</div>
+
+<script src="/static/aurora.js?v=3"></script>
+<script>
+(() => {
+"use strict";
+const A = Aurora, svg = A.svg, esc = A.esc, $ = (s) => document.querySelector(s);
+A.fundo();
+$("#orbe").outerHTML = A.orbe("globo", "#22d3ee");
+$("#btInicio").innerHTML = svg("casa"); $("#btRecarregar").innerHTML = svg("repetir");
+$("#btFav").innerHTML = svg("estrela"); $("#btFora").innerHTML = svg("maximizar"); $("#fechaDica").innerHTML = svg("fechar");
+const K = { favs: "wd.web.favs", ult: "wd.web.ultimo" };
+const ler = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch (_) { return d; } };
+const gravar = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} };
+let atual = "";
+
+/* Endereço digitado → URL. Sem ponto = pesquisa no Google. */
+function normalizar(t) {
+  t = String(t || "").trim();
+  if (!t) return "";
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(t)) return t;
+  if (/^(localhost|[\w-]+(\.[\w-]+)+)(:\d+)?(\/.*)?$/i.test(t) && !/\s/.test(t)) return "https://" + t;
+  return "https://www.google.com/search?igu=1&q=" + encodeURIComponent(t);
+}
+/* O Google só aceita abrir dentro de outra página no endereço com igu=1 */
+function paraQuadro(u) {
+  try {
+    const x = new URL(u);
+    if (/(^|\.)google\.[a-z.]+$/i.test(x.hostname) && (x.pathname === "/" || x.pathname === "" || x.pathname === "/webhp")) return `https://www.google.com/webhp?igu=1&hl=pt-BR`;
+    if (/(^|\.)google\.[a-z.]+$/i.test(x.hostname) && x.pathname === "/search" && !x.searchParams.has("igu")) { x.searchParams.set("igu", "1"); return x.toString(); }
+  } catch (_) {}
+  return u;
+}
+let timerDica;
+function abrir(t) {
+  const u = normalizar(t);
+  if (!u) return;
+  atual = u;
+  $("#url").value = u.startsWith("https://www.google.com/search?igu=1&q=") ? decodeURIComponent(u.split("&q=")[1].replace(/\+/g, " ")) : u;
+  $("#telaInicio").style.display = "none";
+  $("#dicaBloq").classList.remove("mostra");
+  $("#quadro").src = paraQuadro(u);
+  gravar(K.ult, u);
+  clearTimeout(timerDica);
+  timerDica = setTimeout(() => { if (!/google\./.test(new URL(u).hostname)) $("#dicaBloq").classList.add("mostra"); }, 2500);
+  renderFavs();
+}
+function fora() { if (atual) window.open(atual, "_blank", "noopener"); }
+function renderFavs() {
+  const favs = ler(K.favs, [{ t: "Google", u: "https://www.google.com.br" }]);
+  $("#btFav").style.color = favs.some((f) => f.u === atual) ? "var(--ouro2)" : "";
+  $("#favs").innerHTML = favs.map((f, i) => `<button type="button" class="chip${f.u === atual ? " ativo" : ""}" data-u="${esc(f.u)}" title="${esc(f.u)}">${esc(f.t)}<span class="x" data-x="${i}" title="Tirar dos favoritos">×</span></button>`).join("");
+  $("#favs").querySelectorAll("[data-u]").forEach((b) => (b.onclick = (e) => { if (e.target.dataset.x !== undefined) { const l = ler(K.favs, []); l.splice(+e.target.dataset.x, 1); gravar(K.favs, l); renderFavs(); return; } abrir(b.dataset.u); }));
+}
+$("#form").onsubmit = (e) => { e.preventDefault(); abrir($("#url").value); };
+$("#btRecarregar").onclick = () => { if (atual) { $("#quadro").src = "about:blank"; setTimeout(() => ($("#quadro").src = paraQuadro(atual)), 50); } };
+$("#btFora").onclick = fora; $("#btFora2").onclick = fora;
+$("#fechaDica").onclick = () => $("#dicaBloq").classList.remove("mostra");
+$("#btInicio").onclick = () => { atual = ""; $("#quadro").src = "about:blank"; $("#telaInicio").style.display = ""; $("#url").value = ""; $("#dicaBloq").classList.remove("mostra"); renderFavs(); $("#url").focus(); };
+$("#btFav").onclick = () => {
+  if (!atual) { A.toast("Abra um site primeiro."); return; }
+  const l = ler(K.favs, [{ t: "Google", u: "https://www.google.com.br" }]);
+  const i = l.findIndex((f) => f.u === atual);
+  if (i >= 0) l.splice(i, 1); else { let t; try { t = new URL(atual).hostname.replace(/^www\./, ""); } catch (_) { t = atual; } l.push({ t, u: atual }); }
+  gravar(K.favs, l); renderFavs();
+};
+renderFavs();
+const q = new URLSearchParams(location.search).get("url");
+if (q) abrir(q);
+})();
+</script>
+</body>
+</html>

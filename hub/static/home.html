@@ -477,6 +477,9 @@ kbd{font:600 .64rem var(--sans);color:var(--txt3);border:1px solid var(--vidro-b
         <button class="btn-ic" id="btnNovaAba" title="Abrir em nova aba do navegador" aria-label="Abrir em nova aba">
           <svg viewBox="0 0 24 24" class="i"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>
         </button>
+        <button class="btn-ic" id="btnTelaCheia" title="Tela cheia (F11)" aria-label="Tela cheia">
+          <svg viewBox="0 0 24 24" class="i"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+        </button>
         <button class="btn-ic engrenagem" id="btnConfig" title="Configurações — aparência, usuários e permissões" aria-label="Configurações">
           <svg viewBox="0 0 24 24" class="i"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
         </button>
@@ -949,6 +952,17 @@ kbd{font:600 .64rem var(--sans);color:var(--txt3);border:1px solid var(--vidro-b
   el.btnRecarregar.onclick = recarregar;
   el.btnNovaAba.onclick = () => { const i = estado.porId.get(estado.ativa); if (i) window.open(i.url, "_blank", "noopener"); };
   $("#btnConfig").onclick = () => abrir(ITEM_CONFIG.id);
+  /* Tela cheia — o mesmo que apertar F11, num botão */
+  const ICO_CHEIA = '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>', ICO_SAIR = '<path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/>';
+  const telaCheia = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+  $("#btnTelaCheia").onclick = async () => {
+    try {
+      if (telaCheia()) await (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+      else await (document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen).call(document.documentElement);
+    } catch (_) { avisar("Seu navegador não liberou a tela cheia — use F11."); }
+  };
+  const marcarCheia = () => { const b = $("#btnTelaCheia"); b.querySelector("svg").innerHTML = telaCheia() ? ICO_SAIR : ICO_CHEIA; b.title = telaCheia() ? "Sair da tela cheia (Esc)" : "Tela cheia (F11)"; };
+  document.addEventListener("fullscreenchange", marcarCheia); document.addEventListener("webkitfullscreenchange", marcarCheia);
   $("#btnSair").onclick = async () => { try { await fetch("/api/auth/sair", { method: "POST", credentials: "same-origin" }); } catch (_) {} location.href = "/login"; };
 
   document.addEventListener("keydown", (e) => {

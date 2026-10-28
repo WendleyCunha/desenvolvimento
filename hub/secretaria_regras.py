@@ -27,6 +27,11 @@ ATIVO / INATIVO (definição do S-1/S-10):
   • ativo no mês M  = participou em pelo menos 1 dos 6 meses até M (M-5…M);
   • ficou inativo em M = participou em M-6 e em nenhum de M-5…M;
   • reativado em M  = participou em M, estava inativo em M-1.
+  • INATIVO MANUAL: o secretário pode marcar "inativo desde" o mês X (campo
+    inativo_desde do membro). A partir de X, a participação ANTERIOR a X deixa
+    de contar — a pessoa fica inativa até voltar a participar (aí é reativada).
+
+PIONEIRO REGULAR: meta anual de horas (padrão 600) — totais_ano() diz se atingiu.
 """
 from __future__ import annotations
 
@@ -352,11 +357,24 @@ def ativo_em(part: set[str], ch: str) -> bool:
     return any(somar(ch, -i) in part for i in range(JANELA_ATIVO))
 
 
+def inativo_desde(m: dict) -> str | None:
+    ch = m.get("inativo_desde")
+    return ch if chave_valida(ch) else None
+
+
+def ativo(membro: dict, part: set[str], ch: str) -> bool:
+    """Janela de 6 meses — ignorando o que veio antes do 'inativo desde' manual."""
+    marco = inativo_desde(membro)
+    if marco and distancia(marco, ch) >= 0:
+        return any(somar(ch, -i) in part and distancia(marco, somar(ch, -i)) >= 0 for i in range(JANELA_ATIVO))
+    return ativo_em(part, ch)
+
+
 def situacao(membro: dict, part: set[str], ch: str) -> str:
     """ativo · inativo · sem_relatorio · fora (ainda não chegou / já saiu)."""
     if not no_quadro(membro, ch):
         return "fora"
-    if ativo_em(part, ch):
+    if ativo(membro, part, ch):
         return "ativo"
     if any(distancia(c, ch) > 0 for c in part):
         return "inativo"
@@ -369,8 +387,8 @@ def eventos(membro: dict, part: set[str], meses: list[str]) -> list[dict]:
     for ch in meses:
         if not no_quadro(membro, ch):
             continue
-        antes = ativo_em(part, somar(ch, -1))
-        agora = ativo_em(part, ch)
+        antes = ativo(membro, part, somar(ch, -1))
+        agora = ativo(membro, part, ch)
         teve_antes = any(distancia(c, ch) > 0 for c in part)
         if antes and not agora:
             saida.append({"chave": ch, "tipo": "inativou"})
@@ -504,4 +522,28 @@ def cartao_total(categoria: str, as_: int, linhas: list[dict]) -> list[dict]:
                       "estudos": sum(ln["estudos"] for ln in lns),
                       "horas": sum(ln["horas"] for ln in lns) if categoria != PUB else 0,
                       "auxiliar": False, "observacoes": str(len(lns)), "relatorios": len(lns)})
+    return saida
+
+
+def totais_ano(membro: dict, membro_id: str, as_: int, linhas: list[dict], meta: int = 600, ate: str | None = None) -> dict:
+    """Somas do ano de serviço (estudos e horas) e a meta do pioneiro regular.
+    `ate` = último mês já fechado/em curso, para dizer quanto falta no ano corrente."""
+    cart = cartao(membro_id, as_, linhas)
+    horas = sum(ln.get("horas", 0) for ln in cart if ln.get("entregou"))
+    horas_todas = sum(ln.get("horas_brutas", ln.get("horas", 0)) for ln in cart if ln.get("entregou"))
+    estudos = sum(ln.get("estudos", 0) for ln in cart if ln.get("entregou"))
+    meses_reg = [ln["chave"] for ln in cart if ln.get("entregou") and ln.get("categoria") == REG]
+    saida = {"ano_servico": as_, "horas": horas, "estudos": estudos, "horas_todas": horas_todas,
+             "entregues": sum(1 for ln in cart if ln.get("entregou")),
+             "participou": sum(1 for ln in cart if ln.get("entregou") and ln.get("participou")),
+             "regular": bool(meses_reg) or eh_regular(membro)}
+    if saida["regular"]:
+        meses = meses_do_as(as_)
+        restantes = [c for c in meses if ate and distancia(ate, c) > 0]
+        horas_reg = sum(ln.get("horas", 0) for ln in cart if ln.get("entregou") and ln.get("categoria") == REG)
+        falta = max(meta - horas_reg, 0)
+        saida.update(meta=meta, horas_regular=horas_reg, falta=falta, meses_restantes=len(restantes),
+                     encerrado=not restantes, atingiu=horas_reg >= meta,
+                     ritmo_necessario=round(falta / len(restantes), 1) if restantes and falta else 0,
+                     media_mes=round(horas_reg / len(meses_reg), 1) if meses_reg else 0)
     return saida

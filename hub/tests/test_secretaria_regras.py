@@ -140,3 +140,25 @@ def test_cartao_s21():
     assert not c[1]["entregou"]
     t = R.cartao_total(R.PUB, 2027, linhas)
     assert t[0]["observacoes"] == "1" and t[0]["horas"] == 0
+
+
+def test_inativo_manual():
+    m = {"nome_oficial": "X", "inativo_desde": "2026-05"}
+    part = {"2026-03", "2026-04"}
+    assert R.situacao(m, part, "2026-04") == "ativo"
+    assert R.situacao(m, part, "2026-05") == "inativo"          # marcado, ignora mar/abr
+    assert R.situacao({"nome_oficial": "X"}, part, "2026-05") == "ativo"   # sem marca seguiria ativo
+    ev = R.eventos(m, part | {"2026-08"}, [R.somar("2026-04", i) for i in range(6)])
+    assert {"chave": "2026-05", "tipo": "inativou"} in ev and {"chave": "2026-08", "tipo": "reativou"} in ev
+    assert R.situacao(m, part | {"2026-08"}, "2026-09") == "ativo"
+
+
+def test_meta_regular():
+    membros = {"Ana Reg": {"nome_oficial": "Ana Reg", "categoria": R.REG}}
+    rels = [{"id": str(i), "nome": "Ana Reg", "mes_chave": c, "horas": 52, "estudos_biblicos": 1}
+            for i, c in enumerate(R.meses_do_as(2026))]
+    linhas = R.preparar(rels, membros)
+    t = R.totais_ano(membros["Ana Reg"], "Ana Reg", 2026, linhas, meta=600, ate="2026-08")
+    assert t["horas"] == 624 and t["estudos"] == 12 and t["atingiu"] and t["encerrado"]
+    t2 = R.totais_ano(membros["Ana Reg"], "Ana Reg", 2026, linhas[:3], meta=600, ate="2025-11")
+    assert not t2["atingiu"] and t2["falta"] == 600 - 156 and t2["meses_restantes"] == 9

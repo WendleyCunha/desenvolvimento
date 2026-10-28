@@ -49,7 +49,7 @@ TIPOS_REUNIAO = {"meio": "Reunião do Meio de Semana", "fim": "Reunião do Fim d
 CAMPOS_SENSIVEIS = ["data_nascimento", "data_batismo", "telefone_emergencia"]
 CAMPOS_MEMBRO = ["nome_oficial", "categoria", "genero", "classe", "cargo", "status", "grupo", "data_nascimento",
                  "data_batismo", "telefone_emergencia", "surdo", "cego", "preso", "saiu_em", "saiu_motivo",
-                 "inicio_chave", "mes_inicio", "observacao"]
+                 "inicio_chave", "mes_inicio", "observacao", "inativo_desde"]
 GENEROS = ["", "Masculino", "Feminino"]
 CLASSES = ["", "Outras ovelhas", "Ungido"]
 CARGOS = ["Ancião", "Servo ministerial", "Pioneiro regular", "Pioneiro especial", "Missionário em campo"]
@@ -69,7 +69,7 @@ ITS_PADRAO = [
     {"titulo": "Registros de serviço de campo", "ref": "1:19.6; 3:15; 17:13-15"},
 ]
 CONFIG_PADRAO = {"limite_aux": R.LIMITE_AUX_PADRAO, "corte_dia": R.CORTE_DIA_PADRAO, "grupos": [], "pastas": [],
-                 "dia_meio": -1, "dia_fim": -1,
+                 "dia_meio": -1, "dia_fim": -1, "meta_regular": 600,
                  "its": ITS_PADRAO, "territorios_total": 0, "territorios_nao_trabalhados": 0, "visita_ultima": ""}
 
 
@@ -396,7 +396,10 @@ def historico_membro(mid: str, request: Request):
     atual = _mes_atual()
     anos = sorted({R.ano_servico(ln["chave"]) for ln in meus if ln["chave"]} | {R.ano_servico(atual)}, reverse=True)
     ev = R.eventos(membros[mid], part, [R.somar(atual, -i) for i in range(36, -1, -1)])
-    return _json({"membro": _membro_saida(mid, membros[mid], p, part, atual), "relatorios": meus, "anos": anos, "eventos": ev})
+    meta = BASE.config().get("meta_regular", 600)
+    totais = [R.totais_ano(membros[mid], mid, a, linhas, meta, atual) for a in anos]
+    return _json({"membro": _membro_saida(mid, membros[mid], p, part, atual), "relatorios": meus, "anos": anos,
+                  "eventos": ev, "totais": totais})
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -565,7 +568,7 @@ def _limpar_membro(c: dict, p: dict) -> dict:
     for campo in ("surdo", "cego", "preso"):
         if campo in c:
             d[campo] = bool(c[campo])
-    for campo in ("saiu_em", "inicio_chave"):
+    for campo in ("saiu_em", "inicio_chave", "inativo_desde"):
         if campo in c:
             d[campo] = c[campo] if R.chave_valida(c[campo]) else ""
     for campo in CAMPOS_SENSIVEIS:
@@ -575,8 +578,8 @@ def _limpar_membro(c: dict, p: dict) -> dict:
             d[campo] = str(c[campo] or "")[:40]
     if d.get("categoria") == R.REG and "Pioneiro regular" not in d.get("cargo", ["Pioneiro regular"]):
         d.setdefault("cargo", []).append("Pioneiro regular")
-    if "saiu_em" in d:
-        d["status"] = "Inativo" if d["saiu_em"] else "Ativo"
+    if "saiu_em" in d or "inativo_desde" in d:
+        d["status"] = "Inativo" if (d.get("saiu_em") or d.get("inativo_desde")) else "Ativo"
     return d
 
 
@@ -733,7 +736,16 @@ def anual(request: Request, ano: int = 0):
     atual = _mes_atual()
     as_ = ano or R.ano_servico(R.somar(atual, -1))
     ate = min(R.meses_do_as(as_)[-1], atual)
-    s = R.s10(as_, BASE.linhas(), BASE.membros or {}, _assist_ano(as_), BASE.config(), ate=ate)
+    linhas, membros = BASE.linhas(), BASE.membros or {}
+    s = R.s10(as_, linhas, membros, _assist_ano(as_), BASE.config(), ate=ate)
+    meta = BASE.config().get("meta_regular", 600)
+    regs = []
+    for mid, m in membros.items():
+        t = R.totais_ano(m, mid, as_, linhas, meta, atual)
+        if t.get("regular") and (t["horas_regular"] or R.eh_regular(m)) and R.no_quadro(m, ate):
+            regs.append({"membro_id": mid, "nome": m.get("nome_oficial") or mid, **t})
+    s["regulares"] = sorted(regs, key=lambda x: R.normalizar(x["nome"]))
+    s["meta_regular"] = meta
     return _json(s)
 
 
@@ -750,6 +762,8 @@ async def salvar_config(request: Request):
         novo["limite_aux"] = _int(c["limite_aux"], 1, 100)
     if "corte_dia" in c:
         novo["corte_dia"] = _int(c["corte_dia"], 1, 28)
+    if "meta_regular" in c:
+        novo["meta_regular"] = _int(c["meta_regular"], 1, 2000)
     if "grupos" in c:
         novo["grupos"] = [{"id": re.sub(r"[^a-z0-9-]", "", str(g.get("id") or R.normalizar(g.get("nome", "")).replace(" ", "-")))[:40] or f"g{i}",
                            "nome": str(g.get("nome", ""))[:60], "dirigente": str(g.get("dirigente", ""))[:80]}
@@ -861,3 +875,136 @@ async def zip_visita(request: Request):
         BASE.salvar_config({"visita_ultima": datetime.now(R.FUSO).date().isoformat()})
     return Response(dados, media_type="application/zip",
                     headers={"Content-Disposition": f'attachment; filename="{PDF.nome_arquivo(raiz)}.zip"', "Cache-Control": "no-store"})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# IMPORTAR CARTÕES S-21 (ZIP ou PDFs do JW Hub) → cadastro dos membros
+# ══════════════════════════════════════════════════════════════════════════════
+CAMPOS_IMPORTAVEIS = ["data_nascimento", "data_batismo", "genero", "classe", "cargo", "categoria"]
+
+
+def _decodificar(arquivos) -> list[tuple[str, bytes]]:
+    saida, total = [], 0
+    for a in (arquivos or [])[:400]:
+        try:
+            dados = base64.b64decode(str(a.get("base64", "")), validate=False)
+        except (ValueError, TypeError):
+            continue
+        total += len(dados)
+        if total > 90 * 1024 * 1024:
+            raise HTTPException(413, "Arquivos grandes demais (máx. 90 MB por vez).")
+        saida.append((str(a.get("nome") or "arquivo"), dados))
+    return saida
+
+
+@router.post("/importar-s21/ler")
+async def importar_ler(request: Request):
+    _, p = _contexto(request)
+    _exigir(p, "membros", "importar cartões")
+    c = await request.json()
+    BASE.atualizar()
+    membros = BASE.membros or {}
+    nomes = list(membros.keys())
+    linhas = BASE.linhas()
+    ja = {(ln["membro_id"], ln["chave"]) for ln in R.validas(linhas)}
+    itens = []
+    for card in PDF.ler_arquivos(_decodificar(c.get("arquivos"))):
+        if card["total"]:
+            continue
+        mid = card["nome"] if card["nome"] in membros else R.achar_membro(card["nome"], nomes)
+        atual = membros.get(mid, {}) if mid else {}
+        novo = {"data_nascimento": card["data_nascimento"], "data_batismo": card["data_batismo"], "genero": card["genero"],
+                "classe": card["classe"], "cargo": sorted(set(card["cargo"]) | ({"Pioneiro regular"} if card["regular"] else set())),
+                "categoria": R.REG if card["regular"] else None}
+        difs = {}
+        for k, v in novo.items():
+            if v in (None, "", []):
+                continue
+            antes = R.cargos(atual) if k == "cargo" else atual.get(k, "")
+            if k == "cargo":
+                if not set(v) <= set(antes):
+                    difs[k] = [antes, sorted(set(antes) | set(v))]
+            elif k == "categoria":
+                if not R.eh_regular(atual):
+                    difs[k] = [atual.get("categoria", R.PUB), v]
+            elif str(antes or "") != str(v):
+                difs[k] = [antes, v]
+        for k in CAMPOS_SENSIVEIS:
+            if k in difs and _nivel(p, k) != "editar":
+                difs.pop(k)
+        faltando = [m for m in card["meses"] if not mid or (mid, m["chave"]) not in ja]
+        part_card = [m["chave"] for m in card["meses"] if m["participou"]]
+        sug_inativo = R.somar(max(part_card), 1) if part_card else (R.meses_do_as(card["ano"])[0] if card["ano"] else _mes_atual())
+        itens.append({"arquivo": card["arquivo"], "pasta": card["pasta"], "nome": card["nome"], "membro_id": mid,
+                      "confianca": "exato" if mid == card["nome"] else ("parecido" if mid else "novo"),
+                      "dados": {k: v for k, v in novo.items() if v not in (None, "", [])}, "diferencas": difs,
+                      "ano": card["ano"], "meses_faltando": faltando, "inativo_na_pasta": card["pasta"].lower().startswith("inativ"),
+                      "sugestao_inativo_desde": sug_inativo})
+    itens.sort(key=lambda x: ({"novo": 0, "parecido": 1, "exato": 2}[x["confianca"]], R.normalizar(x["nome"])))
+    return _json({"itens": itens, "lidos": len(itens)})
+
+
+@router.post("/importar-s21/aplicar")
+async def importar_aplicar(request: Request):
+    u, p = _contexto(request)
+    _exigir(p, "membros", "importar cartões")
+    c = await request.json()
+    BASE.atualizar()
+    completar = bool(c.get("completar_meses")) and p["acoes"].get("lancar")
+    feitos = {"atualizados": 0, "criados": 0, "meses": 0, "inativos": 0}
+    lote, ops = _db().batch(), 0
+    novos_rel = {}
+    for it in (c.get("itens") or [])[:400]:
+        mid = str(it.get("membro_id") or "")
+        dados = {k: v for k, v in (it.get("dados") or {}).items() if k in CAMPOS_IMPORTAVEIS}
+        for k in CAMPOS_SENSIVEIS:
+            if k in dados and _nivel(p, k) != "editar":
+                dados.pop(k)
+        if "cargo" in dados and mid in (BASE.membros or {}):
+            dados["cargo"] = sorted(set(R.cargos(BASE.membros[mid])) | set(dados["cargo"] or []))
+        limpos = _limpar_membro(dados, p) if dados else {}
+        if limpos.get("categoria") != R.REG:
+            limpos.pop("categoria", None)
+        if it.get("criar"):
+            nome = " ".join(str(it.get("nome", "")).split())
+            if len(nome) < 3 or "/" in nome or nome in (BASE.membros or {}):
+                continue
+            mid = nome
+            base = {"nome_oficial": nome, "categoria": R.PUB, "status": "Ativo", "cargo": [], "genero": "", "classe": "",
+                    "criado_por": u["login"], "criado_em": _agora(), "origem": "importacao-s21"}
+            BASE.gravar_membro(mid, {**base, **limpos}, merge=False)
+            feitos["criados"] += 1
+        elif mid in (BASE.membros or {}):
+            if limpos:
+                BASE.gravar_membro(mid, {**limpos, "atualizado_por": u["login"], "atualizado_em": _agora()})
+                feitos["atualizados"] += 1
+        else:
+            continue
+        if it.get("marcar_inativo") and R.chave_valida(it.get("inativo_desde")):
+            BASE.gravar_membro(mid, {"inativo_desde": it["inativo_desde"], "status": "Inativo"})
+            feitos["inativos"] += 1
+        if completar:
+            ja = {ln["chave"] for ln in R.validas(BASE.linhas()) if ln["membro_id"] == mid}
+            for m in it.get("meses") or []:
+                ch = m.get("chave")
+                if not R.chave_valida(ch) or ch in ja:
+                    continue
+                rid = _id_novo(mid, ch) + f"i{feitos['meses']:04d}"
+                d = _dados_rel(mid, ch, bool(m.get("participou")), _int(m.get("horas", 0), 0, 400),
+                               _int(m.get("estudos", 0), 0, 200), str(m.get("observacoes") or "")[:300], u, "importacao-s21")
+                if m.get("auxiliar"):
+                    d["categoria_mes"] = R.AUX
+                lote.set(_db().collection(COL_REL).document(rid), d)
+                novos_rel[rid] = d
+                ops += 1
+                feitos["meses"] += 1
+                if ops >= 400:
+                    lote.commit(timeout=banco.TIMEOUT)
+                    lote, ops = _db().batch(), 0
+    if ops:
+        lote.commit(timeout=banco.TIMEOUT)
+    with BASE.trava:
+        for rid, d in novos_rel.items():
+            BASE.rels[rid] = {**d, "id": rid}
+        BASE._linhas = None
+    return {"ok": True, **feitos}

@@ -20,13 +20,17 @@ html[data-claro] *{scrollbar-color:rgba(22,32,51,.22) transparent}
 html[data-claro] ::-webkit-scrollbar-thumb{background:rgba(22,32,51,.2)}
 
 /* ── fundo: aurora em aquarela (multiplica em vez de somar luz) ── */
-html[data-claro] .aur-fundo .bolha,html[data-claro] .fundo .aurora{mix-blend-mode:multiply;opacity:calc(var(--aur-op) * .62);filter:blur(100px)}
+/* [desempenho] antes: filter:blur(100px) + mix-blend-mode:multiply em manchas
+   ANIMADAS de tela inteira — o navegador redesenhava o desfoque a cada quadro
+   (era o que deixava o tema claro lento). As manchas já são gradientes suaves,
+   então basta a opacidade. */
+html[data-claro] .aur-fundo .bolha,html[data-claro] .fundo .aurora{opacity:calc(var(--aur-op) * .42)}
 html[data-claro] .aur-fundo .grade,html[data-claro] .grade-fundo{background-image:linear-gradient(rgba(22,32,51,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(22,32,51,.045) 1px,transparent 1px)}
-html[data-claro] .aur-fundo .causticas,html[data-claro] .fundo .causticas{mix-blend-mode:multiply;filter:invert(1) hue-rotate(180deg) saturate(.6);opacity:calc(var(--causticas) * .22)}
+html[data-claro] .aur-fundo .causticas,html[data-claro] .fundo .causticas{display:none}
 html[data-claro] .aur-fundo .raios,html[data-claro] .fundo .raios{mix-blend-mode:normal;opacity:calc(var(--causticas) * .9)}
 html[data-claro] .aur-fundo .prof,html[data-claro] .fundo .prof{background:radial-gradient(ellipse at 50% 0%,rgba(40,70,110,calc(var(--prof) * .12)),rgba(30,55,95,calc(var(--prof) * .35)) 75%)}
 html[data-claro] .aur-fundo .vinheta,html[data-claro] .fundo .vinheta{background:radial-gradient(ellipse at center,transparent 50%,rgba(60,85,130,.10) 100%)}
-html[data-claro] .aur-fundo .grao,html[data-claro] .fundo .grao{mix-blend-mode:multiply;opacity:calc(var(--grao) * .7)}
+html[data-claro] .aur-fundo .grao,html[data-claro] .fundo .grao{opacity:calc(var(--grao) * .45)}
 
 /* ── vidro branco leitoso ── */
 html[data-claro] .vidro{
