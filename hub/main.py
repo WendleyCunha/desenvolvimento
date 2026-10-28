@@ -73,8 +73,9 @@ import dados
 import passagens
 import erp
 import secretaria
+import tickets
 
-VERSAO = "3.3.0"
+VERSAO = "3.4.0"
 
 BASE = Path(__file__).resolve().parent
 PASTA_MODULOS = BASE / "modulos"
@@ -330,6 +331,7 @@ app.include_router(dados.router)
 app.include_router(passagens.router)
 app.include_router(erp.router)
 app.include_router(secretaria.router)
+app.include_router(tickets.router)
 _inicio = time.time()
 
 

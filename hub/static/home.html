@@ -989,7 +989,15 @@ kbd{font:600 .64rem var(--sans);color:var(--txt3);border:1px solid var(--vidro-b
     const d = e.data;
     if (!d || typeof d !== "object" || !d.hub) return;
     const origem = estado.abas.find((a) => a.iframe && a.iframe.contentWindow === e.source);
-    if (d.hub === "abrir" && d.id) abrir(String(d.id));
+    if (d.hub === "abrir" && d.id) {
+      abrir(String(d.id));
+      // {hash} → leva o módulo direto a um item (ex.: ERP abre um ticket específico no módulo Tickets)
+      const alvo = abaDe(String(d.id));
+      if (d.hash && alvo?.iframe) {
+        const h = "#" + String(d.hash).replace(/^#/, "");
+        try { if (alvo.carregado) alvo.iframe.contentWindow.location.hash = h; else alvo.iframe.src = urlDo(estado.porId.get(alvo.id)) + h; } catch (_) {}
+      }
+    }
     else if (d.hub === "titulo" && origem && d.texto) {
       origem.titulo = String(d.texto).slice(0, 60); renderAbas();
       if (estado.ativa === origem.id) document.title = origem.titulo + " · Wendley Desenvolvimento";

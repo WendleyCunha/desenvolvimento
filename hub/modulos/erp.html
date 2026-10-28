@@ -568,7 +568,9 @@ function abrirPedido(id) {
       </table></div>${vis("preco") ? `<div class="totais">${p.frete ? `<span>Frete ${brl(p.frete)}</span>` : ""}${p.desconto ? `<span>Desconto ${brl(p.desconto)}</span>` : ""}<span>Total <b>${brl(p.valor_total)}</b></span></div>` : ""}</div>
       ${(p.tentativas || []).length ? `<div class="sep"><h4>Tentativas de entrega</h4>${p.tentativas.map((t) => `<div class="tent"><span class="etq" style="--c:${RES[t.resultado][1]}">${t.n}ª · ${RES[t.resultado][0]}</span>
         <span>${dBR(t.data)} · carga ${t.carga} · ${esc(parc(t.motorista_id)?.nome || "—")}${t.motivo ? ` · <b>${esc(t.motivo)}</b>` : ""}${t.recebedor ? ` · recebido por ${esc(t.recebedor)}` : ""}${(t.avariados || []).length ? `<span class="sub">Avariado: ${resumoItens(t.avariados, 5)}</span>` : ""}${t.obs ? `<span class="sub">${esc(t.obs)}</span>` : ""}</span></div>`).join("")}</div>` : ""}
+      <div class="sep" id="tkPed"><h4>Atendimentos (Tickets)</h4><div class="sub">carregando…</div></div>
       <div class="sep"><h4>Histórico</h4><ul class="linha-tempo">${(p.historico || []).slice().reverse().map((h) => `<li>${esc(h.evento)}<small>${dhBR(h.em)} · @${esc(h.por || "")}</small></li>`).join("")}</ul></div>`,
+    aoAbrir: (cx) => ticketsDoPedido(p, cx),
     esquerda: [
       ...(pode("cancelar") && !fim ? [{ rotulo: "Cancelar pedido", classe: "btn perigo", icone: "lixo", acao: async () => {
         const motivo = await perguntar("Motivo do cancelamento"); if (motivo === null) return false;
@@ -583,6 +585,33 @@ function abrirPedido(id) {
       catch (e) { falha(e); return false; }
     } }))],
   });
+}
+/* ── ponte com o módulo Tickets: atendimentos do pedido + abrir ticket ── */
+async function ticketsDoPedido(p, cx) {
+  const box = $("#tkPed", cx); if (!box) return;
+  let d;
+  try { d = await A.api("/api/tickets/erp/pedido/" + encodeURIComponent(p.id)); }
+  catch (_) { box.remove(); return; }
+  if (!d.configurado || d.sem_acesso) { box.remove(); return; }
+  const SITU = { aberto: ["Aberto", "#fbbf24"], em_andamento: ["Em andamento", "#60a5fa"], aguardando: ["Aguardando", "#fb923c"], resolvido: ["Resolvido", "#34d399"], finalizado: ["Finalizado", "#a3a3a3"], cancelado: ["Cancelado", "#6b7183"] };
+  const abrirMod = (id) => { try { (window.top || window).postMessage({ hub: "abrir", id: "tickets", hash: "t=" + encodeURIComponent(id) }, location.origin); } catch (_) {} };
+  box.innerHTML = `<h4>Atendimentos (Tickets) · ${d.tickets.length}</h4>
+    ${d.tickets.length ? d.tickets.map((t) => `<div class="tent" style="cursor:pointer" data-tk="${esc(t.id)}"><span class="etq" style="--c:${(SITU[t.status] || ["", "#888"])[1]}">${(SITU[t.status] || [t.status])[0]}</span>
+      <span>${esc(t.assunto || "")}<span class="sub">${esc(t.motivo_pai || "")}${t.motivo_filho ? " › " + esc(t.motivo_filho) : ""} · ${esc(String(t.criado_em || "").slice(0, 16))}${t.atribuido_para ? " · com " + esc(t.atribuido_para) : " · sem dono"}</span></span></div>`).join("") : `<div class="sub">Nenhum atendimento ligado a este pedido ou cliente.</div>`}
+    ${d.pode_abrir ? `<button type="button" class="btn v p" id="tkAbrir" style="margin-top:8px">${svg("mais")} Abrir ticket deste pedido</button>` : ""}`;
+  box.querySelectorAll("[data-tk]").forEach((x) => (x.onclick = () => abrirMod(x.dataset.tk)));
+  const b = $("#tkAbrir", box);
+  if (b) b.onclick = () => {
+    A.modal({ titulo: `Abrir ticket · pedido #${p.numero}`, icone: "mensagem", largura: 520,
+      html: `<label class="campo">Assunto<input id="tkA" value="Pedido #${p.numero}"></label>
+        <label class="campo" style="margin-top:10px">O que aconteceu<textarea id="tkD" rows="4"></textarea></label>
+        <label class="chave" style="--c:var(--verde);margin-top:10px"><input type="checkbox" id="tkMeu" checked><span class="trilho"></span>Já deixar comigo</label>`,
+      botoes: [{ rotulo: "Cancelar" }, { rotulo: "Abrir ticket", classe: "btn", principal: true, acao: async (c2) => {
+        try { const r = await A.api(`/api/tickets/erp/pedido/${encodeURIComponent(p.id)}/abrir`, { method: "POST", body: { assunto: $("#tkA", c2).value, descricao: $("#tkD", c2).value, atribuir_a_mim: $("#tkMeu", c2).checked } });
+          ok("Ticket aberto."); ticketsDoPedido(p, cx); abrirMod(r.id); }
+        catch (e) { falha(e); return false; }
+      } }] });
+  };
 }
 function perguntar(rotulo, valor = "") {
   return new Promise((res) => {
@@ -935,6 +964,7 @@ function editarParceiro(id, tipo, depois) {
     titulo: id ? `${rotT} · ${p.nome}` : `Novo ${rotT.toLowerCase()}`, icone: { cliente: "usuario", fornecedor: "caixa", motorista: "usuarios", veiculo: "caminhao" }[tipo], cor: "#8b5cf6", largura: 700,
     html: `<fieldset ${so ? "disabled" : ""} style="border:0;padding:0;margin:0">
       <label class="campo">${tipo === "veiculo" ? "Identificação (placa · modelo)" : "Nome / razão social"} *<input id="cNome" value="${esc(p.nome || "")}" autofocus></label>
+      ${tipo === "cliente" ? `<label class="campo" style="margin-top:10px">Código do cliente <small style="font-weight:400;color:var(--txt3)">(o mesmo dos Tickets — liga o atendimento aos pedidos)</small><input id="cCod" value="${esc(p.codigo || "")}" placeholder="ex.: 7X83J8"></label>` : ""}
       ${tipo === "veiculo" ? `<div class="g2" style="margin-top:10px"><label class="campo">Placa<input id="cPlaca" value="${esc(p.placa || "")}"></label><label class="campo">Capacidade (volumes)<input type="number" id="cCap" min="0" value="${p.capacidade || 0}"></label></div>` :
       `${vis("contato") ? `<div class="g3" style="margin-top:10px" data-perm="campo:contato"><label class="campo">CPF / CNPJ<input id="cDoc" value="${esc(p.doc || "")}" ${edita("contato") ? "" : "disabled"}></label><label class="campo">Telefone<input id="cTel" value="${esc(p.telefone || "")}" ${edita("contato") ? "" : "disabled"}></label><label class="campo">E-mail<input id="cMail" value="${esc(p.email || "")}" ${edita("contato") ? "" : "disabled"}></label></div>` : ""}
       ${tipo !== "motorista" ? `<div class="sep"><h4>Endereço${tipo === "cliente" ? " de entrega" : ""}</h4>
@@ -946,6 +976,7 @@ function editarParceiro(id, tipo, depois) {
     botoes: so ? [{ rotulo: "Fechar" }] : [{ rotulo: "Cancelar" }, { rotulo: "Salvar", classe: "btn", icone: "check", principal: true, acao: async (cx) => {
       const v = (s) => $(s, cx)?.value ?? "";
       const body = { tipo, nome: v("#cNome"), ativo: $("#cAtivo", cx).checked, obs: v("#cObs") };
+      if ($("#cCod", cx)) body.codigo = v("#cCod").trim();
       if (tipo === "veiculo") Object.assign(body, { placa: v("#cPlaca"), capacidade: +v("#cCap") || 0 });
       else {
         if ($("#cDoc", cx) && edita("contato")) Object.assign(body, { doc: v("#cDoc"), telefone: v("#cTel"), email: v("#cMail") });

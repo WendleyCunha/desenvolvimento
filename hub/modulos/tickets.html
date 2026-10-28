@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Atendimento</title>
+<meta name="hub-icone" content="mensagem">
+<meta name="hub-cor" content="#e8b33d">
+<meta name="hub-grupo" content="Operação">
+<meta name="hub-ordem" content="2">
+<meta name="hub-descricao" content="Concierge do hub: caixa, atendimento, tabulação com SLA, pendências entre setores e os pedidos do ERP no mesmo lugar.">
+<script type="application/json" id="hub-permissoes">
+{
+  "acoes": {
+    "acessar": "Abrir o módulo (vê os próprios atendimentos)",
+    "atender": "Atender: responder, registrar, classificar e pedir a outro setor",
+    "abrir": "Abrir chamados",
+    "encerrar": "Encerrar (resolver, finalizar, cancelar)",
+    "transferir": "Transferir atendimentos e atribuir em lote",
+    "setor": "Ver todos os atendimentos do próprio setor",
+    "equipe": "Ver todos os atendimentos (equipe inteira)",
+    "gestao": "Painel de gestão",
+    "configurar": "Ajustes: motivos, setores, usuários, ERP"
+  },
+  "campos": {}
+}
+</script>
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/aurora.css?v=3">
+<!--
+═══════════════════════════════════════════════════════════════════════════════
+ tickets.html — ATENDIMENTO (cópia do Concierge) · módulo do hub
+───────────────────────────────────────────────────────────────────────────────
+ Meu dia · Caixa (filas + abas + lote) · Atendimento em 3 colunas
+ (conversa · tabulação/andamento/pendências · cliente + PEDIDOS DO ERP) ·
+ Abrir chamado por setor · Tickets internos (entre setores) · Gestão · Ajustes.
+ Diferença para o Concierge: aqui o ERP é o nosso — agendar/reagendar, cancelar
+ e gerar troca saem do próprio atendimento, e a baixa com avaria/recusa/ausência
+ no ERP abre o ticket sozinha.
+ API: /api/tickets (hub/tickets.py) · ERP: /api/erp (hub/erp.py)
+═══════════════════════════════════════════════════════════════════════════════
+-->
+<style>
+body{padding:14px;min-height:100vh}
+.app{position:relative;z-index:1;max-width:1600px;margin:0 auto}
+.topo{position:sticky;top:10px;z-index:40;display:flex;align-items:center;gap:10px;padding:8px 10px 8px 12px;border-radius:20px;flex-wrap:wrap}
+.topo.vidro{background:linear-gradient(135deg,rgba(14,17,26,.9),rgba(8,10,16,.85))}
+.marca{display:flex;align-items:center;gap:10px;margin-right:6px}
+.marca b{display:block;font:700 1.02rem var(--titulo)}
+.marca small{display:block;font-size:.56rem;letter-spacing:2.2px;text-transform:uppercase;font-weight:700;background:var(--grad-ouro);-webkit-background-clip:text;background-clip:text;color:transparent}
+.nav{display:flex;gap:2px;flex-wrap:wrap;flex:1}
+.nav button{padding:8px 12px;border-radius:11px;font-size:.8rem;font-weight:650;color:var(--txt2);position:relative}
+.nav button:hover{color:var(--txt);background:rgba(255,255,255,.05)}
+.nav button.ativo{color:var(--ouro2);background:rgba(var(--ouro-rgb),.12);box-shadow:inset 0 0 0 1px rgba(var(--ouro-rgb),.4)}
+.nav button em{font-style:normal;font-size:.62rem;font-weight:700;margin-left:5px;padding:1px 6px;border-radius:9px;background:var(--rosa);color:#1a0a0e}
+.busca-topo{display:flex;gap:6px}
+.busca-topo .entrada{width:190px;padding:8px 10px}
+.sync{display:inline-flex;align-items:center;gap:6px;font-size:.7rem;color:var(--txt3)}
+.sync i{width:7px;height:7px;border-radius:50%;background:var(--verde);box-shadow:0 0 8px var(--verde)}
+.sync.salvando i{background:var(--ouro)} .sync.erro i{background:var(--rosa)}
+main{margin-top:14px}
+.painel{border-radius:22px;padding:16px}
+.sec{display:flex;align-items:center;gap:8px;margin:16px 2px 10px;font-size:.64rem;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:var(--txt3)}
+.sec:first-child{margin-top:0}
+.sec::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,var(--vidro-borda),transparent)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.kpi{position:relative;padding:12px 14px;border-radius:15px;background:rgba(255,255,255,.035);border:1px solid var(--vidro-borda);--c:var(--azul);text-align:left;overflow:hidden}
+button.kpi{cursor:pointer;width:100%;font:inherit;color:inherit}
+button.kpi:hover{border-color:color-mix(in srgb,var(--c) 50%,transparent)}
+.kpi small{display:block;font-size:.6rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--txt3)}
+.kpi b{display:block;font:700 1.45rem/1.1 var(--titulo);margin-top:6px;color:var(--c)}
+.kpi span{display:block;font-size:.68rem;color:var(--txt3);margin-top:3px}
+.frase{font:600 1.05rem/1.5 var(--titulo);color:var(--txt2);margin:2px 0 14px;max-width:70ch}
+.frase b{color:var(--ouro2)}
+.vazio{display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;color:var(--txt3);font-size:.84rem;padding:30px 10px}
+.vazio b{color:var(--txt);font:600 1rem var(--titulo)}
+
+/* caixa */
+.caixa{display:grid;grid-template-columns:260px minmax(0,1fr);gap:14px;align-items:start}
+.filas{border-radius:20px;padding:12px;position:sticky;top:84px;max-height:calc(100vh - 100px);overflow:auto}
+.filas h4{margin:12px 6px 6px;font-size:.6rem;letter-spacing:1.4px;text-transform:uppercase;color:var(--txt3)}
+.filas h4:first-child{margin-top:2px}
+.filas button{display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:7px 9px;border-radius:10px;font-size:.8rem;color:var(--txt2)}
+.filas button:hover{background:rgba(255,255,255,.05);color:var(--txt)}
+.filas button.ativo{background:rgba(var(--ouro-rgb),.12);color:var(--ouro2)}
+.filas button i{width:8px;height:8px;border-radius:3px;background:var(--c,var(--txt3));flex:none}
+.filas button em{margin-left:auto;font-style:normal;font-size:.7rem;color:var(--txt3)}
+.abas-caixa{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
+.abas-caixa button{padding:7px 11px;border-radius:10px;font-size:.78rem;font-weight:650;color:var(--txt2);border:1px solid transparent}
+.abas-caixa button:hover{background:rgba(255,255,255,.05)}
+.abas-caixa button.ativo{color:var(--txt);border-color:var(--vidro-borda-forte);background:rgba(255,255,255,.06)}
+.abas-caixa button em{font-style:normal;color:var(--txt3);margin-left:4px;font-weight:600}
+.abas-caixa button.venc em{color:var(--rosa)}
+.barra{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0}
+.barra .dir{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.barra select.entrada{width:auto;padding:7px 10px}
+.tab{width:100%;border-collapse:collapse;font-size:.8rem}
+.tab th{font-size:.6rem;letter-spacing:1px;text-transform:uppercase;color:var(--txt3);text-align:left;padding:8px;border-bottom:1px solid var(--vidro-borda);white-space:nowrap}
+.tab td{padding:9px 8px;border-bottom:1px solid var(--vidro-borda);vertical-align:top}
+.tab tr.linha{cursor:pointer;transition:background .15s}
+.tab tr.linha:hover{background:rgba(255,255,255,.04)}
+.tab tr.linha.alerta td:first-child{box-shadow:inset 3px 0 0 var(--ciano)}
+.tab .ass b{display:block;font-weight:600;color:var(--txt)}
+.tab .ass small{color:var(--txt3);font-size:.7rem;line-height:1.45}
+.tab input[type=checkbox]{accent-color:var(--ouro);width:16px;height:16px}
+.mini{display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:7px;font-size:.64rem;font-weight:650;color:var(--txt2);background:rgba(255,255,255,.05);border:1px solid var(--vidro-borda);white-space:nowrap}
+.mini.c{color:var(--c);border-color:color-mix(in srgb,var(--c) 40%,transparent);background:color-mix(in srgb,var(--c) 12%,transparent)}
+.sla{font-weight:700;font-size:.74rem;white-space:nowrap}
+.sla.venc{color:var(--rosa)} .sla.hoje,.sla.warn{color:var(--ouro2)} .sla.ok{color:var(--verde)} .sla.cumprido{color:var(--txt3)} .sla.perdido{color:var(--rosa);opacity:.7}
+.pisca{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--ciano);box-shadow:0 0 10px var(--ciano);animation:aurRespira 1.2s infinite;margin-right:4px;vertical-align:middle}
+.paginas{display:flex;gap:6px;justify-content:center;margin-top:12px;align-items:center;font-size:.78rem;color:var(--txt3)}
+
+/* atendimento */
+.at-cab{border-radius:20px;padding:14px 16px;margin-bottom:12px}
+.at-cab h1{margin:0 0 8px;font:700 1.25rem/1.25 var(--titulo)}
+.at-cab .linha1{display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:.8rem;color:var(--txt2)}
+.at-cab .acoes{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.at{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr) minmax(0,1fr);gap:12px;align-items:start}
+.col{border-radius:20px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.col h3{margin:0;font:700 .92rem var(--titulo);display:flex;align-items:center;gap:8px}
+.col h3 small{margin-left:auto;font:500 .7rem var(--sans);color:var(--txt3)}
+.conversa{display:flex;flex-direction:column;gap:8px;max-height:56vh;overflow:auto;padding-right:4px}
+.msg{padding:9px 12px;border-radius:13px;font-size:.83rem;line-height:1.5;background:rgba(255,255,255,.04);border:1px solid var(--vidro-borda);white-space:pre-wrap;word-break:break-word}
+.msg .q{display:block;font-size:.68rem;color:var(--txt3);margin-bottom:3px;white-space:normal}
+.msg.cliente{border-color:rgba(96,165,250,.35);background:rgba(96,165,250,.07)}
+.msg.nota{border-color:rgba(var(--ouro-rgb),.3);background:rgba(var(--ouro-rgb),.06)}
+.msg.sistema{font-size:.74rem;color:var(--txt3);background:transparent;border-style:dashed;padding:6px 10px}
+.msg.pendencia{border-color:rgba(139,92,246,.35);background:rgba(139,92,246,.07)}
+.msg.contato{border-color:rgba(52,211,153,.3);background:rgba(52,211,153,.06)}
+.resp textarea{min-height:90px}
+.resp .tipos{display:flex;gap:4px;flex-wrap:wrap}
+.campo{margin:0}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ficha{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;font-size:.8rem}
+.ficha dt{color:var(--txt3);font-size:.66rem;letter-spacing:.8px;text-transform:uppercase;padding-top:2px}
+.ficha dd{margin:0;word-break:break-word}
+.ped{border-radius:14px;padding:10px 12px;background:rgba(255,255,255,.035);border:1px solid var(--vidro-borda);font-size:.8rem;--c:var(--azul)}
+.ped .t1{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.ped .t1 b{font:700 .9rem var(--titulo)}
+.ped ul{margin:6px 0 0;padding-left:16px;color:var(--txt2);font-size:.76rem}
+.ped .acoes{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.trava{padding:10px 12px;border-radius:12px;font-size:.8rem;background:rgba(251,113,133,.08);border:1px solid rgba(251,113,133,.35);color:#fecdd3}
+.aviso{font-size:.8rem;padding:10px 12px;border-radius:12px;line-height:1.5}
+.aviso.ouro{color:var(--ouro2);background:rgba(var(--ouro-rgb),.07);border:1px solid rgba(var(--ouro-rgb),.3)}
+.aviso.mal{color:#fecdd3;background:rgba(251,113,133,.08);border:1px solid rgba(251,113,133,.3)}
+.dica{font-size:.72rem;color:var(--txt3);line-height:1.5;margin:0}
+.pend-it{padding:8px 10px;border-radius:11px;font-size:.78rem;background:rgba(139,92,246,.06);border:1px solid rgba(139,92,246,.3)}
+.pend-it.ok{background:rgba(52,211,153,.05);border-color:rgba(52,211,153,.25)}
+
+/* abrir chamado */
+.setores{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
+.setor{display:flex;gap:12px;align-items:flex-start;text-align:left;padding:14px;border-radius:16px;background:rgba(255,255,255,.035);border:1px solid var(--vidro-borda);transition:.2s;--c:var(--ouro)}
+.setor:hover{border-color:color-mix(in srgb,var(--c) 50%,transparent);transform:translateY(-2px)}
+.setor .sig{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;font:700 .9rem var(--titulo);color:var(--c);background:color-mix(in srgb,var(--c) 14%,transparent);border:1px solid color-mix(in srgb,var(--c) 35%,transparent);flex:none}
+.setor b{display:block;font:700 .95rem var(--titulo)}
+.setor small{color:var(--txt3);font-size:.74rem}
+
+/* ajustes */
+.cartoes{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px}
+.cartao{border-radius:20px;padding:16px;background:rgba(255,255,255,.03);border:1px solid var(--vidro-borda);display:flex;flex-direction:column;gap:10px}
+.cartao h3{margin:0;font:700 .96rem var(--titulo);display:flex;gap:8px;align-items:center}
+.arvore{max-height:420px;overflow:auto;display:flex;flex-direction:column;gap:6px}
+.pai{border-radius:12px;border:1px solid var(--vidro-borda);padding:8px 10px}
+.pai>b{font-size:.85rem}
+.filho{display:grid;grid-template-columns:minmax(0,1fr) 60px minmax(0,1.6fr) auto;gap:6px;align-items:center;margin-top:5px}
+.filho input{padding:6px 8px;font-size:.78rem}
+.oculto{display:none!important}
+@media (max-width:1100px){.at{grid-template-columns:1fr 1fr}.at .col.cli{grid-column:1/-1}}
+@media (max-width:800px){.caixa,.at{grid-template-columns:1fr}.filas{position:relative;top:0;max-height:none}.topo{position:relative;top:0}.tab .so-largo{display:none}.busca-topo .entrada{width:130px}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topo vidro vidro-borda-viva">
+    <div class="marca"><span id="logo"></span><span><b>Atendimento</b><small>Concierge · hub</small></span></div>
+    <nav class="nav" id="nav"></nav>
+    <form class="busca-topo" id="fBusca"><input class="entrada" id="qTopo" placeholder="Nº, cliente, pedido…"><button class="btn-ic" type="submit" title="Buscar" id="btBusca"></button></form>
+    <span class="sync" id="sync"><i></i><span>…</span></span>
+  </header>
+  <main id="main"><div class="vazio"><b>Carregando…</b></div></main>
+</div>
+
+<script src="/static/aurora.js?v=3"></script>
+<script>
+(() => {
+"use strict";
+const A = Aurora, esc = A.esc, svg = A.svg, $ = (s, r = document) => r.querySelector(s);
+A.fundo();
+$("#logo").outerHTML = A.orbe("mensagem", "#e8b33d");
+$("#btBusca").innerHTML = svg("busca");
+document.querySelector('link[rel="icon"]').href = A.ATOMO_SVG;
+const API = "/api/tickets";
+const ST_INFO = { aberto: ["Aberto", "#fbbf24"], em_andamento: ["Em andamento", "#60a5fa"], aguardando: ["Aguardando cliente", "#fb923c"], resolvido: ["Resolvido", "#34d399"], finalizado: ["Finalizado", "#a8a29e"], cancelado: ["Cancelado", "#6b7183"] };
+const PRIO = { urgente: ["Urgente", "#fb7185"], alta: ["Alta", "#fb923c"], normal: ["Normal", "#34d399"], baixa: ["Baixa", "#94a3b8"] };
+const ERP_ST = { rascunho: ["Rascunho", "#94a3b8"], confirmado: ["Confirmado", "#60a5fa"], agendado: ["Agendado", "#8b5cf6"], em_carga: ["Em carga", "#22d3ee"], em_rota: ["Em rota", "#22d3ee"], reagendar: ["Reagendar", "#fb923c"], entregue: ["Entregue", "#34d399"], cancelado: ["Cancelado", "#6b7183"], recusado: ["Recusado", "#fb7185"] };
+const ABERTOS = ["aberto", "em_andamento", "aguardando"];
+const ls = { get(k, d) { try { return localStorage.getItem(k) ?? d; } catch (_) { return d; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (_) {} } };
+const S = { e: null, sec: ls.get("wd.tk.sec", "meudia"), aba: ls.get("wd.tk.aba", "meus"), fila: "", ord: ls.get("wd.tk.ord", "urgencia"),
+  q: "", pag: 0, sel: new Set(), atend: "", aberto: null, det: null, setorAbrir: "" };
+const pode = (a) => !!S.e?.perm?.acoes?.[a];
+const nomeU = (u) => S.e?.usuarios.find((x) => x.usuario === u)?.nome || u || "";
+const dh = (s) => { s = String(s || ""); return s.length >= 16 ? `${s.slice(8, 10)}/${s.slice(5, 7)} ${s.slice(11, 16)}` : s.length >= 10 ? `${s.slice(8, 10)}/${s.slice(5, 7)}/${s.slice(0, 4)}` : "—"; };
+const d10 = (s) => { s = String(s || ""); return s.length >= 10 ? `${s.slice(8, 10)}/${s.slice(5, 7)}/${s.slice(0, 4)}` : "—"; };
+const norm = (t) => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+const etq = (txt, cor) => `<span class="mini c" style="--c:${cor}">${esc(txt)}</span>`;
+const etqSt = (s) => etq((ST_INFO[s] || [s])[0], (ST_INFO[s] || ["", "#888"])[1]);
+const curto = (id) => String(id || "").split("#").pop().slice(0, 6).toUpperCase();
+function slaTxt(sla) {
+  if (!sla) return "";
+  if (sla.estado === "cumprido") return `<span class="sla cumprido">no prazo</span>`;
+  if (sla.estado === "perdido") return `<span class="sla perdido">fora do prazo</span>`;
+  if (sla.min == null) return "";
+  const m = Math.abs(sla.min), h = Math.floor(m / 60), txt = h >= 48 ? `${Math.floor(h / 24)}d ${h % 24}h` : h ? `${h}h${String(m % 60).padStart(2, "0")}` : `${m}min`;
+  return sla.min <= 0 ? `<span class="sla venc">vencido há ${txt}</span>` : `<span class="sla ${sla.estado}">vence em ${txt}</span>`;
+}
+function sync(estado, txt) { const el = $("#sync"); el.className = "sync " + (estado || ""); el.lastElementChild.textContent = txt; }
+async function chamar(url, op = {}, msg = "salvando…") {
+  sync("salvando", msg);
+  try { const r = await A.api(url.startsWith("/api/") ? url : API + url, op); sync("", "atualizado " + new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })); return r; }
+  catch (e) { sync("erro", "erro"); if (e.status === 401) { const w = window.top || window; w.location.href = "/login?volta=" + encodeURIComponent(w.location.pathname); } throw e; }
+}
+const falha = (e) => A.toast("⚠ " + esc(e.message), [], { cor: "var(--rosa)", duracao: 9000 });
+const ok = (t) => A.toast(t, [], { cor: "var(--verde)", duracao: 3500 });
+const tidUrl = (id) => "/ticket/" + encodeURIComponent(id);
+
+/* ══════ CARREGAR ══════ */
+async function carregar() {
+  try { S.e = await chamar("/estado", {}, "carregando…"); }
+  catch (e) {
+    $("#main").innerHTML = e.message === "sem_banco_tickets" ? `<div class="vazio">${A.orbe("atencao", "var(--rosa)")}<b>Banco não configurado</b>Falta FIRESTORE_CREDS no Render.</div>`
+      : `<div class="vazio">${A.orbe("atencao", "var(--rosa)")}<b>Não foi possível carregar</b>${esc(e.message)}</div>`;
+    return;
+  }
+  rota();
+}
+function rota() {
+  const h = decodeURIComponent(location.hash.replace(/^#/, ""));
+  if (h.startsWith("t=")) { S.sec = "caixa"; S.aberto = h.slice(2); }
+  render();
+}
+addEventListener("hashchange", rota);
+function ir(sec) { S.sec = sec; S.aberto = null; ls.set("wd.tk.sec", sec); if (location.hash) history.replaceState(null, "", location.pathname + location.search); render(); scrollTo(0, 0); }
+function abrirTicket(id) { S.aberto = id; history.replaceState(null, "", "#t=" + encodeURIComponent(id)); render(); scrollTo(0, 0); }
+
+/* ══════ NAV ══════ */
+function contagens() {
+  const ts = S.e.tickets, ab = ts.filter((t) => ABERTOS.includes(t.status));
+  return {
+    meus: ab.filter((t) => t.meu).length, equipe: ab.length, novos: ab.filter((t) => t.sem_dono).length,
+    hoje: ab.filter((t) => t.sla.estado === "hoje").length, venc: ab.filter((t) => t.sla.estado === "venc").length,
+    espera: ab.filter((t) => t.status === "aguardando").length, concl: ts.filter((t) => !ABERTOS.includes(t.status)).length, todos: ts.length,
+    alerta: ab.filter((t) => t.nao_visto).length,
+    internos: ab.filter((t) => (t.pendencias || []).length).length,
+  };
+}
+function nav() {
+  const c = contagens();
+  const itens = [["meudia", "Meu dia"], ["caixa", "Caixa", c.alerta], ["abrir", "Abrir chamado", 0, "abrir"], ["internos", "Tickets internos", c.internos],
+    ["gestao", "Gestão", 0, "gestao"], ["ajustes", "Ajustes", 0, "configurar"]];
+  $("#nav").innerHTML = itens.filter((i) => !i[3] || pode(i[3])).map((i) => `<button type="button" data-sec="${i[0]}" class="${S.sec === i[0] ? "ativo" : ""}">${i[1]}${i[2] ? `<em>${i[2]}</em>` : ""}</button>`).join("");
+  $("#nav").querySelectorAll("[data-sec]").forEach((b) => (b.onclick = () => ir(b.dataset.sec)));
+}
+$("#fBusca").onsubmit = (e) => { e.preventDefault(); S.q = $("#qTopo").value.trim(); S.aba = "todos"; S.fila = ""; S.pag = 0; ir("caixa"); };
+function render() {
+  if (!S.e) return;
+  nav();
+  const m = $("#main");
+  if (S.sec === "caixa" && S.aberto) return telaAtendimento(m, S.aberto);
+  ({ meudia: telaMeuDia, caixa: telaCaixa, abrir: telaAbrir, internos: telaInternos, gestao: telaGestao, ajustes: telaAjustes }[S.sec] || telaMeuDia)(m);
+}
+
+/* ══════ MEU DIA ══════ */
+const FRASES = ["Fazer acontecer é responder “estou verificando” em dois minutos em vez de nada em duas horas.",
+  "Ticket que volta é o primeiro atendimento que não resolveu.", "Quem promete data, cumpre data — o prazo da etapa é a palavra dada ao cliente."];
+function telaMeuDia(m) {
+  const e = S.e, me = e.eu, ts = e.tickets, c = contagens();
+  const hoje = new Date().toISOString().slice(0, 10), h = new Date().getHours();
+  const meus = ts.filter((t) => t.meu), meusAb = meus.filter((t) => ABERTOS.includes(t.status));
+  const concl30 = ts.filter((t) => !ABERTOS.includes(t.status) && t.meu);
+  const prox = ts.filter((t) => ABERTOS.includes(t.status) && t.sem_dono).sort((a, b) => (a.sla.min ?? 1e9) - (b.sla.min ?? 1e9))[0];
+  const k = (r, v, s, c2, acao) => `<button type="button" class="kpi" style="--c:${c2}" ${acao ? `data-ir="${acao}"` : ""}><small>${r}</small><b>${v}</b><span>${s}</span></button>`;
+  m.innerHTML = `<section class="painel vidro">
+    <p class="dica" style="text-transform:uppercase;letter-spacing:2px;font-weight:700">${new Date().toLocaleDateString("pt-BR", { weekday: "long" })}</p>
+    <h1 style="margin:2px 0 6px;font:700 1.6rem var(--titulo)">${h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite"}, ${esc(me.nome.split(" ")[0])}</h1>
+    <p class="frase">${FRASES[new Date().getDate() % FRASES.length]}</p>
+    <div class="sec">O que precisa de você agora</div>
+    ${meusAb.length ? `<div class="kpis">${k("Comigo agora", meusAb.length, "abertos no meu nome", "var(--azul)", "meus")}${k("Vencem hoje", meusAb.filter((t) => t.sla.estado === "hoje").length, "dos meus", "var(--ouro)", "hoje")}${k("Vencidos", meusAb.filter((t) => t.sla.estado === "venc").length, "dos meus", "var(--rosa)", "venc")}${k("Aguardando o cliente", meusAb.filter((t) => t.status === "aguardando").length, "dos meus", "var(--laranja)", "espera")}${k("Com interação nova", meusAb.filter((t) => t.nao_visto).length, "alguém mexeu", "var(--ciano)", "meus")}</div>`
+      : `<div class="aviso ouro">Sua fila está limpa. Nada aberto no seu nome agora.${prox && pode("atender") ? ` <a href="#" id="pegar">Pegar o próximo da equipe →</a>` : ""}</div>`}
+    <div class="sec">Seu mês</div>
+    <div class="kpis">${k("Resolvidos (30 dias)", concl30.length, "comparado com você mesmo", "var(--verde)")}${k("Abertos por mim", ts.filter((t) => t.aberto_por === me.usuario).length, "chamados que eu abri", "var(--violeta)")}</div>
+    <div class="sec">A área</div>
+    <div class="kpis">${k("Sem dono", c.novos, "chegaram e ninguém pegou", "var(--ouro)", "novos")}${k("Vencidos", c.venc, "na caixa toda", "var(--rosa)", "venc")}${k("Aguardando o cliente", c.espera, "", "var(--laranja)", "espera")}${k("Pendências entre setores", c.internos, "", "var(--violeta)")}</div>
+    ${e.banco === "hub" ? `<p class="dica" style="margin-top:14px">Rodando no banco do hub. Para usar os mesmos tickets do Streamlit (bancowendley), crie FIRESTORE_CREDS_TICKETS no Render.</p>` : ""}
+  </section>`;
+  m.querySelectorAll("[data-ir]").forEach((b) => (b.onclick = () => { S.aba = b.dataset.ir; S.fila = ""; S.q = ""; S.pag = 0; ls.set("wd.tk.aba", S.aba); ir("caixa"); }));
+  const pg = $("#pegar");
+  if (pg) pg.onclick = async (ev) => { ev.preventDefault(); try { await chamar(tidUrl(prox.id) + "/alterar", { method: "POST", body: { atribuir: me.usuario } }); await carregar(); abrirTicket(prox.id); } catch (er) { falha(er); } };
+}
+
+/* ══════ CAIXA ══════ */
+function filtrar() {
+  const ts = S.e.tickets, me = S.e.eu;
+  const porAba = { meus: (t) => t.meu && ABERTOS.includes(t.status), equipe: (t) => ABERTOS.includes(t.status), novos: (t) => ABERTOS.includes(t.status) && t.sem_dono,
+    hoje: (t) => ABERTOS.includes(t.status) && t.sla.estado === "hoje", venc: (t) => ABERTOS.includes(t.status) && t.sla.estado === "venc",
+    espera: (t) => t.status === "aguardando", concl: (t) => !ABERTOS.includes(t.status), todos: () => true, abertos_por_mim: (t) => t.aberto_por === me.usuario };
+  let l = ts.filter(porAba[S.aba] || porAba.equipe);
+  if (S.fila) {
+    const [tipo, val] = S.fila.split(":");
+    l = l.filter((t) => tipo === "dep" ? (t.departamento || "—") === val : tipo === "mot" ? (t.motivo_pai || "— sem motivo —") === val : tipo === "pend" ? (t.pendencias || []).includes(val)
+      : tipo === "erp" ? (t.origem || "").startsWith("erp") : tipo === "com" ? (val === "_ninguem" ? t.sem_dono : (t.atendentes || []).includes(val) || t.atribuido_para === val) : true);
+  }
+  if (S.q) { const q = norm(S.q); l = l.filter((t) => norm(`${t.id} ${curto(t.id)} ${t.assunto} ${t.cliente_nome} ${t.cliente_codigo} ${t.cliente_telefone} ${t.erp_pedido_numero || ""} ${t.motivo_pai} ${t.motivo_filho}`).includes(q)); }
+  const ordem = { urgencia: (a, b) => (a.sla.min ?? 1e12) - (b.sla.min ?? 1e12), prioridade: (a, b) => Object.keys(PRIO).indexOf(a.prioridade || "normal") - Object.keys(PRIO).indexOf(b.prioridade || "normal") || (a.sla.min ?? 1e12) - (b.sla.min ?? 1e12),
+    antigo: (a, b) => String(a.criado_em).localeCompare(String(b.criado_em)), recente: (a, b) => String(b.criado_em).localeCompare(String(a.criado_em)),
+    atendente: (a, b) => nomeU(a.atribuido_para).localeCompare(nomeU(b.atribuido_para)) };
+  return l.sort(ordem[S.ord] || ordem.urgencia);
+}
+function telaCaixa(m) {
+  const c = contagens(), ab = S.e.tickets.filter((t) => ABERTOS.includes(t.status));
+  const grupo = (titulo, chave, valores) => valores.length ? `<h4>${titulo}</h4>` + valores.map(([v, n, cor]) => `<button type="button" data-fila="${chave}:${esc(v)}" class="${S.fila === chave + ":" + v ? "ativo" : ""}" style="--c:${cor || "var(--txt3)"}"><i></i>${esc(v === "_ninguem" ? "— sem dono —" : chave === "com" ? nomeU(v) : v)}<em>${n}</em></button>`).join("") : "";
+  const conta = (f) => { const o = {}; ab.forEach((t) => f(t).forEach((k) => (o[k] = (o[k] || 0) + 1))); return Object.entries(o).sort((a, b) => b[1] - a[1]); };
+  const cor = (s) => { let h = 0; for (const ch of String(s)) h = (h * 31 + ch.charCodeAt(0)) % 360; return `hsl(${h} 70% 62%)`; };
+  const lista = filtrar(), porPag = 25, pags = Math.max(1, Math.ceil(lista.length / porPag));
+  S.pag = Math.min(S.pag, pags - 1);
+  const pag = lista.slice(S.pag * porPag, S.pag * porPag + porPag);
+  const abas = [["meus", "Meus", c.meus], ["equipe", "Equipe", c.equipe], ["novos", "Novos", c.novos], ["hoje", "⏰ Vence hoje", c.hoje], ["venc", "🚨 Vencidos", c.venc], ["espera", "Em espera", c.espera], ["concl", "Concluídos", c.concl], ["todos", "Todos", c.todos]];
+  m.innerHTML = `<div class="caixa">
+    <aside class="filas vidro">
+      <button type="button" data-fila="" class="${!S.fila ? "ativo" : ""}"><i></i>Todas as filas<em>${ab.length}</em></button>
+      ${grupo("Por setor", "dep", conta((t) => [t.departamento || "—"]).map(([k, n]) => [k, n, cor(k)]))}
+      ${grupo("Caixas por motivo", "mot", conta((t) => [t.motivo_pai || "— sem motivo —"]).map(([k, n]) => [k, n, cor(k)]))}
+      ${grupo("Pendências com setores", "pend", conta((t) => t.pendencias || []).map(([k, n]) => [k, n, "var(--violeta)"]))}
+      ${S.e.erp ? grupo("Vindos do ERP", "erp", ab.some((t) => (t.origem || "").startsWith("erp")) ? [["ERP", ab.filter((t) => (t.origem || "").startsWith("erp")).length, "var(--ciano)"]] : []) : ""}
+      ${pode("equipe") || pode("setor") ? grupo("Por atendente", "com", [["_ninguem", ab.filter((t) => t.sem_dono).length, "var(--ouro)"], ...conta((t) => t.atribuido_para ? [t.atribuido_para] : []).map(([k, n]) => [k, n, cor(k)])]) : ""}
+    </aside>
+    <section class="painel vidro">
+      <div class="abas-caixa">${abas.map(([k, r, n]) => `<button type="button" data-aba="${k}" class="${S.aba === k ? "ativo" : ""}${k === "venc" && n ? " venc" : ""}">${r}<em>${n}</em></button>`).join("")}</div>
+      <div class="barra">
+        ${S.q ? `<span class="mini c" style="--c:var(--ouro)">busca: ${esc(S.q)} <a href="#" id="tiraQ">✕</a></span>` : ""}
+        ${S.fila ? `<span class="mini c" style="--c:var(--violeta)">fila: ${esc(S.fila.split(":")[1] === "_ninguem" ? "sem dono" : nomeU(S.fila.split(":")[1]) || S.fila.split(":")[1])}</span>` : ""}
+        <span class="dica">Ordenar</span>
+        <select class="entrada" id="ord">${[["urgencia", "Urgência (SLA)"], ["prioridade", "Prioridade"], ["atendente", "Por atendente"], ["antigo", "Mais antigo"], ["recente", "Mais recente"]].map(([v, r]) => `<option value="${v}"${S.ord === v ? " selected" : ""}>${r}</option>`).join("")}</select>
+        <div class="dir">
+          ${pode("transferir") ? `<span class="dica" id="nSel">${S.sel.size ? S.sel.size + " selecionado(s)" : ""}</span><select class="entrada" id="loteAlvo"><option value="">Transferir selecionados para…</option><option value="__ninguem">— sem responsável —</option>${S.e.usuarios.map((u) => `<option value="${esc(u.usuario)}">${esc(u.nome)}</option>`).join("")}</select>` : ""}
+          ${pode("abrir") ? `<button type="button" class="btn p" id="btNovo">${svg("mais")} Atendimento</button>` : ""}
+        </div>
+      </div>
+      ${pag.length ? `<table class="tab"><thead><tr>${pode("transferir") ? `<th><input type="checkbox" id="selPag"></th>` : ""}<th>#</th><th>Assunto</th><th class="so-largo">Cliente</th><th class="so-largo">Aberto em</th><th>Atribuído</th><th>SLA / situação</th></tr></thead><tbody>
+        ${pag.map((t) => `<tr class="linha${t.nao_visto ? " alerta" : ""}" data-t="${esc(t.id)}">
+          ${pode("transferir") ? `<td><input type="checkbox" data-sel="${esc(t.id)}"${S.sel.has(t.id) ? " checked" : ""}></td>` : ""}
+          <td>${t.nao_visto ? `<span class="pisca" title="Interação nova"></span>` : ""}<b>${curto(t.id)}</b></td>
+          <td class="ass"><b>${esc(t.assunto || "(sem assunto)")}</b><small>${t.motivo_pai ? `${esc(t.motivo_pai)}${t.motivo_filho ? " / " + esc(t.motivo_filho) : ""}${t.etapa_atual ? " · etapa " + esc(String(t.etapa_atual).split(" › ").pop()) : ""}` : "não classificado"}${t.departamento ? " · " + esc(t.departamento) : ""}</small>
+            <span style="display:flex;gap:4px;flex-wrap:wrap;margin-top:3px">${t.prioridade && t.prioridade !== "normal" ? etq(PRIO[t.prioridade]?.[0] || t.prioridade, PRIO[t.prioridade]?.[1] || "#888") : ""}${(t.pendencias || []).map((p) => etq("aguarda " + p, "#8b5cf6")).join("")}${t.erp_pedido_numero ? etq("pedido #" + t.erp_pedido_numero, "#22d3ee") : ""}${t.origem === "erp_auto" ? etq("automático do ERP", "#22d3ee") : ""}</span></td>
+          <td class="so-largo">${esc(t.cliente_nome || "")}<br><small class="dica">cód. ${esc(t.cliente_codigo || "")}</small></td>
+          <td class="so-largo">${dh(t.criado_em)}</td>
+          <td>${t.sem_dono ? `<span class="dica">— sem dono —</span>` : esc(nomeU(t.atribuido_para).split(" ")[0])}</td>
+          <td>${slaTxt(t.sla)}<br>${etqSt(t.status)}</td></tr>`).join("")}</tbody></table>
+        ${pags > 1 ? `<div class="paginas"><button class="btn v p" id="pAnt"${S.pag ? "" : " disabled"}>‹</button>página ${S.pag + 1} de ${pags} · ${lista.length} atendimento(s)<button class="btn v p" id="pProx"${S.pag < pags - 1 ? "" : " disabled"}>›</button></div>` : `<p class="dica" style="text-align:center;margin-top:10px">${lista.length} atendimento(s)</p>`}`
+      : `<div class="vazio">${A.orbe("check", "var(--verde)")}<b>Nada aqui</b>Nenhum atendimento nesta visão.</div>`}
+    </section></div>`;
+  m.querySelectorAll("[data-aba]").forEach((b) => (b.onclick = () => { S.aba = b.dataset.aba; S.pag = 0; ls.set("wd.tk.aba", S.aba); render(); }));
+  m.querySelectorAll("[data-fila]").forEach((b) => (b.onclick = () => { S.fila = b.dataset.fila; S.pag = 0; if (S.fila && ["meus"].includes(S.aba)) S.aba = "equipe"; render(); }));
+  $("#ord").onchange = (e) => { S.ord = e.target.value; ls.set("wd.tk.ord", S.ord); render(); };
+  const tq = $("#tiraQ"); if (tq) tq.onclick = (e) => { e.preventDefault(); S.q = ""; $("#qTopo").value = ""; render(); };
+  m.querySelectorAll("tr.linha").forEach((tr) => (tr.onclick = (e) => { if (e.target.closest("input")) return; abrirTicket(tr.dataset.t); }));
+  m.querySelectorAll("[data-sel]").forEach((c2) => (c2.onchange = () => { c2.checked ? S.sel.add(c2.dataset.sel) : S.sel.delete(c2.dataset.sel); $("#nSel").textContent = S.sel.size ? S.sel.size + " selecionado(s)" : ""; }));
+  const sp = $("#selPag"); if (sp) sp.onchange = () => { pag.forEach((t) => (sp.checked ? S.sel.add(t.id) : S.sel.delete(t.id))); render(); };
+  const la = $("#loteAlvo");
+  if (la) la.onchange = async () => {
+    if (!la.value) return;
+    if (!S.sel.size) { A.toast("Marque os atendimentos primeiro."); la.value = ""; return; }
+    const alvo = la.value === "__ninguem" ? "" : la.value;
+    if (!(await A.confirmar(`Transferir <b>${S.sel.size}</b> atendimento(s) para <b>${esc(alvo ? nomeU(alvo) : "ninguém")}</b>?`, { rotulo: "Transferir" }))) { la.value = ""; return; }
+    try { const r = await chamar("/lote", { method: "POST", body: { ids: [...S.sel], atribuir: alvo } }); S.sel.clear(); ok(`${r.feitos} transferido(s).`); await carregar(); } catch (e) { falha(e); }
+  };
+  const bn = $("#btNovo"); if (bn) bn.onclick = () => ir("abrir");
+  const pa = $("#pAnt"); if (pa) pa.onclick = () => { S.pag--; render(); };
+  const pp = $("#pProx"); if (pp) pp.onclick = () => { S.pag++; render(); };
+}
+
+/* ══════ ATENDIMENTO (3 colunas) ══════ */
+async function telaAtendimento(m, tid) {
+  if (!S.det || S.det.ticket.id !== tid) {
+    m.innerHTML = `<div class="vazio"><b>Abrindo atendimento…</b></div>`;
+    try { S.det = await chamar(tidUrl(tid), {}, "abrindo…"); } catch (e) { m.innerHTML = `<div class="vazio">${A.orbe("atencao", "var(--rosa)")}<b>${esc(e.message)}</b><button class="btn v" id="volta">← Caixa</button></div>`; $("#volta").onclick = () => ir("caixa"); return; }
+  }
+  const { ticket: t, outros, erp } = S.det, me = S.e.eu, arv = S.e.motivos, aberto = ABERTOS.includes(t.status);
+  const comigo = (t.atendentes || []).includes(me.usuario) || t.atribuido_para === me.usuario;
+  const coments = t.comentarios || [];
+  const tipoMsg = (c) => c.tipo || (String(c.texto || "").startsWith("📨") || String(c.texto || "").startsWith("✅ Setor") ? "pendencia" : "nota");
+  const pend = (t.solicitacoes_setor || []);
+  const pedidosAb = pend.filter((s) => s.tipo === "pedido"), resp = Object.fromEntries(pend.filter((s) => s.tipo === "resposta").map((s) => [s.pedido_id, s]));
+  const filhos = Object.entries(arv[t.motivo_pai] || {}).filter(([, i]) => i.ativo !== false);
+  const caminho = String(t.etapa_atual || "").split(" › ");
+  m.innerHTML = `
+  <section class="at-cab vidro">
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:6px"><button type="button" class="btn v p" id="volta">${svg("voltar")} Caixa</button><span class="dica">#${curto(t.id)} · aberto ${dh(t.criado_em)} por ${esc(t.solicitante_nome || nomeU(t.aberto_por) || "—")}${t.origem ? " · origem " + esc(t.origem) : ""}</span></div>
+    <h1>${esc(t.assunto || "(sem assunto)")}</h1>
+    <div class="linha1">${etqSt(t.status)} ${slaTxt(t.sla)} ${t.prioridade ? etq(PRIO[t.prioridade]?.[0] || t.prioridade, PRIO[t.prioridade]?.[1] || "#888") : ""}
+      <span>· ${esc(t.cliente_nome || "")} · cód. ${esc(t.cliente_codigo || "")}${t.erp_pedido_numero ? ` · pedido #${esc(t.erp_pedido_numero)}` : ""}</span>
+      <span>· com <b>${t.atribuido_para ? esc(nomeU(t.atribuido_para)) : "ninguém"}</b></span></div>
+    <div class="acoes">
+      ${aberto && !comigo && pode("atender") && (!t.atribuido_para || pode("transferir")) ? `<button type="button" class="btn v p" id="paraMim">Transferir para mim</button>` : ""}
+      ${aberto && pode("transferir") ? `<select class="entrada" id="transf" style="width:auto;padding:7px 10px"><option value="">Transferir para…</option><option value="__ninguem">— sem responsável —</option>${S.e.usuarios.map((u) => `<option value="${esc(u.usuario)}">${esc(u.nome)}${u.depto ? " · " + esc(u.depto) : ""}</option>`).join("")}</select>` : ""}
+      ${pode("atender") ? `<select class="entrada" id="prio" style="width:auto;padding:7px 10px">${Object.entries(PRIO).map(([k, [r]]) => `<option value="${k}"${(t.prioridade || "normal") === k ? " selected" : ""}>Prioridade: ${r}</option>`).join("")}</select>` : ""}
+      ${aberto && pode("atender") ? `<button type="button" class="btn v p" data-st="${t.status === "aguardando" ? "em_andamento" : "aguardando"}">${t.status === "aguardando" ? "Retomar" : "Aguardar o cliente"}</button>` : ""}
+      ${aberto && pode("encerrar") ? `<button type="button" class="btn p" data-st="resolvido">${svg("check")} Concluir</button><button type="button" class="btn perigo p" data-st="cancelado">Cancelar</button>` : ""}
+      ${!aberto && pode("atender") ? `<button type="button" class="btn v p" data-st="em_andamento">Reabrir</button>` : ""}
+      ${t.status === "resolvido" && pode("encerrar") ? `<button type="button" class="btn v p" data-st="finalizado">Finalizar</button>` : ""}
+    </div>
+  </section>
+  <div class="at">
+    <section class="col vidro">
+      <h3>${svg("mensagem")} Conversa <small>${coments.length} registro(s)</small></h3>
+      <div class="conversa" id="conversa">
+        <div class="msg cliente"><span class="q">${esc(t.solicitante_nome || t.cliente_nome || "Abertura")} · ${dh(t.criado_em)}</span>${esc(t.descricao || "")}</div>
+        ${coments.map((c) => `<div class="msg ${tipoMsg(c)}"><span class="q">${esc(c.autor || "")} · ${dh(c.data)}${tipoMsg(c) === "nota" ? " · nota interna" : tipoMsg(c) === "contato" ? " · contato com o cliente" : ""}</span>${esc(c.texto || "")}</div>`).join("")}
+      </div>
+      ${pode("atender") ? `<div class="resp">
+        <div class="tipos seg" id="tipoResp"><button type="button" data-tipo="nota" class="ativo">Nota interna</button><button type="button" data-tipo="contato" style="--c:var(--verde)">Registrar contato</button></div>
+        <textarea class="entrada" id="txt" placeholder="Escreva aqui… (Ctrl+Enter envia)" style="margin-top:8px;min-height:90px"></textarea>
+        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;align-items:center"><button type="button" class="btn p" id="enviar">Enviar</button>
+          ${aberto ? `<select class="entrada" id="stDepois" style="width:auto;padding:6px 9px"><option value="">e manter situação</option><option value="aguardando">e aguardar o cliente</option>${pode("encerrar") ? `<option value="resolvido">e concluir</option>` : ""}</select>` : ""}
+          <span class="dica">Nota interna o cliente não vê. “Registrar contato” = você falou com o cliente por telefone/WhatsApp.</span></div>
+      </div>` : ""}
+    </section>
+
+    <section class="col vidro">
+      <h3>${svg("ajustes")} Tabulação e andamento</h3>
+      ${t.etapa_travada ? `<div class="trava">🔒 <b>${esc(t.motivo_pai || "")} › ${esc(t.etapa_atual || "")}</b><br>Prazo combinado: <b>${d10(t.etapa_data_prevista)}</b> · travado por ${esc(t.etapa_definida_por || "")} em ${dh(t.etapa_definida_em)}. Esta trilha não muda mais.</div>`
+      : pode("atender") ? `
+        <label class="campo">Motivo<select id="mPai"><option value="">Escolha…</option>${Object.keys(arv).map((p) => `<option${p === t.motivo_pai ? " selected" : ""}>${esc(p)}</option>`).join("")}</select></label>
+        <label class="campo">Submotivo<select id="mFilho"><option value="">Escolha…</option>${filhos.map(([f, i]) => `<option value="${esc(f)}"${f === t.motivo_filho ? " selected" : ""}>${esc(f)}${i.sla != null ? ` · SLA ${i.sla}d` : ""}</option>`).join("")}</select></label>
+        <label class="campo">Etapa${t.etapa_atual ? ` <small class="dica">· atual: ${esc(caminho.slice(1).join(" › ") || "—")}</small>` : ""}<select id="mEtapa"></select></label>
+        <label class="campo">Prazo combinado com o cliente <small class="dica">(opcional — preenchido, o prazo passa a ser esta data e a trilha TRAVA)</small><input type="date" id="mData"></label>
+        <button type="button" class="btn p" id="classificar">Salvar etapa</button>
+        <p class="dica">A 1ª classificação congela o SLA de triagem (${t.sla1_definido ? (t.sla1_cumprido ? "foi cumprido ✔" : "foi perdido ✘") : "ainda correndo"}).</p>`
+      : `<p class="dica">${esc(t.motivo_pai || "não classificado")} ${t.etapa_atual ? "› " + esc(t.etapa_atual) : ""}</p>`}
+      ${(t.historico_etapas || []).length ? `<details><summary class="dica" style="cursor:pointer">Trilha de etapas (${t.historico_etapas.length})</summary>${t.historico_etapas.slice().reverse().map((h) => `<p class="dica">${dh(h.quando)} · ${esc(h.etapa)} · ${esc(h.por || "")}${h.vermelha ? ` · prazo ${d10(h.data_prevista)}` : ""}</p>`).join("")}</details>` : ""}
+      <div class="sec">Pendências com outros setores</div>
+      ${pedidosAb.length ? pedidosAb.map((p) => { const r = resp[p.id]; return `<div class="pend-it ${r ? "ok" : ""}"><b>${esc(p.setor_origem)} → ${esc(p.setor_destino)}</b> · ${dh(p.solicitado_em)} · ${esc(p.solicitado_por_nome || "")}<br>${esc(p.mensagem || "")}
+        ${r ? `<p class="dica" style="margin-top:4px">✅ ${esc(r.respondido_por_nome || "")} · ${dh(r.respondido_em)}: ${esc(r.resposta || "")}</p>` : pode("atender") ? `<div style="display:flex;gap:6px;margin-top:6px"><input class="entrada" data-resp="${esc(p.id)}" placeholder="Responder pelo setor ${esc(p.setor_destino)}…" style="padding:6px 9px"><button type="button" class="btn v p" data-respbt="${esc(p.id)}">Responder</button></div>` : ""}</div>`; }).join("") : `<p class="dica">Nenhuma pendência.</p>`}
+      ${aberto && pode("atender") ? `<div class="g2"><select class="entrada" id="pSetor"><option value="">Pedir ajuda a…</option>${S.e.departamentos.map((d) => `<option>${esc(d)}</option>`).join("")}</select><input class="entrada" id="pMsg" placeholder="O que precisa do setor?"></div><button type="button" class="btn v p" id="pedir">Pedir ajuda</button>` : ""}
+    </section>
+
+    <section class="col cli vidro">
+      <h3>${svg("usuario")} Cliente</h3>
+      <dl class="ficha"><dt>Nome</dt><dd>${esc(t.cliente_nome || "—")}</dd><dt>Código</dt><dd>${esc(t.cliente_codigo || "—")}</dd><dt>Telefone</dt><dd>${esc(t.cliente_telefone || "não informado")}</dd><dt>Setor</dt><dd>${esc(t.departamento || "—")}</dd></dl>
+      ${erpBloco(t, erp)}
+      <div class="sec">Outros atendimentos (${outros.length})</div>
+      ${outros.length ? outros.map((o) => `<div class="ped" style="cursor:pointer" data-outro="${esc(o.id)}"><div class="t1"><b>#${curto(o.id)}</b>${etqSt(o.status)}<span class="dica">${dh(o.criado_em)}</span></div>${esc(o.assunto || "")}</div>`).join("") : `<p class="dica">Nenhum outro atendimento deste cliente.</p>`}
+    </section>
+  </div>`;
+  ligarAtendimento(m, t, erp);
+}
+
+function erpBloco(t, erp) {
+  if (!erp) return "";
+  if (erp.sem_acesso) return `<div class="sec">Pedidos (ERP)</div><p class="dica">Sem acesso ao ERP.</p>`;
+  const ac = (p) => {
+    const b = [];
+    if (["confirmado", "agendado", "reagendar"].includes(p.status) && erp.pode.agendar) b.push(`<button type="button" class="btn v p" data-erp-agendar="${p.id}">${svg("calendario")} ${p.status === "agendado" ? "Reagendar" : "Agendar"}</button>`);
+    if (p.status === "entregue" && erp.pode.pedidos && pode("atender")) b.push(`<button type="button" class="btn v p" data-erp-troca="${p.id}">${svg("repetir")} Gerar troca</button>`);
+    if (!["em_rota", "entregue", "cancelado", "recusado"].includes(p.status) && erp.pode.cancelar) b.push(`<button type="button" class="btn perigo p" data-erp-cancelar="${p.id}">Cancelar pedido</button>`);
+    b.push(`<button type="button" class="btn v p" data-erp-ver="${p.id}">Ver no ERP ↗</button>`);
+    return b.join("");
+  };
+  return `<div class="sec">Pedidos no ERP (${erp.pedidos.length})</div>
+    ${erp.clientes.length ? `<p class="dica">Cliente no ERP: ${erp.clientes.map((c) => `<b>${esc(c.nome)}</b>${c.codigo ? " (" + esc(c.codigo) + ")" : ""}`).join(", ")}${pode("atender") ? ` · <a href="#" id="trocaCli">trocar</a>` : ""}</p>`
+      : `<div class="aviso ouro">Não achei este cliente no ERP pelo código, telefone ou nome.${pode("atender") ? ` <a href="#" id="trocaCli">Vincular cliente do ERP</a>` : ""}</div>`}
+    ${erp.pedidos.map((p) => `<div class="ped" style="--c:${(ERP_ST[p.status] || ["", "#888"])[1]}">
+      <div class="t1"><b>${p.tipo === "troca" ? "Troca" : "Pedido"} #${p.numero}</b>${etq((ERP_ST[p.status] || [p.status])[0], (ERP_ST[p.status] || ["", "#888"])[1])}${p.pendencia === "ausente" ? etq("ausente — reagendar", "#fb923c") : ""}${p.pendencia === "reposicao" ? etq("reposição de avaria", "#fb7185") : ""}${p.sem_estoque ? etq("sem estoque", "#fb7185") : ""}</div>
+      <p class="dica" style="margin-top:3px">${d10(p.criado_em)}${p.agendamento ? ` · entrega ${d10(p.agendamento.data)} ${esc(p.agendamento.janela || "")}` : ""}${p.carga ? ` · carga ${esc(p.carga)}` : ""}</p>
+      <ul>${p.itens.map((i) => `<li>${i.qtd}× ${esc(i.nome)}</li>`).join("")}</ul>
+      ${p.tentativas.length ? `<p class="dica">Tentativas: ${p.tentativas.map((x) => `${x.n}ª ${esc(x.resultado)} ${d10(x.data)}${x.motivo ? " (" + esc(x.motivo) + ")" : ""}`).join(" · ")}</p>` : ""}
+      <div class="acoes">${ac(p)}</div></div>`).join("") || `<p class="dica">Nenhum pedido encontrado.</p>`}`;
+}
+
+function ligarAtendimento(m, t, erp) {
+  const tid = t.id, recarregarDet = async () => { S.det = null; await carregar(); };
+  $("#volta").onclick = () => { S.det = null; ir("caixa"); };
+  const pm = $("#paraMim"); if (pm) pm.onclick = async () => { try { await chamar(tidUrl(tid) + "/alterar", { method: "POST", body: { atribuir: S.e.eu.usuario } }); ok("Agora está com você."); await recarregarDet(); } catch (e) { falha(e); } };
+  const tr = $("#transf"); if (tr) tr.onchange = async () => { if (!tr.value) return; const alvo = tr.value === "__ninguem" ? "" : tr.value; try { await chamar(tidUrl(tid) + "/alterar", { method: "POST", body: { atribuir: alvo } }); ok("Transferido."); await recarregarDet(); } catch (e) { falha(e); } };
+  const pr = $("#prio"); if (pr) pr.onchange = async () => { try { await chamar(tidUrl(tid) + "/alterar", { method: "POST", body: { prioridade: pr.value } }); await recarregarDet(); } catch (e) { falha(e); } };
+  m.querySelectorAll("[data-st]").forEach((b) => (b.onclick = async () => {
+    const st = b.dataset.st;
+    if (st === "cancelado" && !(await A.confirmar("Cancelar este atendimento?", { perigo: true, rotulo: "Cancelar atendimento" }))) return;
+    try { await chamar(tidUrl(tid) + "/alterar", { method: "POST", body: { status: st } }); ok("Situação: " + (ST_INFO[st] || [st])[0]); await recarregarDet(); } catch (e) { falha(e); }
+  }));
+  let tipo = "nota";
+  m.querySelectorAll("[data-tipo]").forEach((b) => (b.onclick = () => { tipo = b.dataset.tipo; m.querySelectorAll("[data-tipo]").forEach((x) => x.classList.toggle("ativo", x === b)); }));
+  const env = $("#enviar");
+  if (env) {
+    const enviar = async () => { const txt = $("#txt").value.trim(); if (!txt) return; const body = { texto: txt, tipo }; const sd = $("#stDepois")?.value; if (sd) body.status = sd;
+      try { await chamar(tidUrl(tid) + "/comentar", { method: "POST", body }); await recarregarDet(); } catch (e) { falha(e); } };
+    env.onclick = enviar; $("#txt").onkeydown = (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) enviar(); };
+  }
+  const conv = $("#conversa"); if (conv) conv.scrollTop = conv.scrollHeight;
+  // tabulação
+  const mp = $("#mPai"), mf = $("#mFilho"), me2 = $("#mEtapa");
+  if (mp) {
+    const arv = S.e.motivos, atual = String(t.etapa_atual || "").split(" › ")[1] || "";
+    const etapas = () => { const info = (arv[mp.value] || {})[mf.value] || {}; me2.innerHTML = `<option value="">— sem etapa —</option>` + (info.etapas || []).map((x) => `<option${x === atual ? " selected" : ""}>${esc(x)}</option>`).join(""); };
+    mp.onchange = () => { mf.innerHTML = `<option value="">Escolha…</option>` + Object.entries(arv[mp.value] || {}).filter(([, i]) => i.ativo !== false).map(([f, i]) => `<option value="${esc(f)}">${esc(f)}${i.sla != null ? ` · SLA ${i.sla}d` : ""}</option>`).join(""); etapas(); };
+    mf.onchange = etapas; etapas();
+    $("#classificar").onclick = async () => {
+      if (!mp.value || !mf.value) { A.toast("Escolha motivo e submotivo."); return; }
+      const data = $("#mData").value;
+      if (data && !(await A.confirmar(`Travar a trilha com prazo em <b>${d10(data)}</b>? Depois disso ela não pode mais ser mudada.`, { rotulo: "Travar prazo" }))) return;
+      try { await chamar(tidUrl(tid) + "/classificar", { method: "POST", body: { motivo_pai: mp.value, motivo_filho: mf.value, etapa: me2.value, data_prevista: data } }); ok("Etapa salva."); await recarregarDet(); } catch (e) { falha(e); }
+    };
+  }
+  const pd = $("#pedir"); if (pd) pd.onclick = async () => { const setor = $("#pSetor").value, msg = $("#pMsg").value.trim(); if (!setor || !msg) { A.toast("Escolha o setor e escreva o pedido."); return; }
+    try { await chamar(tidUrl(tid) + "/pendencia", { method: "POST", body: { setor, mensagem: msg } }); ok("Pedido enviado ao setor " + setor + "."); await recarregarDet(); } catch (e) { falha(e); } };
+  m.querySelectorAll("[data-respbt]").forEach((b) => (b.onclick = async () => { const v = m.querySelector(`[data-resp="${CSS.escape(b.dataset.respbt)}"]`).value.trim(); if (!v) return;
+    try { await chamar(tidUrl(tid) + "/pendencia", { method: "POST", body: { responder: b.dataset.respbt, mensagem: v } }); await recarregarDet(); } catch (e) { falha(e); } }));
+  m.querySelectorAll("[data-outro]").forEach((d) => (d.onclick = () => { S.det = null; abrirTicket(d.dataset.outro); }));
+  // ERP
+  const tc = $("#trocaCli"); if (tc) tc.onclick = (e) => { e.preventDefault(); vincularCliente(t); };
+  const abrirErp = () => { try { (window.top || window).postMessage({ hub: "abrir", id: "erp" }, location.origin); } catch (_) {} };
+  m.querySelectorAll("[data-erp-ver]").forEach((b) => (b.onclick = abrirErp));
+  m.querySelectorAll("[data-erp-agendar]").forEach((b) => (b.onclick = () => {
+    const p = erp.pedidos.find((x) => x.id === b.dataset.erpAgendar);
+    A.modal({ titulo: `${p.status === "agendado" ? "Reagendar" : "Agendar"} pedido #${p.numero}`, icone: "calendario", largura: 480,
+      html: `<div class="g2"><label class="campo">Nova data<input type="date" id="aD" min="${erp.hoje}" value="${p.agendamento?.data && p.agendamento.data >= erp.hoje ? p.agendamento.data : ""}"></label>
+        <label class="campo">Janela<select id="aJ">${(erp.janelas || []).map((j) => `<option${p.agendamento?.janela === j ? " selected" : ""}>${esc(j)}</option>`).join("")}</select></label></div>
+        <label class="campo" style="margin-top:8px">Observação da entrega<input id="aO" value="${esc(p.agendamento?.obs || "")}"></label>
+        <p class="dica" style="margin-top:8px">Muda a agenda direto no ERP — e fica registrado neste atendimento.</p>`,
+      botoes: [{ rotulo: "Cancelar" }, { rotulo: "Salvar no ERP", classe: "btn", principal: true, acao: async () => {
+        const data = $("#aD").value; if (!data) { A.toast("Escolha a data."); return false; }
+        try { await chamar(`/api/erp/pedidos/${p.id}/acao`, { method: "POST", body: { acao: "agendar", data, janela: $("#aJ").value, obs: $("#aO").value } });
+          await chamar(tidUrl(tid) + "/erp-registro", { method: "POST", body: { texto: `Pedido #${p.numero} ${p.status === "agendado" ? "reagendado" : "agendado"} para ${d10(data)} (${$("#aJ").value}).` } });
+          ok("Agenda alterada no ERP."); await recarregarDet(); } catch (e) { falha(e); return false; }
+      } }] });
+  }));
+  m.querySelectorAll("[data-erp-cancelar]").forEach((b) => (b.onclick = async () => {
+    const p = erp.pedidos.find((x) => x.id === b.dataset.erpCancelar);
+    const motivo = await new Promise((res) => { let r = null; A.modal({ titulo: `Cancelar pedido #${p.numero}`, icone: "atencao", cor: "var(--rosa)", largura: 440, html: `<label class="campo">Motivo<input id="cM" autofocus></label><p class="dica" style="margin-top:8px">Cancela no ERP e libera a reserva de estoque.</p>`, botoes: [{ rotulo: "Voltar" }, { rotulo: "Cancelar pedido", classe: "btn perigo", principal: true, acao: () => { r = $("#cM").value; } }], aoFechar: () => res(r) }); });
+    if (motivo === null) return;
+    try { await chamar(`/api/erp/pedidos/${p.id}/acao`, { method: "POST", body: { acao: "cancelar", motivo } });
+      await chamar(tidUrl(tid) + "/erp-registro", { method: "POST", body: { texto: `Pedido #${p.numero} cancelado no ERP${motivo ? ": " + motivo : ""}.` } }); ok("Pedido cancelado no ERP."); await recarregarDet(); } catch (e) { falha(e); }
+  }));
+  m.querySelectorAll("[data-erp-troca]").forEach((b) => (b.onclick = async () => {
+    const p = erp.pedidos.find((x) => x.id === b.dataset.erpTroca);
+    if (!(await A.confirmar(`Gerar no ERP a <b>troca</b> do pedido #${p.numero}? Ela nasce em rascunho, levando os mesmos itens e recolhendo os do cliente.`, { rotulo: "Gerar troca" }))) return;
+    try { const r = await chamar(tidUrl(tid) + "/erp-troca", { method: "POST", body: { pedido_id: p.id } }); ok(`Troca #${r.pedido.numero} criada no ERP.`); await recarregarDet(); } catch (e) { falha(e); }
+  }));
+}
+function vincularCliente(t) {
+  const md = A.modal({ titulo: "Vincular cliente do ERP", icone: "usuario", largura: 520,
+    html: `<input class="entrada" id="vq" placeholder="Nome, telefone, CPF ou código…" autofocus><div id="vres" style="margin-top:10px;display:flex;flex-direction:column;gap:6px"></div>`,
+    esquerda: [{ rotulo: "Desvincular", classe: "btn v", acao: async () => { try { await chamar(tidUrl(t.id) + "/erp-cliente", { method: "POST", body: { cliente_id: "" } }); S.det = null; await carregar(); } catch (e) { falha(e); return false; } } }],
+    botoes: [{ rotulo: "Fechar" }] });
+  let tm;
+  $("#vq").oninput = (e) => { clearTimeout(tm); tm = setTimeout(async () => {
+    const q = e.target.value.trim(); if (q.length < 2) return;
+    try { const r = await chamar("/erp/clientes?q=" + encodeURIComponent(q), {}, "buscando…");
+      $("#vres").innerHTML = r.clientes.map((c) => `<button type="button" class="btn v" data-c="${c.id}" style="justify-content:flex-start">${esc(c.nome)} <small class="dica">${esc(c.codigo || "")} ${esc(c.telefone || "")}</small></button>`).join("") || `<p class="dica">Nada encontrado.</p>`;
+      $("#vres").querySelectorAll("[data-c]").forEach((b) => (b.onclick = async () => { try { await chamar(tidUrl(t.id) + "/erp-cliente", { method: "POST", body: { cliente_id: b.dataset.c } }); md.fechar(); ok("Cliente vinculado."); S.det = null; await carregar(); } catch (er) { falha(er); } }));
+    } catch (er) { falha(er); } }, 300); };
+}
+
+/* ══════ ABRIR CHAMADO ══════ */
+const DESC_SETOR = { TI: "Sistema, rede, acesso, equipamento.", CX: "Cliente, pedido, troca, assistência técnica.", "Logística": "Entrega, carga, agendamento, endereço.",
+  "Jurídico": "Contrato, notificação, processo.", "Manutenção": "Prédio, mobiliário, instalação, reparo.", Financeiro: "Pagamento, nota, reembolso, cobrança.", Compras: "Estoque, fornecedor, peças." };
+function telaAbrir(m) {
+  const cores = ["#60a5fa", "#e8b33d", "#34d399", "#8b5cf6", "#fb923c", "#22d3ee", "#fb7185"];
+  if (!S.setorAbrir) {
+    m.innerHTML = `<section class="painel vidro"><h2 style="margin:0 0 4px;font:700 1.3rem var(--titulo)">Abrir chamado</h2><p class="dica" style="margin-bottom:14px">Para qual setor? Escolheu errado? Sem problema — quem recebe encaminha para o setor certo.</p>
+      <div class="setores">${S.e.departamentos.map((d, i) => `<button type="button" class="setor" data-setor="${esc(d)}" style="--c:${cores[i % cores.length]}"><span class="sig">${esc(d.slice(0, 2).toUpperCase())}</span><span><b>${esc(d)}</b><small>${esc(DESC_SETOR[d] || "")}</small></span></button>`).join("")}</div></section>`;
+    m.querySelectorAll("[data-setor]").forEach((b) => (b.onclick = () => { S.setorAbrir = b.dataset.setor; render(); }));
+    return;
+  }
+  const arv = S.e.motivos;
+  m.innerHTML = `<section class="painel vidro" style="max-width:820px;margin:0 auto">
+    <button type="button" class="btn v p" id="trocaSetor">${svg("voltar")} Setores</button>
+    <h2 style="margin:10px 0 12px;font:700 1.3rem var(--titulo)">Novo chamado · ${esc(S.setorAbrir)}</h2>
+    <div class="g2"><label class="campo">Código do cliente *<input id="nCod" placeholder="ex.: 7X83J8"></label><label class="campo">Nome do cliente *<input id="nNome"></label></div>
+    <div class="g2" style="margin-top:8px"><label class="campo">Telefone<input id="nTel"></label><label class="campo">Prioridade<select id="nPrio">${Object.entries(PRIO).map(([k, [r]]) => `<option value="${k}"${k === "normal" ? " selected" : ""}>${r}</option>`).join("")}</select></label></div>
+    <div class="g2" style="margin-top:8px"><label class="campo">Motivo<select id="nPai"><option value="">—</option>${Object.keys(arv).map((p) => `<option>${esc(p)}</option>`).join("")}</select></label><label class="campo">Submotivo<select id="nFilho"><option value="">—</option></select></label></div>
+    <label class="campo" style="margin-top:8px">Assunto *<input id="nAss"></label>
+    <label class="campo" style="margin-top:8px">Descrição *<textarea id="nDesc" rows="5"></textarea></label>
+    <div id="nHist" style="margin-top:8px"></div>
+    <div style="display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap"><button type="button" class="btn" id="nCriar">${svg("check")} Abrir chamado</button>
+      ${pode("atender") ? `<label class="chk"><input type="checkbox" id="nMeu"> já deixar comigo</label>` : ""}</div>
+  </section>`;
+  $("#trocaSetor").onclick = () => { S.setorAbrir = ""; render(); };
+  $("#nPai").onchange = () => { $("#nFilho").innerHTML = `<option value="">—</option>` + Object.entries(arv[$("#nPai").value] || {}).filter(([, i]) => i.ativo !== false).map(([f, i]) => `<option value="${esc(f)}">${esc(f)}${i.sla != null ? ` · SLA ${i.sla}d` : ""}</option>`).join(""); };
+  $("#nCod").onchange = () => { const cod = norm($("#nCod").value); const h = S.e.tickets.filter((t) => norm(t.cliente_codigo) === cod);
+    if (h.length && !$("#nNome").value) $("#nNome").value = h[0].cliente_nome || "";
+    $("#nHist").innerHTML = h.length ? `<div class="aviso ouro">Este cliente já tem ${h.length} atendimento(s): ${h.slice(0, 4).map((t) => `#${curto(t.id)} ${esc(t.assunto || "")} (${(ST_INFO[t.status] || [t.status])[0]})`).join(" · ")}</div>` : ""; };
+  $("#nCriar").onclick = async () => {
+    const body = { departamento: S.setorAbrir, cliente_codigo: $("#nCod").value.trim(), cliente_nome: $("#nNome").value.trim(), cliente_telefone: $("#nTel").value.trim(),
+      prioridade: $("#nPrio").value, motivo_pai: $("#nPai").value, motivo_filho: $("#nFilho").value, assunto: $("#nAss").value.trim(), descricao: $("#nDesc").value.trim(), atribuir_a_mim: !!$("#nMeu")?.checked };
+    if (!body.cliente_codigo || !body.cliente_nome || !body.assunto || !body.descricao) { A.toast("Preencha código e nome do cliente, assunto e descrição."); return; }
+    try { const r = await chamar("/tickets", { method: "POST", body }); ok("Chamado aberto."); S.setorAbrir = ""; await carregar(); abrirTicket(r.id); } catch (e) { falha(e); }
+  };
+}
+
+/* ══════ TICKETS INTERNOS (entre setores) ══════ */
+function telaInternos(m) {
+  const me = S.e.eu, ab = S.e.tickets.filter((t) => ABERTOS.includes(t.status) && (t.pendencias || []).length);
+  const meuSetor = me.depto ? ab.filter((t) => (t.pendencias || []).some((p) => norm(p) === norm(me.depto))) : [];
+  const porSetor = {}; ab.forEach((t) => t.pendencias.forEach((p) => (porSetor[p] = porSetor[p] || []).push(t)));
+  const linha = (t) => `<tr class="linha" data-t="${esc(t.id)}"><td><b>${curto(t.id)}</b></td><td class="ass"><b>${esc(t.assunto || "")}</b><small>${esc(t.departamento || "—")} pediu a: ${t.pendencias.map(esc).join(", ")}</small></td><td>${esc(t.cliente_nome || "")}</td><td>${t.sem_dono ? "— sem dono —" : esc(nomeU(t.atribuido_para).split(" ")[0])}</td><td>${slaTxt(t.sla)}</td></tr>`;
+  const tab = (l) => l.length ? `<table class="tab"><thead><tr><th>#</th><th>Assunto</th><th>Cliente</th><th>Dono</th><th>SLA</th></tr></thead><tbody>${l.map(linha).join("")}</tbody></table>` : `<p class="dica">Nada aqui.</p>`;
+  m.innerHTML = `<section class="painel vidro"><h2 style="margin:0 0 4px;font:700 1.25rem var(--titulo)">Tickets internos</h2><p class="dica">Pedidos de um setor para outro — ficam no MESMO atendimento, com a pendência visível até o setor responder.</p>
+    ${me.depto ? `<div class="sec">Pediram ao meu setor (${esc(me.depto)}) · ${meuSetor.length}</div>${tab(meuSetor)}` : `<div class="aviso ouro" style="margin-top:10px">Seu usuário está sem setor — defina em Ajustes para ver o que pediram ao seu setor.</div>`}
+    ${Object.entries(porSetor).sort((a, b) => b[1].length - a[1].length).map(([s, l]) => `<div class="sec">${esc(s)} · ${l.length}</div>${tab(l)}`).join("")}</section>`;
+  m.querySelectorAll("tr.linha").forEach((tr) => (tr.onclick = () => { S.sec = "caixa"; abrirTicket(tr.dataset.t); }));
+}
+
+/* ══════ GESTÃO ══════ */
+function telaGestao(m) {
+  const ts = S.e.tickets, ab = ts.filter((t) => ABERTOS.includes(t.status));
+  const d7 = new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10).replace("T", " ");
+  const abertos7 = ts.filter((t) => String(t.criado_em) >= d7).length, concl7 = ts.filter((t) => !ABERTOS.includes(t.status) && String(t.atualizado_em) >= d7).length;
+  const por = (f, l = ab) => { const o = {}; l.forEach((t) => { const k = f(t); o[k] = (o[k] || 0) + 1; }); return Object.entries(o).sort((a, b) => b[1] - a[1]); };
+  const k = (r, v, s, c) => `<div class="kpi" style="--c:${c}"><small>${r}</small><b>${v}</b><span>${s || ""}</span></div>`;
+  const barras = (l) => { const max = Math.max(1, ...l.map((x) => x[1])); return l.slice(0, 12).map(([n, v]) => `<div style="display:grid;grid-template-columns:160px 1fr 40px;gap:8px;align-items:center;font-size:.78rem;margin-bottom:5px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(n)}</span><span style="height:8px;border-radius:5px;background:rgba(255,255,255,.06)"><i style="display:block;height:100%;width:${v / max * 100}%;border-radius:5px;background:var(--ouro)"></i></span><b style="text-align:right">${v}</b></div>`).join(""); };
+  const porAt = {}; ab.forEach((t) => { const a = t.atribuido_para || "_"; porAt[a] = porAt[a] || { n: 0, venc: 0, hoje: 0 }; porAt[a].n++; if (t.sla.estado === "venc") porAt[a].venc++; if (t.sla.estado === "hoje") porAt[a].hoje++; });
+  m.innerHTML = `<section class="painel vidro"><h2 style="margin:0 0 12px;font:700 1.25rem var(--titulo)">Painel de gestão</h2>
+    <div class="kpis">${k("Abertos agora", ab.length, "", "var(--azul)")}${k("Sem dono", ab.filter((t) => t.sem_dono).length, "ninguém pegou", "var(--ouro)")}${k("Vencidos", ab.filter((t) => t.sla.estado === "venc").length, "", "var(--rosa)")}${k("Abertos (7 dias)", abertos7, "", "var(--violeta)")}${k("Concluídos (7 dias)", concl7, "", "var(--verde)")}${k("Do ERP (abertos)", ab.filter((t) => (t.origem || "").startsWith("erp")).length, "avaria/recusa/ausente", "var(--ciano)")}</div>
+    <div class="cartoes" style="margin-top:14px">
+      <div class="cartao"><h3>Caixas por motivo</h3>${barras(por((t) => t.motivo_pai || "— sem motivo —"))}</div>
+      <div class="cartao"><h3>Por setor</h3>${barras(por((t) => t.departamento || "—"))}</div>
+      <div class="cartao"><h3>Atendimentos por pessoa</h3><table class="tab"><thead><tr><th>Atendente</th><th>Abertos</th><th>Vencem hoje</th><th>Vencidos</th></tr></thead><tbody>
+        ${Object.entries(porAt).sort((a, b) => b[1].n - a[1].n).map(([a, v]) => `<tr><td>${a === "_" ? "— sem dono —" : esc(nomeU(a))}</td><td>${v.n}</td><td>${v.hoje}</td><td style="color:${v.venc ? "var(--rosa)" : ""}">${v.venc}</td></tr>`).join("")}</tbody></table></div>
+    </div></section>`;
+}
+
+/* ══════ AJUSTES ══════ */
+function telaAjustes(m) {
+  const e = S.e, cfg = e.config, arv = JSON.parse(JSON.stringify(e.motivos)), deps = e.departamentos.slice();
+  const pais = () => Object.entries(arv).map(([p, fs]) => `<div class="pai"><b>${esc(p)}</b> <button type="button" class="btn-ic p" data-delpai="${esc(p)}" title="Tirar motivo">${svg("lixo")}</button>
+    ${Object.entries(fs).map(([f, i]) => `<div class="filho"><input class="entrada" value="${esc(f)}" disabled><input class="entrada" type="number" min="0" step="0.5" data-sla="${esc(p)}|${esc(f)}" value="${i.sla ?? ""}" title="SLA em dias"><input class="entrada" data-et="${esc(p)}|${esc(f)}" value="${esc((i.etapas || []).join(", "))}" title="Etapas separadas por vírgula"><label class="chk" title="Ativo"><input type="checkbox" data-at="${esc(p)}|${esc(f)}"${i.ativo === false ? "" : " checked"}></label></div>`).join("")}
+    <div class="filho"><input class="entrada" data-novofilho="${esc(p)}" placeholder="+ submotivo"><span></span><span></span><span></span></div></div>`).join("");
+  m.innerHTML = `<section class="painel vidro"><h2 style="margin:0 0 12px;font:700 1.25rem var(--titulo)">Ajustes</h2>
+    <p class="dica">Banco em uso: <b>${e.banco === "hub" ? "banco do hub" : "bancowendley (mesmos tickets do Streamlit)"}</b> · leituras desde que o servidor ligou: ${e.sync.leituras}</p>
+    <div class="cartoes" style="margin-top:12px">
+      <div class="cartao" style="grid-column:1/-1"><h3>${svg("lista")} Motivos, submotivos, SLA (dias) e etapas</h3>
+        <div class="arvore" id="arv">${pais()}</div>
+        <div style="display:flex;gap:6px"><input class="entrada" id="novoPai" placeholder="+ novo motivo (ex.: Pedido)"><button type="button" class="btn v p" id="addPai">Adicionar</button></div>
+        <label class="campo">Setores (para abrir chamado e pedir ajuda) — separados por vírgula<input id="deps" value="${esc(deps.join(", "))}"></label>
+        <button type="button" class="btn p" id="salvarArv">Salvar motivos e setores</button></div>
+      <div class="cartao"><h3>${svg("caixa")} Ligação com o ERP</h3>
+        <p class="dica">Quando a baixa da entrega no ERP for…</p>
+        ${[["avaria", "Avaria"], ["recusado", "Recusa"], ["ausente", "Cliente ausente"]].map(([k2, r]) => `<label class="chk"><input type="checkbox" data-auto="${k2}"${cfg.auto_erp?.[k2] ? " checked" : ""}> ${r} → abrir ticket sozinho</label>`).join("")}
+        <div class="g2"><label class="campo">Setor do ticket<select id="dErp"><option value="">—</option>${deps.map((d) => `<option${d === cfg.depto_erp ? " selected" : ""}>${esc(d)}</option>`).join("")}</select></label>
+          <label class="campo">Motivo<select id="mErp"><option value="">—</option>${Object.keys(arv).map((p) => `<option${p === cfg.motivo_pai_erp ? " selected" : ""}>${esc(p)}</option>`).join("")}</select></label></div>
+        <label class="campo">SLA (dias)<input type="number" min="0" step="0.5" id="sErp" value="${cfg.sla_erp_dias ?? 2}"></label>
+        <p class="dica">No cadastro de cliente do ERP há o campo <b>Código do cliente</b> — é ele que liga o atendimento aos pedidos (também casa por telefone ou nome).</p>
+        <button type="button" class="btn p" id="salvarErp">Salvar</button></div>
+      <div class="cartao"><h3>${svg("usuarios")} Setor de cada pessoa</h3>
+        <p class="dica">Define o que cada um vê em “Tickets internos” e quem tem permissão de “ver o próprio setor”.${e.banco === "hub" ? "" : " (No bancowendley o setor vem do cadastro de usuários do Streamlit.)"}</p>
+        <div style="max-height:320px;overflow:auto;display:flex;flex-direction:column;gap:5px">${e.usuarios.map((u) => `<div class="g2" style="align-items:center"><span style="font-size:.82rem">${esc(u.nome)} <small class="dica">@${esc(u.usuario)}</small></span>
+          <select class="entrada" data-setoru="${esc(u.usuario)}" style="padding:6px 8px"${e.banco === "hub" ? "" : " disabled"}><option value="">—</option>${deps.map((d) => `<option${norm(d) === norm(u.depto) ? " selected" : ""}>${esc(d)}</option>`).join("")}</select></div>`).join("")}</div>
+        ${e.banco === "hub" ? `<button type="button" class="btn p" id="salvarSetores">Salvar setores</button>` : ""}
+        <button type="button" class="btn v p" id="recarregar">${svg("repetir")} Recarregar tudo do banco</button></div>
+    </div></section>`;
+  const lerArv = () => {
+    m.querySelectorAll("[data-sla]").forEach((i) => { const [p, f] = i.dataset.sla.split("|"); arv[p][f].sla = i.value === "" ? null : +i.value; });
+    m.querySelectorAll("[data-et]").forEach((i) => { const [p, f] = i.dataset.et.split("|"); arv[p][f].etapas = i.value.split(",").map((x) => x.trim()).filter(Boolean); });
+    m.querySelectorAll("[data-at]").forEach((i) => { const [p, f] = i.dataset.at.split("|"); arv[p][f].ativo = i.checked; });
+    m.querySelectorAll("[data-novofilho]").forEach((i) => { const v = i.value.trim(); if (v) arv[i.dataset.novofilho][v] = { sla: 2, ativo: true, etapas: ["Apurar"] }; });
+  };
+  const redesenhar = () => { $("#arv").innerHTML = pais(); ligarArv(); };
+  const ligarArv = () => m.querySelectorAll("[data-delpai]").forEach((b) => (b.onclick = () => { lerArv(); delete arv[b.dataset.delpai]; redesenhar(); }));
+  ligarArv();
+  $("#addPai").onclick = () => { lerArv(); const v = $("#novoPai").value.trim(); if (v && !arv[v]) arv[v] = {}; $("#novoPai").value = ""; redesenhar(); };
+  m.querySelectorAll("[data-novofilho]").forEach((i) => (i.onkeydown = (ev) => { if (ev.key === "Enter") { lerArv(); redesenhar(); } }));
+  $("#salvarArv").onclick = async () => { lerArv(); try { await chamar("/config/motivos", { method: "PUT", body: { motivos: arv, departamentos: $("#deps").value.split(",").map((x) => x.trim()).filter(Boolean) } }); ok("Motivos e setores salvos."); await carregar(); } catch (er) { falha(er); } };
+  $("#salvarErp").onclick = async () => { const auto = {}; m.querySelectorAll("[data-auto]").forEach((c) => (auto[c.dataset.auto] = c.checked));
+    try { await chamar("/config", { method: "PUT", body: { auto_erp: auto, depto_erp: $("#dErp").value, motivo_pai_erp: $("#mErp").value, sla_erp_dias: +$("#sErp").value || 0 } }); ok("Salvo."); await carregar(); } catch (er) { falha(er); } };
+  const ss = $("#salvarSetores"); if (ss) ss.onclick = async () => { const mapa = {}; m.querySelectorAll("[data-setoru]").forEach((s2) => { if (s2.value) mapa[s2.dataset.setoru] = s2.value; });
+    try { await chamar("/config", { method: "PUT", body: { setor_usuarios: mapa } }); ok("Setores salvos."); await carregar(); } catch (er) { falha(er); } };
+  $("#recarregar").onclick = async () => { try { await chamar("/recarregar", { method: "POST" }, "relendo…"); await carregar(); ok("Relido."); } catch (er) { falha(er); } };
+}
+
+/* ══════ INÍCIO ══════ */
+carregar();
+setInterval(() => { if (document.visibilityState === "visible" && !S.aberto && !document.querySelector(".aur-modal-fundo")) A.api(API + "/estado").then((e) => { if (e.versao !== S.e?.versao) { S.e = e; if (!document.activeElement || !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) render(); } }).catch(() => {}); }, 30000);
+})();
+</script>
+</body>
+</html>

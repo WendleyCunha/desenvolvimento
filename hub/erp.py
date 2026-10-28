@@ -315,7 +315,7 @@ def kardex(pid: str, request: Request):
 # CADASTROS
 # ══════════════════════════════════════════════════════════════════════════════
 CAMPOS_PRODUTO = ["sku", "nome", "categoria", "unidade", "custo", "preco", "fornecedor_id", "minimo", "volumes", "ean", "ativo", "obs"]
-CAMPOS_PARCEIRO = ["tipo", "nome", "doc", "telefone", "email", "endereco", "capacidade", "placa", "ativo", "obs"]
+CAMPOS_PARCEIRO = ["tipo", "nome", "codigo", "doc", "telefone", "email", "endereco", "capacidade", "placa", "ativo", "obs"]   # codigo = código do cliente (liga com os Tickets)
 TIPOS_PARCEIRO = ["cliente", "fornecedor", "motorista", "veiculo"]
 
 
@@ -890,7 +890,17 @@ async def baixa_entrega(cid: str, request: Request):
         tx = Tx(u)
         _baixa(tx, u, cid, c)
         tx.commit()
-        return {"ok": True, **_parcial(p, tx)}
+        resposta = {"ok": True, **_parcial(p, tx)}
+    # Avaria / recusa / ausência → ticket automático no módulo Tickets (se ligado em Ajustes).
+    # Em segundo plano: a baixa nunca espera nem falha por causa disso.
+    if c.get("resultado") in ("avaria", "recusado", "ausente"):
+        try:
+            import tickets
+            threading.Thread(target=tickets.auto_de_baixa, args=(str(c.get("pedido_id") or ""), c.get("resultado"), str(c.get("motivo") or ""), u),
+                             daemon=True).start()
+        except Exception as ex:  # noqa: BLE001
+            print(f"[erp] não abriu ticket automático: {ex}")
+    return resposta
 
 
 def _baixa(tx: Tx, u: dict, cid: str, c: dict, em=None):
