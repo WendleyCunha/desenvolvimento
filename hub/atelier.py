@@ -39,6 +39,19 @@ COLS = {"clientes": "lila_clientes", "encomendas": "lila_encomendas", "cronogram
         "fechamentos": "lila_fechamentos_mensais", "campo": "lila_campo_horas", "peso": "lila_peso_registro"}
 
 
+def _limpo(v):
+    """O app antigo (pandas) gravou NaN/Infinity em alguns campos — viram vazio aqui."""
+    if isinstance(v, float) and (v != v or v in (float("inf"), float("-inf"))):
+        return None
+    if isinstance(v, dict):
+        return {k: _limpo(x) for k, x in v.items()}
+    if isinstance(v, list):
+        return [_limpo(x) for x in v]
+    if isinstance(v, datetime):
+        return v.isoformat()
+    return v
+
+
 def hoje() -> date:
     return datetime.now(FUSO).date()
 
@@ -89,7 +102,7 @@ class _Base:
         novo = {}
         n = 0
         for k, col in COLS.items():
-            novo[k] = {doc.id: {**(doc.to_dict() or {}), "id": doc.id} for doc in db.collection(col).stream(timeout=60)}
+            novo[k] = {doc.id: {**_limpo(doc.to_dict() or {}), "id": doc.id} for doc in db.collection(col).stream(timeout=60)}
             n += len(novo[k])
         cfg = dict(R.CONFIG_PADRAO)
         for doc in db.collection("lila_config").stream(timeout=30):
