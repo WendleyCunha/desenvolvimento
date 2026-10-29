@@ -342,6 +342,11 @@ async def alterar_passageiro(id_evento: str, pid: str, request: Request):
     final = {**atual, **{k: novos[k] for k in mudados}}
     if "dias_onibus" in mudados:
         final["valor_total"] = _num(ev.get("valor"), 0) * len(final["dias_onibus"])
+    # marcado como QUITADO sem o valor digitado → registra o valor da passagem (o Arrecadado fecha com os Pagos)
+    if final.get("pago") and ("pago" in mudados or "dias_onibus" in mudados) and _num(final.get("valor_pago")) < _num(final.get("valor_total")):
+        final["valor_pago"] = _num(final.get("valor_total"))
+        if "valor_pago" not in mudados:
+            mudados.append("valor_pago")
     final.setdefault("embarcou", False)
 
     novo_id = pax_id(final["nome"], final.get("rg", ""))

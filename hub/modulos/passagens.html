@@ -291,10 +291,13 @@ function montarTopo() {
 /* ══════ CÁLCULOS (mesma regra do Streamlit) ══════ */
 const totalDe = (p) => Number(p.valor_total || 0) || (p.dias_onibus || []).length * Number(S.ev?.valor || 0);
 const saldoDe = (p) => Math.max(totalDe(p) - Number(p.valor_pago || 0), 0);
+// quem está marcado como PAGO (quitado) conta o valor da passagem inteira no Arrecadado,
+// mesmo que o recebimento não tenha sido digitado (chave "quitado" ou planilha antiga com valor_pago = 0)
+const recebidoDe = (p) => p.pago ? Math.max(Number(p.valor_pago || 0), totalDe(p)) : Number(p.valor_pago || 0);
 function numeros() {
   const ev = S.ev || {}, pax = S.pax;
   const total = pax.length, pagos = pax.filter((p) => p.pago).length;
-  const arrecadado = pax.reduce((s, p) => s + Number(p.valor_pago || 0), 0);
+  const arrecadado = pax.reduce((s, p) => s + recebidoDe(p), 0);
   const aReceber = pax.filter((p) => !p.pago).reduce((s, p) => s + saldoDe(p), 0);
   const nOnibus = (ev.datas || []).reduce((s, d) => s + Number((ev.frotas || {})[d] || 1), 0);
   const custo = nOnibus * Number(ev.custo_onibus ?? S.custoPadrao);
