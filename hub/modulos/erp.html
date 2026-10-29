@@ -581,7 +581,8 @@ function abrirPedido(id) {
     botoes: [{ rotulo: "Fechar" }, ...bts.map(([a, r, cl, ic]) => ({ rotulo: r, classe: cl, icone: ic, acao: async () => {
       if (a === "agendar") { setTimeout(() => agendar([p.id]), 280); return; }
       if (a === "troca") { setTimeout(() => editarPedido(null, { tipo: "troca", cliente_id: p.cliente_id, origem_id: p.id, recolher: p.itens.map((i) => ({ produto_id: i.produto_id, qtd: i.qtd })), itens: p.itens.map((i) => ({ produto_id: i.produto_id, qtd: i.qtd, preco: 0 })) }), 280); return; }
-      try { await api(`/pedidos/${p.id}/acao`, { method: "POST", body: { acao: a } }); ok({ confirmar: "Confirmado — estoque reservado.", reservar: "Reposição reservada.", desagendar: "Removido da agenda." }[a]); render(); }
+      try { const r = await api(`/pedidos/${p.id}/acao`, { method: "POST", body: { acao: a } }); const bloq = ((r && r.mudou && r.mudou.pedidos) || []).some((x) => x.id === p.id && x.sem_estoque);
+        ok({ confirmar: bloq ? "Confirmado, mas SEM ESTOQUE — fica bloqueado e é liberado sozinho na próxima entrada." : "Confirmado — estoque reservado.", reservar: "Reposição reservada.", desagendar: "Removido da agenda." }[a]); render(); }
       catch (e) { falha(e); return false; }
     } }))],
   });
@@ -807,7 +808,8 @@ function destinar(de, pid) {
       <div class="aviso at" id="dInfo"></div>`,
     botoes: [{ rotulo: "Cancelar" }, { rotulo: "Destinar", classe: "btn", icone: "check", principal: true, acao: async (cx) => {
       const para = $("[data-para].ativo", cx).dataset.para, q = +$("#dQ", cx).value;
-      try { await api("/estoque/transferir", { method: "POST", body: { de, para, produto_id: pid, qtd: q, condicao: $("#dCond", cx).value, obs: $("#dObs", cx).value } }); ok(`${q}× ${esc(p.nome)} → ${esc(rot(para))}.`); render(); }
+      try { const r = await api("/estoque/transferir", { method: "POST", body: { de, para, produto_id: pid, qtd: q, condicao: $("#dCond", cx).value, obs: $("#dObs", cx).value } });
+        ok(`${q}× ${esc(p.nome)} → ${esc(rot(para))}.` + ((r && r.liberados || []).length ? ` Liberado(s): pedido(s) #${r.liberados.join(", #")}.` : "")); render(); }
       catch (e) { falha(e); return false; }
     } }],
     aoAbrir(cx) {
@@ -850,7 +852,8 @@ function entradaMercadoria() {
     botoes: [{ rotulo: "Cancelar" }, { rotulo: "Lançar entrada", classe: "btn", icone: "check", principal: true, acao: async (cx) => {
       const itens = $$("[data-li=ent]", cx).map((l) => ({ produto_id: $('[data-k="produto_id"]', l).value, qtd: +$('[data-k="qtd"]', l).value, ...($('[data-k="custo"]', l)?.value ? { custo: +$('[data-k="custo"]', l).value } : {}) })).filter((i) => i.produto_id && i.qtd > 0);
       if (!itens.length) { A.toast("Inclua ao menos um item.", [], { cor: "var(--rosa)" }); return false; }
-      try { await api("/estoque/entrada", { method: "POST", body: { fornecedor_id: $("#eForn", cx).value, documento: $("#eDoc", cx).value, obs: $("#eObs", cx).value, itens } }); ok(`Entrada de ${itens.reduce((s, i) => s + i.qtd, 0)} peça(s) lançada.`); render(); }
+      try { const r = await api("/estoque/entrada", { method: "POST", body: { fornecedor_id: $("#eForn", cx).value, documento: $("#eDoc", cx).value, obs: $("#eObs", cx).value, itens } });
+        ok(`Entrada de ${itens.reduce((s, i) => s + i.qtd, 0)} peça(s) lançada.` + ((r && r.liberados || []).length ? ` Liberado(s) automaticamente: pedido(s) #${r.liberados.join(", #")}.` : "")); render(); }
       catch (e) { falha(e); return false; }
     } }],
     aoAbrir(cx) {
@@ -872,7 +875,7 @@ function inventario(pid) {
       <div id="iDif" class="aviso at"></div>`,
     botoes: [{ rotulo: "Cancelar" }, { rotulo: "Ajustar", classe: "btn", icone: "check", principal: true, acao: async (cx) => {
       try { const r = await api("/estoque/ajuste", { method: "POST", body: { produto_id: pid, local: $("#iLoc", cx).value, contado: +$("#iCont", cx).value, motivo: $("#iMot", cx).value, como_perda: $("#iPerda", cx).checked } });
-        ok(r.diferenca ? `Ajuste de ${r.diferenca > 0 ? "+" : ""}${r.diferenca} lançado.` : "Sem diferença — nada a ajustar."); render(); }
+        ok((r.diferenca ? `Ajuste de ${r.diferenca > 0 ? "+" : ""}${r.diferenca} lançado.` : "Sem diferença — nada a ajustar.") + ((r.liberados || []).length ? ` Liberado(s): pedido(s) #${r.liberados.join(", #")}.` : "")); render(); }
       catch (e) { falha(e); return false; }
     } }],
     aoAbrir(cx) {
@@ -964,7 +967,7 @@ function editarParceiro(id, tipo, depois) {
     titulo: id ? `${rotT} · ${p.nome}` : `Novo ${rotT.toLowerCase()}`, icone: { cliente: "usuario", fornecedor: "caixa", motorista: "usuarios", veiculo: "caminhao" }[tipo], cor: "#8b5cf6", largura: 700,
     html: `<fieldset ${so ? "disabled" : ""} style="border:0;padding:0;margin:0">
       <label class="campo">${tipo === "veiculo" ? "Identificação (placa · modelo)" : "Nome / razão social"} *<input id="cNome" value="${esc(p.nome || "")}" autofocus></label>
-      ${tipo === "cliente" ? `<label class="campo" style="margin-top:10px">Código do cliente <small style="font-weight:400;color:var(--txt3)">(o mesmo dos Tickets — liga o atendimento aos pedidos)</small><input id="cCod" value="${esc(p.codigo || "")}" placeholder="ex.: 7X83J8"></label>` : ""}
+      ${tipo === "cliente" ? `<label class="campo" style="margin-top:10px">Código do cliente <small style="font-weight:400;color:var(--txt3)">(o mesmo dos Tickets — liga o atendimento aos pedidos)</small><input id="cCod" value="${esc(p.codigo || "")}" placeholder="em branco = automático (6 letras e números)"></label>` : ""}
       ${tipo === "veiculo" ? `<div class="g2" style="margin-top:10px"><label class="campo">Placa<input id="cPlaca" value="${esc(p.placa || "")}"></label><label class="campo">Capacidade (volumes)<input type="number" id="cCap" min="0" value="${p.capacidade || 0}"></label></div>` :
       `${vis("contato") ? `<div class="g3" style="margin-top:10px" data-perm="campo:contato"><label class="campo">CPF / CNPJ<input id="cDoc" value="${esc(p.doc || "")}" ${edita("contato") ? "" : "disabled"}></label><label class="campo">Telefone<input id="cTel" value="${esc(p.telefone || "")}" ${edita("contato") ? "" : "disabled"}></label><label class="campo">E-mail<input id="cMail" value="${esc(p.email || "")}" ${edita("contato") ? "" : "disabled"}></label></div>` : ""}
       ${tipo !== "motorista" ? `<div class="sep"><h4>Endereço${tipo === "cliente" ? " de entrega" : ""}</h4>

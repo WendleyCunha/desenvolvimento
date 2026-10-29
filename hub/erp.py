@@ -208,6 +208,14 @@ class Tx:
     def commit(self):
         if not self.mud and not self.movs and self.cfg is None:
             return
+        # o que aconteceu de novo em cada pedido (vai para os tickets abertos depois de gravar)
+        eventos = []
+        for (col, i), d in self.mud.items():
+            if col == "pedidos" and d:
+                antes = len((ST.dados["pedidos"].get(i) or {}).get("historico") or [])
+                novos = [h.get("evento", "") for h in (d.get("historico") or [])[antes:] if h.get("evento")]
+                if novos:
+                    eventos.append({"pid": i, "numero": d.get("numero"), "cliente_id": d.get("cliente_id"), "eventos": novos})
         db = banco.db()
         ops = []
         for (col, i), d in self.mud.items():
@@ -234,6 +242,43 @@ class Tx:
             ST.dados["movimentos"][m["id"]] = m
         if self.cfg is not None:
             ST.config = self.cfg
+        if eventos:
+            _avisar_tickets(eventos, self.u)
+
+
+def _avisar_tickets(eventos: list, u: dict):
+    """Cada ação no ERP vira comentário nos tickets abertos do pedido (ou do cliente).
+    Em segundo plano: o ERP nunca espera nem falha por causa disso."""
+    try:
+        import tickets
+        threading.Thread(target=tickets.eventos_do_erp, args=(eventos, dict(u or {})), daemon=True).start()
+    except Exception as ex:  # noqa: BLE001
+        print(f"[erp] não avisou os tickets: {ex}")
+
+
+# ── CÓDIGO DO CLIENTE: 6 caracteres, letras e números misturados, sem repetir ──
+_ALFA = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"   # sem O/0 e I/1 (não se confundem ao ditar)
+
+
+def gerar_codigo_cliente(extra_usados: set | None = None) -> str:
+    usados = {str(c.get("codigo") or "").strip().upper() for c in ST.dados["parceiros"].values() if c.get("codigo")} | (extra_usados or set())
+    rnd = random.SystemRandom()
+    while True:
+        cod = "".join(rnd.choice(_ALFA) for _ in range(6))
+        if any(ch.isdigit() for ch in cod) and any(ch.isalpha() for ch in cod) and cod not in usados:
+            return cod
+
+
+def garantir_codigo(tx: "Tx", cliente_id: str) -> str:
+    """Devolve o código do cliente; se ele não tiver, cria um (6 caracteres) e grava no cadastro."""
+    cli = tx.get("parceiros", cliente_id)
+    if not cli:
+        return ""
+    if not str(cli.get("codigo") or "").strip():
+        cli["codigo"] = gerar_codigo_cliente()
+        cli["atualizado_em"] = agora()
+        tx.put("parceiros", cliente_id, cli)
+    return cli["codigo"]
 
 
 def _copia(d):
@@ -418,6 +463,13 @@ async def _salvar_parceiro(request: Request, pid: str | None):
             raise HTTPException(400, "Tipo de cadastro inválido.")
         if not atual.get("nome"):
             raise HTTPException(400, "Informe o nome.")
+        if atual.get("tipo") == "cliente":
+            atual["codigo"] = str(atual.get("codigo") or "").strip().upper()
+            if not atual["codigo"]:
+                atual["codigo"] = gerar_codigo_cliente()
+            elif any(str(o.get("codigo") or "").strip().upper() == atual["codigo"] and k != pid and o.get("tipo") == "cliente"
+                     for k, o in ST.dados["parceiros"].items()):
+                raise HTTPException(409, f"O código {atual['codigo']} já é de outro cliente.")
         pid = pid or _id()
         atual.setdefault("criado_em", agora())
         atual["atualizado_em"] = agora()
@@ -449,8 +501,9 @@ async def entrada(request: Request):
                 tx.put("produtos", pid, prod)
             tx.mover(pid, it.get("qtd"), EXTERNO, "disponivel", "entrada", ref=doc, obs=str(c.get("obs") or ""),
                      extra={"fornecedor_id": forn})
+        liberados = liberar_aguardando(tx, u, f"entrada {doc}" if doc else "entrada no estoque")
         tx.commit()
-        return {"ok": True, **_parcial(p, tx)}
+        return {"ok": True, "liberados": liberados, **_parcial(p, tx)}
 
 
 @router.post("/estoque/ajuste")
@@ -473,8 +526,9 @@ async def ajuste(request: Request):
             tx.mover(pid, dif, EXTERNO, local, "ajuste", obs=motivo)
         elif dif < 0:
             tx.mover(pid, -dif, local, "perdas" if c.get("como_perda") else EXTERNO, "ajuste", obs=motivo)
+        liberados = liberar_aguardando(tx, u, "ajuste de estoque") if dif > 0 and local == "disponivel" else []
         tx.commit()
-        return {"ok": True, "diferenca": dif, **_parcial(p, tx)}
+        return {"ok": True, "diferenca": dif, "liberados": liberados, **_parcial(p, tx)}
 
 
 @router.post("/estoque/transferir")
@@ -491,8 +545,9 @@ async def transferir(request: Request):
         for it in (c.get("itens") or [{"produto_id": c.get("produto_id"), "qtd": c.get("qtd")}]):
             tx.mover(str(it.get("produto_id") or ""), it.get("qtd"), de, para, "destinacao", ref=str(c.get("ref") or ""),
                      obs=str(c.get("obs") or ""), extra={"condicao": str(c.get("condicao") or ""), "motivo": str(c.get("motivo") or "")})
+        liberados = liberar_aguardando(tx, u, "peça voltou ao estoque") if para == "disponivel" else []
         tx.commit()
-        return {"ok": True, **_parcial(p, tx)}
+        return {"ok": True, "liberados": liberados, **_parcial(p, tx)}
 
 
 def _parcial(p: dict, tx: Tx) -> dict:
@@ -543,6 +598,45 @@ def _reservar(tx: Tx, ped: dict, em=None):
     for it in ped.get("pendentes", []):
         tx.mover(it["produto_id"], it["qtd"], "disponivel", "reservado", "reserva", ref=f"PED {ped['numero']}", em=em)
     ped["reservado"] = True
+
+
+def _reservar_ou_bloquear(tx: Tx, ped: dict, u: dict, em=None) -> bool:
+    """Reserva se houver estoque; senão o pedido fica BLOQUEADO aguardando estoque
+    (a próxima entrada no estoque libera sozinho). Devolve True se reservou."""
+    try:
+        _reservar(tx, ped, em)
+        ped["sem_estoque"] = False
+        return True
+    except HTTPException as ex:
+        if ex.status_code != 409:
+            raise
+        ped["reservado"] = False
+        ped["sem_estoque"] = True
+        _hist(ped, u, "Bloqueado — aguardando estoque (" + str(ex.detail).replace("Estoque disponível insuficiente: ", "falta ").rstrip(".") + ")", em)
+        return False
+
+
+def liberar_aguardando(tx: Tx, u: dict, origem: str = "", em=None) -> list:
+    """ENTRADA NO ESTOQUE → LIBERAÇÃO AUTOMÁTICA: os pedidos bloqueados aguardando estoque,
+    do mais antigo para o mais novo, são reservados (disponível → reservado) enquanto houver saldo."""
+    fila = []
+    for pid, d in ST.dados["pedidos"].items():
+        ped = tx.get("pedidos", pid)
+        if ped and ped.get("sem_estoque") and not ped.get("reservado") and ped.get("pendentes") \
+                and ped.get("status") in ("confirmado", "reagendar", "agendado"):
+            fila.append((ped.get("criado_em") or "", pid, ped))
+    liberados = []
+    for _, pid, ped in sorted(fila):
+        try:
+            _reservar(tx, ped, em)
+        except HTTPException:
+            continue
+        ped["sem_estoque"] = False
+        _hist(ped, u, "Liberado automaticamente — estoque reservado" + (f" ({origem})" if origem else ""), em)
+        ped["atualizado_em"] = em or agora()
+        tx.put("pedidos", pid, ped)
+        liberados.append(ped.get("numero"))
+    return liberados
 
 
 def _liberar(tx: Tx, ped: dict, motivo="liberação"):
@@ -607,9 +701,9 @@ def _novo_pedido(tx: Tx, u: dict, p: dict, c: dict, em: str | None = None) -> di
     pid = _id()
     _hist(ped, u, "Pedido criado" + (" (troca)" if tipo == "troca" else ""), em)
     if c.get("confirmar"):
-        _reservar(tx, ped, em)
         ped["status"] = "confirmado"
-        _hist(ped, u, "Confirmado — estoque reservado", em)
+        if _reservar_ou_bloquear(tx, ped, u, em):
+            _hist(ped, u, "Confirmado — estoque reservado", em)
     ped["atualizado_em"] = em or agora()
     tx.put("pedidos", pid, ped)
     ped["id"] = pid
@@ -695,9 +789,9 @@ async def acao_pedido(pid: str, request: Request):
         if a == "confirmar":
             if st != "rascunho":
                 raise HTTPException(409, "Só pedidos em rascunho podem ser confirmados.")
-            _reservar(tx, ped)
             ped["status"] = "confirmado"
-            _hist(ped, u, "Confirmado — estoque reservado")
+            if _reservar_ou_bloquear(tx, ped, u):
+                _hist(ped, u, "Confirmado — estoque reservado")
         elif a == "reservar":
             if ped.get("reservado") or st not in ("reagendar", "confirmado"):
                 raise HTTPException(409, "Nada a reservar.")

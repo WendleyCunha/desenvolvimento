@@ -870,11 +870,28 @@ def buscar_clientes_erp(request: Request, q: str = ""):
         if c.get("tipo") != "cliente":
             continue
         if (qn and qn in norm(c.get("nome"))) or (qd and len(qd) >= 4 and (qd in digitos(c.get("telefone")) or qd in digitos(c.get("doc")))) \
-                or (qn and qn == norm(c.get("codigo"))):
-            out.append({"id": pid, "nome": c.get("nome"), "codigo": c.get("codigo", ""), "telefone": c.get("telefone", "")})
+                or (qn and norm(c.get("codigo")).startswith(qn)):
+            out.append({"id": pid, "nome": c.get("nome"), "codigo": c.get("codigo", ""), "telefone": c.get("telefone", ""),
+                        "cidade": (c.get("endereco") or {}).get("cidade", "")})
         if len(out) >= 15:
             break
-    return {"clientes": out}
+    exato = [x for x in out if norm(x["codigo"]) == qn]   # o código exato vem primeiro
+    return {"clientes": exato + [x for x in out if x not in exato]}
+
+
+@router.post("/erp/clientes/{cliente_id}/codigo")
+def codigo_do_cliente(cliente_id: str, request: Request):
+    """Atendimento escolheu um cliente do ERP sem código: cria o código (6 caracteres) e grava no cadastro."""
+    _contexto(request)
+    e = _erp()
+    e.ST.carregar()
+    with e.ST.trava:
+        tx = e.Tx({"login": "atendimento"})
+        cod = e.garantir_codigo(tx, cliente_id)
+        if not cod:
+            raise HTTPException(404, "Cliente não encontrado no ERP.")
+        tx.commit()
+    return {"codigo": cod}
 
 
 @router.post("/ticket/{tid:path}/erp-troca")
@@ -957,7 +974,16 @@ def tickets_do_pedido(pid: str, request: Request):
 def _cliente_ticket_de_pedido(ped: dict, pid: str) -> tuple[str, str, str]:
     e = _erp()
     cli = e.ST.dados["parceiros"].get(ped.get("cliente_id") or "") or {}
-    cod = cli.get("codigo") or f"erp_{ped.get('cliente_id') or pid}"
+    cod = cli.get("codigo") or ""
+    if not cod and ped.get("cliente_id"):
+        try:
+            with e.ST.trava:
+                tx = e.Tx({"login": "atendimento"})
+                cod = e.garantir_codigo(tx, ped["cliente_id"])
+                tx.commit()
+        except Exception as ex:  # noqa: BLE001
+            print(f"[tickets] não gerou código do cliente: {ex}")
+    cod = cod or e.gerar_codigo_cliente()
     return cod, cli.get("nome") or ped.get("cliente_nome", ""), cli.get("telefone") or ped.get("telefone", "")
 
 
@@ -985,6 +1011,40 @@ async def abrir_de_pedido(pid: str, request: Request):
     dados["cliente_codigo"] = cod
     tid = criar_solicitacao({k: v for k, v in dados.items() if v not in (None, "")}, me)
     return {"ok": True, "id": tid}
+
+
+def eventos_do_erp(eventos: list, usuario_hub: dict):
+    """Chamado pelo ERP depois de gravar QUALQUER ação num pedido (confirmar, bloqueio, liberação
+    automática, agendar, alterar, cancelar, saída para entrega, baixa…). Cada evento vira um
+    comentário nos tickets ABERTOS do pedido — ou do cliente, quando o ticket não é de outro pedido.
+    Nunca derruba o ERP: qualquer erro só vai para o log."""
+    try:
+        if not configurado() or not eventos:
+            return
+        BASE.atualizar()
+        quem = usuario_hub.get("login", "")
+        me = {"usuario": "erp", "nome": "ERP" + (f" · {quem}" if quem and quem not in ("atendimento", "sistema") else ""), "depto": "", "hub": quem}
+        abertos = [t for t in BASE.tickets() if t.get("status") in ABERTOS]
+        for ev in eventos:
+            pid = ev.get("pid")
+            alvos = []
+            for t in abertos:
+                ligados = {t.get("erp_pedido_id")} | {x.get("id") for x in t.get("erp_trocas") or []}
+                if pid in ligados:
+                    alvos.append(t)
+                elif not t.get("erp_pedido_id") and ev.get("cliente_id") and (t.get("erp_cliente_id") or t.get("cliente_codigo")) \
+                        and ev["cliente_id"] in clientes_erp_do_ticket(t):
+                    alvos.append(t)
+            if not alvos:
+                continue
+            texto = "📦 Pedido #" + str(ev.get("numero")) + ": " + " · ".join(ev.get("eventos") or [])
+            for t in alvos:
+                try:
+                    _mutar_sol(t["id"], lambda s, txt=texto: _coment(s, me, txt[:600], tipo="sistema"), me)
+                except HTTPException:
+                    pass
+    except Exception as ex:  # noqa: BLE001
+        print(f"[tickets] eventos do ERP não chegaram aos tickets: {type(ex).__name__}: {ex}")
 
 
 ROTULO_RES = {"avaria": "Avaria na entrega", "recusado": "Entrega recusada", "ausente": "Cliente ausente na entrega"}
