@@ -108,6 +108,8 @@ let MODO_ATUAL = "hub";
 async function modoDe(u) {
   if (videoEmbed(u) || ehGoogle(u)) return "direto";
   const h = hostDe(u), fixo = ler(MODO, {})[h];
+  // buscadores ficam SEMPRE no modo hub: só assim o clique numa matéria passa pelo hub e cai no modo certo
+  if (/(^|\.)(bing\.com|duckduckgo\.com)$/i.test(h)) return "hub";
   if (fixo === "direto" || fixo === "hub") return fixo;
   const c = ler(AUTO, {})[h];
   if (c && Date.now() - c.em < 6 * 3600e3) return c.m;
