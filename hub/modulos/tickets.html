@@ -532,8 +532,7 @@ function ligarAtendimento(m, t, erp) {
       botoes: [{ rotulo: "Cancelar" }, { rotulo: "Salvar no ERP", classe: "btn", principal: true, acao: async () => {
         const data = $("#aD").value; if (!data) { A.toast("Escolha a data."); return false; }
         try { await chamar(`/api/erp/pedidos/${p.id}/acao`, { method: "POST", body: { acao: "agendar", data, janela: $("#aJ").value, obs: $("#aO").value } });
-          await chamar(tidUrl(tid) + "/erp-registro", { method: "POST", body: { texto: `Pedido #${p.numero} ${p.status === "agendado" ? "reagendado" : "agendado"} para ${d10(data)} (${$("#aJ").value}).` } });
-          ok("Agenda alterada no ERP."); await recarregarDet(); } catch (e) { falha(e); return false; }
+          ok("Agenda alterada no ERP — o ticket recebe o registro."); await recarregarDet(); setTimeout(() => recarregarDet().catch(() => {}), 2500); } catch (e) { falha(e); return false; }
       } }] });
   }));
   m.querySelectorAll("[data-erp-cancelar]").forEach((b) => (b.onclick = async () => {
@@ -541,7 +540,7 @@ function ligarAtendimento(m, t, erp) {
     const motivo = await new Promise((res) => { let r = null; A.modal({ titulo: `Cancelar pedido #${p.numero}`, icone: "atencao", cor: "var(--rosa)", largura: 440, html: `<label class="campo">Motivo<input id="cM" autofocus></label><p class="dica" style="margin-top:8px">Cancela no ERP e libera a reserva de estoque.</p>`, botoes: [{ rotulo: "Voltar" }, { rotulo: "Cancelar pedido", classe: "btn perigo", principal: true, acao: () => { r = $("#cM").value; } }], aoFechar: () => res(r) }); });
     if (motivo === null) return;
     try { await chamar(`/api/erp/pedidos/${p.id}/acao`, { method: "POST", body: { acao: "cancelar", motivo } });
-      await chamar(tidUrl(tid) + "/erp-registro", { method: "POST", body: { texto: `Pedido #${p.numero} cancelado no ERP${motivo ? ": " + motivo : ""}.` } }); ok("Pedido cancelado no ERP."); await recarregarDet(); } catch (e) { falha(e); }
+      ok("Pedido cancelado no ERP — o ticket recebe o registro."); await recarregarDet(); setTimeout(() => recarregarDet().catch(() => {}), 2500); } catch (e) { falha(e); }
   }));
   m.querySelectorAll("[data-erp-troca]").forEach((b) => (b.onclick = async () => {
     const p = erp.pedidos.find((x) => x.id === b.dataset.erpTroca);
@@ -578,7 +577,8 @@ function telaAbrir(m) {
   m.innerHTML = `<section class="painel vidro" style="max-width:820px;margin:0 auto">
     <button type="button" class="btn v p" id="trocaSetor">${svg("voltar")} Setores</button>
     <h2 style="margin:10px 0 12px;font:700 1.3rem var(--titulo)">Novo chamado · ${esc(S.setorAbrir)}</h2>
-    <div class="g2"><label class="campo">Código do cliente *<input id="nCod" placeholder="ex.: 7X83J8"></label><label class="campo">Nome do cliente *<input id="nNome"></label></div>
+    <div class="g2"><label class="campo">Código do cliente *<input id="nCod" placeholder="digite o código ou o nome" autocomplete="off"></label><label class="campo">Nome do cliente *<input id="nNome" autocomplete="off"></label></div>
+    <div id="nBusca" style="margin-top:6px"></div>
     <div class="g2" style="margin-top:8px"><label class="campo">Telefone<input id="nTel"></label><label class="campo">Prioridade<select id="nPrio">${Object.entries(PRIO).map(([k, [r]]) => `<option value="${k}"${k === "normal" ? " selected" : ""}>${r}</option>`).join("")}</select></label></div>
     <div class="g2" style="margin-top:8px"><label class="campo">Motivo<select id="nPai"><option value="">—</option>${Object.keys(arv).map((p) => `<option>${esc(p)}</option>`).join("")}</select></label><label class="campo">Submotivo<select id="nFilho"><option value="">—</option></select></label></div>
     <label class="campo" style="margin-top:8px">Assunto *<input id="nAss"></label>
@@ -589,12 +589,27 @@ function telaAbrir(m) {
   </section>`;
   $("#trocaSetor").onclick = () => { S.setorAbrir = ""; render(); };
   $("#nPai").onchange = () => { $("#nFilho").innerHTML = `<option value="">—</option>` + Object.entries(arv[$("#nPai").value] || {}).filter(([, i]) => i.ativo !== false).map(([f, i]) => `<option value="${esc(f)}">${esc(f)}${i.sla != null ? ` · SLA ${i.sla}d` : ""}</option>`).join(""); };
+  /* digitar o nome ou o código → busca o cliente no ERP; escolhendo, preenche código, nome e telefone e liga o ticket ao cliente */
+  let tmB = null, nCli = "";
+  const buscarErp = (q) => { clearTimeout(tmB); if (String(q || "").trim().length < 2) { $("#nBusca").innerHTML = ""; return; }
+    tmB = setTimeout(async () => { try { const r = await chamar("/erp/clientes?q=" + encodeURIComponent(q.trim()), {});
+      $("#nBusca").innerHTML = r.clientes.length ? `<div class="vidro" style="border-radius:10px;padding:6px;display:flex;flex-direction:column;gap:4px"><small class="dica" style="padding:2px 6px">Clientes no ERP — clique para usar</small>${r.clientes.slice(0, 8).map((c) =>
+        `<button type="button" class="btn v" data-ncli="${esc(c.id)}" style="justify-content:flex-start;gap:10px"><b>${esc(c.codigo || "sem código")}</b> ${esc(c.nome)} <small class="dica">${esc(c.telefone || "")} ${esc(c.cidade || "")}</small></button>`).join("")}</div>`
+        : `<p class="dica">Nenhum cliente do ERP com “${esc(q.trim())}”. Pode abrir assim mesmo.</p>`;
+      $("#nBusca").querySelectorAll("[data-ncli]").forEach((b) => (b.onclick = async () => { const c = r.clientes.find((x) => x.id === b.dataset.ncli);
+        let cod = c.codigo; if (!cod) { try { cod = (await chamar(`/erp/clientes/${c.id}/codigo`, { method: "POST", body: {} })).codigo; } catch (e) { falha(e); return; } }
+        $("#nCod").value = cod; $("#nNome").value = c.nome || ""; if (c.telefone && !$("#nTel").value) $("#nTel").value = c.telefone; nCli = c.id;
+        $("#nBusca").innerHTML = `<p class="dica">✓ Ligado ao cliente <b>${esc(c.nome)}</b> do ERP (código ${esc(cod)}).</p>`; $("#nCod").onchange(); }));
+    } catch (_) { } }, 300); };
+  $("#nCod").oninput = () => { nCli = ""; buscarErp($("#nCod").value); };
+  $("#nNome").oninput = () => { nCli = ""; buscarErp($("#nNome").value); };
   $("#nCod").onchange = () => { const cod = norm($("#nCod").value); const h = S.e.tickets.filter((t) => norm(t.cliente_codigo) === cod);
     if (h.length && !$("#nNome").value) $("#nNome").value = h[0].cliente_nome || "";
     $("#nHist").innerHTML = h.length ? `<div class="aviso ouro">Este cliente já tem ${h.length} atendimento(s): ${h.slice(0, 4).map((t) => `#${curto(t.id)} ${esc(t.assunto || "")} (${(ST_INFO[t.status] || [t.status])[0]})`).join(" · ")}</div>` : ""; };
   $("#nCriar").onclick = async () => {
     const body = { departamento: S.setorAbrir, cliente_codigo: $("#nCod").value.trim(), cliente_nome: $("#nNome").value.trim(), cliente_telefone: $("#nTel").value.trim(),
       prioridade: $("#nPrio").value, motivo_pai: $("#nPai").value, motivo_filho: $("#nFilho").value, assunto: $("#nAss").value.trim(), descricao: $("#nDesc").value.trim(), atribuir_a_mim: !!$("#nMeu")?.checked };
+    if (nCli) body.erp_cliente_id = nCli;
     if (!body.cliente_codigo || !body.cliente_nome || !body.assunto || !body.descricao) { A.toast("Preencha código e nome do cliente, assunto e descrição."); return; }
     try { const r = await chamar("/tickets", { method: "POST", body }); ok("Chamado aberto."); S.setorAbrir = ""; await carregar(); abrirTicket(r.id); } catch (e) { falha(e); }
   };
