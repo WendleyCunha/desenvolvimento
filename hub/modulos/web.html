@@ -62,7 +62,7 @@ body{margin:0;display:flex;flex-direction:column;overflow:hidden}
     <h2>Abra um site aqui dentro</h2>
     <p>Digite o endereço (por exemplo <b>g1.globo.com</b>) ou o que quer pesquisar e aperte Enter — a pesquisa vai pelo <b>Bing</b>, e as matérias abrem aqui dentro. Os sites abrem pelo <b>modo hub</b>: o hub busca a página e libera os links. Vídeos do YouTube e do Vimeo tocam no player deles. Sites com login (Outlook, Gmail, bancos, WhatsApp Web) e vídeos com proteção (Netflix, Globoplay) não funcionam dentro de um quadro — nesses, use ↗.</p>
   </div>
-  <div class="dica-bloq vidro" id="dicaBloq"><span id="dicaTxt">Não carregou direito? Troque o modo no botão ⇄ ou use ↗.</span><button type="button" class="btn p" id="btFora2">Abrir em nova aba ↗</button><button type="button" class="btn-ic p" id="fechaDica" title="Fechar"></button></div>
+  <div class="dica-bloq vidro" id="dicaBloq"><span id="dicaTxt">Não carregou direito? Clique no escudo para trocar o modo só deste site, ou use ↗.</span><button type="button" class="btn p" id="btFora2">Abrir em nova aba ↗</button><button type="button" class="btn-ic p" id="fechaDica" title="Fechar"></button></div>
 </div>
 
 <script src="/static/aurora.js?v=3"></script>
@@ -98,19 +98,38 @@ function videoEmbed(u) {
   } catch (_) {}
   return "";
 }
-const direto = (u) => ehGoogle(u) || !!videoEmbed(u) || ler(MODO, {})[hostDe(u)] === "direto";
-async function srcDe(u) {
+/* MODO AUTOMÁTICO, site por site:
+   · o site aceita abrir dentro do quadro → DIRETO (navegador de verdade: login, cookies, vídeos);
+   · o site recusa (jornais etc.) → MODO HUB (o hub busca a página e libera).
+   O servidor confere uma vez por site; a resposta fica guardada por 6 h.
+   O botão do escudo só cria uma EXCEÇÃO manual para o site (clicar de novo volta ao automático). */
+const AUTO = "wd.web.auto";
+let MODO_ATUAL = "hub";
+async function modoDe(u) {
+  if (videoEmbed(u) || ehGoogle(u)) return "direto";
+  const h = hostDe(u), fixo = ler(MODO, {})[h];
+  if (fixo === "direto" || fixo === "hub") return fixo;
+  const c = ler(AUTO, {})[h];
+  if (c && Date.now() - c.em < 6 * 3600e3) return c.m;
+  let m = "hub";
+  try { m = (await A.api("/api/web/modo?u=" + encodeURIComponent(u))).modo === "direto" ? "direto" : "hub"; } catch (_) {}
+  const todos = ler(AUTO, {}); todos[h] = { m, em: Date.now() }; gravar(AUTO, todos);
+  return m;
+}
+async function srcDe(u, m) {
   const v = videoEmbed(u); if (v) return v;
-  if (direto(u)) return paraQuadro(u);
+  if ((m || MODO_ATUAL) === "direto") return paraQuadro(u);
   const t = await token(); return ORIGEM + "/web/p?t=" + encodeURIComponent(t) + "&u=" + encodeURIComponent(u);
 }
-function mostrarModo() { const b = $("#btModo"); if (!b) return; const d = atual && direto(atual); b.title = d ? "Modo direto (o site abre sozinho) — clique para usar o modo hub" : "Modo hub (o hub busca o site e libera os links) — clique para modo direto"; b.style.color = d ? "" : "var(--ciano)"; }
+function mostrarModo() { const b = $("#btModo"); if (!b) return; const d = atual && MODO_ATUAL === "direto", fixo = atual && ler(MODO, {})[hostDe(atual)];
+  b.title = (d ? "Direto (o site abre como num navegador)" : "Modo hub (o hub busca o site e libera)") + (fixo ? " — FIXADO por você; clique para voltar ao automático" : " — escolhido automaticamente; clique para trocar só neste site");
+  b.style.color = d ? "" : "var(--ciano)"; b.style.outline = fixo ? "2px solid var(--ouro2)" : ""; }
 // o site (no modo hub) avisa para qual página foi → atualiza a barra de endereço
 addEventListener("message", (e) => {
   const d = e.data; if (!d || e.source !== $("#quadro").contentWindow) return;
   if (d.hubWeb === "abrir" && typeof d.url === "string" && /^https?:\/\//i.test(d.url)) { abrir(d.url); return; }   // ex.: link de vídeo dentro de um site
   if (d.hubWeb !== "url" || typeof d.url !== "string") return;
-  atual = d.url; $("#url").value = d.url; gravar(K.ult, d.url); $("#dicaBloq").classList.remove("mostra"); clearTimeout(timerDica); renderFavs(); mostrarModo();
+  atual = d.url; MODO_ATUAL = "hub"; $("#url").value = d.url; gravar(K.ult, d.url); $("#dicaBloq").classList.remove("mostra"); clearTimeout(timerDica); renderFavs(); mostrarModo();
 });
 
 /* Endereço digitado → URL. Sem ponto = pesquisa no Bing pelo modo hub
@@ -134,19 +153,23 @@ function paraQuadro(u) {
   } catch (_) {}
   return u;
 }
-let timerDica;
-function abrir(t) {
+let timerDica, pedido = 0;
+async function abrir(t) {
   const u = normalizar(t);
   if (!u) return;
+  const meu = ++pedido;
   atual = u;
   const busca = u.match(/^https:\/\/www\.bing\.com\/search\?setlang=pt-BR&cc=BR&q=(.*)$/);
   $("#url").value = busca ? decodeURIComponent(busca[1].replace(/\+/g, " ")) : u;
   $("#telaInicio").style.display = "none";
   $("#dicaBloq").classList.remove("mostra");
-  srcDe(u).then((s) => ($("#quadro").src = s));
   gravar(K.ult, u);
   clearTimeout(timerDica);
-  timerDica = setTimeout(() => { if (!ehGoogle(u) && !videoEmbed(u)) $("#dicaBloq").classList.add("mostra"); }, direto(u) ? 2500 : 9000);
+  const m = await modoDe(u);
+  if (meu !== pedido) return;   // a pessoa já pediu outro endereço
+  MODO_ATUAL = m;
+  $("#quadro").src = await srcDe(u, m);
+  timerDica = setTimeout(() => { if (!ehGoogle(u) && !videoEmbed(u)) $("#dicaBloq").classList.add("mostra"); }, m === "direto" ? 6000 : 12000);
   renderFavs(); mostrarModo();
 }
 function fora() { if (atual) window.open(atual, "_blank", "noopener"); }
@@ -157,10 +180,11 @@ function renderFavs() {
   $("#favs").querySelectorAll("[data-u]").forEach((b) => (b.onclick = (e) => { if (e.target.dataset.x !== undefined) { const l = ler(K.favs, []); l.splice(+e.target.dataset.x, 1); gravar(K.favs, l); renderFavs(); return; } abrir(b.dataset.u); }));
 }
 $("#form").onsubmit = (e) => { e.preventDefault(); abrir($("#url").value); };
-$("#btRecarregar").onclick = () => { if (atual) { $("#quadro").src = "about:blank"; setTimeout(() => srcDe(atual).then((s) => ($("#quadro").src = s)), 50); } };
+$("#btRecarregar").onclick = () => { if (atual) { $("#quadro").src = "about:blank"; setTimeout(() => srcDe(atual, MODO_ATUAL).then((s) => ($("#quadro").src = s)), 50); } };
 $("#btModo").innerHTML = svg("escudo");
 $("#btModo").onclick = () => { if (!atual || ehGoogle(atual) || videoEmbed(atual)) { A.toast(videoEmbed(atual) ? "Vídeo já abre no player próprio." : "O Google já abre direto aqui."); return; } const m = ler(MODO, {}), h = hostDe(atual);
-  if (m[h] === "direto") delete m[h]; else m[h] = "direto"; gravar(MODO, m); A.toast(m[h] ? "Modo direto para " + h : "Modo hub para " + h); abrir(atual); };
+  if (m[h]) { delete m[h]; A.toast("Automático de novo para " + h); } else { m[h] = MODO_ATUAL === "direto" ? "hub" : "direto"; A.toast((m[h] === "direto" ? "Direto" : "Modo hub") + " fixado para " + h + " — clique de novo para voltar ao automático"); }
+  gravar(MODO, m); abrir(atual); };
 $("#btFora").onclick = fora; $("#btFora2").onclick = fora;
 $("#fechaDica").onclick = () => $("#dicaBloq").classList.remove("mostra");
 $("#btInicio").onclick = () => { atual = ""; $("#quadro").src = "about:blank"; $("#telaInicio").style.display = ""; $("#url").value = ""; $("#dicaBloq").classList.remove("mostra"); renderFavs(); $("#url").focus(); };

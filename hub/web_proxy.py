@@ -95,6 +95,58 @@ def token(request: Request):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# MODO AUTOMÁTICO — o site aceita abrir dentro do quadro?
+#   sim → "direto" (navegador de verdade: login, cookies, vídeos)
+#   não (X-Frame-Options / CSP frame-ancestors) → "hub" (o hub busca a página)
+# ══════════════════════════════════════════════════════════════════════════════
+_CACHE_MODO: dict = {}   # host → (modo, quando)
+
+
+def _bloqueia_quadro(cab) -> bool:
+    xfo = (cab.get("x-frame-options") or "").strip().lower()
+    if xfo in ("deny", "sameorigin") or xfo.startswith("allow-from"):
+        return True
+    for csp in cab.get_list("content-security-policy") if hasattr(cab, "get_list") else [cab.get("content-security-policy") or ""]:
+        m = re.search(r"frame-ancestors([^;]*)", csp or "", re.I)
+        if m:
+            fontes = m.group(1).split()
+            if "*" not in fontes and "https:" not in fontes:
+                return True
+    return False
+
+
+def _decidir_modo(u: str) -> dict:
+    host = (urlsplit(u).hostname or "").lower()
+    agora = time.time()
+    if host in _CACHE_MODO and agora - _CACHE_MODO[host][1] < 6 * 3600:
+        return {"modo": _CACHE_MODO[host][0], "host": host, "cache": True}
+    if not host or not _host_publico(host):
+        return {"modo": "hub", "host": host}
+    try:
+        with httpx.Client(timeout=httpx.Timeout(12.0, connect=6.0), follow_redirects=True, headers=_CAB) as cli:
+            with cli.stream("GET", u) as r:
+                if not _host_publico(r.url.host or ""):
+                    return {"modo": "hub", "host": host}
+                modo = "hub" if _bloqueia_quadro(r.headers) or r.status_code >= 400 else "direto"
+    except httpx.HTTPError:
+        modo = "hub"
+    _CACHE_MODO[host] = (modo, agora)
+    if len(_CACHE_MODO) > 3000:
+        _CACHE_MODO.clear()
+    return {"modo": modo, "host": host}
+
+
+@router.get("/api/web/modo")
+async def modo(request: Request, u: str = ""):
+    us = acesso.exigir_usuario(request)
+    if not acesso.pode_acessar(us, MOD):
+        raise HTTPException(403, "Sem acesso ao módulo Web.")
+    if not re.match(r"^https?://", u or "", re.I):
+        raise HTTPException(400, "Endereço inválido.")
+    return await run_in_threadpool(_decidir_modo, desembrulhar(u))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # BUSCA SEGURA
 # ══════════════════════════════════════════════════════════════════════════════
 def _host_publico(host: str) -> bool:
@@ -168,6 +220,18 @@ def desembrulhar(u: str) -> str:
 #   · fetch/XHR que o site bloqueia por CORS tentam de novo pelo hub (/web/r).
 # ══════════════════════════════════════════════════════════════════════════════
 _SCRIPT = r"""<script>(function(){
+/* MEMÓRIA E COOKIES "DE MENTIRA": no modo isolado o navegador proíbe a página de usar
+   localStorage, sessionStorage e cookies — e os scripts dos sites (Bing, players de vídeo,
+   portais) quebram na primeira tentativa. Aqui eles ganham versões que vivem só enquanto a
+   página está aberta: o site funciona e continua sem acesso a nada do hub. */
+function memoria(){ var d={}; return { getItem:function(k){ k=String(k); return Object.prototype.hasOwnProperty.call(d,k)?d[k]:null; },
+  setItem:function(k,v){ d[String(k)]=String(v); }, removeItem:function(k){ delete d[String(k)]; }, clear:function(){ d={}; },
+  key:function(i){ return Object.keys(d)[i]||null; }, get length(){ return Object.keys(d).length; } }; }
+["localStorage","sessionStorage"].forEach(function(k){ try{ var s=window[k]; s.getItem("_"); }catch(_){ try{ Object.defineProperty(window,k,{value:memoria(),configurable:true}); }catch(__){} } });
+try{ document.cookie; }catch(_){ var pote={}; try{ Object.defineProperty(document,"cookie",{configurable:true,
+  get:function(){ return Object.keys(pote).map(function(k){ return k+"="+pote[k]; }).join("; "); },
+  set:function(v){ var p=String(v).split(";")[0], i=p.indexOf("="); if(i>0){ var n=p.slice(0,i).trim(), val=p.slice(i+1).trim(); if(/expires=Thu, 01 Jan 1970|max-age=0/i.test(v)) delete pote[n]; else pote[n]=val; } } }); }catch(__){} }
+})();</script><script>(function(){
 var HUB=%(hub)s, T=%(tok)s, AQUI=%(url)s;
 function via(u){ return HUB+"/web/p?t="+encodeURIComponent(T)+"&u="+encodeURIComponent(u); }
 function cru(u){ return HUB+"/web/r?t="+encodeURIComponent(T)+"&u="+encodeURIComponent(u); }
@@ -175,8 +239,10 @@ function avisar(){ try{ parent.postMessage({hubWeb:"url",url:AQUI,titulo:documen
 avisar(); addEventListener("load",avisar);
 function abs(h){ try{ return new URL(h, document.baseURI).href; }catch(_){ return null; } }
 var VIDEO=/^https?:\/\/((www\.|m\.)?youtube\.com\/(watch|shorts\/|live\/)|youtu\.be\/|(www\.)?vimeo\.com\/\d)/i;
+var PAI=false; try{ PAI = parent!==window; }catch(_){}
 function ir(u){
-  if(VIDEO.test(u)){ try{ parent.postMessage({hubWeb:"abrir",url:u},"*"); return; }catch(_){} }
+  /* o hub decide: o destino aceita abrir no quadro → direto (navegador de verdade); senão → modo hub */
+  if(PAI){ try{ parent.postMessage({hubWeb:"abrir",url:u},"*"); return; }catch(_){} }
   location.href=via(u);
 }
 document.addEventListener("click",function(e){
