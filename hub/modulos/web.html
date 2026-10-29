@@ -56,11 +56,11 @@ body{margin:0;display:flex;flex-direction:column;overflow:hidden}
        links com target=_blank abrem em nova aba (allow-popups-to-escape-sandbox) -->
   <iframe id="quadro" title="Site" referrerpolicy="no-referrer-when-downgrade"
     sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads allow-modals allow-presentation allow-storage-access-by-user-activation"
-    allow="clipboard-read; clipboard-write; fullscreen; geolocation; camera; microphone; autoplay"></iframe>
+    allow="clipboard-read; clipboard-write; fullscreen; geolocation; camera; microphone; autoplay; encrypted-media; picture-in-picture; web-share" allowfullscreen></iframe>
   <div class="inicio" id="telaInicio">
     <span id="orbe"></span>
     <h2>Abra um site aqui dentro</h2>
-    <p>Digite o endereço (por exemplo <b>google.com.br</b>) ou o que quer pesquisar e aperte Enter. Os sites abrem pelo <b>modo hub</b>: o hub busca a página e libera os links — funciona em qualquer navegador, sem extensão. Sites com login (Outlook, Gmail, bancos, WhatsApp Web) podem não funcionar aqui dentro — nesses, use ↗.</p>
+    <p>Digite o endereço (por exemplo <b>g1.globo.com</b>) ou o que quer pesquisar e aperte Enter — a pesquisa vai pelo <b>Bing</b>, e as matérias abrem aqui dentro. Os sites abrem pelo <b>modo hub</b>: o hub busca a página e libera os links. Vídeos do YouTube e do Vimeo tocam no player deles. Sites com login (Outlook, Gmail, bancos, WhatsApp Web) e vídeos com proteção (Netflix, Globoplay) não funcionam dentro de um quadro — nesses, use ↗.</p>
   </div>
   <div class="dica-bloq vidro" id="dicaBloq"><span id="dicaTxt">Não carregou direito? Troque o modo no botão ⇄ ou use ↗.</span><button type="button" class="btn p" id="btFora2">Abrir em nova aba ↗</button><button type="button" class="btn-ic p" id="fechaDica" title="Fechar"></button></div>
 </div>
@@ -79,20 +79,43 @@ const ler = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; }
 const gravar = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} };
 let atual = "";
 const MODO = "wd.web.modo";   // { host: "direto" } — padrão é o modo hub
-let TOK = "";
-async function token() { if (!TOK) { try { TOK = (await A.api("/api/web/token")).token; setTimeout(() => (TOK = ""), 6 * 3600e3); } catch (_) {} } return TOK; }
+let TOK = "", ORIGEM = "";   // ORIGEM: endereço separado do modo hub (WEB_PROXY_ORIGEM), quando houver
+async function token() { if (!TOK) { try { const j = await A.api("/api/web/token"); TOK = j.token; ORIGEM = j.origem || ""; setTimeout(() => (TOK = ""), 6 * 3600e3); } catch (_) {} } return TOK; }
 const hostDe = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch (_) { return ""; } };
 const ehGoogle = (u) => /(^|\.)google\.[a-z.]+$/i.test(hostDe(u));
-const direto = (u) => ehGoogle(u) || ler(MODO, {})[hostDe(u)] === "direto";
-async function srcDe(u) { if (direto(u)) return paraQuadro(u); const t = await token(); return "/web/p?t=" + encodeURIComponent(t) + "&u=" + encodeURIComponent(u); }
+/* Vídeo do YouTube/Vimeo → player próprio deles (feito para tocar dentro de outras páginas) */
+function videoEmbed(u) {
+  try {
+    const x = new URL(u), h = x.hostname.replace(/^(www\.|m\.)/, "");
+    let id = "";
+    if (h === "youtube.com" || h === "youtube-nocookie.com") {
+      if (x.pathname === "/watch") id = x.searchParams.get("v") || "";
+      else { const m = x.pathname.match(/^\/(shorts|live|embed)\/([\w-]{6,})/); if (m) id = m[2]; }
+    } else if (h === "youtu.be") id = x.pathname.slice(1).split("/")[0];
+    if (id) { const t = parseInt(x.searchParams.get("t") || x.searchParams.get("start") || "0", 10) || 0;
+      return `https://www.youtube.com/embed/${encodeURIComponent(id)}?autoplay=1&rel=0&playsinline=1${t ? "&start=" + t : ""}`; }
+    if (h === "vimeo.com") { const m = x.pathname.match(/^\/(\d+)/); if (m) return `https://player.vimeo.com/video/${m[1]}?autoplay=1`; }
+  } catch (_) {}
+  return "";
+}
+const direto = (u) => ehGoogle(u) || !!videoEmbed(u) || ler(MODO, {})[hostDe(u)] === "direto";
+async function srcDe(u) {
+  const v = videoEmbed(u); if (v) return v;
+  if (direto(u)) return paraQuadro(u);
+  const t = await token(); return ORIGEM + "/web/p?t=" + encodeURIComponent(t) + "&u=" + encodeURIComponent(u);
+}
 function mostrarModo() { const b = $("#btModo"); if (!b) return; const d = atual && direto(atual); b.title = d ? "Modo direto (o site abre sozinho) — clique para usar o modo hub" : "Modo hub (o hub busca o site e libera os links) — clique para modo direto"; b.style.color = d ? "" : "var(--ciano)"; }
 // o site (no modo hub) avisa para qual página foi → atualiza a barra de endereço
 addEventListener("message", (e) => {
-  const d = e.data; if (!d || d.hubWeb !== "url" || e.source !== $("#quadro").contentWindow) return;
+  const d = e.data; if (!d || e.source !== $("#quadro").contentWindow) return;
+  if (d.hubWeb === "abrir" && typeof d.url === "string" && /^https?:\/\//i.test(d.url)) { abrir(d.url); return; }   // ex.: link de vídeo dentro de um site
+  if (d.hubWeb !== "url" || typeof d.url !== "string") return;
   atual = d.url; $("#url").value = d.url; gravar(K.ult, d.url); $("#dicaBloq").classList.remove("mostra"); clearTimeout(timerDica); renderFavs(); mostrarModo();
 });
 
-/* Endereço digitado → URL. Sem ponto = pesquisa no Google. */
+/* Endereço digitado → URL. Sem ponto = pesquisa no Bing pelo modo hub
+   (o Google não entrega resultados quando a página passa por um servidor, e as
+   matérias abertas direto pelo Google são recusadas pelos jornais). */
 function normalizar(t) {
   t = String(t || "").trim();
   if (!t) return "";
@@ -100,7 +123,7 @@ function normalizar(t) {
   if (!/\s/.test(t) && /^[\w-]+([.,][\w-]+)+(\/.*)?$/.test(t) && t.includes(",") && !t.includes("/")) t = t.replace(/,/g, ".");
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(t)) return t;
   if (/^(localhost|[\w-]+(\.[\w-]+)+)(:\d+)?(\/.*)?$/i.test(t) && !/\s/.test(t)) return "https://" + t;
-  return "https://www.google.com/search?igu=1&q=" + encodeURIComponent(t);
+  return "https://www.bing.com/search?setlang=pt-BR&cc=BR&q=" + encodeURIComponent(t);
 }
 /* O Google só aceita abrir dentro de outra página no endereço com igu=1 */
 function paraQuadro(u) {
@@ -116,18 +139,19 @@ function abrir(t) {
   const u = normalizar(t);
   if (!u) return;
   atual = u;
-  $("#url").value = u.startsWith("https://www.google.com/search?igu=1&q=") ? decodeURIComponent(u.split("&q=")[1].replace(/\+/g, " ")) : u;
+  const busca = u.match(/^https:\/\/www\.bing\.com\/search\?setlang=pt-BR&cc=BR&q=(.*)$/);
+  $("#url").value = busca ? decodeURIComponent(busca[1].replace(/\+/g, " ")) : u;
   $("#telaInicio").style.display = "none";
   $("#dicaBloq").classList.remove("mostra");
   srcDe(u).then((s) => ($("#quadro").src = s));
   gravar(K.ult, u);
   clearTimeout(timerDica);
-  timerDica = setTimeout(() => { if (!ehGoogle(u)) $("#dicaBloq").classList.add("mostra"); }, direto(u) ? 2500 : 9000);
+  timerDica = setTimeout(() => { if (!ehGoogle(u) && !videoEmbed(u)) $("#dicaBloq").classList.add("mostra"); }, direto(u) ? 2500 : 9000);
   renderFavs(); mostrarModo();
 }
 function fora() { if (atual) window.open(atual, "_blank", "noopener"); }
 function renderFavs() {
-  const favs = ler(K.favs, [{ t: "Google", u: "https://www.google.com.br" }]);
+  const favs = ler(K.favs, [{ t: "Bing", u: "https://www.bing.com/?setlang=pt-BR&cc=BR" }, { t: "Google", u: "https://www.google.com.br" }]);
   $("#btFav").style.color = favs.some((f) => f.u === atual) ? "var(--ouro2)" : "";
   $("#favs").innerHTML = favs.map((f, i) => `<button type="button" class="chip${f.u === atual ? " ativo" : ""}" data-u="${esc(f.u)}" title="${esc(f.u)}">${esc(f.t)}<span class="x" data-x="${i}" title="Tirar dos favoritos">×</span></button>`).join("");
   $("#favs").querySelectorAll("[data-u]").forEach((b) => (b.onclick = (e) => { if (e.target.dataset.x !== undefined) { const l = ler(K.favs, []); l.splice(+e.target.dataset.x, 1); gravar(K.favs, l); renderFavs(); return; } abrir(b.dataset.u); }));
@@ -135,7 +159,7 @@ function renderFavs() {
 $("#form").onsubmit = (e) => { e.preventDefault(); abrir($("#url").value); };
 $("#btRecarregar").onclick = () => { if (atual) { $("#quadro").src = "about:blank"; setTimeout(() => srcDe(atual).then((s) => ($("#quadro").src = s)), 50); } };
 $("#btModo").innerHTML = svg("escudo");
-$("#btModo").onclick = () => { if (!atual || ehGoogle(atual)) { A.toast("O Google já abre direto aqui."); return; } const m = ler(MODO, {}), h = hostDe(atual);
+$("#btModo").onclick = () => { if (!atual || ehGoogle(atual) || videoEmbed(atual)) { A.toast(videoEmbed(atual) ? "Vídeo já abre no player próprio." : "O Google já abre direto aqui."); return; } const m = ler(MODO, {}), h = hostDe(atual);
   if (m[h] === "direto") delete m[h]; else m[h] = "direto"; gravar(MODO, m); A.toast(m[h] ? "Modo direto para " + h : "Modo hub para " + h); abrir(atual); };
 $("#btFora").onclick = fora; $("#btFora2").onclick = fora;
 $("#fechaDica").onclick = () => $("#dicaBloq").classList.remove("mostra");
