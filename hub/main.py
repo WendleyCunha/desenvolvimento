@@ -327,7 +327,7 @@ async def _erro_inesperado(request: Request, exc: Exception):
 @app.middleware("http")
 async def _so_web_na_origem_separada(request: Request, call_next):
     if web_proxy.HOST_WEB and (request.headers.get("host") or "").split(":")[0].lower() == web_proxy.HOST_WEB:
-        if not (request.url.path in ("/web/p", "/web/r", "/healthz", "/_stcore/health")):
+        if not (request.url.path in ("/web/p", "/web/r", "/web/c", "/healthz", "/_stcore/health")):
             return JSONResponse({"detail": "Este endereço só serve o modo hub do módulo Web."}, status_code=404)
     return await call_next(request)
 

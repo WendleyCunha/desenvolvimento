@@ -40,6 +40,8 @@ body{margin:0;display:flex;flex-direction:column;overflow:hidden}
 </head>
 <body>
 <div class="barra vidro">
+  <button type="button" class="btn-ic" id="btVoltar" title="Voltar à página anterior" disabled></button>
+  <button type="button" class="btn-ic" id="btAvancar" title="Avançar" disabled></button>
   <button type="button" class="btn-ic" id="btInicio" title="Página inicial"></button>
   <form id="form" autocomplete="off">
     <input class="entrada" id="url" placeholder="Digite um endereço (google.com.br) ou o que quer pesquisar" spellcheck="false" autofocus>
@@ -72,7 +74,8 @@ body{margin:0;display:flex;flex-direction:column;overflow:hidden}
 const A = Aurora, svg = A.svg, esc = A.esc, $ = (s) => document.querySelector(s);
 A.fundo();
 $("#orbe").outerHTML = A.orbe("globo", "#22d3ee");
-$("#btInicio").innerHTML = svg("casa"); $("#btRecarregar").innerHTML = svg("repetir");
+$("#btInicio").innerHTML = svg("casa");
+$("#btVoltar").innerHTML = svg("voltar"); $("#btAvancar").innerHTML = svg("voltar"); $("#btAvancar").style.transform = "scaleX(-1)"; $("#btRecarregar").innerHTML = svg("repetir");
 $("#btFav").innerHTML = svg("estrela"); $("#btFora").innerHTML = svg("maximizar"); $("#fechaDica").innerHTML = svg("fechar");
 const K = { favs: "wd.web.favs", ult: "wd.web.ultimo" };
 const ler = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch (_) { return d; } };
@@ -108,8 +111,6 @@ let MODO_ATUAL = "hub";
 async function modoDe(u) {
   if (videoEmbed(u) || ehGoogle(u)) return "direto";
   const h = hostDe(u), fixo = ler(MODO, {})[h];
-  // buscadores ficam SEMPRE no modo hub: só assim o clique numa matéria passa pelo hub e cai no modo certo
-  if (/(^|\.)(bing\.com|duckduckgo\.com)$/i.test(h)) return "hub";
   if (fixo === "direto" || fixo === "hub") return fixo;
   const c = ler(AUTO, {})[h];
   if (c && Date.now() - c.em < 6 * 3600e3) return c.m;
@@ -131,7 +132,7 @@ addEventListener("message", (e) => {
   const d = e.data; if (!d || e.source !== $("#quadro").contentWindow) return;
   if (d.hubWeb === "abrir" && typeof d.url === "string" && /^https?:\/\//i.test(d.url)) { abrir(d.url); return; }   // ex.: link de vídeo dentro de um site
   if (d.hubWeb !== "url" || typeof d.url !== "string") return;
-  atual = d.url; MODO_ATUAL = "hub"; $("#url").value = d.url; gravar(K.ult, d.url); $("#dicaBloq").classList.remove("mostra"); clearTimeout(timerDica); renderFavs(); mostrarModo();
+  atual = d.url; MODO_ATUAL = "hub"; registrar(d.url); $("#url").value = d.url; gravar(K.ult, d.url); $("#dicaBloq").classList.remove("mostra"); clearTimeout(timerDica); renderFavs(); mostrarModo();
 });
 
 /* Endereço digitado → URL. Sem ponto = pesquisa no Bing pelo modo hub
@@ -155,10 +156,23 @@ function paraQuadro(u) {
   } catch (_) {}
   return u;
 }
+/* HISTÓRICO do quadro (← →): guarda cada página aberta aqui — digitada, favorito ou link
+   clicado no modo hub. Num site aberto DIRETO, a navegação interna fica com o próprio site
+   (o navegador não deixa o hub enxergar); o ← volta para a última página registrada. */
+const HIST = { lista: [], pos: -1 };
+function registrar(u) {
+  if (HIST.lista[HIST.pos] === u) return;
+  HIST.lista = HIST.lista.slice(0, HIST.pos + 1); HIST.lista.push(u);
+  if (HIST.lista.length > 100) HIST.lista.shift();
+  HIST.pos = HIST.lista.length - 1; botoesHist();
+}
+function botoesHist() { $("#btVoltar").disabled = HIST.pos <= 0; $("#btAvancar").disabled = HIST.pos >= HIST.lista.length - 1; }
+function andar(n) { const p = HIST.pos + n; if (p < 0 || p >= HIST.lista.length) return; HIST.pos = p; botoesHist(); abrir(HIST.lista[p], true); }
 let timerDica, pedido = 0;
-async function abrir(t) {
+async function abrir(t, doHistorico) {
   const u = normalizar(t);
   if (!u) return;
+  if (!doHistorico) registrar(u);
   const meu = ++pedido;
   atual = u;
   const busca = u.match(/^https:\/\/www\.bing\.com\/search\?setlang=pt-BR&cc=BR&q=(.*)$/);
@@ -188,8 +202,9 @@ $("#btModo").onclick = () => { if (!atual || ehGoogle(atual) || videoEmbed(atual
   if (m[h]) { delete m[h]; A.toast("Automático de novo para " + h); } else { m[h] = MODO_ATUAL === "direto" ? "hub" : "direto"; A.toast((m[h] === "direto" ? "Direto" : "Modo hub") + " fixado para " + h + " — clique de novo para voltar ao automático"); }
   gravar(MODO, m); abrir(atual); };
 $("#btFora").onclick = fora; $("#btFora2").onclick = fora;
+$("#btVoltar").onclick = () => andar(-1); $("#btAvancar").onclick = () => andar(1);
 $("#fechaDica").onclick = () => $("#dicaBloq").classList.remove("mostra");
-$("#btInicio").onclick = () => { atual = ""; $("#quadro").src = "about:blank"; $("#telaInicio").style.display = ""; $("#url").value = ""; $("#dicaBloq").classList.remove("mostra"); renderFavs(); $("#url").focus(); };
+$("#btInicio").onclick = () => { atual = ""; HIST.pos = HIST.lista.length - 1; $("#quadro").src = "about:blank"; $("#telaInicio").style.display = ""; $("#url").value = ""; $("#dicaBloq").classList.remove("mostra"); renderFavs(); $("#url").focus(); };
 $("#btFav").onclick = () => {
   if (!atual) { A.toast("Abra um site primeiro."); return; }
   const l = ler(K.favs, [{ t: "Google", u: "https://www.google.com.br" }]);

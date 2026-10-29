@@ -161,13 +161,62 @@ def _host_publico(host: str) -> bool:
     return True
 
 
-def _buscar(url: str, metodo: str = "GET", corpo: bytes | None = None, tipo: str | None = None):
-    # cliente novo a cada página: os cookies de um usuário nunca se misturam com os de outro
+# ══════════════════════════════════════════════════════════════════════════════
+# POTE DE CADA USUÁRIO, POR SITE — cookies e memória (localStorage) dos sites abertos
+# pelo modo hub. Assim "Aceitar cookies", preferências e logins simples continuam
+# valendo de uma página para a outra. Fica só na memória do servidor: nunca se mistura
+# entre usuários e some quando o serviço reinicia.
+# ══════════════════════════════════════════════════════════════════════════════
+_POTES: dict = {}
+_SLD = {"com", "net", "org", "gov", "edu", "co", "art", "blog", "jus", "mil", "nom", "app", "tv"}
+
+
+def site_de(host: str) -> str:
+    p = (host or "").lower().strip(".").split(".")
+    if len(p) >= 3 and p[-2] in _SLD and len(p[-1]) == 2:
+        return ".".join(p[-3:])
+    return ".".join(p[-2:])
+
+
+def _pote(login: str, host: str) -> dict:
+    k = (login, site_de(host))
+    pt = _POTES.get(k)
+    if pt is None:
+        if len(_POTES) > 2000:
+            for velho in sorted(_POTES, key=lambda x: _POTES[x]["em"])[:500]:
+                _POTES.pop(velho, None)
+        pt = _POTES[k] = {"ck": {}, "ls": {}, "em": time.time()}
+    pt["em"] = time.time()
+    return pt
+
+
+def _guardar_cookies(pt: dict, resposta) -> None:
+    for linha in resposta.headers.get_list("set-cookie"):
+        partes = [x.strip() for x in linha.split(";")]
+        if "=" not in partes[0]:
+            continue
+        nome, valor = partes[0].split("=", 1)
+        attrs = {a.split("=", 1)[0].lower(): (a.split("=", 1)[1] if "=" in a else "") for a in partes[1:]}
+        apaga = attrs.get("max-age", "").strip() in ("0", "-1") or "1970" in attrs.get("expires", "")
+        if apaga or not valor:
+            pt["ck"].pop(nome.strip(), None)
+        elif len(pt["ck"]) < 150 and len(valor) < 4096:
+            pt["ck"][nome.strip()] = {"v": valor, "http": "httponly" in attrs}
+
+
+def _cab_cookie(pt: dict | None) -> dict:
+    if not pt or not pt["ck"]:
+        return {}
+    return {"Cookie": "; ".join(f"{k}={c['v']}" for k, c in pt["ck"].items())}
+
+
+def _buscar(url: str, metodo: str = "GET", corpo: bytes | None = None, tipo: str | None = None, login: str | None = None):
+    # cliente novo a cada página; os cookies vêm do POTE do próprio usuário (nunca de outro)
     with httpx.Client(timeout=httpx.Timeout(25.0, connect=10.0), follow_redirects=False, headers=_CAB) as cli:
-        return _buscar_com(cli, url, metodo, corpo, tipo)
+        return _buscar_com(cli, url, metodo, corpo, tipo, login)
 
 
-def _buscar_com(cli, url, metodo, corpo, tipo):
+def _buscar_com(cli, url, metodo, corpo, tipo, login=None):
     for _ in range(8):
         p = urlsplit(url)
         if p.scheme not in ("http", "https") or not p.hostname:
@@ -175,7 +224,11 @@ def _buscar_com(cli, url, metodo, corpo, tipo):
         if not _host_publico(p.hostname):
             raise HTTPException(403, "Endereço interno bloqueado.")
         cab = {"Content-Type": tipo} if corpo and tipo else {}
+        pt = _pote(login, p.hostname) if login else None
+        cab.update(_cab_cookie(pt))
         r = cli.request(metodo, url, content=corpo, headers=cab)
+        if pt is not None:
+            _guardar_cookies(pt, r)
         if r.is_redirect and r.headers.get("location"):
             url = urljoin(url, r.headers["location"])
             if r.status_code in (301, 302, 303):
@@ -220,17 +273,25 @@ def desembrulhar(u: str) -> str:
 #   · fetch/XHR que o site bloqueia por CORS tentam de novo pelo hub (/web/r).
 # ══════════════════════════════════════════════════════════════════════════════
 _SCRIPT = r"""<script>(function(){
-/* MEMÓRIA E COOKIES "DE MENTIRA": no modo isolado o navegador proíbe a página de usar
-   localStorage, sessionStorage e cookies — e os scripts dos sites (Bing, players de vídeo,
-   portais) quebram na primeira tentativa. Aqui eles ganham versões que vivem só enquanto a
-   página está aberta: o site funciona e continua sem acesso a nada do hub. */
-function memoria(){ var d={}; return { getItem:function(k){ k=String(k); return Object.prototype.hasOwnProperty.call(d,k)?d[k]:null; },
-  setItem:function(k,v){ d[String(k)]=String(v); }, removeItem:function(k){ delete d[String(k)]; }, clear:function(){ d={}; },
+/* MEMÓRIA E COOKIES DO SITE: no modo isolado o navegador proíbe a página de usar
+   localStorage, sessionStorage e cookies — e os scripts dos sites quebram. Aqui eles
+   ganham versões que o hub GUARDA por usuário e por site (o "Aceitar cookies" e as
+   preferências continuam valendo na próxima página), sem nenhum acesso ao hub. */
+var HUB=%(hub)s, T=%(tok)s, SITE=%(site)s, CK=%(ck)s, LS=%(ls)s;
+function guardar(o){ try{ o.s=SITE; var u=HUB+"/web/c?t="+encodeURIComponent(T); if(window.fetch) fetch(u,{method:"POST",body:JSON.stringify(o),keepalive:true,headers:{"Content-Type":"text/plain"}}).catch(function(){}); }catch(_){} }
+function memoria(ini,persiste){ var d={}; Object.keys(ini||{}).forEach(function(k){ d[k]=String(ini[k]); });
+  return { getItem:function(k){ k=String(k); return Object.prototype.hasOwnProperty.call(d,k)?d[k]:null; },
+  setItem:function(k,v){ k=String(k); v=String(v); if(d[k]===v) return; d[k]=v; if(persiste) guardar({ls:k,v:v}); },
+  removeItem:function(k){ k=String(k); if(!(k in d)) return; delete d[k]; if(persiste) guardar({ls:k,del:1}); },
+  clear:function(){ Object.keys(d).forEach(function(k){ if(persiste) guardar({ls:k,del:1}); }); d={}; },
   key:function(i){ return Object.keys(d)[i]||null; }, get length(){ return Object.keys(d).length; } }; }
-["localStorage","sessionStorage"].forEach(function(k){ try{ var s=window[k]; s.getItem("_"); }catch(_){ try{ Object.defineProperty(window,k,{value:memoria(),configurable:true}); }catch(__){} } });
-try{ document.cookie; }catch(_){ var pote={}; try{ Object.defineProperty(document,"cookie",{configurable:true,
+[["localStorage",LS,true],["sessionStorage",{},false]].forEach(function(x){ try{ var s=window[x[0]]; s.getItem("_"); }catch(_){ try{ Object.defineProperty(window,x[0],{value:memoria(x[1],x[2]),configurable:true}); }catch(__){} } });
+try{ document.cookie; }catch(_){ var pote={}; Object.keys(CK||{}).forEach(function(k){ pote[k]=CK[k]; });
+  try{ Object.defineProperty(document,"cookie",{configurable:true,
   get:function(){ return Object.keys(pote).map(function(k){ return k+"="+pote[k]; }).join("; "); },
-  set:function(v){ var p=String(v).split(";")[0], i=p.indexOf("="); if(i>0){ var n=p.slice(0,i).trim(), val=p.slice(i+1).trim(); if(/expires=Thu, 01 Jan 1970|max-age=0/i.test(v)) delete pote[n]; else pote[n]=val; } } }); }catch(__){} }
+  set:function(v){ v=String(v); var p=v.split(";")[0], i=p.indexOf("="); if(i<=0) return; var n=p.slice(0,i).trim(), val=p.slice(i+1).trim();
+    if(/expires=[^;]*1970|max-age=(0|-)/i.test(v)||!val){ delete pote[n]; guardar({ck:n,del:1}); }
+    else if(pote[n]!==val){ pote[n]=val; guardar({ck:n,v:val}); } } }); }catch(__){} }
 })();</script><script>(function(){
 var HUB=%(hub)s, T=%(tok)s, AQUI=%(url)s;
 function via(u){ return HUB+"/web/p?t="+encodeURIComponent(T)+"&u="+encodeURIComponent(u); }
@@ -290,7 +351,7 @@ _RE_BASE = re.compile(r"<base\b[^>]*>", re.I)
 _RE_HEAD = re.compile(r"<head\b[^>]*>", re.I)
 
 
-def _html(texto: str, final: str, hub: str, tok: str) -> str:
+def _html(texto: str, final: str, hub: str, tok: str, pote: dict | None = None) -> str:
     texto = _RE_META_CSP.sub("", texto)
     base_orig = None
     m = re.search(r"<base\b[^>]*href\s*=\s*[\"']([^\"']+)", texto, re.I)
@@ -299,7 +360,10 @@ def _html(texto: str, final: str, hub: str, tok: str) -> str:
     texto = _RE_BASE.sub("", texto)
     # strict-origin: os sites recebem só "de onde" (o endereço do hub), nunca o token — e o YouTube exige isso
     inj = (f'<base href="{_esc(base_orig or final)}"><meta name="referrer" content="strict-origin">'
-           + _SCRIPT % {"hub": json.dumps(hub), "tok": json.dumps(tok), "url": json.dumps(final)})
+           + _SCRIPT % {"hub": json.dumps(hub), "tok": json.dumps(tok), "url": json.dumps(final),
+                        "site": json.dumps(site_de(urlsplit(final).hostname or "")),
+                        "ck": json.dumps({k: c["v"] for k, c in (pote or {}).get("ck", {}).items() if not c.get("http")}).replace("</", "<\\/"),
+                        "ls": json.dumps((pote or {}).get("ls", {})).replace("</", "<\\/")})
     if _RE_HEAD.search(texto):
         return _RE_HEAD.sub(lambda mm: mm.group(0) + inj, texto, count=1)
     return inj + texto
@@ -352,7 +416,7 @@ async def proxy(request: Request, u: str = "", t: str = ""):
         return RedirectResponse(f"{_base(request)}{link(real, tok)}", status_code=302)
     corpo = await request.body() if request.method == "POST" else None
     try:
-        r, final = await run_in_threadpool(_buscar, u, request.method, corpo, request.headers.get("content-type"))
+        r, final = await run_in_threadpool(_buscar, u, request.method, corpo, request.headers.get("content-type"), login)
     except HTTPException:
         raise
     except httpx.HTTPError as e:
@@ -364,12 +428,48 @@ async def proxy(request: Request, u: str = "", t: str = ""):
     if len(r.content) > MAX_BYTES:
         raise HTTPException(413, "Arquivo grande demais para abrir aqui — use ↗.")
     if "html" in tipo:
-        texto = _html(r.text, final, _base(request), tok)
+        texto = _html(r.text, final, _base(request), tok, _pote(login, urlsplit(final).hostname or ""))
         return HTMLResponse(texto, status_code=r.status_code if r.status_code < 400 else 200, headers=cab)
     disp = r.headers.get("content-disposition")
     if disp:
         cab["Content-Disposition"] = disp
     return Response(r.content, status_code=r.status_code, media_type=tipo or "application/octet-stream", headers=cab)
+
+
+@router.options("/web/c")
+def guardar_opcoes():
+    return Response(status_code=204, headers=_CORS)
+
+
+@router.post("/web/c")
+async def guardar(request: Request, t: str = ""):
+    """O site gravou um cookie ou um item de memória → vai para o pote do usuário."""
+    login = _ler_token(t)
+    if not login:
+        return Response(status_code=401, headers=_CORS)
+    try:
+        d = json.loads((await request.body())[:40000] or b"{}")
+    except Exception:  # noqa: BLE001
+        return Response(status_code=400, headers=_CORS)
+    site = str(d.get("s") or "")
+    if not re.fullmatch(r"[a-z0-9.-]{3,120}", site):
+        return Response(status_code=400, headers=_CORS)
+    pt = _pote(login, site)
+    if "ck" in d:
+        n = str(d["ck"])[:200]
+        if d.get("del"):
+            pt["ck"].pop(n, None)
+        elif len(pt["ck"]) < 150:
+            pt["ck"][n] = {"v": str(d.get("v") or "")[:4096], "http": False}
+    elif "ls" in d:
+        k = str(d["ls"])[:300]
+        if d.get("del"):
+            pt["ls"].pop(k, None)
+        else:
+            v = str(d.get("v") or "")
+            if len(v) <= 20000 and (k in pt["ls"] or sum(len(x) for x in pt["ls"].values()) < 300000):
+                pt["ls"][k] = v
+    return Response(status_code=204, headers=_CORS)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -399,6 +499,8 @@ async def repasse(request: Request, u: str = "", t: str = ""):
     if not await run_in_threadpool(_host_publico, p.hostname):
         return Response("Endereço interno bloqueado.", status_code=403, headers=_CORS)
     cab = dict(_CAB)
+    pt = _pote(_ler_token(t), p.hostname)
+    cab.update(_cab_cookie(pt))
     for k in ("range", "content-type", "accept"):
         if request.headers.get(k):
             cab[k] = request.headers[k]
@@ -413,6 +515,7 @@ async def repasse(request: Request, u: str = "", t: str = ""):
     if not await run_in_threadpool(_host_publico, r.url.host or ""):   # redirecionou para endereço interno
         await r.aclose(); await cli.aclose()
         return Response("Endereço interno bloqueado.", status_code=403, headers=_CORS)
+    _guardar_cookies(pt, r)
     tam = int(r.headers.get("content-length") or 0)
     if tam > MAX_STREAM:
         await r.aclose(); await cli.aclose()
