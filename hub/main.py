@@ -322,6 +322,16 @@ async def _erro_inesperado(request: Request, exc: Exception):
     elif "NotFound" in nome:
         dica = " — o banco Firestore não existe nesse projeto (crie em Firebase → Firestore Database)."
     return JSONResponse({"detail": f"Erro no servidor: {nome}: {msg}{dica}"}, status_code=500)
+# Serviço da ORIGEM SEPARADA do módulo Web (WEB_PROXY_ORIGEM): ali só o modo hub
+# responde. Nada do hub (telas, API, login) existe nesse endereço.
+@app.middleware("http")
+async def _so_web_na_origem_separada(request: Request, call_next):
+    if web_proxy.HOST_WEB and (request.headers.get("host") or "").split(":")[0].lower() == web_proxy.HOST_WEB:
+        if not (request.url.path in ("/web/p", "/web/r", "/healthz", "/_stcore/health")):
+            return JSONResponse({"detail": "Este endereço só serve o modo hub do módulo Web."}, status_code=404)
+    return await call_next(request)
+
+
 app.include_router(acesso.router)
 app.include_router(dados.router)
 app.include_router(passagens.router)
