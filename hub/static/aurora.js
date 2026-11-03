@@ -103,6 +103,7 @@
     dinheiro:'<rect x="2" y="6" width="20" height="12" rx="3"/><circle cx="12" cy="12" r="2.8"/><path d="M6 9.5v5M18 9.5v5"/>',
     ajustes:'<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>',
     regua:'<path d="M3 16.5 16.5 3 21 7.5 7.5 21z"/><path d="M7.5 12l2 2M10.5 9l2 2M13.5 6l2 2"/>',
+    vestido:'<circle cx="12" cy="1.6" r=".7"/><path d="M12 2.3v1.2"/><path d="M9.2 4.2c.9.5 1.8.7 2.8.7s1.9-.2 2.8-.7"/><path d="M9.2 4.2c-.5 1.9.6 3.6 1.7 5.4"/><path d="M14.8 4.2c.5 1.9-.6 3.6-1.7 5.4"/><path d="M14.3 5.3c-1.3 1.2-2.3 2.6-2.7 4.3"/><path d="M10.9 9.6h2.2"/><path d="M10.9 9.6C9.6 12.6 6.7 15.7 3.9 18.6"/><path d="M13.1 9.6c1.3 3 4.2 6.1 7 9"/><path d="M3.9 18.6c1.1 1 2.4 1 3.5-.1 1 1.1 2.3 1.2 3.4.2 1.1 1 2.3 1 3.4 0 1 1.1 2.3 1.1 3.4-.1 1 1 2.2 1 3.3 0"/><path d="M11.4 10c-.2 2.4-1.9 3.6-2.6 5.4-.5 1.2-.9 2.1-1.4 3.1"/><path d="M11.9 10.1c.3 2.2-.7 3.9-.9 5.8-.1 1-.1 1.9-.2 2.8"/><path d="M12.4 10.1c-.1 2.2 1 3.9 1.3 5.8.2 1 .4 1.9.5 2.8"/><path d="M12.8 9.9c.3 2.5 2 3.7 2.8 5.5.5 1.1 1 2.1 1.6 3"/>',
     tesoura:'<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"/>',
     caixa:'<path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/>',
     escudo:'<path d="M12 3l8 3v6c0 5-3.4 8.2-8 9-4.6-.8-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/>',
@@ -152,7 +153,7 @@
   const svg = (nome) => `<svg viewBox="0 0 24 24" class="i" aria-hidden="true">${ICONES[nome] || ICONES.documento}</svg>`;
   const orbe = (icone, cor, extra = "") => {
     const k = String(icone || "").toLowerCase();
-    return `<span class="orbe ${extra}" style="--c:${cor || "var(--ouro)"};--atraso:-${(Math.random() * 4).toFixed(1)}s">${ICONES[k] ? svg(k) : esc(icone)}</span>`;
+    return `<span class="orbe ${extra}" style="--c:${cor || "var(--ouro)"};--atraso:-${(Math.random() * 4).toFixed(1)}s">${ICONES[k] ? svg(k) : /^\/[\w./-]+\.(png|svg|webp|jpg)$/i.test(String(icone || "")) ? `<img src="${esc(icone)}" alt="" style="width:72%;height:72%;object-fit:contain;position:relative;z-index:1">` : esc(icone)}</span>`;
   };
 
   /* ══════ MARCA ══════ */
