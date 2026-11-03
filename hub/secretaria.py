@@ -366,7 +366,7 @@ def base(request: Request, mes: str = "", recarregar: int = 0):
     do_mes = [ln for ln in linhas if ln["chave"] == ch]
     fech = BASE.todos_fechamentos().get(ch)
     return _json({
-        "perm": p, "usuario": acesso.publico(u), "mes": ch, "mes_atual": atual, "meses": meses,
+        "perm": p, "usuario": acesso.publico(u), "mes": ch, "mes_atual": atual, "mes_calendario": datetime.now(R.FUSO).strftime("%Y-%m"), "meses": meses,
         "config": {k: v for k, v in cfg.items()},
         "opcoes": {"generos": GENEROS, "classes": CLASSES, "cargos": CARGOS, "categorias": R.CATEGORIAS},
         "membros": [_membro_saida(mid, m, p, part.get(mid, set()), ch) for mid, m in membros.items()],
@@ -652,7 +652,8 @@ def _renomear(antigo: str, novo: str, mudancas: dict, u: dict):
 @router.get("/assistencia")
 def assistencia(request: Request, ano: int = 0):
     _contexto(request)
-    as_ = ano or R.ano_servico(_mes_atual())
+    # assistência segue o CALENDÁRIO (o mês virou = já dá para lançar), não o corte do relatório
+    as_ = ano or R.ano_servico(datetime.now(R.FUSO).strftime("%Y-%m"))
     return _json({"ano": as_, **_assist_ano(as_)})
 
 
