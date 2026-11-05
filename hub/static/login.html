@@ -6,6 +6,12 @@
 <meta name="theme-color" content="#05060a">
 <title>Entrar · Wendley Desenvolvimento</title>
 <link rel="icon" href="data:,">
+<link rel="manifest" href="/app.webmanifest">
+<link rel="apple-touch-icon" href="/static/app/icone-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Wendley Dev">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -24,6 +30,16 @@ form{display:flex;flex-direction:column;gap:12px;margin-top:26px;text-align:left
 .aviso-config{margin-top:16px;padding:12px 14px;border-radius:14px;font-size:.78rem;line-height:1.6;color:var(--txt2);text-align:left;
   background:rgba(var(--ouro-rgb),.08);border:1px dashed rgba(var(--ouro-rgb),.4)}
 .aviso-config code{color:var(--ouro2)}
+/* app instalável */
+.app-login{margin-top:18px;padding:14px;border-radius:18px;display:flex;align-items:center;gap:12px;text-align:left;
+  background:rgba(255,255,255,.035);border:1px solid rgba(var(--ouro-rgb),.28);backdrop-filter:blur(10px)}
+.app-login[hidden]{display:none}
+.app-login img{width:44px;height:44px;border-radius:13px;flex:none;box-shadow:0 0 18px rgba(var(--ouro-rgb),.35)}
+.app-login .txt{flex:1;min-width:0;font-size:.74rem;line-height:1.5;color:var(--txt2)}
+.app-login .txt b{display:block;font-size:.84rem;color:var(--txt);font-weight:600}
+.app-login button{flex:none;padding:9px 14px;border-radius:12px;font:600 .78rem var(--corpo,inherit);cursor:pointer;color:var(--ouro2);
+  background:rgba(var(--ouro-rgb),.1);border:1px solid rgba(var(--ouro-rgb),.5);transition:background .2s}
+.app-login button:hover{background:rgba(var(--ouro-rgb),.2)}
 </style>
 </head>
 <body>
@@ -38,6 +54,11 @@ form{display:flex;flex-direction:column;gap:12px;margin-top:26px;text-align:left
     <div class="erro" id="erro" role="alert"></div>
     <button class="btn" id="bt" type="submit">Entrar</button>
   </form>
+  <div class="app-login" id="appLogin" hidden>
+    <img src="/static/app/icone-192.png" alt="">
+    <div class="txt" id="txtApp"><b>Instalar o app</b>Abre direto, em tela cheia, com os sistemas liberados para o seu login.</div>
+    <button type="button" id="btApp">Instalar</button>
+  </div>
   <div id="avisoConfig"></div>
   <div class="rodape">Esqueceu a senha? Fale com o administrador.</div>
 </main>
@@ -71,6 +92,24 @@ form{display:flex;flex-direction:column;gap:12px;margin-top:26px;text-align:left
     if (!d.firestore_configurado) falta.push("<code>FIRESTORE_CREDS</code> (para salvar usuários e dados)");
     if (falta.length) document.getElementById("avisoConfig").innerHTML = `<div class="aviso-config"><b>Configuração pendente no Render → Environment:</b><br>• ${falta.join("<br>• ")}</div>`;
   }).catch(() => {});
+
+  // ═══ App instalável — o mesmo recurso do PQI: botão "Instalar" na tela de login ═══
+  const instalado = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {});
+  const box = document.getElementById("appLogin"), btApp = document.getElementById("btApp"), txtApp = document.getElementById("txtApp");
+  let pedido = null;
+  if (!instalado) {
+    box.hidden = false;
+    addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); pedido = e; });
+    addEventListener("appinstalled", () => { box.hidden = true; A.toast && A.toast("App instalado"); });
+    btApp.onclick = async () => {
+      if (pedido) { pedido.prompt(); try { await pedido.userChoice; } catch (_) {} pedido = null; return; }
+      const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+      txtApp.innerHTML = ios
+        ? "<b>No iPhone (Safari)</b>Toque em <b style='display:inline'>Compartilhar</b> ⬆ e depois em <b style='display:inline'>Adicionar à Tela de Início</b>."
+        : "<b>Pelo menu do navegador</b>Toque em <b style='display:inline'>⋮</b> e depois em <b style='display:inline'>Instalar app</b> (ou Adicionar à tela inicial).";
+    };
+  }
 })();
 </script>
 </body>

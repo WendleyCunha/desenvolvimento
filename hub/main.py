@@ -78,7 +78,7 @@ import pqi_ponte
 import web_proxy
 import atelier
 
-VERSAO = "3.6.0"
+VERSAO = "3.7.0"
 
 BASE = Path(__file__).resolve().parent
 PASTA_MODULOS = BASE / "modulos"
@@ -348,6 +348,20 @@ _inicio = time.time()
 @app.get("/_stcore/health")
 def healthz():
     return {"ok": True, "versao": VERSAO}
+
+
+# App instalável (PWA): o service worker precisa sair da raiz para valer no site inteiro.
+# Público de propósito — não tem dado nenhum, só deixa o navegador oferecer "Instalar app".
+@app.get("/sw.js", include_in_schema=False)
+def service_worker():
+    return FileResponse(BASE / "static" / "app" / "sw.js", media_type="application/javascript",
+                        headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/"})
+
+
+@app.get("/app.webmanifest", include_in_schema=False)
+def manifesto_app():
+    return FileResponse(BASE / "static" / "app" / "manifest.webmanifest", media_type="application/manifest+json",
+                        headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/login")
