@@ -77,8 +77,9 @@ import tickets
 import pqi_ponte
 import web_proxy
 import atelier
+import relatorios_publico
 
-VERSAO = "3.7.0"
+VERSAO = "3.8.0"
 
 BASE = Path(__file__).resolve().parent
 PASTA_MODULOS = BASE / "modulos"
@@ -341,6 +342,7 @@ app.include_router(tickets.router)
 app.include_router(pqi_ponte.router)
 app.include_router(web_proxy.router)
 app.include_router(atelier.router)
+app.include_router(relatorios_publico.router)
 _inicio = time.time()
 
 

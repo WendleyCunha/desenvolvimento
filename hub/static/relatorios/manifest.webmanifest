@@ -1,0 +1,19 @@
+{
+  "name": "Relatórios Parque Aliança",
+  "short_name": "Relatórios",
+  "description": "Envie seu relatório de serviço de campo e veja os anúncios da congregação.",
+  "id": "/relatorios/",
+  "start_url": "/relatorios/?app=1",
+  "scope": "/relatorios/",
+  "display": "standalone",
+  "background_color": "#05060a",
+  "theme_color": "#05060a",
+  "lang": "pt-BR",
+  "icons": [
+    {"src": "/static/app/icone-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
+    {"src": "/static/app/icone-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}
+  ],
+  "shortcuts": [
+    {"name": "Anúncios", "url": "/relatorios/#anuncios", "icons": [{"src": "/static/app/icone-192.png", "sizes": "192x192"}]}
+  ]
+}
