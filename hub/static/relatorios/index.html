@@ -44,6 +44,8 @@ body{margin:0;background:var(--fundo,#05060a);color:var(--txt);font-family:var(-
 .instalar .bt{position:relative;width:100%;margin-top:14px;padding:14px;font-size:1rem}
 .instalar .passos{position:relative;margin:12px 0 0;padding:12px 14px;border-radius:16px;background:rgba(0,0,0,.28);font-size:.84rem;line-height:1.6;color:var(--txt)}
 .instalar .passos[hidden]{display:none}
+.instalar .passos.pisca{animation:pisca 1.2s ease}
+@keyframes pisca{0%{box-shadow:0 0 0 0 rgba(var(--ouro-rgb),.9)}100%{box-shadow:0 0 0 14px rgba(var(--ouro-rgb),0)}}
 .instalar .passos ol{margin:4px 0 0;padding-left:20px}
 .instalar .fechar{position:absolute;top:10px;right:10px;z-index:2;width:28px;height:28px;border-radius:9px;border:0;background:rgba(255,255,255,.06);color:var(--txt2);cursor:pointer;font-size:16px}
 
@@ -217,13 +219,44 @@ if (!instalado && ls.get("wd.rel.instFechado", "") !== new Date().toISOString().
 addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); pedido = e; if (!instalado) caixa.hidden = false; });
 addEventListener("appinstalled", () => { caixa.hidden = true; A.toast("App Relatórios instalado ✓", [], { cor: "var(--verde)" }); });
 $("#instFechar").onclick = () => { caixa.hidden = true; ls.set("wd.rel.instFechado", new Date().toISOString().slice(0, 10)); };
+/* Navegadores que NÃO instalam app: painel do app Claude, WhatsApp/Instagram/Facebook (navegador interno) etc. */
+const ua = navigator.userAgent;
+const embutido = /Claude\/|Electron|FBAN|FBAV|FB_IAB|Instagram|Line\/|; wv\)|WhatsApp|GSA\//i.test(ua);
+const iosNaoSafari = ios && /CriOS|FxiOS|EdgiOS|OPiOS/i.test(ua);
+function mostrarPassos(html) {
+  passos.hidden = false; passos.innerHTML = html;
+  passos.classList.remove("pisca"); void passos.offsetWidth; passos.classList.add("pisca");
+  passos.scrollIntoView({ behavior: "smooth", block: "center" });
+  $("#btInstalar").textContent = "Veja abaixo como instalar ↓";
+  const bc = passos.querySelector("[data-copiar]");
+  if (bc) bc.onclick = async () => {
+    try { await navigator.clipboard.writeText(location.origin + "/relatorios/"); bc.textContent = "Link copiado ✓"; }
+    catch (_) { bc.textContent = location.origin + "/relatorios/"; }
+  };
+}
+const BT_COPIAR = '<button type="button" class="btn v" data-copiar style="width:100%;margin-top:10px">Copiar o link</button>';
+function passosManuais() {
+  if (embutido) return mostrarPassos("<b>Este navegador não instala apps.</b><br>Você abriu o link dentro de outro aplicativo. Copie o link e abra no <b>Chrome</b> (Android ou computador) ou no <b>Safari</b> (iPhone) — lá o botão instala na hora." + BT_COPIAR);
+  if (iosNaoSafari) return mostrarPassos("<b>No iPhone, a instalação é pelo Safari.</b><br>Copie o link, abra no <b>Safari</b> e toque em <b>Compartilhar ⬆ → Adicionar à Tela de Início</b>." + BT_COPIAR);
+  if (ios) return mostrarPassos("<b>No iPhone, pelo Safari:</b><ol><li>Toque em <b>Compartilhar</b> (o quadrado com a seta ⬆ embaixo da tela)</li><li>Role e toque em <b>Adicionar à Tela de Início</b></li><li>Toque em <b>Adicionar</b> — o ícone W aparece na sua tela</li></ol>");
+  const pc = !/Android|Mobi/i.test(ua);
+  mostrarPassos(pc
+    ? "<b>No computador (Chrome ou Edge):</b><ol><li>Na barra de endereço, clique no ícone de <b>instalar</b> (um monitor com seta ⤓), à direita</li><li>Ou abra o menu <b>⋮</b> → <b>Transmitir, salvar e compartilhar</b> → <b>Instalar página como app</b></li><li>Confirme — o app Relatórios abre na própria janela</li></ol>"
+    : "<b>No Android (Chrome):</b><ol><li>Toque no menu <b>⋮</b> (canto de cima, à direita)</li><li>Escolha <b>Instalar app</b> ou <b>Adicionar à tela inicial</b></li><li>Confirme — o ícone W aparece na sua tela</li></ol>");
+}
 $("#btInstalar").onclick = async () => {
-  if (pedido) { pedido.prompt(); try { await pedido.userChoice; } catch (_) {} pedido = null; return; }
-  passos.hidden = false;
-  passos.innerHTML = ios
-    ? "<b>No iPhone, pelo Safari:</b><ol><li>Toque em <b>Compartilhar</b> (o quadrado com a seta ⬆ embaixo da tela)</li><li>Role e toque em <b>Adicionar à Tela de Início</b></li><li>Toque em <b>Adicionar</b> — o ícone W aparece na sua tela</li></ol>"
-    : "<b>No Android ou computador:</b><ol><li>Toque no menu <b>⋮</b> do navegador (canto de cima)</li><li>Escolha <b>Instalar app</b> ou <b>Adicionar à tela inicial</b></li><li>Confirme — o ícone W aparece na sua tela</li></ol>";
+  if (pedido) {
+    const p = pedido; pedido = null;
+    try {
+      await p.prompt();
+      const r = await p.userChoice;
+      if (r && r.outcome === "accepted") { caixa.hidden = true; return; }
+    } catch (_) {}
+    return passosManuais();   // recusou ou o navegador não abriu a janela: mostra o caminho manual
+  }
+  passosManuais();
 };
+if (embutido) $("#btInstalar").textContent = "Como instalar o app";
 
 /* ═══ abas ═══ */
 let aba = location.hash === "#anuncios" ? "an" : "rel";
