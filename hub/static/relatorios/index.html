@@ -223,6 +223,11 @@ $("#instFechar").onclick = () => { caixa.hidden = true; ls.set("wd.rel.instFecha
 const ua = navigator.userAgent;
 const embutido = /Claude\/|Electron|FBAN|FBAV|FB_IAB|Instagram|Line\/|; wv\)|WhatsApp|GSA\//i.test(ua);
 const iosNaoSafari = ios && /CriOS|FxiOS|EdgiOS|OPiOS/i.test(ua);
+/* Android fora do Chrome (Samsung Internet, Mi, Opera, Edge, Firefox…): esses navegadores montam o app
+   sozinhos e o Play Protect avisa "criado para uma versão mais antiga do Android". Pelo Chrome não há aviso. */
+const android = /Android/i.test(ua);
+const androidNaoChrome = android && !embutido && (/SamsungBrowser|MiuiBrowser|XiaoMi|OPR\/|EdgA|Firefox|HuaweiBrowser|HeyTapBrowser|YaBrowser|UCBrowser|VivoBrowser|Brave/i.test(ua) || !/Chrome\//.test(ua));
+const LINK_CHROME = "intent://" + location.host + "/relatorios/#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=" + encodeURIComponent("https://play.google.com/store/apps/details?id=com.android.chrome") + ";end";
 function mostrarPassos(html) {
   passos.hidden = false; passos.innerHTML = html;
   passos.classList.remove("pisca"); void passos.offsetWidth; passos.classList.add("pisca");
@@ -237,6 +242,8 @@ function mostrarPassos(html) {
 const BT_COPIAR = '<button type="button" class="btn v" data-copiar style="width:100%;margin-top:10px">Copiar o link</button>';
 function passosManuais() {
   if (embutido) return mostrarPassos("<b>Este navegador não instala apps.</b><br>Você abriu o link dentro de outro aplicativo. Copie o link e abra no <b>Chrome</b> (Android ou computador) ou no <b>Safari</b> (iPhone) — lá o botão instala na hora." + BT_COPIAR);
+  if (androidNaoChrome) return mostrarPassos("<b>Instale pelo Chrome.</b><br>Neste navegador o Android mostra um aviso de risco (falso alarme do Play Protect). Pelo <b>Chrome</b> instala direto, sem aviso." +
+    '<a class="btn" href="' + LINK_CHROME + '" style="display:block;text-align:center;margin-top:10px">Abrir no Chrome</a>' + BT_COPIAR);
   if (iosNaoSafari) return mostrarPassos("<b>No iPhone, a instalação é pelo Safari.</b><br>Copie o link, abra no <b>Safari</b> e toque em <b>Compartilhar ⬆ → Adicionar à Tela de Início</b>." + BT_COPIAR);
   if (ios) return mostrarPassos("<b>No iPhone, pelo Safari:</b><ol><li>Toque em <b>Compartilhar</b> (o quadrado com a seta ⬆ embaixo da tela)</li><li>Role e toque em <b>Adicionar à Tela de Início</b></li><li>Toque em <b>Adicionar</b> — o ícone W aparece na sua tela</li></ol>");
   const pc = !/Android|Mobi/i.test(ua);
@@ -245,7 +252,7 @@ function passosManuais() {
     : "<b>No Android (Chrome):</b><ol><li>Toque no menu <b>⋮</b> (canto de cima, à direita)</li><li>Escolha <b>Instalar app</b> ou <b>Adicionar à tela inicial</b></li><li>Confirme — o ícone W aparece na sua tela</li></ol>");
 }
 $("#btInstalar").onclick = async () => {
-  if (pedido) {
+  if (pedido && !androidNaoChrome) {
     const p = pedido; pedido = null;
     try {
       await p.prompt();
@@ -257,6 +264,7 @@ $("#btInstalar").onclick = async () => {
   passosManuais();
 };
 if (embutido) $("#btInstalar").textContent = "Como instalar o app";
+if (androidNaoChrome) $("#btInstalar").textContent = "Instalar pelo Chrome";
 
 /* ═══ abas ═══ */
 let aba = location.hash === "#anuncios" ? "an" : "rel";

@@ -102,7 +102,14 @@ form{display:flex;flex-direction:column;gap:12px;margin-top:26px;text-align:left
     box.hidden = false;
     addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); pedido = e; });
     addEventListener("appinstalled", () => { box.hidden = true; A.toast && A.toast("App instalado"); });
+    const ua = navigator.userAgent;
+    const androidNaoChrome = /Android/i.test(ua) && (/SamsungBrowser|MiuiBrowser|XiaoMi|OPR\/|EdgA|Firefox|HuaweiBrowser|HeyTapBrowser|YaBrowser|UCBrowser|VivoBrowser|Brave/i.test(ua) || !/Chrome\//.test(ua));
     btApp.onclick = async () => {
+      if (androidNaoChrome) {
+        txtApp.innerHTML = "<b>Instale pelo Chrome</b>Neste navegador o Android avisa risco (falso alarme). Pelo Chrome instala sem aviso.";
+        location.href = "intent://" + location.host + "/login#Intent;scheme=https;package=com.android.chrome;end";
+        return;
+      }
       if (pedido) { pedido.prompt(); try { await pedido.userChoice; } catch (_) {} pedido = null; return; }
       const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
       txtApp.innerHTML = ios
