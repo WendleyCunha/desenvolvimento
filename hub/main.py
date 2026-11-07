@@ -11,6 +11,8 @@ Casca em FastAPI que roda no Render (plano Free) e serve:
     /configuracoes    → engrenagem: aparência, usuários e permissões, conta
     /api/auth/*  /api/eu  /api/admin/*   → acesso.py (login, usuários, permissões)
     /api/dados/<modulo>/<colecao>        → dados.py  (dados com permissão por campo)
+    /api/agente/*     → agente.py (Agente IA do topo — static/agente.js; permissões em
+                        Configurações → Usuários → "Agente IA (topo)")
     /healthz          → health check do Render (obrigatório)
     /api/diag         → diagnóstico (Firestore conecta? quantos módulos?)
 
@@ -78,6 +80,7 @@ import pqi_ponte
 import web_proxy
 import atelier
 import relatorios_publico
+import agente
 
 VERSAO = "3.8.0"
 
@@ -265,8 +268,12 @@ def catalogo() -> list[dict]:
     return itens
 
 
+# Recursos sem página no menu, mas com permissões em Configurações → Usuários (ex.: o Agente IA do topo)
+RECURSOS = [agente.RECURSO]
+
+
 def esquema_do_modulo(slug: str) -> dict | None:
-    for i in catalogo():
+    for i in catalogo() + RECURSOS:
         if i["id"] == slug:
             return acesso.normalizar_esquema(i.get("_esquema"))
     return None
@@ -274,7 +281,7 @@ def esquema_do_modulo(slug: str) -> dict | None:
 
 def modulos_com_esquema() -> list[dict]:
     return [{k: v for k, v in i.items() if k != "_esquema"} | {"esquema": acesso.normalizar_esquema(i.get("_esquema"))}
-            for i in catalogo()]
+            for i in catalogo() + RECURSOS]
 
 
 acesso.obter_esquema = esquema_do_modulo
@@ -343,6 +350,7 @@ app.include_router(pqi_ponte.router)
 app.include_router(web_proxy.router)
 app.include_router(atelier.router)
 app.include_router(relatorios_publico.router)
+agente.ligar(app)   # Agente IA do topo — /api/agente/* (static/agente.js)
 _inicio = time.time()
 
 
