@@ -139,6 +139,19 @@ tr:hover td{background:rgba(255,255,255,.025)}
   .quem{display:none}
   .ed-g{grid-template-columns:1fr}
 }
+
+/* Modo leve (Superfície) — interruptor */
+.leve-sw{display:flex;align-items:flex-start;gap:13px;margin:6px 0 20px;padding:14px 16px;border-radius:16px;cursor:pointer;
+  background:linear-gradient(120deg,rgba(34,211,238,.10),rgba(255,255,255,.02));border:1px solid var(--vidro-borda-forte)}
+.leve-sw input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.leve-ball{flex:none;width:46px;height:27px;border-radius:14px;background:rgba(255,255,255,.14);border:1px solid var(--vidro-borda);position:relative;transition:background .25s;margin-top:1px}
+.leve-ball::after{content:"";position:absolute;top:2px;left:2px;width:21px;height:21px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.4);transition:transform .25s var(--mola)}
+.leve-sw input:checked ~ .leve-ball{background:linear-gradient(90deg,#22d3ee,#34d399)}
+.leve-sw input:checked ~ .leve-ball::after{transform:translateX(19px)}
+.leve-sw input:focus-visible ~ .leve-ball{outline:2px solid var(--ouro);outline-offset:3px}
+.leve-tx b{display:block;font:700 14px var(--titulo)}
+.leve-tx small{color:var(--txt2);font-size:.82rem;line-height:1.4}
+.secao.leve-on .presets,.secao.leve-on .ambientes,.secao.leve-on .reguas{opacity:.5;transition:opacity .3s}
 </style>
 </head>
 <body>
@@ -208,9 +221,11 @@ function previaPreset(p) {
 }
 function rAparencia() {
   const t = A.tema.carregar(), P = A.tema.PRESETS;
-  elC.innerHTML = `<section class="secao vidro vidro-borda-viva">
+  elC.innerHTML = `<section class="secao vidro vidro-borda-viva${t.leve ? " leve-on" : ""}">
     <div class="cab">${A.orbe("onda", "#22d3ee")}<h2>Aparência</h2><button type="button" class="btn v p" id="apRest">${svg("repetir")}Restaurar o original</button></div>
     <p class="desc">Escolha o mar e calibre a luz. Muda ao vivo no hub inteiro — menu, abas e todos os módulos — e fica salvo ${EU.fabrica || !BASE_OK() ? "neste navegador" : "na sua conta (vale em qualquer computador)"}.</p>
+    <label class="leve-sw"><input type="checkbox" id="apLeve" ${t.leve ? "checked" : ""}><span class="leve-ball"></span>
+      <span class="leve-tx"><b>Modo leve · Superfície</b><small>Vem à tona: desliga o desfoque do vidro, o fundo animado e as partículas. Mais rápido no celular e em PC fraco — as cores do tema continuam.</small></span></label>
     <div class="sub-t">Mares</div>
     <div class="presets">${Object.entries(P).map(([k, p]) => `<button type="button" class="preset${t.preset === k ? " ativo" : ""}" data-p="${k}" style="--c:${p.ouro[0]}">
         <span class="ok">${svg("check")}</span><div class="ver" style="${previaPreset(p)}"></div><div class="txt"><b>${p.nome}</b><small>${p.desc}</small></div></button>`).join("")}</div>
@@ -236,6 +251,8 @@ function rAparencia() {
   }));
   elC.querySelectorAll(".preset").forEach((b) => (b.onclick = () => { A.tema.salvar({ ...A.tema.carregar(), preset: b.dataset.p }); pinta(); }));
   elC.querySelectorAll("[data-amb]").forEach((b) => (b.onclick = () => { A.tema.salvar({ ...A.tema.carregar(), ...AMBIENTES[+b.dataset.amb][1] }); pinta(); A.toast(`Ambiente <b>${AMBIENTES[+b.dataset.amb][0]}</b> aplicado.`, [], { cor: "var(--ciano)", duracao: 2500 }); }));
+  const apLeve = elC.querySelector("#apLeve");
+  if (apLeve) apLeve.onchange = (e) => { A.tema.salvar({ ...A.tema.carregar(), leve: e.target.checked }); elC.querySelector(".secao")?.classList.toggle("leve-on", e.target.checked); A.toast(e.target.checked ? "Modo leve ligado — menos efeitos, mais fluidez." : "Modo leve desligado — efeitos de volta.", [], { cor: "var(--ciano)", duracao: 2600 }); };
   elC.querySelector("#apRest").onclick = () => { A.tema.salvar({ ...A.tema.PADRAO }); pinta(); };
   pinta();
 }
