@@ -123,3 +123,32 @@ def test_atribuir_responder_aprovar(t):
     assert "Maria Paula" in his["detalhe"]
     como("ana")
     assert t.post("/api/agente/perguntar", json={"pergunta": "fechamento do caixa"}).json()["fonte"]["id"] == art["id"]
+
+
+def test_conversa_exemplos_e_ajustar(t, monkeypatch):
+    """Mais humano: conversa lembrada, 👍 vira exemplo aprovado e ✏️ Ajustar DE → PARA."""
+    como("chefe")
+    art = t.post("/api/agente/artigos", json=ARTIGO).json()
+    como("ana")
+    r = t.post("/api/agente/perguntar", json={"pergunta": "e as datas?", "historico": [{"p": "como lançar uma encomenda no atelier", "r": "..."}]}).json()
+    assert r["tipo"] == "resposta" and r["fonte"]["id"] == art["id"]          # continuação acha o assunto da conversa
+    enviado = {}
+    monkeypatch.setenv("AGENTE_IA", "groq"); monkeypatch.setenv("GROQ_API_KEY", "gsk_teste")
+
+    def falsa(url, corpo, cab, timeout=40):
+        enviado.update(system=corpo["messages"][0]["content"], user=corpo["messages"][1]["content"], temp=corpo["temperature"])
+        return {"choices": [{"message": {"content": "Abra o Atelier e clique em Nova encomenda.\nFONTE: 1"}}]}
+    monkeypatch.setattr(A, "_http_json", falsa)
+    r1 = t.post("/api/agente/perguntar", json={"pergunta": "como lançar encomenda no atelier?"}).json()
+    assert r1["modo"] == "ia" and "SUAS palavras" in enviado["system"] and "NUNCA invente nome de tela" in enviado["system"] and enviado["temp"] == 0.4
+    t.post("/api/agente/retorno", json={"pergunta_id": r1["pergunta_id"], "util": True})
+    t.post("/api/agente/perguntar", json={"pergunta": "como lançar uma encomenda nova no atelier", "historico": [{"p": "oi", "r": "Olá"}]})
+    assert "EXEMPLOS APROVADOS" in enviado["user"] and "CONVERSA ANTERIOR" in enviado["user"]
+    assert t.post("/api/agente/ajustar", json={"artigo_id": art["id"], "de": "x", "para": "y"}).status_code == 403
+    como("chefe")
+    r = t.post("/api/agente/ajustar", json={"artigo_id": art["id"], "de": "clique em nova encomenda", "para": "Clique em ➕ Encomenda"}).json()
+    a = A.P["ler"](A.COL_ART, art["id"])
+    assert r["modo"] == "texto" and a["passos"][1] == "Clique em ➕ Encomenda." and a["versao"] == 2
+    assert not A.exemplos_para("como lançar encomenda no atelier", [a])          # artigo mudou: exemplo antigo sai
+    r = t.post("/api/agente/ajustar", json={"artigo_id": art["id"], "de": "botão Salvar tudo", "para": "não existe: use Gravar"}).json()
+    assert r["modo"] == "correcao" and A.P["ler"](A.COL_ART, art["id"])["passos"][-1].startswith("Correção:")
