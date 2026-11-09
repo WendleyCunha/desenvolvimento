@@ -188,7 +188,8 @@ def fonte(a: dict) -> dict:
 # ══════════════════════════════════════════════════════════════════════════
 INSTRUCOES = (
     "Você é o Agente do PQI, o assistente interno da King Star Colchões. Responda em português do Brasil, "
-    "de forma curta e prática, em passos numerados quando for um procedimento. Use SOMENTE os artigos abaixo — "
+    "de forma curta e prática, em passos numerados quando for um procedimento. Traga só o ponto-chave do que foi "
+    "perguntado e, se ajudar, os passos ou regras diretamente relacionados (sem copiar o artigo inteiro). Use SOMENTE os artigos abaixo — "
     "eles são a fonte oficial. Não invente telas, botões, prazos nem regras que não estejam neles. "
     "Se os artigos não respondem a pergunta, responda exatamente: NAO_SEI. "
     "Na última linha, escreva FONTE: seguido do número do artigo que você usou (ex.: FONTE: 2)."
@@ -221,9 +222,12 @@ def perguntar_ia(pergunta: str, achados: list) -> Optional[str]:
     usuario = f"ARTIGOS:\n{base}\n\nPERGUNTA: {pergunta}"
     try:
         if prov == "groq":
-            r = _http_json("https://api.groq.com/openai/v1/chat/completions",
-                           {"model": os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile"), "temperature": 0.1, "max_tokens": 700,
-                            "messages": [{"role": "system", "content": INSTRUCOES}, {"role": "user", "content": usuario}]},
+            modelo = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
+            corpo = {"model": modelo, "temperature": 0.1, "max_tokens": 700,
+                     "messages": [{"role": "system", "content": INSTRUCOES}, {"role": "user", "content": usuario}]}
+            if "gpt-oss" in modelo:   # modelo que "pensa" antes: raciocínio curto e espaço para a resposta não sair vazia
+                corpo.update(max_tokens=2500, reasoning_effort="low", include_reasoning=False)
+            r = _http_json("https://api.groq.com/openai/v1/chat/completions", corpo,
                            {"Authorization": "Bearer " + os.environ["GROQ_API_KEY"]})
             return (r.get("choices") or [{}])[0].get("message", {}).get("content", "").strip() or None
         r = _http_json("https://api.anthropic.com/v1/messages",
