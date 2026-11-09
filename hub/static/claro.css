@@ -84,3 +84,6 @@ html[data-claro] .atomo .anel.r3{border-color:rgba(11,152,184,.6)}
 html[data-claro] .brilho-txt{background-image:linear-gradient(100deg,var(--txt) 0%,var(--txt) 30%,var(--ouro) 45%,var(--txt) 55%,#3a465c 70%,var(--ouro3) 100%)}
 html[data-claro] .hero h1 .ouro{filter:none}
 html[data-claro] :is(.totais b,.rodape-total b,.code,code){color:var(--ouro3)}
+
+/* Modo leve: painel branco sólido no tema claro */
+html[data-claro]{--leve-vidro:#ffffff}

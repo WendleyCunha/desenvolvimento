@@ -44,7 +44,7 @@
     perola:   { claro: true, nome: "Pérola rosé",    desc: "Madrepérola: rosé, lilás e champanhe",  noite: "#f8f1f4", aur: ["244,114,182", "167,139,250", "251,191,36", "56,189,248"], ouro: ["#c03f78", "#e0659c", "#86214f"] },
     nevoa:    { claro: true, nome: "Névoa da manhã", desc: "Branco gelo, índigo suave e prata",     noite: "#eef1f7", aur: ["148,163,184", "99,102,241", "34,211,238", "232,179,61"],  ouro: ["#4c5bd4", "#6f7ce6", "#3237a6"] },
   };
-  const TEMA_PADRAO = { preset: "abismo", prof: 0, aur: 0.55, vidro: 0.34, blur: 22, vel: 1, luz: 0, part: 1, grao: 0.06 };
+  const TEMA_PADRAO = { preset: "abismo", prof: 0, aur: 0.55, vidro: 0.34, blur: 22, vel: 1, luz: 0, part: 1, grao: 0.06, leve: false };
   const hexRgb = (h) => { const m = h.replace("#", ""), n = parseInt(m.length === 3 ? m.split("").map((x) => x + x).join("") : m, 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255].join(","); };
   function carregarTema() { try { return { ...TEMA_PADRAO, ...JSON.parse(localStorage.getItem(TEMA_CHAVE) || "{}") }; } catch (_) { return { ...TEMA_PADRAO }; } }
   function aplicarTema(t) {
@@ -58,6 +58,11 @@
     r.setProperty("--vidro-a", (0.02 + 0.16 * t.vidro).toFixed(3)); r.setProperty("--vidro-b", (0.005 + 0.06 * t.vidro).toFixed(3));
     r.setProperty("--vidro-blur", t.blur + "px"); r.setProperty("--vel", t.vel); r.setProperty("--causticas", t.luz);
     r.setProperty("--prof", t.prof); r.setProperty("--grao", t.grao); r.setProperty("--particulas", t.part);
+    if (t.leve) {   // Modo leve (Superfície): corta o que mais consome — desfoque, fundo animado e partículas
+      document.documentElement.setAttribute("data-leve", "");
+      r.setProperty("--vidro-blur", "0px"); r.setProperty("--particulas", "0");
+      r.setProperty("--causticas", "0"); r.setProperty("--grao", "0"); r.setProperty("--aur-op", "0");
+    } else document.documentElement.removeAttribute("data-leve");
     document.querySelector('meta[name="theme-color"]')?.setAttribute("content", p.noite);
     dispatchEvent(new CustomEvent("wd-tema", { detail: t }));
     return t;
@@ -212,7 +217,7 @@
       }
       cx.shadowBlur = 0;
     };
-    const laco = () => { if (!document.hidden) desenhar(); requestAnimationFrame(laco); };
+    const laco = () => { if (!document.hidden && pts.length) desenhar(); requestAnimationFrame(laco); };
     medir(); addEventListener("resize", medir); addEventListener("wd-tema", medir);
     addEventListener("pointermove", (e) => { rato.x = e.clientX; rato.y = e.clientY; }, { passive: true });
     reduzido ? desenhar() : laco();

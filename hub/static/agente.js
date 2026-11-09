@@ -12,7 +12,7 @@
   if (window.AgenteHub) return;
 
   const CSS = `
-.ag-btn{position:relative;height:38px;display:flex;align-items:center;gap:8px;padding:0 13px 0 9px;border-radius:12px;cursor:pointer;isolation:isolate;
+.ag-btn{position:relative;height:38px;width:38px;display:flex;align-items:center;justify-content:center;padding:0;border-radius:12px;cursor:pointer;isolation:isolate;
   font:600 13px var(--titulo);color:var(--txt);border:1px solid var(--vidro-borda);background:rgba(255,255,255,.03);
   transition:transform .3s var(--mola),box-shadow .3s,color .2s}
 .ag-btn::before{content:"";position:absolute;inset:-1px;z-index:-2;border-radius:inherit;padding:1px;
@@ -182,7 +182,7 @@ textarea.ag-f{min-height:130px;resize:vertical}
 
     BTN = document.createElement('button');
     BTN.type = 'button'; BTN.className = 'ag-btn'; BTN.title = 'Agente — tire dúvidas sobre os processos';
-    BTN.innerHTML = '<span class="ag-orb"></span><span class="ag-txt">Agente</span><span class="ag-n" id="agN">0</span>';
+    BTN.innerHTML = '<span class="ag-orb"></span><span class="ag-n" id="agN">0</span>';  // só o ícone (sem a palavra 'Agente')
     const direita = document.querySelector('.topo .topo-acoes');
     const antes = document.getElementById('btnConfig');
     if (direita) direita.insertBefore(BTN, antes && antes.parentNode === direita ? antes : direita.firstChild);
