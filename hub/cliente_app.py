@@ -13,8 +13,11 @@ Link geral para os clientes:  https://<seu-hub>/cliente/   (instalável como app
     central. Só existe UM chat ativo por cliente; quem encerra é o atendente
     (Concluir/Finalizar/Cancelar na central). Escrever "outro assunto" com um
     chat ativo entra no mesmo chat.
-  • CHAMADOS: o próprio cliente abre, com Motivo › Submotivo (a mesma árvore
-    de Ajustes). Regra do sistema: um chamado aberto por motivo.
+  • CHAMADO ÚNICO: o cliente tem UM chamado (o número é o código dele); cada
+    problema é uma solicitação dentro dele. Pela aba Chamados ele abre com
+    Motivo › Submotivo (árvore de Ajustes) — se já houver chamado, a nova
+    solicitação é AGRUPADA nele (o app avisa). Em atendimento (chat ativo), não
+    abre: o atendente registra a solicitação pelo chat.
   • Pedidos: status em linguagem de cliente, data e janela da entrega,
     tentativas, itens. Rascunhos e dados internos (custo, histórico com login
     de funcionário, observações, palavra-chave) NÃO saem daqui.
@@ -351,9 +354,9 @@ def tickets_do_cliente(cid: str, cli: dict) -> list[dict]:
 
 def tipo_app(t: dict) -> str:
     """'chat' (Atendimento), 'chamado' (aberto pelo cliente na aba Chamados) ou 'central' (aberto pela equipe)."""
-    if t.get("origem") != "app":
-        return "central"
-    return t.get("app_tipo") or "chat"   # os primeiros do app (antes da aba Chamados) eram chats
+    if T.eh_chat(t):
+        return "chat"
+    return "chamado" if t.get("origem") == "app" else "central"
 
 
 def chat_ativo(ts: list[dict]) -> dict | None:
@@ -379,6 +382,40 @@ def mensagens_publicas(t: dict) -> list[dict]:
 def _pode_escrever(t: dict) -> bool:
     st = t.get("status")
     return st in T.ABERTOS if tipo_app(t) == "chat" else (st in T.ABERTOS or st == "resolvido")
+
+
+def chamado_unico(cli: dict, ts: list[dict]) -> dict | None:
+    """O chamado do cliente (número = código): solicitações + linha do tempo pública de tudo que não é o chat ativo."""
+    ativo = chat_ativo(ts)
+    sols = [t for t in ts if t is not ativo]
+    if not sols:
+        return None
+    probs = [t for t in sols if not T.eh_chat(t)]
+    linha = []
+    for t in sols:
+        cor, rot = T.cor_de(t), ("Chat" if T.eh_chat(t) else (t.get("assunto") or "Solicitação"))
+        for m in mensagens_publicas(t):
+            linha.append({**m, "sol": t["id"].split("#")[-1], "cor": cor, "rotulo": rot})
+    linha.sort(key=lambda m: str(m.get("data") or ""))
+    abertas = [t for t in probs if t.get("status") in T.ABERTOS]
+    return {"numero": cli.get("codigo"), "aberto": bool(abertas),
+            "rotulo": ("Em andamento" if abertas else "Sem pendências"),
+            "solicitacoes": sorted(({**resumo_cliente(t), "cor": T.cor_de(t)} for t in probs),
+                                   key=lambda x: (not x["aberto"], str(x["criado_em"] or ""))),
+            "mensagens": linha, "pode_escrever": any(_pode_escrever(t) for t in probs),
+            "resposta_nova_em": max((m["data"] for m in linha if m["de"] == "central"), default=None)}
+
+
+def destino_da_mensagem(ts: list[dict]) -> dict | None:
+    """Mensagem do cliente no chamado vai para a solicitação aberta que a central respondeu por último
+    (ou a mais recente aberta; sem aberta, a última resolvida — que reabre)."""
+    probs = [t for t in ts if not T.eh_chat(t) and _pode_escrever(t)]
+    if not probs:
+        return None
+    def ult_central(t):
+        return max((m["data"] or "" for m in mensagens_publicas(t) if m["de"] == "central"), default="")
+    abertas = [t for t in probs if t.get("status") in T.ABERTOS] or probs
+    return max(abertas, key=lambda t: (ult_central(t), str(t.get("atualizado_em") or "")))
 
 
 def resumo_cliente(t: dict) -> dict:
@@ -427,6 +464,7 @@ def eu(request: Request):
             "ura": [{k: u.get(k) for k in ("id", "rotulo", "descricao")} for u in c["ura"]],
             "motivos": motivos_para_cliente(),
             "pedidos": pedidos_do_cliente(cid), "chamados": [resumo_cliente(t) for t in ts],
+            "chamado": chamado_unico(cli, todos),
             "chat": _completo(ativo) if ativo else None, "versao": T.BASE.ver}
 
 
@@ -568,14 +606,17 @@ async def chat(request: Request):
 @router.post("/api/cliente/chamados")
 async def abrir_chamado(request: Request):
     """Aba Chamados: o cliente abre com Motivo › Submotivo (árvore de Ajustes) + pedido opcional.
-    Regra do sistema: um chamado aberto por motivo."""
+    Vira uma SOLICITAÇÃO no chamado único do cliente (agrupada, se ele já tinha).
+    Em atendimento (chat ativo) não abre: o atendente registra pelo chat."""
     cid, cli = _cliente_da_sessao(request)
     d = await request.json()
     texto, req, off = _texto(d), _req(d), _offline_em(d)
     ts = tickets_do_cliente(cid, cli)
     feito = _ja_recebido(ts, req)
     if feito:
-        return {"ok": True, "id": feito["id"].split("#")[-1], "repetido": True}
+        return {"ok": True, "id": feito["id"].split("#")[-1], "repetido": True, "chamado": cli.get("codigo")}
+    if chat_ativo(ts):
+        raise HTTPException(409, "Você está em atendimento agora. Conte no chat da aba Atendimento — o atendente abre a solicitação para você.")
     pai, filho = str(d.get("motivo_pai") or ""), str(d.get("motivo_filho") or "")
     arv = motivos_para_cliente()
     if pai not in arv or filho not in arv[pai]:
@@ -586,9 +627,11 @@ async def abrir_chamado(request: Request):
     if ped_id and (not ped or ped.get("cliente_id") != cid):
         raise HTTPException(404, "Pedido não encontrado.")
     for t in ts:
-        if tipo_app(t) != "chat" and t.get("status") not in ("finalizado", "cancelado") and T.norm(t.get("motivo_pai")) == T.norm(pai):
-            raise HTTPException(409, f"Você já tem um chamado aberto de \"{pai}\" (protocolo {t['id'].split('#')[-1][:6].upper()}). "
-                                     "Continue a conversa nele — assim que ele for encerrado, você pode abrir outro.")
+        if (not T.eh_chat(t) and t.get("status") not in ("finalizado", "cancelado") and T.norm(t.get("motivo_pai")) == T.norm(pai)
+                and str(t.get("erp_pedido_id") or "") == ped_id):
+            raise HTTPException(409, f"Seu chamado nº {cli.get('codigo')} já tem uma solicitação de \"{pai}\""
+                                     + (f" do pedido #{ped.get('numero')}" if ped else "") + ". Escreva nela pela aba Chamados.")
+    havia = sum(1 for t in ts if not T.eh_chat(t) and t.get("status") in T.ABERTOS)
     c = cfg_app()
     _limite_dia(cid, cli, c)
     _freio_msg("cli:" + cid)
@@ -600,7 +643,26 @@ async def abrir_chamado(request: Request):
              "sla1_prazo_dias": T._sla_motivo(pai, filho), "app_tipo": "chamado", "app_req": req}
     if ped:
         dados.update(erp_pedido_id=ped_id, erp_pedido_numero=ped.get("numero"))
-    return {"ok": True, "id": _criar(cid, cli, me, dados), "existente": False}
+    sid = _criar(cid, cli, me, dados)
+    return {"ok": True, "id": sid, "existente": False, "agrupado": bool(havia), "chamado": cli.get("codigo"), "solicitacoes": havia + 1}
+
+
+@router.post("/api/cliente/chamado/mensagem")
+async def mensagem_no_chamado(request: Request):
+    """O cliente escreve no chamado (sem escolher solicitação): vai para a que a central respondeu por último."""
+    cid, cli = _cliente_da_sessao(request)
+    d = await request.json()
+    texto, req, off = _texto(d), _req(d), _offline_em(d)
+    ts = tickets_do_cliente(cid, cli)
+    if req and _ja_recebido(ts, req):
+        return {"ok": True, "repetido": True}
+    alvo = destino_da_mensagem(ts)
+    if not alvo:
+        raise HTTPException(409, "Seu chamado não tem solicitações abertas. Para um assunto novo, abra pela aba Chamados ou fale no Atendimento.")
+    _freio_msg("cli:" + cid)
+    me = _me(cli)
+    T._mutar_sol(alvo["id"], lambda s: _msg_cliente(s, me, texto, req, off), me)
+    return {"ok": True, "sol": alvo["id"].split("#")[-1]}
 
 
 @router.post("/api/cliente/chamado/{sid}/mensagem")
