@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Central do Cliente</title>
+<meta name="theme-color" content="#14213d">
+<meta name="description" content="Acompanhe seus pedidos, prazos de entrega e fale com a nossa central.">
+<link rel="manifest" href="/cliente/manifest.webmanifest">
+<link rel="icon" href="/static/app/icone-192.png">
+<link rel="apple-touch-icon" href="/static/app/icone-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!--
+═══════════════════════════════════════════════════════════════════════════════
+ static/cliente/index.html — APP DO CLIENTE (servido em /cliente/)
+ Entrar (CPF + e-mail) · Atendimento (URA em conversa) · Pedidos · Chamados (chat)
+ API: /api/cliente/* (hub/cliente_app.py). Sem dependência do kit do hub.
+═══════════════════════════════════════════════════════════════════════════════
+-->
+<style>
+:root{
+  --fundo:#f4f5f8;--cartao:#fff;--txt:#14161c;--txt2:#4a5060;--txt3:#7c8292;--linha:#e3e6ec;
+  --marca:#14213d;--marca2:#1f3363;--acento:#d99a1e;--acento-claro:#fdf3df;
+  --ok:#16a34a;--ok-claro:#e7f6ec;--alerta:#c2410c;--alerta-claro:#fdeee5;--ruim:#be123c;--ruim-claro:#fde8ed;
+  --bolha-cli:#14213d;--bolha-central:#fff;--sombra:0 1px 2px rgba(20,22,28,.06),0 4px 16px rgba(20,22,28,.06);
+  --r:16px;--sans:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root{
+  --fundo:#0d0f14;--cartao:#171a22;--txt:#eef0f5;--txt2:#b6bccb;--txt3:#828a9c;--linha:#272c38;
+  --marca:#e8b33d;--marca2:#f5d27a;--acento:#e8b33d;--acento-claro:rgba(232,179,61,.12);
+  --ok-claro:rgba(22,163,74,.15);--alerta-claro:rgba(194,65,12,.18);--ruim-claro:rgba(190,18,60,.18);
+  --bolha-cli:#e8b33d;--bolha-central:#1f2330;--sombra:none;
+}}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--fundo);color:var(--txt);font:15px/1.5 var(--sans);-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
+input,textarea{font:inherit;color:inherit}
+.app{max-width:560px;margin:0 auto;min-height:100%;display:flex;flex-direction:column}
+.oculto{display:none!important}
+
+/* topo */
+.topo{position:sticky;top:0;z-index:20;background:var(--marca);color:#fff;padding:calc(12px + env(safe-area-inset-top)) 16px 12px;display:flex;align-items:center;gap:12px}
+@media (prefers-color-scheme:dark){.topo{background:#121520;color:var(--txt);border-bottom:1px solid var(--linha)}}
+.topo .av{width:38px;height:38px;border-radius:12px;background:rgba(255,255,255,.14);display:grid;place-items:center;font-weight:700}
+.topo>span:not(.av){min-width:0;flex:1}
+.topo b{display:block;font-size:1rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.topo small{display:block;font-size:.75rem;opacity:.75}
+.topo .sair{margin-left:auto;font-size:.8rem;opacity:.85;padding:6px 10px;border-radius:10px}
+.topo .sair:hover{background:rgba(255,255,255,.1)}
+.topo .voltar{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;margin-left:-6px}
+.topo .voltar:hover{background:rgba(255,255,255,.1)}
+
+main{flex:1;padding:16px 16px calc(84px + env(safe-area-inset-bottom))}
+main.chat-modo{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
+
+/* navegação de baixo */
+.abas{position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--cartao);border-top:1px solid var(--linha);padding-bottom:env(safe-area-inset-bottom)}
+.abas div{max-width:560px;margin:0 auto;display:grid;grid-template-columns:repeat(3,1fr)}
+.abas button{padding:10px 4px 9px;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:.72rem;font-weight:600;color:var(--txt3);position:relative}
+.abas button svg{width:22px;height:22px}
+.abas button.ativo{color:var(--marca)}
+.abas em{position:absolute;top:6px;left:calc(50% + 6px);min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--ruim);color:#fff;font:700 .66rem/18px var(--sans);font-style:normal}
+
+/* entrar */
+.entrar{min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding:24px 20px calc(24px + env(safe-area-inset-bottom));max-width:420px;margin:0 auto}
+.entrar .selo{width:64px;height:64px;border-radius:20px;background:var(--marca);display:grid;place-items:center;margin-bottom:18px}
+.entrar .selo svg{width:32px;height:32px;color:#fff}
+@media (prefers-color-scheme:dark){.entrar .selo svg{color:#14161c}}
+.entrar h1{font-size:1.6rem;line-height:1.2;margin:0 0 6px;letter-spacing:-.02em}
+.entrar p.sub{color:var(--txt2);margin:0 0 24px}
+.campo{display:block;margin-bottom:14px}
+.campo span{display:block;font-size:.8rem;font-weight:600;color:var(--txt2);margin-bottom:6px}
+.campo input{width:100%;padding:14px 14px;border-radius:12px;border:1.5px solid var(--linha);background:var(--cartao);font-size:1rem;outline:none;transition:border-color .15s}
+.campo input:focus{border-color:var(--marca)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:14px 18px;border-radius:12px;font-weight:600;background:var(--marca);color:#fff;width:100%;font-size:1rem;transition:opacity .15s,transform .1s}
+@media (prefers-color-scheme:dark){.btn{color:#14161c}}
+.btn:active{transform:scale(.99)}
+.btn[disabled]{opacity:.55;cursor:default}
+.btn.sec{background:var(--cartao);color:var(--txt);border:1.5px solid var(--linha)}
+.erro{background:var(--ruim-claro);color:var(--ruim);border-radius:12px;padding:12px 14px;font-size:.88rem;margin-bottom:14px}
+@media (prefers-color-scheme:dark){.erro{color:#fecdd3}}
+.nota{font-size:.78rem;color:var(--txt3);margin-top:16px;text-align:center}
+
+/* conversa da URA e do chamado */
+.fio{display:flex;flex-direction:column;gap:10px}
+.bolha{max-width:86%;padding:10px 14px;border-radius:18px;white-space:pre-wrap;word-break:break-word;box-shadow:var(--sombra);animation:entra .18s ease-out}
+.bolha.bot,.bolha.central{background:var(--bolha-central);border:1px solid var(--linha);border-bottom-left-radius:6px;align-self:flex-start}
+.bolha.cli{background:var(--bolha-cli);color:#fff;border-bottom-right-radius:6px;align-self:flex-end}
+@media (prefers-color-scheme:dark){.bolha.cli{color:#14161c}}
+.bolha small{display:block;font-size:.68rem;opacity:.65;margin-top:4px}
+.bolha .quem{display:block;font-size:.72rem;font-weight:700;color:var(--acento);margin-bottom:2px}
+.dia{align-self:center;font-size:.7rem;font-weight:600;color:var(--txt3);background:var(--cartao);border:1px solid var(--linha);border-radius:20px;padding:3px 10px}
+@keyframes entra{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.bolha{animation:none}}
+.opcoes{display:flex;flex-direction:column;gap:8px;align-self:stretch;animation:entra .2s ease-out}
+.op{display:flex;align-items:center;gap:12px;text-align:left;padding:12px 14px;border-radius:14px;background:var(--cartao);border:1.5px solid var(--linha);transition:border-color .15s}
+.op:hover,.op:focus-visible{border-color:var(--marca);outline:none}
+.op .n{width:30px;height:30px;border-radius:9px;background:var(--acento-claro);color:var(--acento);display:grid;place-items:center;font-weight:700;font-size:.85rem;flex:none}
+.op b{display:block;font-weight:600;font-size:.94rem}
+.op small{display:block;color:var(--txt3);font-size:.78rem}
+.op.leve{padding:9px 12px;border-style:dashed}
+.op.leve .n{background:transparent;color:var(--txt3)}
+
+/* compositor (fixo embaixo) */
+.compor{position:fixed;left:0;right:0;bottom:calc(58px + env(safe-area-inset-bottom));z-index:15;background:linear-gradient(transparent,var(--fundo) 30%);padding:14px 12px 8px}
+.compor.sem-abas{bottom:0;padding-bottom:calc(10px + env(safe-area-inset-bottom))}
+.compor div{max-width:560px;margin:0 auto;display:flex;gap:8px;align-items:flex-end;background:var(--cartao);border:1.5px solid var(--linha);border-radius:22px;padding:6px 6px 6px 14px;box-shadow:var(--sombra)}
+.compor textarea{flex:1;border:0;outline:none;background:transparent;resize:none;max-height:120px;min-height:24px;padding:7px 0;line-height:1.4}
+.compor button{width:40px;height:40px;border-radius:50%;background:var(--marca);color:#fff;display:grid;place-items:center;flex:none}
+@media (prefers-color-scheme:dark){.compor button{color:#14161c}}
+.compor button[disabled]{opacity:.4}
+.compor button svg{width:20px;height:20px}
+
+/* cartões */
+h2.tit{font-size:1.15rem;margin:4px 2px 12px;letter-spacing:-.01em}
+.cartao{background:var(--cartao);border-radius:var(--r);border:1px solid var(--linha);padding:14px 16px;box-shadow:var(--sombra);margin-bottom:12px}
+button.cartao{display:block;width:100%;text-align:left}
+.cartao .l1{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.cartao .l1 b{font-size:1rem}
+.cartao .l1 .dir{margin-left:auto}
+.cartao p{margin:6px 0 0;color:var(--txt2);font-size:.88rem}
+.etq{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:20px;font-size:.72rem;font-weight:600;background:var(--acento-claro);color:var(--acento)}
+.etq.ok{background:var(--ok-claro);color:var(--ok)} .etq.alerta{background:var(--alerta-claro);color:var(--alerta)} .etq.ruim{background:var(--ruim-claro);color:var(--ruim)} .etq.cinza{background:rgba(124,130,146,.14);color:var(--txt3)}
+.ponto{width:9px;height:9px;border-radius:50%;background:var(--ruim);display:inline-block}
+.entrega{display:flex;gap:12px;align-items:center;margin-top:12px;padding:12px;border-radius:12px;background:var(--acento-claro)}
+.entrega svg{width:26px;height:26px;color:var(--acento);flex:none}
+.entrega b{display:block;font-size:.95rem}
+.entrega small{color:var(--txt2);font-size:.8rem}
+.trilha{display:grid;grid-template-columns:repeat(4,1fr);margin:16px 0 6px;position:relative}
+.trilha::before{content:"";position:absolute;left:12.5%;right:12.5%;top:9px;height:3px;background:var(--linha);border-radius:2px}
+.trilha .barra{position:absolute;left:12.5%;top:9px;height:3px;background:var(--ok);border-radius:2px;transition:width .3s}
+.trilha span{position:relative;display:flex;flex-direction:column;align-items:center;gap:6px;font-size:.68rem;color:var(--txt3);text-align:center;font-weight:600}
+.trilha span i{width:21px;height:21px;border-radius:50%;background:var(--cartao);border:3px solid var(--linha);display:block}
+.trilha span.feito i{background:var(--ok);border-color:var(--ok)}
+.trilha span.feito{color:var(--txt2)}
+.trilha span.agora i{border-color:var(--ok);background:var(--cartao);box-shadow:0 0 0 4px var(--ok-claro)}
+.trilha span.agora{color:var(--txt)}
+.itens{margin:10px 0 0;padding:0;list-style:none;font-size:.88rem;color:var(--txt2)}
+.itens li{padding:6px 0;border-top:1px solid var(--linha);display:flex;gap:8px}
+.itens li:first-child{border-top:0}
+.itens li b{color:var(--txt);min-width:26px}
+.sec{font-size:.72rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--txt3);margin:18px 2px 8px}
+.vazio{text-align:center;color:var(--txt3);padding:40px 16px}
+.vazio svg{width:44px;height:44px;opacity:.5;margin-bottom:8px}
+.vazio b{display:block;color:var(--txt2);font-size:1rem;margin-bottom:4px}
+.aviso{font-size:.84rem;border-radius:12px;padding:12px 14px;background:var(--acento-claro);color:var(--txt2);margin-bottom:12px}
+.carregando{display:grid;place-items:center;min-height:60vh;color:var(--txt3)}
+.giro{width:28px;height:28px;border-radius:50%;border:3px solid var(--linha);border-top-color:var(--marca);animation:gira .8s linear infinite}
+@keyframes gira{to{transform:rotate(360deg)}}
+.toast{position:fixed;left:50%;bottom:calc(150px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#14161c;color:#fff;padding:10px 16px;border-radius:12px;font-size:.88rem;z-index:50;max-width:calc(100% - 32px);box-shadow:0 8px 24px rgba(0,0,0,.2)}
+</style>
+</head>
+<body>
+<div class="app" id="app"><div class="carregando"><div class="giro"></div></div></div>
+
+<script>
+(() => {
+"use strict";
+const $ = (s, r = document) => r.querySelector(s);
+const esc = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const ls = { get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch (_) { return d; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} } };
+const ICO = {
+  chat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z"/></svg>',
+  caixa: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8 12 3 3 8v8l9 5 9-5V8Z"/><path d="m3 8 9 5 9-5M12 13v8"/></svg>',
+  lista: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></svg>',
+  enviar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 14-7-5 14-2.5-5.5L5 12Z"/></svg>',
+  voltar: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>',
+  caminhao: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h11v10H3zM14 9h4l3 3v4h-7"/><circle cx="7" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/></svg>',
+  escudo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 6v6c0 4.5 3.4 8 8 9 4.6-1 8-4.5 8-9V6l-8-3Z"/><path d="m9 12 2 2 4-4"/></svg>',
+};
+const SEM = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
+const dataBR = (s) => { s = String(s || ""); return s.length >= 10 ? `${s.slice(8, 10)}/${s.slice(5, 7)}` : ""; };
+const dataLonga = (s) => { if (!s || s.length < 10) return ""; const d = new Date(s.slice(0, 10) + "T12:00:00"); return `${SEM[d.getDay()]}, ${dataBR(s)}`; };
+const hora = (s) => String(s || "").slice(11, 16);
+const brl = (v) => v == null ? "" : Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const ST_COR = { confirmado: "", agendado: "", em_carga: "", em_rota: "ok", entregue: "ok", reagendar: "alerta", cancelado: "cinza", recusado: "ruim" };
+const TK_COR = { aberto: "", em_andamento: "", aguardando: "alerta", resolvido: "ok", finalizado: "cinza", cancelado: "cinza" };
+
+async function api(url, op = {}) {
+  const r = await fetch(url, { method: op.method || "GET", headers: op.body ? { "Content-Type": "application/json" } : {}, body: op.body ? JSON.stringify(op.body) : undefined, credentials: "same-origin" });
+  let d = null; try { d = await r.json(); } catch (_) {}
+  if (!r.ok) { const e = new Error((d && d.detail) || "Não foi possível agora. Tente de novo."); e.status = r.status; throw e; }
+  return d;
+}
+function toast(t) { const el = document.createElement("div"); el.className = "toast"; el.textContent = t; document.body.appendChild(el); setTimeout(() => el.remove(), 3500); }
+
+const S = { eu: null, aba: "atendimento", tela: null, fio: [], fluxo: null, chamado: null, versao: null };
+const app = $("#app");
+
+/* ═══════════ ENTRAR ═══════════ */
+function telaEntrar(info, erro = "") {
+  app.innerHTML = `<form class="entrar" id="fEntrar" novalidate>
+    <div class="selo">${ICO.chat}</div>
+    <h1>${esc(info?.empresa || "Central do Cliente")}</h1>
+    <p class="sub">Acompanhe seus pedidos, prazos de entrega e fale com a nossa equipe.</p>
+    ${erro ? `<div class="erro">${esc(erro)}</div>` : ""}
+    ${info && !info.ativo ? `<div class="erro">O atendimento pelo app está pausado no momento.</div>` : ""}
+    <label class="campo"><span>CPF</span><input id="cpf" inputmode="numeric" autocomplete="off" placeholder="000.000.000-00" maxlength="18" required></label>
+    <label class="campo"><span>E-mail usado na compra</span><input id="email" type="email" inputmode="email" autocomplete="email" placeholder="voce@email.com" required></label>
+    <button class="btn" type="submit" id="btEntrar">Entrar</button>
+    <p class="nota">${ICO.escudo.replace("<svg", '<svg width="14" height="14" style="vertical-align:-2px"')} Conferimos seus dados com o cadastro da loja. Não pedimos senha.</p>
+  </form>`;
+  const cpf = $("#cpf");
+  cpf.value = ls.get("cli.cpf", "");
+  $("#email").value = ls.get("cli.email", "");
+  cpf.oninput = () => { const d = cpf.value.replace(/\D/g, "").slice(0, 14);
+    cpf.value = d.length <= 11 ? d.replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d{1,2})$/, "$1-$2")
+      : d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{0,2}).*/, "$1.$2.$3/$4-$5"); };
+  cpf.oninput();
+  $("#fEntrar").onsubmit = async (ev) => {
+    ev.preventDefault();
+    const b = $("#btEntrar"); b.disabled = true; b.textContent = "Conferindo…";
+    try {
+      await api("/api/cliente/entrar", { method: "POST", body: { cpf: cpf.value, email: $("#email").value } });
+      ls.set("cli.cpf", cpf.value); ls.set("cli.email", $("#email").value.trim());
+      await carregar(true);
+    } catch (e) { telaEntrar(info, e.message); }
+  };
+}
+
+/* ═══════════ CARREGAR ═══════════ */
+async function carregar(primeira = false) {
+  try { S.eu = await api("/api/cliente/eu"); S.versao = S.eu.versao; }
+  catch (e) {
+    if (e.status === 401) { let info = null; try { info = await api("/api/cliente/info"); } catch (_) {} telaEntrar(info); return; }
+    app.innerHTML = `<div class="vazio" style="padding-top:30vh"><b>Não conseguimos carregar</b>${esc(e.message)}<br><br><button class="btn sec" style="width:auto" onclick="location.reload()">Tentar de novo</button></div>`;
+    return;
+  }
+  if (primeira || !S.fio.length) iniciarURA();
+  render();
+}
+
+/* ═══════════ CASCA ═══════════ */
+function naoLidos() { const visto = ls.get("cli.visto", {}); return S.eu.chamados.filter((c) => c.resposta_nova_em && c.resposta_nova_em > (visto[c.id] || "")).length; }
+function render() {
+  const eu = S.eu, nl = naoLidos();
+  const emChamado = S.aba === "chamados" && S.chamado, emPedido = S.aba === "pedidos" && S.tela;
+  const titulo = emChamado ? (S.chamado.assunto || "Chamado") : emPedido ? `Pedido #${S.tela}` : (eu.empresa || "Central do Cliente");
+  const sub = emChamado ? `Protocolo ${S.chamado.id.slice(0, 6).toUpperCase()}` : `Olá, ${eu.nome}`;
+  app.innerHTML = `
+    <header class="topo">
+      ${emChamado || emPedido ? `<button class="voltar" id="voltar" aria-label="Voltar">${ICO.voltar}</button>` : `<span class="av">${esc((eu.nome || "?").slice(0, 1))}</span>`}
+      <span><b>${esc(titulo)}</b><small>${esc(sub)}</small></span>
+      ${!emChamado && !emPedido ? `<button class="sair" id="sair">Sair</button>` : ""}
+    </header>
+    <main id="main"></main>
+    <nav class="abas"><div>
+      <button data-aba="atendimento" class="${S.aba === "atendimento" ? "ativo" : ""}">${ICO.chat}Atendimento</button>
+      <button data-aba="pedidos" class="${S.aba === "pedidos" ? "ativo" : ""}">${ICO.caixa}Pedidos</button>
+      <button data-aba="chamados" class="${S.aba === "chamados" ? "ativo" : ""}">${ICO.lista}Chamados${nl ? `<em>${nl}</em>` : ""}</button>
+    </div></nav>`;
+  app.querySelectorAll("[data-aba]").forEach((b) => (b.onclick = () => { S.aba = b.dataset.aba; S.tela = null; S.chamado = null; render(); scrollTo(0, 0); }));
+  const v = $("#voltar"); if (v) v.onclick = () => { S.tela = null; S.chamado = null; render(); };
+  const s = $("#sair"); if (s) s.onclick = async () => { try { await api("/api/cliente/sair", { method: "POST" }); } catch (_) {} S.fio = []; carregar(); };
+  const m = $("#main");
+  if (S.aba === "pedidos") S.tela ? telaPedido(m) : telaPedidos(m);
+  else if (S.aba === "chamados") S.chamado ? telaChamado(m) : telaChamados(m);
+  else telaURA(m);
+}
+
+/* ═══════════ URA (atendimento automático em conversa) ═══════════ */
+const MENU = [
+  { id: "pedidos", rotulo: "Meus pedidos", descricao: "Status de cada pedido" },
+  { id: "prazo", rotulo: "Prazo de entrega", descricao: "Quando chega" },
+  { id: "chamados", rotulo: "Meus chamados", descricao: "Acompanhar e responder" },
+  { id: "central", rotulo: "Falar com a central", descricao: "Abrir um atendimento" },
+];
+function bot(texto, opcoes = null) { S.fio.push({ de: "bot", texto }); S.fluxo = opcoes; }
+function eu_(texto) { S.fio.push({ de: "cli", texto }); }
+function iniciarURA() { S.fio = []; bot(`${S.eu.saudacao || "Olá! Escolha uma opção:"}`.replace(/^Olá!?/, `Olá, ${S.eu.nome}!`), { tipo: "menu" }); }
+function voltarMenu() { bot("Posso ajudar em mais alguma coisa?", { tipo: "menu" }); }
+const abertosPed = () => S.eu.pedidos.filter((p) => !["entregue", "cancelado", "recusado"].includes(p.status));
+
+function escolherMenu(id) {
+  const op = MENU.find((x) => x.id === id); eu_(op.rotulo);
+  const ab = abertosPed();
+  if (id === "pedidos") {
+    if (!S.eu.pedidos.length) bot("Não encontrei pedidos no seu cadastro. Se você comprou recentemente, ele aparece aqui assim que for confirmado.");
+    else bot(S.eu.pedidos.slice(0, 5).map((p) => `• Pedido #${p.numero} — ${p.rotulo}${p.entrega && p.status !== "entregue" ? ` (entrega ${dataBR(p.entrega.data)}${p.entrega.janela ? ", " + p.entrega.janela : ""})` : ""}`).join("\n")
+      + "\n\nToque em “Pedidos” lá embaixo para ver os detalhes.");
+    voltarMenu();
+  } else if (id === "prazo") {
+    if (!ab.length) bot(S.eu.pedidos.length ? "Você não tem entregas pendentes. Todos os seus pedidos já foram concluídos. 🙂" : "Não encontrei pedidos no seu cadastro.");
+    else bot(ab.map((p) => p.entrega ? `📦 Pedido #${p.numero}: entrega ${dataLonga(p.entrega.data)}${p.entrega.janela ? ` — período ${p.entrega.janela.toLowerCase()}` : ""}.`
+      : `📦 Pedido #${p.numero}: ${p.texto || p.rotulo} Assim que a data for marcada, ela aparece aqui.`).join("\n"));
+    voltarMenu();
+  } else if (id === "chamados") {
+    const abertos = S.eu.chamados.filter((c) => c.aberto);
+    if (!S.eu.chamados.length) { bot("Você não tem chamados. Quer falar com a central?", { tipo: "simnao" }); return; }
+    bot(abertos.length ? `Você tem ${abertos.length} chamado(s) em andamento. Toque em um para abrir a conversa:` : "Seus chamados recentes:", { tipo: "chamados" });
+  } else if (id === "central") perguntarAssunto();
+}
+function perguntarAssunto(pedidoId = "") { bot("Sobre o que você quer falar?", { tipo: "assunto", pedido: pedidoId }); }
+function escolherAssunto(op, pedidoId) {
+  eu_(op.rotulo);
+  const ab = S.eu.pedidos.filter((p) => p.status !== "cancelado");
+  if (pedidoId || !ab.length) pedirTexto(op, pedidoId);
+  else bot("É sobre algum pedido?", { tipo: "pedido", op });
+}
+function pedirTexto(op, pedidoId) {
+  const p = S.eu.pedidos.find((x) => x.id === pedidoId);
+  bot(`Certo${p ? `, pedido #${p.numero}` : ""}. Escreva sua mensagem com o máximo de detalhes — um atendente da nossa central vai responder por aqui.`, { tipo: "texto", op, pedido: pedidoId });
+}
+
+function telaURA(m) {
+  const f = S.fluxo || {};
+  m.classList.toggle("chat-modo", f.tipo === "texto");
+  const ops = (lista, attr) => `<div class="opcoes">${lista.map((o, i) => `<button class="op" ${attr}="${esc(o.id)}"><span class="n">${i + 1}</span><span><b>${esc(o.rotulo)}</b>${o.descricao ? `<small>${esc(o.descricao)}</small>` : ""}</span></button>`).join("")}</div>`;
+  const leve = (txt, attr, val) => `<button class="op leve" ${attr}="${esc(val)}"><span class="n">↩</span><span><b>${esc(txt)}</b></span></button>`;
+  let extra = "";
+  if (f.tipo === "menu") extra = ops(MENU, "data-menu");
+  else if (f.tipo === "assunto") extra = ops(S.eu.ura, "data-assunto") + `<div class="opcoes">${leve("Voltar ao menu", "data-menu-volta", "1")}</div>`;
+  else if (f.tipo === "pedido") extra = `<div class="opcoes">${S.eu.pedidos.filter((p) => p.status !== "cancelado").slice(0, 6).map((p, i) => `<button class="op" data-ped="${esc(p.id)}"><span class="n">${i + 1}</span><span><b>Pedido #${p.numero}</b><small>${esc(p.rotulo)}${p.entrega ? " · entrega " + dataBR(p.entrega.data) : ""}</small></span></button>`).join("")}
+    <button class="op leve" data-ped=""><span class="n">—</span><span><b>Não é sobre um pedido</b></span></button></div>`;
+  else if (f.tipo === "chamados") extra = `<div class="opcoes">${S.eu.chamados.slice(0, 6).map((c) => `<button class="op" data-abrirch="${esc(c.id)}"><span class="n">${c.aberto ? "●" : "✓"}</span><span><b>${esc(c.assunto)}</b><small>${esc(c.rotulo)} · ${dataBR(c.atualizado_em)}</small></span></button>`).join("")}${leve("Voltar ao menu", "data-menu-volta", "1")}</div>`;
+  else if (f.tipo === "simnao") extra = `<div class="opcoes"><button class="op" data-sim="1"><span class="n">1</span><span><b>Sim, falar com a central</b></span></button>${leve("Voltar ao menu", "data-menu-volta", "1")}</div>`;
+  else if (f.tipo === "texto") extra = `<div class="opcoes">${leve("Cancelar e voltar ao menu", "data-menu-volta", "1")}</div>`;
+  m.innerHTML = `<div class="fio" id="fio">${S.fio.map((b) => `<div class="bolha ${b.de}">${b.de === "bot" ? `<span class="quem">Atendimento automático</span>` : ""}${esc(b.texto)}</div>`).join("")}${extra}</div>
+    ${f.tipo === "texto" ? compositor("Escreva sua mensagem…") : ""}`;
+  m.querySelectorAll("[data-menu]").forEach((b) => (b.onclick = () => { escolherMenu(b.dataset.menu); render(); rolar(); }));
+  m.querySelectorAll("[data-menu-volta]").forEach((b) => (b.onclick = () => { eu_("Voltar ao menu"); bot("Tudo bem. Escolha uma opção:", { tipo: "menu" }); render(); rolar(); }));
+  m.querySelectorAll("[data-assunto]").forEach((b) => (b.onclick = () => { escolherAssunto(S.eu.ura.find((u) => u.id === b.dataset.assunto), f.pedido || ""); render(); rolar(); }));
+  m.querySelectorAll("[data-ped]").forEach((b) => (b.onclick = () => { const p = S.eu.pedidos.find((x) => x.id === b.dataset.ped); eu_(p ? `Pedido #${p.numero}` : "Não é sobre um pedido"); pedirTexto(f.op, b.dataset.ped); render(); rolar(); }));
+  m.querySelectorAll("[data-abrirch]").forEach((b) => (b.onclick = () => abrirChamado(b.dataset.abrirch)));
+  const sim = m.querySelector("[data-sim]"); if (sim) sim.onclick = () => { eu_("Sim"); perguntarAssunto(); render(); rolar(); };
+  if (f.tipo === "texto") ligarCompositor(async (texto) => {
+    const r = await api("/api/cliente/chamados", { method: "POST", body: { opcao: f.op.id, pedido_id: f.pedido || "", texto } });
+    eu_(texto);
+    bot(r.existente ? "Você já tinha um atendimento aberto sobre esse assunto — juntei sua mensagem a ele. A central responde por lá. 👍"
+      : "Pronto! Seu atendimento foi aberto. Assim que a central responder, você vê aqui em “Chamados”.", { tipo: "menu" });
+    await carregar(); abrirChamado(r.id);
+  });
+  rolar();
+}
+
+/* ═══════════ PEDIDOS ═══════════ */
+function telaPedidos(m) {
+  const ps = S.eu.pedidos;
+  if (!ps.length) { m.innerHTML = `<div class="vazio">${ICO.caixa}<b>Nenhum pedido por aqui</b>Seus pedidos aparecem assim que forem confirmados pela loja.</div>`; return; }
+  const ab = abertosPed(), fe = ps.filter((p) => !ab.includes(p));
+  const cartao = (p) => `<button class="cartao" data-p="${esc(p.id)}"><div class="l1"><b>${p.tipo === "troca" ? "Troca" : "Pedido"} #${p.numero}</b><span class="etq ${ST_COR[p.status] || ""} dir">${esc(p.rotulo)}</span></div>
+    <p>${esc(p.itens.map((i) => `${i.qtd}× ${i.nome}`).join(", "))}</p>
+    ${p.entrega && !["entregue", "cancelado"].includes(p.status) ? `<div class="entrega">${ICO.caminhao}<span><b>${esc(dataLonga(p.entrega.data))}</b><small>${p.entrega.janela ? "Período: " + esc(p.entrega.janela) : "Entrega agendada"}</small></span></div>` : p.texto && p.status !== "entregue" ? `<p>${esc(p.texto)}</p>` : ""}</button>`;
+  m.innerHTML = `${ab.length ? `<h2 class="tit">Em andamento</h2>${ab.map(cartao).join("")}` : ""}${fe.length ? `<div class="sec">Concluídos</div>${fe.map(cartao).join("")}` : ""}`;
+  m.querySelectorAll("[data-p]").forEach((b) => (b.onclick = () => { const p = ps.find((x) => x.id === b.dataset.p); S.tela = p.numero; S.pedidoId = p.id; render(); scrollTo(0, 0); }));
+}
+function telaPedido(m) {
+  const p = S.eu.pedidos.find((x) => x.id === S.pedidoId);
+  if (!p) { S.tela = null; render(); return; }
+  const fora = ["cancelado", "recusado"].includes(p.status);
+  const larg = p.passo <= 0 ? 0 : (p.passo / 3) * 75;
+  m.innerHTML = `<div class="cartao">
+      <div class="l1"><b>${p.tipo === "troca" ? "Troca" : "Pedido"} #${p.numero}</b><span class="etq ${ST_COR[p.status] || ""} dir">${esc(p.rotulo)}</span></div>
+      ${p.texto ? `<p>${esc(p.texto)}</p>` : ""}
+      ${!fora ? `<div class="trilha"><div class="barra" style="width:${larg}%"></div>${p.trilha.map((t, i) => `<span class="${i < p.passo || p.status === "entregue" ? "feito" : i === p.passo ? "agora" : ""}"><i></i>${esc(t)}</span>`).join("")}</div>` : ""}
+      ${p.entrega && !["entregue", "cancelado"].includes(p.status) ? `<div class="entrega">${ICO.caminhao}<span><b>${esc(dataLonga(p.entrega.data))}</b><small>${p.entrega.janela ? "Período: " + esc(p.entrega.janela) : "Entrega agendada"}</small></span></div>` : ""}
+    </div>
+    <div class="sec">Itens</div>
+    <div class="cartao"><ul class="itens" style="margin:0">${p.itens.map((i) => `<li><b>${i.qtd}×</b>${esc(i.nome)}</li>`).join("")}</ul>
+      ${p.valor_total ? `<p style="margin-top:10px;display:flex;justify-content:space-between"><span>Total</span><b style="color:var(--txt)">${brl(p.valor_total)}</b></p>` : ""}</div>
+    ${p.endereco ? `<div class="sec">Endereço de entrega</div><div class="cartao"><p style="margin:0">${esc(p.endereco)}</p></div>` : ""}
+    ${p.tentativas.length ? `<div class="sec">Tentativas de entrega</div><div class="cartao"><ul class="itens" style="margin:0">${p.tentativas.map((t) => `<li><b>${t.n}ª</b>${dataBR(t.data)} — ${esc(t.resultado)}</li>`).join("")}</ul></div>` : ""}
+    <p class="nota" style="text-align:left;margin:4px 2px 10px">Pedido feito em ${dataBR(p.criado_em)}/${String(p.criado_em).slice(0, 4)}</p>
+    <button class="btn" id="ajuda">${ICO.chat.replace("<svg", '<svg width="20" height="20"')} Preciso de ajuda com este pedido</button>`;
+  $("#ajuda").onclick = () => { S.aba = "atendimento"; S.tela = null; eu_(`Ajuda com o pedido #${p.numero}`); perguntarAssunto(p.id); render(); };
+}
+
+/* ═══════════ CHAMADOS ═══════════ */
+function telaChamados(m) {
+  const cs = S.eu.chamados, visto = ls.get("cli.visto", {});
+  if (!cs.length) { m.innerHTML = `<div class="vazio">${ICO.lista}<b>Nenhum chamado</b>Quando você falar com a central, a conversa fica aqui.<br><br><button class="btn" style="width:auto" id="novo">Falar com a central</button></div>`;
+    $("#novo").onclick = () => { S.aba = "atendimento"; eu_("Falar com a central"); perguntarAssunto(); render(); }; return; }
+  const ab = cs.filter((c) => c.aberto), fe = cs.filter((c) => !c.aberto);
+  const cartao = (c) => { const novo = c.resposta_nova_em && c.resposta_nova_em > (visto[c.id] || "");
+    return `<button class="cartao" data-c="${esc(c.id)}"><div class="l1">${novo ? `<span class="ponto" title="Resposta nova"></span>` : ""}<b>${esc(c.assunto)}</b><span class="etq ${TK_COR[c.status] || ""} dir">${esc(c.rotulo)}</span></div>
+      ${c.ultima ? `<p>${c.ultima.de === "cliente" ? "Você: " : "Central: "}${esc(c.ultima.texto)}</p>` : `<p>Aberto em ${dataBR(c.criado_em)}</p>`}
+      <p style="font-size:.74rem;color:var(--txt3)">Protocolo ${esc(c.id.slice(0, 6).toUpperCase())} · ${dataBR(c.atualizado_em)} ${hora(c.atualizado_em)}</p></button>`; };
+  m.innerHTML = `<button class="btn" id="novo" style="margin-bottom:16px">${ICO.chat.replace("<svg", '<svg width="20" height="20"')} Novo atendimento</button>
+    ${ab.length ? `<h2 class="tit">Em andamento</h2>${ab.map(cartao).join("")}` : ""}${fe.length ? `<div class="sec">Encerrados</div>${fe.map(cartao).join("")}` : ""}`;
+  $("#novo").onclick = () => { S.aba = "atendimento"; eu_("Falar com a central"); perguntarAssunto(); render(); };
+  m.querySelectorAll("[data-c]").forEach((b) => (b.onclick = () => abrirChamado(b.dataset.c)));
+}
+async function abrirChamado(id) {
+  try { S.chamado = await api("/api/cliente/chamado/" + encodeURIComponent(id)); }
+  catch (e) { toast(e.message); return; }
+  S.aba = "chamados"; marcarVisto(S.chamado); render();
+}
+function marcarVisto(c) { if (!c) return; const v = ls.get("cli.visto", {}); v[c.id] = c.resposta_nova_em || c.atualizado_em || ""; ls.set("cli.visto", v); }
+function telaChamado(m) {
+  const c = S.chamado;
+  m.classList.toggle("chat-modo", c.pode_escrever);
+  let dia = "";
+  const bolhas = c.mensagens.map((x) => { const d = String(x.data || "").slice(0, 10), sep = d && d !== dia ? `<div class="dia">${esc(dataLonga(d))}</div>` : ""; dia = d || dia;
+    return sep + `<div class="bolha ${x.de === "cliente" ? "cli" : "central"}">${x.de !== "cliente" ? `<span class="quem">${esc(x.autor ? x.autor + " · Central" : "Central")}</span>` : ""}${esc(x.texto)}<small>${hora(x.data)}</small></div>`; }).join("");
+  m.innerHTML = `<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap"><span class="etq ${TK_COR[c.status] || ""}">${esc(c.rotulo)}</span>${c.pedido ? `<span class="etq cinza">Pedido #${esc(c.pedido)}</span>` : ""}</div>
+    ${c.status === "aguardando" ? `<div class="aviso">A central está aguardando sua resposta.</div>` : ""}
+    <div class="fio" id="fio">${bolhas || `<div class="vazio" style="padding:20px">Este atendimento foi aberto pela nossa central. Se quiser, escreva abaixo.</div>`}
+    ${c.status === "aberto" && c.mensagens.every((x) => x.de === "cliente") ? `<div class="bolha bot"><span class="quem">Atendimento automático</span>Recebemos sua mensagem. Um atendente vai responder aqui em breve — você não precisa ficar com o app aberto.</div>` : ""}</div>
+    ${c.pode_escrever ? compositor(c.status === "resolvido" ? "Ainda precisa de ajuda? Escreva aqui…" : "Escreva sua mensagem…")
+      : `<div class="aviso" style="margin-top:14px">Este atendimento foi encerrado. Precisa de algo mais? <a href="#" id="novo" style="color:var(--marca);font-weight:600">Abrir novo atendimento</a></div>`}`;
+  const nv = $("#novo"); if (nv) nv.onclick = (e) => { e.preventDefault(); S.chamado = null; S.aba = "atendimento"; eu_("Falar com a central"); perguntarAssunto(); render(); };
+  if (c.pode_escrever) ligarCompositor(async (texto) => {
+    await api(`/api/cliente/chamado/${encodeURIComponent(c.id)}/mensagem`, { method: "POST", body: { texto } });
+    S.chamado = await api("/api/cliente/chamado/" + encodeURIComponent(c.id)); marcarVisto(S.chamado);
+    try { S.eu = await api("/api/cliente/eu"); S.versao = S.eu.versao; } catch (_) {}
+    render();
+  }, false);
+  rolar();
+}
+
+/* ═══════════ compositor de mensagem ═══════════ */
+function compositor(ph) { return `<div class="compor"><div><textarea id="txt" rows="1" maxlength="2000" placeholder="${esc(ph)}" aria-label="Mensagem"></textarea><button id="env" aria-label="Enviar" disabled>${ICO.enviar}</button></div></div>`; }
+function ligarCompositor(enviar) {
+  const t = $("#txt"), b = $("#env");
+  const ajusta = () => { t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 120) + "px"; b.disabled = !t.value.trim(); };
+  t.oninput = ajusta;
+  const vai = async () => { const v = t.value.trim(); if (!v || b.disabled) return; b.disabled = true; t.disabled = true;
+    try { await enviar(v); } catch (e) { toast(e.message); t.disabled = false; b.disabled = false; if (e.status === 401) carregar(); } };
+  b.onclick = vai;
+  t.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey && matchMedia("(pointer:fine)").matches) { e.preventDefault(); vai(); } };
+}
+function rolar() { requestAnimationFrame(() => scrollTo({ top: document.body.scrollHeight, behavior: "smooth" })); }
+
+/* ═══════════ novidades (só com o app aberto) ═══════════ */
+setInterval(async () => {
+  if (document.visibilityState !== "visible" || !S.eu) return;
+  if (document.activeElement && document.activeElement.id === "txt" && document.activeElement.value) return;
+  try {
+    const n = await api("/api/cliente/novidades");
+    if (n.versao === S.versao) return;
+    S.eu = await api("/api/cliente/eu"); S.versao = S.eu.versao;
+    if (S.chamado) { S.chamado = await api("/api/cliente/chamado/" + encodeURIComponent(S.chamado.id)); marcarVisto(S.chamado); }
+    if (S.aba !== "atendimento") render(); else { const n2 = naoLidos(); const a = app.querySelector('[data-aba="chamados"]'); if (a) a.innerHTML = `${ICO.lista}Chamados${n2 ? `<em>${n2}</em>` : ""}`; }
+  } catch (e) { if (e.status === 401) carregar(); }
+}, 15000);
+
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("/cliente/sw.js", { scope: "/cliente/" }).catch(() => {});
+carregar(true);
+})();
+</script>
+</body>
+</html>

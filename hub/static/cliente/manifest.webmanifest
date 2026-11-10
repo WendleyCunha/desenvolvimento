@@ -1,0 +1,15 @@
+{
+  "name": "Central do Cliente",
+  "short_name": "Atendimento",
+  "description": "Pedidos, prazos de entrega e conversa com a central.",
+  "start_url": "/cliente/",
+  "scope": "/cliente/",
+  "display": "standalone",
+  "background_color": "#f4f5f8",
+  "theme_color": "#14213d",
+  "lang": "pt-BR",
+  "icons": [
+    {"src": "/static/app/icone-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
+    {"src": "/static/app/icone-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}
+  ]
+}

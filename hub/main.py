@@ -13,6 +13,8 @@ Casca em FastAPI que roda no Render (plano Free) e serve:
     /api/dados/<modulo>/<colecao>        → dados.py  (dados com permissão por campo)
     /api/agente/*     → agente.py (Agente IA do topo — static/agente.js; permissões em
                         Configurações → Usuários → "Agente IA (topo)")
+    /cliente/         → APP DO CLIENTE (público, CPF + e-mail): pedidos, chamados e chat com o Atendimento
+                        — cliente_app.py · static/cliente/
     /healthz          → health check do Render (obrigatório)
     /api/diag         → diagnóstico (Firestore conecta? quantos módulos?)
 
@@ -80,9 +82,10 @@ import pqi_ponte
 import web_proxy
 import atelier
 import relatorios_publico
+import cliente_app
 import agente
 
-VERSAO = "3.8.0"
+VERSAO = "3.9.0"
 
 BASE = Path(__file__).resolve().parent
 PASTA_MODULOS = BASE / "modulos"
@@ -350,6 +353,7 @@ app.include_router(pqi_ponte.router)
 app.include_router(web_proxy.router)
 app.include_router(atelier.router)
 app.include_router(relatorios_publico.router)
+app.include_router(cliente_app.router)   # App do cliente — /cliente/ e /api/cliente/* (públicos, sessão própria)
 agente.ligar(app)   # Agente IA do topo — /api/agente/* (static/agente.js)
 _inicio = time.time()
 
