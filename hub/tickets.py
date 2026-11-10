@@ -14,6 +14,17 @@ Modelo (igual ao tickets/common.py do Streamlit — os dois sistemas convivem):
                          atendentes[], atribuido_para, aberto_por, comentarios[],
                          historico_etapas[], solicitacoes_setor[], ...} ]
     id do ticket na tela = "{container}#{sid}"
+
+CHAMADO ÚNICO POR CÓDIGO (a central mostra assim):
+    • 1 código de cliente = 1 CHAMADO (o container). Cada problema é uma
+      SOLICITAÇÃO dentro dele (motivo/submotivo, pedido, SLA, etapa, pendências
+      e situação próprios) e tem uma COR fixa (ordem de criação).
+    • Abrir problema novo nunca cria outro chamado: vira solicitação no mesmo
+      código. Trava: mesmo motivo + mesmo pedido já aberto.
+    • O CHAT do app (origem=app, app_tipo=chat) é separado enquanto está ativo.
+      "Concluir chat": anexa a conversa ao chamado OU vira solicitação.
+    • Um DONO por cliente: assumir/transferir vale para todas as solicitações
+      abertas, e as novas já nascem com ele.
     config/motivos_central  {"ticket": {Pai: {Filho: {sla, etapas[], ativo}}}}
     config/departamentos    {"lista": [...]}
     usuarios/{login}        {nome, depto, ...}   (só nome e depto saem daqui)
@@ -384,10 +395,35 @@ def nao_visto(t: dict, me: dict) -> bool:
     return bool(ult) and ult != me["usuario"]
 
 
+def eh_chat(t: dict) -> bool:
+    """Chat do app (aba Atendimento do cliente) — os primeiros do app não tinham app_tipo e eram chats."""
+    return t.get("origem") == "app" and (t.get("app_tipo") or "chat") == "chat"
+
+
+def cor_de(t: dict) -> int:
+    """Cor fixa da solicitação = posição dela (por criação) entre as solicitações do chamado. Chat = -1."""
+    if eh_chat(t):
+        return -1
+    cid, sid = decompor(t.get("id", ""))
+    sols = [x for x in ((BASE.cont or {}).get(cid) or {}).get("solicitacoes", []) if not eh_chat(x)]
+    sols.sort(key=lambda x: str(x.get("criado_em") or ""))
+    return next((i for i, x in enumerate(sols) if x.get("sid") == sid), 0)
+
+
+def dono_do_chamado(cont: dict) -> list[str]:
+    """Quem cuida do cliente: o atendente das solicitações abertas (a mais recente que tiver dono)."""
+    abertas = sorted((s for s in cont.get("solicitacoes", []) if s.get("status") in ABERTOS and (s.get("atendentes") or s.get("atribuido_para"))),
+                     key=lambda s: str(s.get("atualizado_em") or ""), reverse=True)
+    if not abertas:
+        return []
+    s = abertas[0]
+    return list(s.get("atendentes") or ([s["atribuido_para"]] if s.get("atribuido_para") else []))
+
+
 def resumo(t: dict, me: dict, agora_dt: datetime) -> dict:
     sla = sla_info(t, agora_dt)
     pend = pend_abertas(t)
-    return {k: t.get(k) for k in ("id", "status", "prioridade", "assunto", "departamento", "motivo_pai", "motivo_filho", "etapa_atual",
+    return {"cid": decompor(t.get("id", ""))[0], "chat": eh_chat(t), "cor": cor_de(t)} | {k: t.get(k) for k in ("id", "status", "prioridade", "assunto", "departamento", "motivo_pai", "motivo_filho", "etapa_atual",
                                    "cliente_codigo", "cliente_nome", "cliente_telefone", "atribuido_para", "aberto_por", "solicitante_nome",
                                    "criado_em", "atualizado_em", "origem", "erp_pedido_id", "erp_pedido_numero", "etapa_travada",
                                    "app_opcao", "app_pendente_desde", "app_tipo")} | {"app_pendente": bool(t.get("app_pendente")),
@@ -503,12 +539,20 @@ def criar_solicitacao(dados: dict, me: dict, bloquear_duplicado=False) -> str:
     def m(cont):
         if bloquear_duplicado and dados.get("motivo_pai"):
             for s in cont.get("solicitacoes", []):
-                if norm(s.get("motivo_pai")) == norm(dados["motivo_pai"]) and s.get("status") not in ("finalizado", "cancelado"):
-                    raise HTTPException(409, f"Este cliente já tem um chamado aberto de \"{s.get('motivo_pai')}\" — trate esse antes de abrir outro.")
+                if (not eh_chat(s) and norm(s.get("motivo_pai")) == norm(dados["motivo_pai"]) and s.get("status") not in ("finalizado", "cancelado")
+                        and str(s.get("erp_pedido_id") or "") == str(dados.get("erp_pedido_id") or "")):
+                    ped = f" do pedido #{s.get('erp_pedido_numero')}" if s.get("erp_pedido_numero") else ""
+                    raise HTTPException(409, f"O chamado {cod} já tem uma solicitação aberta de \"{s.get('motivo_pai')}\"{ped} — "
+                                             "registre nela em vez de abrir outra.")
+        herda = {}
+        if not (dados.get("atendentes") or dados.get("atribuido_para")) and not (dados.get("origem") == "app" and dados.get("app_tipo") == "chat"):
+            dono = dono_do_chamado(cont)   # um dono por cliente: a solicitação nova já nasce com ele
+            if dono:
+                herda = {"atendentes": dono, "atribuido_para": dono[0], "status": "em_andamento"}
         ag = agora()
         nova = {"sid": sid, "criado_em": ag, "atualizado_em": ag, "origem": "hub", "comentarios": [], "historico_etapas": [],
                 "solicitacoes_setor": [], "sla1_definido": False, "sla1_cumprido": None, "etapa_vermelha": False,
-                "etapa_travada": False, "status": "aberto", "horas_sla": 24, "atendentes": [], **dados, "cliente_codigo": cod}
+                "etapa_travada": False, "status": "aberto", "horas_sla": 24, "atendentes": [], **dados, **herda, "cliente_codigo": cod}
         nova["sid"] = sid
         cont.setdefault("solicitacoes", []).append(nova)
         cont["cliente_codigo"] = cod
@@ -548,8 +592,16 @@ async def abrir(request: Request):
             dados[k] = c[k]
     if c.get("atribuir_a_mim"):
         dados.update(atendentes=[me["usuario"]], atribuido_para=me["usuario"], status="em_andamento")
+    havia = chamado_aberto(_id_doc(dados["cliente_codigo"])) if dados.get("cliente_codigo") else 0
     tid = criar_solicitacao({k: v for k, v in dados.items() if v is not None}, me, bloquear_duplicado=bool(c.get("bloquear_duplicado", True)))
-    return {"ok": True, "id": tid}
+    return {"ok": True, "id": tid, "cid": decompor(tid)[0], "agrupado": bool(havia), "chamado": dados["cliente_codigo"]}
+
+
+def chamado_aberto(cid: str) -> int:
+    """Quantas solicitações (não chat) abertas o chamado do cliente tem agora."""
+    BASE.atualizar()
+    cont = (BASE.cont or {}).get(cid) or {}
+    return sum(1 for s in cont.get("solicitacoes", []) if not eh_chat(s) and s.get("status") in ABERTOS)
 
 
 @router.post("/ticket/{tid:path}/comentar")
@@ -1203,3 +1255,124 @@ def gerar_palavras_antigas(request: Request):
             feitos += 1
         tx.commit()
     return {"ok": True, "feitos": feitos}
+
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CHAMADO ÚNICO POR CLIENTE (a tela de atendimento abre o cliente inteiro)
+# ══════════════════════════════════════════════════════════════════════════════
+def _sols_visiveis(cid: str, p: dict, me: dict) -> list[dict]:
+    c = (BASE.cont or {}).get(cid)
+    if not c:
+        raise HTTPException(404, "Chamado não encontrado.")
+    sols = []
+    for s in c.get("solicitacoes", []):
+        t = {**s, "id": compor(cid, s.get("sid", "legacy")), "cliente_codigo": s.get("cliente_codigo") or c.get("cliente_codigo", ""),
+             "cliente_nome": s.get("cliente_nome") or c.get("cliente_nome", "")}
+        sols.append(t)
+    if not any(visivel(t, p, me) for t in sols):
+        raise HTTPException(403, "Você não tem acesso a este chamado.")
+    return sols
+
+
+@router.get("/cliente/{cid}")
+def chamado_do_cliente(cid: str, request: Request):
+    """O chamado inteiro: chat ativo + todas as solicitações (cada uma com cor, SLA e pendências) + pedidos do ERP."""
+    u, p, me = _contexto(request)
+    sols = _sols_visiveis(cid, p, me)
+    agora_dt = datetime.now(BRT)
+    saida = [{**t, "sla": sla_info(t, agora_dt), "cor": cor_de(t), "chat": eh_chat(t), "pend_abertas": [x.get("id") for x in pend_abertas(t)],
+              "nao_visto": nao_visto(t, me)} for t in sols]
+    saida.sort(key=lambda t: (not (t["chat"] and t.get("status") in ABERTOS), t.get("status") not in ABERTOS, str(t.get("criado_em") or "")))
+    ref = next((t for t in sols if t.get("erp_cliente_id")), sols[0])
+    junto = {**ref, "erp_pedido_id": None,
+             "erp_trocas": [x for t in sols for x in ([{"id": t["erp_pedido_id"]}] if t.get("erp_pedido_id") else []) + list(t.get("erp_trocas") or [])]}
+    c = BASE.cont[cid]
+    return {"cid": cid, "cliente": {"codigo": c.get("cliente_codigo") or ref.get("cliente_codigo"), "nome": c.get("cliente_nome") or ref.get("cliente_nome"),
+                                    "telefone": next((t.get("cliente_telefone") for t in sols if t.get("cliente_telefone")), "")},
+            "dono": dono_do_chamado(c), "solicitacoes": saida, "erp": erp_do_ticket(junto, u) if _erp_ligado() else None}
+
+
+@router.post("/cliente/{cid}/dono")
+async def dono_cliente(cid: str, request: Request):
+    """Assumir/transferir o CLIENTE: vale para todas as solicitações abertas (e o chat)."""
+    u, p, me = _contexto(request)
+    sols = _sols_visiveis(cid, p, me)
+    c = await request.json()
+    alvo = str(c.get("atribuir") or "")
+    sem_dono = not any((t.get("atendentes") or t.get("atribuido_para")) for t in sols if t.get("status") in ABERTOS)
+    if alvo == me["usuario"] and sem_dono:
+        _exigir(p, "atender", "assumir atendimentos")
+    else:
+        _exigir(p, "transferir", "transferir atendimentos")
+    nome = usuarios().get(alvo, {}).get("nome", alvo) if alvo else "ninguém"
+
+    def mutar(cont):
+        ag = agora()
+        n = 0
+        for i, s in enumerate(cont.get("solicitacoes", [])):
+            if s.get("status") not in ABERTOS:
+                continue
+            s = dict(s)
+            s["atendentes"] = [alvo] if alvo else []
+            s["atribuido_para"] = alvo
+            if alvo and s.get("status") == "aberto":
+                s["status"] = "em_andamento"
+            _coment(s, me, f"Cliente atribuído a {nome}", tipo="sistema")
+            s["atualizado_em"] = ag
+            cont["solicitacoes"][i] = s
+            n += 1
+        cont["atualizado_em"] = ag
+        return n
+    _, n = _transacao(cid, mutar)
+    return {"ok": True, "feitas": n}
+
+
+@router.post("/ticket/{tid:path}/concluir-chat")
+async def concluir_chat(tid: str, request: Request):
+    """Fim do chat do app. modo 'anexar' → a conversa fica no histórico do chamado do cliente;
+    modo 'solicitacao' → a própria conversa vira uma solicitação (motivo/submotivo/pedido) no chamado."""
+    u, p, me = _contexto(request)
+    _exigir(p, "encerrar", "encerrar atendimentos")
+    t = _ticket(tid, p, me)
+    if not eh_chat(t) or t.get("status") not in ABERTOS:
+        raise HTTPException(409, "Este chat já foi concluído.")
+    c = await request.json()
+    modo = c.get("modo")
+    if modo == "solicitacao":
+        pai, filho = str(c.get("motivo_pai") or ""), str(c.get("motivo_filho") or "")
+        arv = motivos()
+        if pai not in arv or filho not in arv[pai]:
+            raise HTTPException(400, "Escolha o motivo e o submotivo da solicitação.")
+        ped = None
+        if c.get("pedido_id"):
+            e = _erp()
+            ped = e.ST.dados["pedidos"].get(str(c["pedido_id"])) if e else None
+            if not ped:
+                raise HTTPException(404, "Pedido do ERP não encontrado.")
+        cid = decompor(tid)[0]
+        for s in ((BASE.cont or {}).get(cid) or {}).get("solicitacoes", []):
+            if (not eh_chat(s) and s.get("status") in ABERTOS and norm(s.get("motivo_pai")) == norm(pai)
+                    and str(s.get("erp_pedido_id") or "") == str(c.get("pedido_id") or "")):
+                raise HTTPException(409, f"Já existe uma solicitação aberta de \"{pai}\"" + (f" do pedido #{ped.get('numero')}" if ped else "")
+                                         + " neste chamado — anexe o chat e registre nela.")
+
+        def fn(s):
+            s["chat_iniciado_em"] = s.get("chat_iniciado_em") or s.get("criado_em")   # a conversa continua no lugar certo da linha do tempo
+            s.update(app_tipo="chamado", convertido_de_chat=True, motivo_pai=pai, motivo_pai_id=pai, motivo_filho=filho,
+                     assunto=filho + (f" · pedido #{ped.get('numero')}" if ped else ""), sla1_prazo_dias=_sla_motivo(pai, filho),
+                     criado_em=agora())   # o prazo da solicitação conta a partir de agora
+            if ped:
+                s.update(erp_pedido_id=str(c["pedido_id"]), erp_pedido_numero=ped.get("numero"))
+            if s.get("status") == "aberto":
+                s["status"] = "em_andamento"
+            _coment(s, me, f"💬→📋 Chat concluído e transformado em solicitação: {pai} › {filho}" + (f" (pedido #{ped.get('numero')})" if ped else ""), tipo="sistema")
+    elif modo == "anexar":
+        def fn(s):
+            s.update(status="resolvido", resolvido_em=agora(), resolvido_por=me["usuario"], app_pendente=False)
+            s.pop("app_pendente_desde", None)
+            _coment(s, me, "💬 Chat concluído — a conversa fica no histórico do chamado do cliente.", tipo="sistema")
+    else:
+        raise HTTPException(400, "Escolha: anexar ao chamado ou virar solicitação.")
+    _mutar_sol(tid, fn, me)
+    return {"ok": True}

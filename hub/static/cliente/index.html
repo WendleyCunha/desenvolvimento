@@ -152,6 +152,14 @@ button.cartao:hover{transform:translateY(-2px);border-color:rgba(var(--ouro-rgb)
 .form .campo select,.form .campo textarea{font-size:.95rem}
 .form textarea{min-height:120px}
 .dica{font-size:.76rem;color:var(--txt3);margin:0;line-height:1.5}
+.sols{display:flex;flex-direction:column;gap:6px;margin-top:10px}
+.sol{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;padding:8px 10px;border-radius:12px;border-left:4px solid var(--c);background:color-mix(in srgb,var(--c) 9%,transparent)}
+.sol b{font:600 .88rem var(--titulo);flex:1;min-width:0}
+.sol small{width:100%;color:var(--txt3);font-size:.72rem}
+.bolha.central{border-left:4px solid var(--c,var(--vidro-borda))}
+.bolha.cli[style*="--c"]{box-shadow:inset -4px 0 0 var(--c),0 12px 28px -14px rgba(var(--ouro-rgb),.9)}
+.bolha .tag{font-style:normal;display:inline-block;padding:0 6px;border-radius:6px;font-size:.6rem;letter-spacing:.04em;text-transform:none;color:var(--c);background:rgba(0,0,0,.25);border:1px solid color-mix(in srgb,var(--c) 50%,transparent);margin-right:4px}
+.bolha.cli .tag{background:rgba(0,0,0,.18)}
 .chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:20px;font-size:.72rem;font-weight:650;color:var(--ouro2);background:rgba(var(--ouro-rgb),.1);border:1px solid rgba(var(--ouro-rgb),.35)}
 </style>
 </head>
@@ -309,7 +317,7 @@ async function atualizar() {
 }
 
 /* ═══════════ CASCA ═══════════ */
-function naoLidos() { const visto = ls.get("cli.visto", {}); return (S.eu?.chamados || []).filter((c) => c.resposta_nova_em && c.resposta_nova_em > (visto[c.id] || "")).length; }
+function naoLidos() { const visto = ls.get("cli.visto", {}), ch = S.eu?.chamado; return ch && ch.resposta_nova_em && ch.resposta_nova_em > (visto.chamado || "") ? 1 : 0; }
 function marcarVisto(c) { if (!c) return; const v = ls.get("cli.visto", {}); v[c.id] = c.resposta_nova_em || c.atualizado_em || ""; ls.set("cli.visto", v); }
 function ir(aba, sub = null) { S.aba = aba; S.sub = sub; ls.set("cli.aba", aba); render(); scrollTo(0, 0); }
 function marcarAbas() {
@@ -324,6 +332,7 @@ function render() {
   if (sub?.tela === "pedido") { const p = eu.pedidos.find((x) => x.id === sub.id); titulo = p ? `Pedido #${p.numero}` : "Pedido"; }
   if (sub?.tela === "chamado") { const c = cache.ch(sub.id) || eu.chamados.find((x) => x.id === sub.id); titulo = c?.assunto || "Chamado"; linha = `Protocolo ${sub.id.slice(0, 6).toUpperCase()}`; }
   if (sub?.tela === "novo") { titulo = "Novo chamado"; }
+  if (S.aba === "chamados" && !sub && eu.chamado) { titulo = `Chamado nº ${eu.chamado.numero}`; linha = eu.chamado.rotulo; }
   app.innerHTML = `
     <header class="topo vidro vidro-borda-viva">
       ${sub ? `<button class="btn-ic" id="voltar" aria-label="Voltar">${ICO.voltar}</button>` : A.atomo(38, { mini: true })}
@@ -455,28 +464,58 @@ function telaPedido(m, id) {
 }
 
 /* ═══════════ CHAMADOS ═══════════ */
+/* O cliente tem UM chamado (nº = código dele). Cada problema é uma solicitação, com sua cor. */
+const COR_SOL = ["#fb923c", "#f472b6", "#a3e635", "#e879f9", "#2dd4bf", "#818cf8"];
+const corSol = (i) => (i == null || i < 0) ? "var(--ciano)" : COR_SOL[i % COR_SOL.length];
 function telaChamados(m) {
-  const cs = S.eu.chamados, visto = ls.get("cli.visto", {});
-  const pend = fila.itens().filter((it) => it.url === "/api/cliente/chamados");
-  const cartao = (c) => { const novo = c.resposta_nova_em && c.resposta_nova_em > (visto[c.id] || "");
-    return `<button class="cartao vidro" data-c="${esc(c.id)}" data-tipo="${c.tipo}"><div class="l1">${novo ? `<span class="ponto" title="Resposta nova"></span>` : ""}<b>${esc(c.assunto)}</b><span class="etq ${TK_COR[c.status] || ""} dir">${esc(c.rotulo)}</span></div>
-      ${c.ultima ? `<p>${c.ultima.de === "cliente" ? "Você: " : "Central: "}${esc(c.ultima.texto)}</p>` : `<p>Aberto em ${dataBR(c.criado_em)}</p>`}
-      <p class="min">${c.tipo === "chat" ? "Chat" : c.tipo === "chamado" ? esc(c.motivo || "Chamado") : "Aberto pela central"} · protocolo ${esc(c.id.slice(0, 6).toUpperCase())} · ${dataBR(c.atualizado_em)} ${hora(c.atualizado_em)}</p></button>`; };
-  const ab = cs.filter((c) => c.aberto), fe = cs.filter((c) => !c.aberto);
-  m.innerHTML = `<button class="btn grande" id="novo" style="margin-bottom:16px">${ICO.mais} Abrir chamado</button>
-    ${pend.map((it) => `<div class="cartao vidro pend"><div class="l1"><b>${esc(it.body.motivo_filho)}</b><span class="etq alerta dir">⏳ na fila</span></div><p>${esc(it.body.texto)}</p><p class="min">Escrito sem internet às ${hora(it.quando)} — enviamos quando a conexão voltar.</p></div>`).join("")}
-    ${ab.length ? `<h2 class="tit">Em andamento</h2>${ab.map(cartao).join("")}` : ""}${fe.length ? `<div class="sec">Encerrados</div>${fe.map(cartao).join("")}` : ""}
-    ${!cs.length && !pend.length ? `<div class="vazio">${A.orbe("lista", "var(--ciano)")}<b>Nenhum chamado</b>Abra um chamado para registrar um pedido à loja — ele segue com prazo e protocolo.</div>` : ""}`;
-  $("#novo").onclick = () => ir("chamados", { tela: "novo" });
-  m.querySelectorAll("[data-c]").forEach((b) => (b.onclick = () => {
-    if (b.dataset.tipo === "chat" && S.eu.chat && S.eu.chat.id === b.dataset.c) { ir("atendimento"); return; }
-    ir("chamados", { tela: "chamado", id: b.dataset.c });
-  }));
+  const ch = S.eu.chamado, visto = ls.get("cli.visto", {});
+  const pendNovos = fila.itens().filter((it) => it.url === "/api/cliente/chamados");
+  const pendMsg = fila.itens().filter((it) => it.url === "/api/cliente/chamado/mensagem");
+  if (ch) { marcarVisto({ id: "chamado", resposta_nova_em: ch.resposta_nova_em }); }
+  const abrir = `<button class="btn grande" id="novo" style="margin-bottom:14px">${ICO.mais} Abrir chamado</button>`;
+  const pendCards = pendNovos.map((it) => `<div class="cartao vidro pend"><div class="l1"><b>${esc(it.body.motivo_filho)}</b><span class="etq alerta dir">⏳ na fila</span></div><p>${esc(it.body.texto)}</p><p class="min">Escrito sem internet às ${hora(it.quando)} — enviamos quando a conexão voltar.</p></div>`).join("");
+  if (!ch) {
+    m.innerHTML = abrir + pendCards + (pendNovos.length ? "" : `<div class="vazio">${A.orbe("lista", "var(--ciano)")}<b>Nenhum chamado</b>Abra um chamado para registrar um pedido à loja — ele ganha número, prazo e você acompanha por aqui.</div>`);
+  } else {
+    const abertas = ch.solicitacoes.filter((s) => s.aberto), fechadas = ch.solicitacoes.filter((s) => !s.aberto);
+    const sol = (s) => `<div class="sol" style="--c:${corSol(s.cor)}"><b>${esc(s.assunto)}</b><span class="etq ${TK_COR[s.status] || ""}">${esc(s.rotulo)}</span>${s.motivo ? `<small>${esc(s.motivo)}</small>` : ""}</div>`;
+    let dia = "";
+    const bolhas2 = ch.mensagens.map((x) => { const d = String(x.data || "").slice(0, 10), sep = d && d !== dia ? `<div class="dia">${esc(dataLonga(d))}</div>` : ""; if (d) dia = d;
+      return sep + `<div class="bolha ${x.de === "cliente" ? "cli" : "central"}" style="--c:${corSol(x.cor)}"><span class="quem"><i class="tag" style="--c:${corSol(x.cor)}">${esc(x.rotulo)}</i>${x.de !== "cliente" ? " " + esc(x.autor ? x.autor + " · Central" : "Central") : ""}</span>${esc(x.texto)}<small>${hora(x.data)}</small></div>`; }).join("")
+      + pendMsg.map((it) => `<div class="bolha cli pend">${esc(it.body.texto)}<small>⏳ aguardando internet · ${hora(it.quando)}</small></div>`).join("");
+    m.classList.toggle("chat-modo", ch.pode_escrever);
+    m.innerHTML = `${abrir}${pendCards}
+      <div class="cartao vidro vidro-borda-viva">
+        <div class="l1"><b>Chamado nº ${esc(ch.numero)}</b><span class="etq ${ch.aberto ? "azul" : "ok"} dir">${esc(ch.rotulo)}</span></div>
+        <p class="min">Tudo o que você pediu fica neste chamado — cada assunto é uma solicitação.</p>
+        <div class="sols">${abertas.map(sol).join("") || `<p class="dica">Nenhuma solicitação em aberto.</p>`}</div>
+        ${fechadas.length ? `<details><summary class="dica" style="cursor:pointer;margin-top:8px">Concluídas (${fechadas.length})</summary><div class="sols" style="margin-top:6px">${fechadas.map(sol).join("")}</div></details>` : ""}
+      </div>
+      <div class="sec">Conversa</div>
+      <div class="fio">${bolhas2 || `<div class="vazio" style="padding:16px">Ainda sem mensagens.</div>`}</div>
+      ${ch.pode_escrever ? compositor("Escreva para a central…") : ""}`;
+    if (ch.pode_escrever) ligarCompositor(async (texto) => {
+      const r = await enviar("/api/cliente/chamado/mensagem", { texto }, texto);
+      if (r.fila) { render(); return; }
+      await atualizar();
+    });
+    rolar();
+  }
+  $("#novo").onclick = () => {
+    if (S.eu.chat) {   // em atendimento: quem abre a solicitação é o atendente
+      A.modal({ titulo: "Você está em atendimento", icone: "mensagem", largura: 420,
+        html: `<p style="margin:0;line-height:1.6">Você está conversando com a nossa central agora. <b>Conte no chat</b> o que precisa — o atendente abre a solicitação para você, já no seu chamado.</p>`,
+        botoes: [{ rotulo: "Fechar" }, { rotulo: "Ir para o chat", classe: "btn", principal: true, acao: () => { setTimeout(() => ir("atendimento"), 0); } }] });
+      return;
+    }
+    ir("chamados", { tela: "novo" });
+  };
 }
 function telaNovoChamado(m) {
-  const arv = S.eu.motivos || {}, pais = Object.keys(arv), peds = S.eu.pedidos.filter((p) => p.status !== "cancelado");
+  if (S.eu.chat) { toast("Você está em atendimento agora — conte no chat e o atendente abre a solicitação para você.", "var(--ciano)"); ir("atendimento"); return; }
+  const arv = S.eu.motivos || {}, pais = Object.keys(arv), peds = S.eu.pedidos.filter((p) => p.status !== "cancelado"), ch = S.eu.chamado;
   m.innerHTML = `<form class="cartao vidro vidro-borda-viva form" id="fCh" novalidate>
-    <p class="dica">Registre aqui um pedido à loja. Ele ganha protocolo e prazo — você acompanha e conversa pela aba Chamados.</p>
+    <p class="dica">${ch && ch.aberto ? `Você já tem o <b>chamado nº ${esc(ch.numero)}</b>. O que abrir agora entra nele como mais uma solicitação — fica tudo junto.` : "Registre aqui um pedido à loja. Ele ganha número e prazo — você acompanha e conversa pela aba Chamados."}</p>
     <label class="campo">Motivo<select id="cPai"><option value="">Escolha…</option>${pais.map((p) => `<option>${esc(p)}</option>`).join("")}</select></label>
     <label class="campo">Submotivo<select id="cFilho" disabled><option value="">Escolha o motivo primeiro</option></select></label>
     ${peds.length ? `<label class="campo">Pedido (opcional)<select id="cPed"><option value="">Não é sobre um pedido</option>${peds.map((p) => `<option value="${esc(p.id)}"${S.sub.pedido === p.id ? " selected" : ""}>Pedido #${p.numero} · ${esc(p.rotulo)}</option>`).join("")}</select></label>` : ""}
@@ -495,8 +534,13 @@ function telaNovoChamado(m) {
     try {
       const r = await enviar("/api/cliente/chamados", body, body.motivo_filho);
       if (r.fila) { toast("Sem internet: o chamado foi guardado e vai sozinho quando a conexão voltar.", "var(--laranja)"); ir("chamados"); return; }
-      toast("Chamado aberto ✓", "var(--verde)"); await atualizar(); ir("chamados", { tela: "chamado", id: r.id });
-    } catch (e) { b.disabled = false; toast(e.message); if (e.status === 401) telaEntrar(); }
+      await atualizar();
+      A.modal({ titulo: r.agrupado ? "Chamado agrupado" : "Chamado aberto", icone: "check", largura: 420,
+        html: r.agrupado ? `<p style="margin:0;line-height:1.6">Seu novo chamado foi <b>agrupado ao chamado nº ${esc(r.chamado)}</b>, que já existia — agora ele tem <b>${r.solicitacoes}</b> solicitações. Fica tudo consolidado num lugar só.</p>`
+          : `<p style="margin:0;line-height:1.6">Seu <b>chamado nº ${esc(r.chamado)}</b> foi aberto. A central responde por aqui, na aba Chamados.</p>`,
+        botoes: [{ rotulo: "Ver meu chamado", classe: "btn", principal: true }] });
+      ir("chamados");
+    } catch (e) { b.disabled = false; toast(e.message); if (e.status === 401) telaEntrar(); if (e.status === 409 && S.eu.chat) ir("atendimento"); }
   };
 }
 async function telaThread(m, id) {

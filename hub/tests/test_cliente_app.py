@@ -235,17 +235,71 @@ def test_chat_ida_e_volta_e_so_o_atendente_encerra(t):
 def test_chamado_pelo_cliente_com_motivo_e_submotivo(t):
     entrar(t)
     eu = t.get("/api/cliente/eu").json()
-    assert "Cancelamento" in eu["motivos"]["Pedido"]
+    assert "Cancelamento" in eu["motivos"]["Pedido"] and eu["chamado"] is None
     assert t.post("/api/cliente/chamados", json={"motivo_pai": "Pedido", "motivo_filho": "Inexistente", "texto": "x"}).status_code == 422
-    r = t.post("/api/cliente/chamados", json={"motivo_pai": "Pedido", "motivo_filho": "Cancelamento", "pedido_id": "ped1", "texto": "Quero cancelar"})
-    assert r.status_code == 200
-    tk = central(t, r.json()["id"])
-    assert tk["app_tipo"] == "chamado" and tk["motivo_filho"] == "Cancelamento" and tk["erp_pedido_numero"] == 101
-    assert tk["sla"]["limite"]                                           # SLA do submotivo
-    dup = t.post("/api/cliente/chamados", json={"motivo_pai": "Pedido", "motivo_filho": "Arrependimento", "texto": "outro"})
-    assert dup.status_code == 409 and "Pedido" in dup.json()["detail"]   # um aberto por motivo
-    assert t.post("/api/cliente/chamados", json={"motivo_pai": "Cliente", "motivo_filho": "Reenvio", "texto": "outro motivo"}).status_code == 200
+    r = t.post("/api/cliente/chamados", json={"motivo_pai": "Pedido", "motivo_filho": "Cancelamento", "pedido_id": "ped1", "texto": "Quero cancelar"}).json()
+    cod = E.ST.dados["parceiros"]["c_ana"]["codigo"]
+    assert r["agrupado"] is False and r["chamado"] == cod
+    tk = central(t, r["id"])
+    assert tk["app_tipo"] == "chamado" and tk["motivo_filho"] == "Cancelamento" and tk["erp_pedido_numero"] == 101 and tk["sla"]["limite"]
+    dup = t.post("/api/cliente/chamados", json={"motivo_pai": "Pedido", "motivo_filho": "Arrependimento", "pedido_id": "ped1", "texto": "outro"})
+    assert dup.status_code == 409 and cod in dup.json()["detail"]          # mesmo motivo + mesmo pedido
+    r2 = t.post("/api/cliente/chamados", json={"motivo_pai": "Pedido", "motivo_filho": "Arrependimento", "texto": "sem pedido"}).json()
+    assert r2["agrupado"] is True and r2["chamado"] == cod and r2["solicitacoes"] == 2   # outro pedido (nenhum) → agrupa
     assert t.post("/api/cliente/chamados", json={"motivo_pai": "Compras", "motivo_filho": "Falta de Peças", "pedido_id": "ped3", "texto": "x"}).status_code == 404
+    ch = t.get("/api/cliente/eu").json()["chamado"]
+    assert ch["numero"] == cod and len(ch["solicitacoes"]) == 2 and {s["cor"] for s in ch["solicitacoes"]} == {0, 1}
+    assert [m["texto"] for m in ch["mensagens"]] == ["Quero cancelar", "sem pedido"]
+
+
+def test_em_atendimento_nao_abre_chamado(t):
+    entrar(t)
+    t.post("/api/cliente/chat", json={"opcao": "outro", "texto": "Oi"})
+    r = t.post("/api/cliente/chamados", json={"motivo_pai": "Cliente", "motivo_filho": "Reenvio", "texto": "x"})
+    assert r.status_code == 409 and "atendente abre a solicitação" in r.json()["detail"]
+
+
+def test_mensagem_no_chamado_vai_para_a_solicitacao_respondida(t):
+    entrar(t)
+    a = t.post("/api/cliente/chamados", json={"motivo_pai": "Pedido", "motivo_filho": "Cancelamento", "pedido_id": "ped1", "texto": "A"}).json()["id"]
+    b = t.post("/api/cliente/chamados", json={"motivo_pai": "Cliente", "motivo_filho": "Reenvio", "texto": "B"}).json()["id"]
+    tb = central(t, b)["id"]
+    t.post(url_tk(tb) + "/comentar", json={"texto": "Sobre o reenvio: já saiu.", "tipo": "resposta"})
+    assert t.post("/api/cliente/chamado/mensagem", json={"texto": "Obrigada!"}).json()["sol"] == b
+    assert central(t, b)["app_pendente"] and not central(t, a)["status"] == "finalizado"
+
+
+def test_central_ve_o_cliente_inteiro_com_um_dono(t):
+    entrar(t)
+    a = t.post("/api/cliente/chamados", json={"motivo_pai": "Pedido", "motivo_filho": "Cancelamento", "pedido_id": "ped1", "texto": "A"}).json()["id"]
+    cid = central(t, a)["cid"]
+    assert t.post(f"/api/tickets/cliente/{quote(cid, safe='')}/dono", json={"atribuir": "atendente"}).json()["feitas"] == 1
+    b = t.post("/api/cliente/chamados", json={"motivo_pai": "Cliente", "motivo_filho": "Reenvio", "texto": "B"}).json()["id"]
+    assert central(t, b)["atribuido_para"] == "atendente"                # a nova já nasce com o dono do cliente
+    det = t.get(f"/api/tickets/cliente/{quote(cid, safe='')}").json()
+    assert det["dono"] == ["atendente"] and [s["cor"] for s in det["solicitacoes"]] == [0, 1] and det["erp"]["pedidos"]
+    # pela central: abrir de novo no mesmo código agrupa; mesmo motivo+pedido trava
+    base = {"cliente_codigo": det["cliente"]["codigo"], "cliente_nome": "ana souza", "assunto": "x", "descricao": "y"}
+    r = t.post("/api/tickets/tickets", json={**base, "motivo_pai": "Logística", "departamento": "Logística"}).json()
+    assert r["agrupado"] is True and r["chamado"] == det["cliente"]["codigo"]
+    assert t.post("/api/tickets/tickets", json={**base, "motivo_pai": "Pedido", "erp_pedido_id": "ped1"}).status_code == 409
+
+
+def test_concluir_chat_anexando_ou_virando_solicitacao(t):
+    entrar(t)
+    c1 = t.post("/api/cliente/chat", json={"opcao": "outro", "texto": "Dúvida rápida"}).json()["id"]
+    assert t.post(url_tk(central(t, c1)["id"]) + "/concluir-chat", json={"modo": "anexar"}).status_code == 200
+    eu = t.get("/api/cliente/eu").json()
+    assert eu["chat"] is None and [m["texto"] for m in eu["chamado"]["mensagens"]] == ["Dúvida rápida"]   # ficou no histórico
+    assert eu["chamado"]["solicitacoes"] == []                                                          # sem virar problema
+    c2 = t.post("/api/cliente/chat", json={"opcao": "troca", "texto": "Veio rasgado"}).json()["id"]
+    tid = central(t, c2)["id"]
+    assert t.post(url_tk(tid) + "/concluir-chat", json={"modo": "solicitacao", "motivo_pai": "Pedido", "motivo_filho": "Troca Adaptação", "pedido_id": "ped1"}).status_code == 200
+    tk = central(t, c2)
+    assert tk["chat"] is False and tk["app_tipo"] == "chamado" and tk["motivo_filho"] == "Troca Adaptação" and tk["status"] in ("aberto", "em_andamento")
+    eu = t.get("/api/cliente/eu").json()
+    assert eu["chat"] is None and [s["assunto"] for s in eu["chamado"]["solicitacoes"]] == ["Troca Adaptação · pedido #101"]
+    assert t.post(url_tk(tid) + "/concluir-chat", json={"modo": "anexar"}).status_code == 409     # já não é chat
 
 
 def test_reenvio_da_fila_offline_nao_duplica(t):

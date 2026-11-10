@@ -174,6 +174,25 @@ button.kpi:hover{border-color:color-mix(in srgb,var(--c) 50%,transparent)}
 .filho{display:grid;grid-template-columns:minmax(0,1fr) 60px minmax(0,1.6fr) auto;gap:6px;align-items:center;margin-top:5px}
 .filho input{padding:6px 8px;font-size:.78rem}
 .oculto{display:none!important}
+/* chamado único: cada solicitação tem sua cor (faixa lateral no balão, chip, cartão) */
+.msg{border-left:4px solid var(--sol,var(--vidro-borda))}
+.tag-sol{font-style:normal;display:inline-flex;align-items:center;gap:4px;padding:0 6px;border-radius:6px;font-size:.62rem;font-weight:700;color:var(--c);background:color-mix(in srgb,var(--c) 14%,transparent);border:1px solid color-mix(in srgb,var(--c) 40%,transparent);margin-right:2px}
+.chip-sol{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:9px;font-size:.68rem;font-weight:650;color:var(--txt);background:color-mix(in srgb,var(--c) 14%,transparent);border:1px solid color-mix(in srgb,var(--c) 50%,transparent);white-space:nowrap}
+.chip-sol::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--c);box-shadow:0 0 6px var(--c)}
+.chip-sol.alvo{cursor:pointer;opacity:.6}.chip-sol.alvo.ativo{opacity:1;box-shadow:0 0 0 2px var(--c)}
+.legenda,.alvos{display:flex;gap:5px;flex-wrap:wrap;align-items:center}
+.sol-card{display:flex;flex-direction:column;gap:3px;text-align:left;padding:9px 11px 9px 13px;border-radius:13px;background:rgba(255,255,255,.03);border:1px solid var(--vidro-borda);border-left:4px solid var(--c);transition:.15s;width:100%}
+.sol-card:hover{background:rgba(255,255,255,.06)}
+.sol-card.sel{background:color-mix(in srgb,var(--c) 12%,transparent);border-color:color-mix(in srgb,var(--c) 55%,transparent);border-left-color:var(--c)}
+.sol-card.chat{--c:var(--ciano)}
+.sol-card .t1{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.sol-card .t1 b{font-size:.84rem}
+.sol-card small{color:var(--txt3);font-size:.7rem}
+.painel-sol{display:flex;flex-direction:column;gap:9px;margin-top:6px;padding:12px;border-radius:14px;border:1px solid color-mix(in srgb,var(--c) 40%,transparent);background:color-mix(in srgb,var(--c) 5%,transparent)}
+.at-cab{border-left:4px solid var(--c,transparent)}
+.tab tr.linha.app td:first-child{box-shadow:inset 3px 0 0 var(--ciano)}
+.tab tr.linha.app{background:rgba(34,211,238,.04)}
+.resumo-real{display:flex;gap:16px;flex-wrap:wrap;font-size:.8rem;color:var(--txt2);margin:0 2px 10px}
+.resumo-real b{font:700 1.05rem var(--titulo);color:var(--txt);margin-right:3px}
 /* abas de atendimento (tipo navegador): app à esquerda (cor), tickets à direita (neutros) */
 .abas-tk{position:sticky;top:76px;z-index:35;display:flex;align-items:flex-end;gap:6px;margin:12px 0 -6px;padding:6px 6px 0;border-radius:16px 16px 0 0;overflow-x:auto;scrollbar-width:thin}
 .abas-tk:empty{display:none}
@@ -289,42 +308,83 @@ async function carregar() {
 }
 function rota() {
   const h = decodeURIComponent(location.hash.replace(/^#/, ""));
-  if (h.startsWith("t=")) { S.sec = "caixa"; S.aberto = h.slice(2); }
+  if (h.startsWith("t=") || h.startsWith("c=")) { S.sec = "caixa"; const id = h.slice(2); if (id.includes("#")) S.solSel = id; S.aberto = cidDe(id); if (!S.abas.includes(S.aberto)) { S.abas.push(S.aberto); salvarAbas(); } }
   render();
 }
 addEventListener("hashchange", rota);
-function ir(sec) { S.sec = sec; S.aberto = null; ls.set("wd.tk.sec", sec); if (location.hash) history.replaceState(null, "", location.pathname + location.search); render(); scrollTo(0, 0); }
+function ir(sec) { S.sec = sec; S.aberto = null; S.det = null; ls.set("wd.tk.sec", sec); if (location.hash) history.replaceState(null, "", location.pathname + location.search); render(); scrollTo(0, 0); }
+
+/* ══════ CHAMADO ÚNICO: a unidade é o CLIENTE (código) ══════
+   Cada cliente aparece UMA vez: "atendimento" (chat do app ativo) ou "ticket" (solicitações abertas).
+   Os problemas são SOLICITAÇÕES dentro do chamado, cada uma com sua cor. */
+const COR_SOL = ["#fb923c", "#f472b6", "#a3e635", "#e879f9", "#2dd4bf", "#818cf8"];
+const corSol = (i) => (i == null || i < 0) ? "var(--ciano)" : COR_SOL[i % COR_SOL.length];
+const cidDe = (id) => { id = String(id || ""); const i = id.lastIndexOf("#"); return i < 0 ? id : id.slice(0, i); };
+const ESTADO = { atendimento: ["📱 Em atendimento (app)", "#22d3ee"], ticket: ["Ticket pendente", "#a3a9b8"], concluido: ["Concluído", "#34d399"] };
+const tipoMsg = (c) => c.tipo || (String(c.texto || "").startsWith("📨") || String(c.texto || "").startsWith("✅ Setor") ? "pendencia" : "nota");
+function clientes() {
+  if (S._cliDe === S.e) return S._cli;
+  const g = {}, pr = Object.keys(PRIO);
+  for (const t of S.e.tickets) { const c = t.cid || cidDe(t.id); (g[c] = g[c] || []).push(t); }
+  S._cli = Object.entries(g).map(([cid, ts]) => {
+    const vivos = ts.filter((t) => ABERTOS.includes(t.status));
+    const chat = vivos.find((t) => t.chat) || null;
+    const sols = ts.filter((t) => !t.chat), solsAb = sols.filter((t) => ABERTOS.includes(t.status));
+    const estado = chat ? "atendimento" : solsAb.length ? "ticket" : "concluido";
+    const comSla = vivos.filter((t) => t.sla && t.sla.min != null).sort((a, b) => a.sla.min - b.sla.min);
+    const recente = ts.slice().sort((a, b) => String(b.atualizado_em).localeCompare(String(a.atualizado_em)))[0];
+    const base = chat || solsAb[0] || recente, dono = vivos.find((t) => t.atribuido_para);
+    const st = vivos.map((t) => t.status);
+    return { id: cid, cid, estado, chat, sols, solsAb, todos: ts,
+      status: estado === "concluido" ? recente.status : chat ? chat.status : st.includes("em_andamento") ? "em_andamento" : st.includes("aberto") ? "aberto" : "aguardando",
+      sla: (comSla[0] || base).sla, cliente_nome: base.cliente_nome, cliente_codigo: base.cliente_codigo, cliente_telefone: base.cliente_telefone,
+      atribuido_para: dono?.atribuido_para || "", atendentes: dono?.atendentes || [],
+      meu: vivos.some((t) => t.meu), sem_dono: vivos.length > 0 && vivos.every((t) => t.sem_dono), nao_visto: vivos.some((t) => t.nao_visto), app_pendente: vivos.some((t) => t.app_pendente),
+      pendencias: [...new Set(vivos.flatMap((t) => t.pendencias || []))],
+      departamentos: [...new Set(vivos.map((t) => t.departamento || "—"))], motivos: [...new Set(vivos.map((t) => t.motivo_pai || "— sem motivo —"))],
+      erp: vivos.some((t) => (t.origem || "").startsWith("erp")),
+      prioridade: vivos.map((t) => t.prioridade || "normal").sort((a, b) => pr.indexOf(a) - pr.indexOf(b))[0] || "normal",
+      aberto_por: ts.map((t) => t.aberto_por), criado_em: ts.map((t) => String(t.criado_em || "")).sort()[0], atualizado_em: recente.atualizado_em,
+      busca: norm(ts.map((t) => `${t.id} ${curto(t.id)} ${t.assunto} ${t.cliente_nome} ${t.cliente_codigo} ${t.cliente_telefone} ${t.erp_pedido_numero || ""} ${t.motivo_pai} ${t.motivo_filho}`).join(" ")) };
+  });
+  S._cliDe = S.e;
+  return S._cli;
+}
+const cliDe = (cid) => clientes().find((c) => c.cid === cid);
+const vivo = (c) => c.estado !== "concluido";
+const etqEstado = (c) => etq(ESTADO[c.estado][0], ESTADO[c.estado][1]);
+
 function salvarAbas() { ls.set("wd.tk.abas", JSON.stringify(S.abas.slice(0, 20))); }
-function fecharAba(id) {
-  const i = S.abas.indexOf(id); if (i < 0) return;
-  S.abas.splice(i, 1); salvarAbas(); delete S.rasc[id];
-  if (S.aberto === id) { const prox = S.abas[i] || S.abas[i - 1]; S.det = null; if (prox) abrirTicket(prox); else ir("caixa"); }
+S.abas = [...new Set(S.abas.map(cidDe))];   // abas antigas (por solicitação) viram abas do cliente
+function fecharAba(cid) {
+  const i = S.abas.indexOf(cid); if (i < 0) return;
+  S.abas.splice(i, 1); salvarAbas(); delete S.rasc[cid];
+  if (S.aberto === cid) { const prox = S.abas[i] || S.abas[i - 1]; S.det = null; if (prox) abrirTicket(prox); else ir("caixa"); }
   else renderAbas();
 }
-/* faixa de abas: Caixa · [app — coloridas, quem respondeu primeiro] ……… [tickets — neutros] */
+/* faixa de abas: Caixa · [em atendimento no app — ciano, quem respondeu primeiro] ……… [tickets — neutros] */
 function renderAbas() {
   const el = $("#abasTk");
   if (!S.e || S.sec !== "caixa" || !S.abas.length) { el.innerHTML = ""; return; }
-  const porId = Object.fromEntries(S.e.tickets.map((t) => [t.id, t]));
-  const info = (id) => porId[id] || (S.det?.ticket?.id === id ? S.det.ticket : null) || { id };
-  const ehApp = (id) => info(id).origem === "app";
-  const sinal = (t) => t.app_pendente ? "respondeu" : t.nao_visto ? "novo" : "";
-  const aba = (id) => { const t = info(id), sn = sinal(t), nome = String(t.cliente_nome || "").split(" ")[0];
-    return `<button type="button" class="aba-tk${ehApp(id) ? " app" : ""}${S.aberto === id ? " ativo" : ""}${sn ? " pend" : ""}" data-aba-tk="${esc(id)}" data-sinal="${sn}" title="${esc((t.assunto || "") + (t.cliente_nome ? " · " + t.cliente_nome : ""))}">
-      ${sn ? `<span class="pisca"></span>` : ""}<span class="nm"><small>${ehApp(id) ? "📱" : "#"}${curto(id)}</small>${esc(nome || t.assunto || "")}</span><span class="x" data-fechar="${esc(id)}" title="Fechar aba">×</span></button>`; };
+  const info = (cid) => cliDe(cid) || (S.det?.cid === cid ? { cid, estado: "ticket", cliente_nome: S.det.cliente.nome, solsAb: [] } : { cid, estado: "concluido", solsAb: [] });
+  const ehApp = (cid) => info(cid).estado === "atendimento";
+  const sinal = (c) => c.app_pendente ? "respondeu" : c.nao_visto ? "novo" : "";
+  const aba = (cid) => { const c = info(cid), sn = sinal(c), nome = String(c.cliente_nome || cid).split(" ")[0];
+    return `<button type="button" class="aba-tk${ehApp(cid) ? " app" : ""}${S.aberto === cid ? " ativo" : ""}${sn ? " pend" : ""}" data-aba-tk="${esc(cid)}" data-sinal="${sn}" title="${esc((c.cliente_nome || "") + " · chamado " + (c.cliente_codigo || cid))}">
+      ${sn ? `<span class="pisca"></span>` : ""}<span class="nm"><small>${ehApp(cid) ? "📱" : "#"}${esc(String(c.cliente_codigo || cid).slice(0, 8))}</small>${esc(nome)}${(c.solsAb || []).length > 1 ? ` <small>· ${c.solsAb.length}</small>` : ""}</span><span class="x" data-fechar="${esc(cid)}" title="Fechar aba">×</span></button>`; };
   const app = S.abas.filter(ehApp).sort((a, b) => (sinal(info(b)) ? 1 : 0) - (sinal(info(a)) ? 1 : 0));   // quem respondeu vem primeiro
-  const tks = S.abas.filter((id) => !ehApp(id));
+  const tks = S.abas.filter((cid) => !ehApp(cid));
   el.innerHTML = `<button type="button" class="aba-caixa${!S.aberto ? " ativo" : ""}" id="abaCaixa">${svg("voltar")} Caixa</button>
-    ${app.length ? `<div class="grupo"><span class="rot">App</span>${app.map(aba).join("")}</div>` : ""}
+    ${app.length ? `<div class="grupo"><span class="rot">Atendimento app</span>${app.map(aba).join("")}</div>` : ""}
     <span class="meio"></span>
     ${tks.length ? `<div class="grupo"><span class="rot">Tickets</span>${tks.map(aba).join("")}</div>` : ""}`;
-  $("#abaCaixa").onclick = () => { guardarRascunho(); S.det = null; ir("caixa"); };
+  $("#abaCaixa").onclick = () => { guardarRascunho(); ir("caixa"); };
   el.querySelectorAll("[data-aba-tk]").forEach((b) => {
     b.onclick = (ev) => {
       const f = ev.target.closest("[data-fechar]");
       if (f) { ev.stopPropagation(); fecharAba(f.dataset.fechar); return; }
       if (S.aberto === b.dataset.abaTk) return;
-      guardarRascunho(); S.det = null; abrirTicket(b.dataset.abaTk);
+      guardarRascunho(); abrirTicket(b.dataset.abaTk);
     };
     b.onauxclick = (ev) => { if (ev.button === 1) { ev.preventDefault(); fecharAba(b.dataset.abaTk); } };   // botão do meio fecha, como no navegador
   });
@@ -332,35 +392,43 @@ function renderAbas() {
 function guardarRascunho() { const t = $("#txt"); if (t && S.aberto) S.rasc[S.aberto] = t.value; }
 /* cliente respondeu no app → aviso na hora (prioridade) */
 function novoEstado(e) {
-  const antes = new Set((S.e?.tickets || []).filter((t) => t.app_pendente).map((t) => t.id)), primeira = !S.e;
+  const antes = new Set(S.e ? clientes().filter((c) => c.app_pendente).map((c) => c.cid) : []), primeira = !S.e;
   S.e = e;
-  const abertos = ["aberto", "em_andamento", "aguardando"];
+  const cs = clientes();
   if (!primeira) {
-    const chegaram = S.e.tickets.filter((t) => t.app_pendente && !antes.has(t.id) && abertos.includes(t.status) && (t.meu || t.sem_dono || S.abas.includes(t.id)));
-    chegaram.slice(0, 3).forEach((t) => A.toast(`📱 <b>${esc(t.cliente_nome || "Cliente")}</b> escreveu no app — ${esc(t.assunto || "")}`,
-      [{ rotulo: "Atender", acao: () => { S.sec = "caixa"; ls.set("wd.tk.sec", "caixa"); guardarRascunho(); S.det = null; abrirTicket(t.id); } }], { cor: "var(--ciano)", duracao: 12000 }));
+    const chegaram = cs.filter((c) => c.app_pendente && vivo(c) && !antes.has(c.cid) && (c.meu || c.sem_dono || S.abas.includes(c.cid)));
+    chegaram.slice(0, 3).forEach((c) => A.toast(`📱 <b>${esc(c.cliente_nome || "Cliente")}</b> escreveu no app`,
+      [{ rotulo: "Atender", acao: () => { S.sec = "caixa"; ls.set("wd.tk.sec", "caixa"); guardarRascunho(); abrirTicket(c.cid); } }], { cor: "var(--ciano)", duracao: 12000 }));
     if (chegaram.length) { try { A.som && A.som(); } catch (_) {} }
   }
-  const n = S.e.tickets.filter((t) => t.app_pendente && abertos.includes(t.status)).length;
+  const n = cs.filter((c) => c.app_pendente && vivo(c)).length;
   document.title = (n ? `(${n}) ` : "") + "Atendimento";
 }
-function abrirTicket(id) { if (!S.abas.includes(id)) { S.abas.push(id); salvarAbas(); } S.aberto = id; history.replaceState(null, "", "#t=" + encodeURIComponent(id)); render(); scrollTo(0, 0); }
+/* abre o CLIENTE (aceita o id de uma solicitação "cliente#sid": abre o cliente com ela selecionada) */
+function abrirTicket(id) {
+  const cid = cidDe(id);
+  if (String(id).includes("#")) { S.solSel = id; S.alvo = null; }
+  if (!S.abas.includes(cid)) { S.abas.push(cid); salvarAbas(); }
+  if (S.aberto !== cid) { S.det = null; if (!String(id).includes("#")) { S.solSel = null; S.alvo = null; } }
+  S.aberto = cid; history.replaceState(null, "", "#c=" + encodeURIComponent(cid)); render(); scrollTo(0, 0);
+}
 
 /* ══════ NAV ══════ */
 function contagens() {
-  const ts = S.e.tickets, ab = ts.filter((t) => ABERTOS.includes(t.status));
+  const cs = clientes(), ab = cs.filter(vivo);
   return {
-    meus: ab.filter((t) => t.meu).length, equipe: ab.length, novos: ab.filter((t) => t.sem_dono).length,
-    hoje: ab.filter((t) => t.sla.estado === "hoje").length, venc: ab.filter((t) => t.sla.estado === "venc").length,
-    espera: ab.filter((t) => t.status === "aguardando").length, concl: ts.filter((t) => !ABERTOS.includes(t.status)).length, todos: ts.length,
-    alerta: ab.filter((t) => t.nao_visto).length,
-    internos: ab.filter((t) => (t.pendencias || []).length).length,
-    app: ab.filter((t) => t.app_pendente).length,
+    meus: ab.filter((c) => c.meu).length, equipe: ab.length, novos: ab.filter((c) => c.sem_dono).length,
+    hoje: ab.filter((c) => c.sla?.estado === "hoje").length, venc: ab.filter((c) => c.sla?.estado === "venc").length,
+    espera: ab.filter((c) => c.status === "aguardando").length, concl: cs.filter((c) => !vivo(c)).length, todos: cs.length,
+    alerta: ab.filter((c) => c.nao_visto || c.app_pendente).length, app: ab.filter((c) => c.app_pendente).length,
+    internos: S.e.tickets.filter((t) => ABERTOS.includes(t.status) && (t.pendencias || []).length).length,
+    atend: ab.filter((c) => c.estado === "atendimento").length, tks: ab.filter((c) => c.estado === "ticket").length,
+    sols: S.e.tickets.filter((t) => !t.chat && ABERTOS.includes(t.status)).length,
   };
 }
 function nav() {
   const c = contagens();
-  const itens = [["meudia", "Meu dia"], ["caixa", "Caixa", c.alerta + c.app], ["abrir", "Abrir chamado", 0, "abrir"], ["internos", "Tickets internos", c.internos],
+  const itens = [["meudia", "Meu dia"], ["caixa", "Caixa", c.alerta], ["abrir", "Abrir chamado", 0, "abrir"], ["internos", "Tickets internos", c.internos],
     ["gestao", "Gestão", 0, "gestao"], ["ajustes", "Ajustes", 0, "configurar"]];
   $("#nav").innerHTML = itens.filter((i) => !i[3] || pode(i[3])).map((i) => `<button type="button" data-sec="${i[0]}" class="${S.sec === i[0] ? "ativo" : ""}">${i[1]}${i[2] ? `<em>${i[2]}</em>` : ""}</button>`).join("");
   $("#nav").querySelectorAll("[data-sec]").forEach((b) => (b.onclick = () => ir(b.dataset.sec)));
@@ -371,99 +439,107 @@ function render() {
   nav();
   renderAbas();
   const m = $("#main");
-  if (S.sec === "caixa" && S.aberto) return telaAtendimento(m, S.aberto);
+  if (S.sec === "caixa" && S.aberto) return telaCliente(m, S.aberto);
   ({ meudia: telaMeuDia, caixa: telaCaixa, abrir: telaAbrir, internos: telaInternos, gestao: telaGestao, ajustes: telaAjustes }[S.sec] || telaMeuDia)(m);
 }
+const assumirCliente = (cid, alvo) => chamar(`/cliente/${encodeURIComponent(cid)}/dono`, { method: "POST", body: { atribuir: alvo } });
 
 /* ══════ MEU DIA ══════ */
 const FRASES = ["Fazer acontecer é responder “estou verificando” em dois minutos em vez de nada em duas horas.",
   "Ticket que volta é o primeiro atendimento que não resolveu.", "Quem promete data, cumpre data — o prazo da etapa é a palavra dada ao cliente."];
 function telaMeuDia(m) {
-  const e = S.e, me = e.eu, ts = e.tickets, c = contagens();
-  const hoje = new Date().toISOString().slice(0, 10), h = new Date().getHours();
-  const meus = ts.filter((t) => t.meu), meusAb = meus.filter((t) => ABERTOS.includes(t.status));
-  const concl30 = ts.filter((t) => !ABERTOS.includes(t.status) && t.meu);
-  const prox = ts.filter((t) => ABERTOS.includes(t.status) && t.sem_dono).sort((a, b) => (a.sla.min ?? 1e9) - (b.sla.min ?? 1e9))[0];
+  const e = S.e, me = e.eu, c = contagens(), cs = clientes();
+  const h = new Date().getHours();
+  const meusAb = cs.filter((x) => x.meu && vivo(x));
+  const concl30 = e.tickets.filter((t) => !t.chat && !ABERTOS.includes(t.status) && t.meu).length;
+  const prox = cs.filter((x) => vivo(x) && x.sem_dono).sort((a, b) => (b.app_pendente - a.app_pendente) || ((a.sla?.min ?? 1e9) - (b.sla?.min ?? 1e9)))[0];
   const k = (r, v, s, c2, acao) => `<button type="button" class="kpi" style="--c:${c2}" ${acao ? `data-ir="${acao}"` : ""}><small>${r}</small><b>${v}</b><span>${s}</span></button>`;
   m.innerHTML = `<section class="painel vidro">
     <p class="dica" style="text-transform:uppercase;letter-spacing:2px;font-weight:700">${new Date().toLocaleDateString("pt-BR", { weekday: "long" })}</p>
     <h1 style="margin:2px 0 6px;font:700 1.6rem var(--titulo)">${h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite"}, ${esc(me.nome.split(" ")[0])}</h1>
     <p class="frase">${FRASES[new Date().getDate() % FRASES.length]}</p>
     <div class="sec">O que precisa de você agora</div>
-    ${meusAb.length ? `<div class="kpis">${k("Comigo agora", meusAb.length, "abertos no meu nome", "var(--azul)", "meus")}${k("Vencem hoje", meusAb.filter((t) => t.sla.estado === "hoje").length, "dos meus", "var(--ouro)", "hoje")}${k("Vencidos", meusAb.filter((t) => t.sla.estado === "venc").length, "dos meus", "var(--rosa)", "venc")}${k("Aguardando o cliente", meusAb.filter((t) => t.status === "aguardando").length, "dos meus", "var(--laranja)", "espera")}${k("Com interação nova", meusAb.filter((t) => t.nao_visto).length, "alguém mexeu", "var(--ciano)", "meus")}</div>`
-      : `<div class="aviso ouro">Sua fila está limpa. Nada aberto no seu nome agora.${prox && pode("atender") ? ` <a href="#" id="pegar">Pegar o próximo da equipe →</a>` : ""}</div>`}
+    ${meusAb.length ? `<div class="kpis">${k("Clientes comigo", meusAb.length, `${meusAb.filter((x) => x.estado === "atendimento").length} em atendimento · ${meusAb.filter((x) => x.estado === "ticket").length} tickets`, "var(--azul)", "meus")}${k("Vencem hoje", meusAb.filter((x) => x.sla?.estado === "hoje").length, "dos meus", "var(--ouro)", "hoje")}${k("Vencidos", meusAb.filter((x) => x.sla?.estado === "venc").length, "dos meus", "var(--rosa)", "venc")}${k("Aguardando o cliente", meusAb.filter((x) => x.status === "aguardando").length, "dos meus", "var(--laranja)", "espera")}${k("Cliente respondeu", meusAb.filter((x) => x.app_pendente || x.nao_visto).length, "priorize", "var(--ciano)", "meus")}</div>`
+      : `<div class="aviso ouro">Sua fila está limpa. Nenhum cliente no seu nome agora.${prox && pode("atender") ? ` <a href="#" id="pegar">Pegar o próximo da equipe →</a>` : ""}</div>`}
     <div class="sec">Seu mês</div>
-    <div class="kpis">${k("Resolvidos (30 dias)", concl30.length, "comparado com você mesmo", "var(--verde)")}${k("Abertos por mim", ts.filter((t) => t.aberto_por === me.usuario).length, "chamados que eu abri", "var(--violeta)")}</div>
-    <div class="sec">A área</div>
-    <div class="kpis">${k("Sem dono", c.novos, "chegaram e ninguém pegou", "var(--ouro)", "novos")}${k("Vencidos", c.venc, "na caixa toda", "var(--rosa)", "venc")}${k("Aguardando o cliente", c.espera, "", "var(--laranja)", "espera")}${k("Pendências entre setores", c.internos, "", "var(--violeta)")}${k("Cliente aguardando no app", c.app, "mandou mensagem e espera resposta", "var(--ciano)", "app")}</div>
+    <div class="kpis">${k("Solicitações resolvidas", concl30, "nos últimos 30 dias", "var(--verde)")}${k("Abertas por mim", e.tickets.filter((t) => t.aberto_por === me.usuario).length, "solicitações que eu registrei", "var(--violeta)")}</div>
+    <div class="sec">A área — o que está rolando de verdade</div>
+    <div class="kpis">${k("Atendimentos agora", c.atend, "chats do app ativos", "var(--ciano)", "atend")}${k("Tickets pendentes", c.tks, `${c.sols} solicitação(ões) dentro`, "var(--txt2)", "equipe")}${k("Sem dono", c.novos, "clientes que ninguém pegou", "var(--ouro)", "novos")}${k("Vencidos", c.venc, "clientes", "var(--rosa)", "venc")}${k("Cliente aguardando no app", c.app, "mandou mensagem", "var(--ciano)", "app")}${k("Pendências entre setores", c.internos, "", "var(--violeta)")}</div>
     ${e.banco === "hub" ? `<p class="dica" style="margin-top:14px">Rodando no banco do hub. Para usar os mesmos tickets do Streamlit (bancowendley), crie FIRESTORE_CREDS_TICKETS no Render.</p>` : ""}
   </section>`;
   m.querySelectorAll("[data-ir]").forEach((b) => (b.onclick = () => { S.aba = b.dataset.ir; S.fila = ""; S.q = ""; S.pag = 0; ls.set("wd.tk.aba", S.aba); ir("caixa"); }));
   const pg = $("#pegar");
-  if (pg) pg.onclick = async (ev) => { ev.preventDefault(); try { await chamar(tidUrl(prox.id) + "/alterar", { method: "POST", body: { atribuir: me.usuario } }); await carregar(); abrirTicket(prox.id); } catch (er) { falha(er); } };
+  if (pg) pg.onclick = async (ev) => { ev.preventDefault(); try { await assumirCliente(prox.cid, me.usuario); await carregar(); S.sec = "caixa"; abrirTicket(prox.cid); } catch (er) { falha(er); } };
 }
 
-/* ══════ CAIXA ══════ */
+/* ══════ CAIXA (uma linha por cliente) ══════ */
 function filtrar() {
-  const ts = S.e.tickets, me = S.e.eu;
-  const porAba = { meus: (t) => t.meu && ABERTOS.includes(t.status), equipe: (t) => ABERTOS.includes(t.status), novos: (t) => ABERTOS.includes(t.status) && t.sem_dono,
-    hoje: (t) => ABERTOS.includes(t.status) && t.sla.estado === "hoje", venc: (t) => ABERTOS.includes(t.status) && t.sla.estado === "venc",
-    espera: (t) => t.status === "aguardando", app: (t) => ABERTOS.includes(t.status) && t.app_pendente, concl: (t) => !ABERTOS.includes(t.status), todos: () => true, abertos_por_mim: (t) => t.aberto_por === me.usuario };
-  let l = ts.filter(porAba[S.aba] || porAba.equipe);
+  const me = S.e.eu;
+  const porAba = { meus: (c) => c.meu && vivo(c), equipe: vivo, novos: (c) => vivo(c) && c.sem_dono, hoje: (c) => vivo(c) && c.sla?.estado === "hoje",
+    venc: (c) => vivo(c) && c.sla?.estado === "venc", espera: (c) => vivo(c) && c.status === "aguardando", app: (c) => vivo(c) && c.app_pendente,
+    atend: (c) => c.estado === "atendimento", concl: (c) => !vivo(c), todos: () => true, abertos_por_mim: (c) => c.aberto_por.includes(me.usuario) };
+  let l = clientes().filter(porAba[S.aba] || porAba.equipe);
   if (S.fila) {
     const [tipo, val] = S.fila.split(":");
-    l = l.filter((t) => tipo === "dep" ? (t.departamento || "—") === val : tipo === "mot" ? (t.motivo_pai || "— sem motivo —") === val : tipo === "pend" ? (t.pendencias || []).includes(val)
-      : tipo === "erp" ? (t.origem || "").startsWith("erp") : tipo === "app" ? (val === "pend" ? t.app_pendente : t.origem === "app") : tipo === "com" ? (val === "_ninguem" ? t.sem_dono : (t.atendentes || []).includes(val) || t.atribuido_para === val) : true);
+    l = l.filter((c) => tipo === "dep" ? c.departamentos.includes(val) : tipo === "mot" ? c.motivos.includes(val) : tipo === "pend" ? c.pendencias.includes(val)
+      : tipo === "erp" ? c.erp : tipo === "app" ? (val === "pend" ? c.app_pendente : c.estado === "atendimento")
+      : tipo === "com" ? (val === "_ninguem" ? c.sem_dono : c.atendentes.includes(val) || c.atribuido_para === val) : true);
   }
-  if (S.q) { const q = norm(S.q); l = l.filter((t) => norm(`${t.id} ${curto(t.id)} ${t.assunto} ${t.cliente_nome} ${t.cliente_codigo} ${t.cliente_telefone} ${t.erp_pedido_numero || ""} ${t.motivo_pai} ${t.motivo_filho}`).includes(q)); }
-  const ordem = { urgencia: (a, b) => (a.sla.min ?? 1e12) - (b.sla.min ?? 1e12), prioridade: (a, b) => Object.keys(PRIO).indexOf(a.prioridade || "normal") - Object.keys(PRIO).indexOf(b.prioridade || "normal") || (a.sla.min ?? 1e12) - (b.sla.min ?? 1e12),
-    antigo: (a, b) => String(a.criado_em).localeCompare(String(b.criado_em)), recente: (a, b) => String(b.criado_em).localeCompare(String(a.criado_em)),
+  if (S.q) { const q = norm(S.q); l = l.filter((c) => c.busca.includes(q)); }
+  const sm = (c) => c.sla?.min ?? 1e12;
+  const ordem = { urgencia: (a, b) => (b.app_pendente - a.app_pendente) || sm(a) - sm(b), prioridade: (a, b) => Object.keys(PRIO).indexOf(a.prioridade) - Object.keys(PRIO).indexOf(b.prioridade) || sm(a) - sm(b),
+    antigo: (a, b) => String(a.criado_em).localeCompare(String(b.criado_em)), recente: (a, b) => String(b.atualizado_em).localeCompare(String(a.atualizado_em)),
     atendente: (a, b) => nomeU(a.atribuido_para).localeCompare(nomeU(b.atribuido_para)) };
   return l.sort(ordem[S.ord] || ordem.urgencia);
 }
+function chipsSol(c) {
+  return (c.chat ? `<span class="chip-sol" style="--c:var(--ciano)">📱 ${esc(c.chat.assunto || "Chat")}${c.chat.app_pendente ? " · aguardando" : ""}</span>` : "")
+    + (vivo(c) ? c.solsAb : c.sols.slice(-2)).map((t) => `<span class="chip-sol" style="--c:${corSol(t.cor)}">${esc(t.motivo_filho || t.assunto || "Solicitação")}${t.erp_pedido_numero ? " #" + esc(t.erp_pedido_numero) : ""}${t.app_pendente ? " · 📱" : ""}</span>`).join("");
+}
 function telaCaixa(m) {
-  const c = contagens(), ab = S.e.tickets.filter((t) => ABERTOS.includes(t.status));
-  const grupo = (titulo, chave, valores) => valores.length ? `<h4>${titulo}</h4>` + valores.map(([v, n, cor]) => `<button type="button" data-fila="${chave}:${esc(v)}" class="${S.fila === chave + ":" + v ? "ativo" : ""}" style="--c:${cor || "var(--txt3)"}"><i></i>${esc(v === "_ninguem" ? "— sem dono —" : chave === "com" ? nomeU(v) : chave === "app" ? (v === "pend" ? "Aguardando resposta" : "Abertos pelo app") : v)}<em>${n}</em></button>`).join("") : "";
-  const conta = (f) => { const o = {}; ab.forEach((t) => f(t).forEach((k) => (o[k] = (o[k] || 0) + 1))); return Object.entries(o).sort((a, b) => b[1] - a[1]); };
+  const c = contagens(), cs = clientes(), ab = cs.filter(vivo);
+  const grupo = (titulo, chave, valores) => valores.length ? `<h4>${titulo}</h4>` + valores.map(([v, n, cor]) => `<button type="button" data-fila="${chave}:${esc(v)}" class="${S.fila === chave + ":" + v ? "ativo" : ""}" style="--c:${cor || "var(--txt3)"}"><i></i>${esc(v === "_ninguem" ? "— sem dono —" : chave === "com" ? nomeU(v) : chave === "app" ? (v === "pend" ? "Cliente aguardando" : "Atendimentos agora") : v)}<em>${n}</em></button>`).join("") : "";
+  const conta = (f) => { const o = {}; ab.forEach((x) => f(x).forEach((k) => (o[k] = (o[k] || 0) + 1))); return Object.entries(o).sort((a, b) => b[1] - a[1]); };
   const cor = (s) => { let h = 0; for (const ch of String(s)) h = (h * 31 + ch.charCodeAt(0)) % 360; return `hsl(${h} 70% 62%)`; };
   const lista = filtrar(), porPag = 25, pags = Math.max(1, Math.ceil(lista.length / porPag));
   S.pag = Math.min(S.pag, pags - 1);
   const pag = lista.slice(S.pag * porPag, S.pag * porPag + porPag);
-  const abas = [["meus", "Meus", c.meus], ["equipe", "Equipe", c.equipe], ["novos", "Novos", c.novos], ["hoje", "⏰ Vence hoje", c.hoje], ["venc", "🚨 Vencidos", c.venc], ["espera", "Em espera", c.espera], ["app", "📱 Cliente aguardando", c.app], ["concl", "Concluídos", c.concl], ["todos", "Todos", c.todos]];
+  const abas = [["meus", "Meus", c.meus], ["equipe", "Equipe", c.equipe], ["atend", "📱 Atendimentos", c.atend], ["novos", "Novos", c.novos], ["hoje", "⏰ Vence hoje", c.hoje], ["venc", "🚨 Vencidos", c.venc], ["espera", "Em espera", c.espera], ["app", "Cliente aguardando", c.app], ["concl", "Concluídos", c.concl], ["todos", "Todos", c.todos]];
   m.innerHTML = `<div class="caixa">
     <aside class="filas vidro">
       <button type="button" data-fila="" class="${!S.fila ? "ativo" : ""}"><i></i>Todas as filas<em>${ab.length}</em></button>
-      ${grupo("Por setor", "dep", conta((t) => [t.departamento || "—"]).map(([k, n]) => [k, n, cor(k)]))}
-      ${grupo("Caixas por motivo", "mot", conta((t) => [t.motivo_pai || "— sem motivo —"]).map(([k, n]) => [k, n, cor(k)]))}
-      ${grupo("Pendências com setores", "pend", conta((t) => t.pendencias || []).map(([k, n]) => [k, n, "var(--violeta)"]))}
-      ${S.e.erp ? grupo("Vindos do ERP", "erp", ab.some((t) => (t.origem || "").startsWith("erp")) ? [["ERP", ab.filter((t) => (t.origem || "").startsWith("erp")).length, "var(--ciano)"]] : []) : ""}
-      ${grupo("App do cliente", "app", [ab.some((t) => t.app_pendente) ? ["pend", ab.filter((t) => t.app_pendente).length, "var(--ciano)"] : null, ab.some((t) => t.origem === "app") ? ["todos", ab.filter((t) => t.origem === "app").length, "var(--ciano)"] : null].filter(Boolean))}
-      ${pode("equipe") || pode("setor") ? grupo("Por atendente", "com", [["_ninguem", ab.filter((t) => t.sem_dono).length, "var(--ouro)"], ...conta((t) => t.atribuido_para ? [t.atribuido_para] : []).map(([k, n]) => [k, n, cor(k)])]) : ""}
+      ${grupo("App do cliente", "app", [c.atend ? ["atend", c.atend, "var(--ciano)"] : null, c.app ? ["pend", c.app, "var(--ciano)"] : null].filter(Boolean))}
+      ${grupo("Por setor", "dep", conta((x) => x.departamentos).map(([k, n]) => [k, n, cor(k)]))}
+      ${grupo("Caixas por motivo", "mot", conta((x) => x.motivos).map(([k, n]) => [k, n, cor(k)]))}
+      ${grupo("Pendências com setores", "pend", conta((x) => x.pendencias).map(([k, n]) => [k, n, "var(--violeta)"]))}
+      ${S.e.erp ? grupo("Vindos do ERP", "erp", ab.some((x) => x.erp) ? [["ERP", ab.filter((x) => x.erp).length, "var(--ciano)"]] : []) : ""}
+      ${pode("equipe") || pode("setor") ? grupo("Por atendente", "com", [["_ninguem", c.novos, "var(--ouro)"], ...conta((x) => x.atribuido_para ? [x.atribuido_para] : []).map(([k, n]) => [k, n, cor(k)])]) : ""}
+      <p class="dica" style="padding:10px 6px 2px">Cada cliente conta uma vez. Em "Por setor" e "Por motivo" ele aparece em cada fila onde tem solicitação.</p>
     </aside>
     <section class="painel vidro">
+      <div class="resumo-real"><span><b style="color:var(--ciano)">${c.atend}</b> em atendimento</span><span><b>${c.tks}</b> ticket(s) pendente(s)</span><span><b>${c.sols}</b> solicitação(ões) dentro deles</span></div>
       <div class="abas-caixa">${abas.map(([k, r, n]) => `<button type="button" data-aba="${k}" class="${S.aba === k ? "ativo" : ""}${k === "venc" && n ? " venc" : ""}">${r}<em>${n}</em></button>`).join("")}</div>
       <div class="barra">
         ${S.q ? `<span class="mini c" style="--c:var(--ouro)">busca: ${esc(S.q)} <a href="#" id="tiraQ">✕</a></span>` : ""}
         ${S.fila ? `<span class="mini c" style="--c:var(--violeta)">fila: ${esc(S.fila.split(":")[1] === "_ninguem" ? "sem dono" : nomeU(S.fila.split(":")[1]) || S.fila.split(":")[1])}</span>` : ""}
         <span class="dica">Ordenar</span>
-        <select class="entrada" id="ord">${[["urgencia", "Urgência (SLA)"], ["prioridade", "Prioridade"], ["atendente", "Por atendente"], ["antigo", "Mais antigo"], ["recente", "Mais recente"]].map(([v, r]) => `<option value="${v}"${S.ord === v ? " selected" : ""}>${r}</option>`).join("")}</select>
+        <select class="entrada" id="ord">${[["urgencia", "Urgência (quem respondeu + SLA)"], ["prioridade", "Prioridade"], ["atendente", "Por atendente"], ["antigo", "Mais antigo"], ["recente", "Mais recente"]].map(([v, r]) => `<option value="${v}"${S.ord === v ? " selected" : ""}>${r}</option>`).join("")}</select>
         <div class="dir">
           ${pode("transferir") ? `<span class="dica" id="nSel">${S.sel.size ? S.sel.size + " selecionado(s)" : ""}</span><select class="entrada" id="loteAlvo"><option value="">Transferir selecionados para…</option><option value="__ninguem">— sem responsável —</option>${S.e.usuarios.map((u) => `<option value="${esc(u.usuario)}">${esc(u.nome)}</option>`).join("")}</select>` : ""}
-          ${pode("abrir") ? `<button type="button" class="btn p" id="btNovo">${svg("mais")} Atendimento</button>` : ""}
+          ${pode("abrir") ? `<button type="button" class="btn p" id="btNovo">${svg("mais")} Chamado</button>` : ""}
         </div>
       </div>
-      ${pag.length ? `<table class="tab"><thead><tr>${pode("transferir") ? `<th><input type="checkbox" id="selPag"></th>` : ""}<th>#</th><th>Assunto</th><th class="so-largo">Cliente</th><th class="so-largo">Aberto em</th><th>Atribuído</th><th>SLA / situação</th></tr></thead><tbody>
-        ${pag.map((t) => `<tr class="linha${t.nao_visto ? " alerta" : ""}" data-t="${esc(t.id)}">
-          ${pode("transferir") ? `<td><input type="checkbox" data-sel="${esc(t.id)}"${S.sel.has(t.id) ? " checked" : ""}></td>` : ""}
-          <td>${t.nao_visto ? `<span class="pisca" title="Interação nova"></span>` : ""}<b>${curto(t.id)}</b></td>
-          <td class="ass"><b>${esc(t.assunto || "(sem assunto)")}</b><small>${t.motivo_pai ? `${esc(t.motivo_pai)}${t.motivo_filho ? " / " + esc(t.motivo_filho) : ""}${t.etapa_atual ? " · etapa " + esc(String(t.etapa_atual).split(" › ").pop()) : ""}` : "não classificado"}${t.departamento ? " · " + esc(t.departamento) : ""}</small>
-            <span style="display:flex;gap:4px;flex-wrap:wrap;margin-top:3px">${t.prioridade && t.prioridade !== "normal" ? etq(PRIO[t.prioridade]?.[0] || t.prioridade, PRIO[t.prioridade]?.[1] || "#888") : ""}${(t.pendencias || []).map((p) => etq("aguarda " + p, "#8b5cf6")).join("")}${t.erp_pedido_numero ? etq("pedido #" + t.erp_pedido_numero, "#22d3ee") : ""}${t.origem === "erp_auto" ? etq("automático do ERP", "#22d3ee") : ""}${t.origem === "app" ? etq(t.app_tipo === "chamado" ? "app · chamado" : "app · chat", "#22d3ee") : ""}${t.app_pendente ? etq("📱 cliente aguardando", "#22d3ee") : ""}</span></td>
-          <td class="so-largo">${esc(t.cliente_nome || "")}<br><small class="dica">cód. ${esc(t.cliente_codigo || "")}</small></td>
-          <td class="so-largo">${dh(t.criado_em)}</td>
-          <td>${t.sem_dono ? `<span class="dica">— sem dono —</span>` : esc(nomeU(t.atribuido_para).split(" ")[0])}</td>
-          <td>${slaTxt(t.sla)}<br>${etqSt(t.status)}</td></tr>`).join("")}</tbody></table>
-        ${pags > 1 ? `<div class="paginas"><button class="btn v p" id="pAnt"${S.pag ? "" : " disabled"}>‹</button>página ${S.pag + 1} de ${pags} · ${lista.length} atendimento(s)<button class="btn v p" id="pProx"${S.pag < pags - 1 ? "" : " disabled"}>›</button></div>` : `<p class="dica" style="text-align:center;margin-top:10px">${lista.length} atendimento(s)</p>`}`
-      : `<div class="vazio">${A.orbe("check", "var(--verde)")}<b>Nada aqui</b>Nenhum atendimento nesta visão.</div>`}
+      ${pag.length ? `<table class="tab"><thead><tr>${pode("transferir") ? `<th><input type="checkbox" id="selPag"></th>` : ""}<th>Chamado</th><th>Cliente e solicitações</th><th class="so-largo">Desde</th><th>Dono</th><th>SLA / situação</th></tr></thead><tbody>
+        ${pag.map((x) => `<tr class="linha${x.estado === "atendimento" ? " app" : ""}${x.app_pendente || x.nao_visto ? " alerta" : ""}" data-t="${esc(x.cid)}">
+          ${pode("transferir") ? `<td><input type="checkbox" data-sel="${esc(x.cid)}"${S.sel.has(x.cid) ? " checked" : ""}></td>` : ""}
+          <td>${x.app_pendente || x.nao_visto ? `<span class="pisca" title="Cliente respondeu"></span>` : ""}<b>${x.estado === "atendimento" ? "📱" : "#"}${esc(x.cliente_codigo || x.cid)}</b></td>
+          <td class="ass"><b>${esc(x.cliente_nome || "(sem nome)")}</b>
+            <span style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px">${chipsSol(x)}${x.prioridade !== "normal" ? etq(PRIO[x.prioridade]?.[0] || x.prioridade, PRIO[x.prioridade]?.[1] || "#888") : ""}${x.pendencias.map((p) => etq("aguarda " + p, "#8b5cf6")).join("")}</span></td>
+          <td class="so-largo">${dh(x.criado_em)}</td>
+          <td>${x.sem_dono ? `<span class="dica">— sem dono —</span>` : esc(nomeU(x.atribuido_para).split(" ")[0])}</td>
+          <td>${vivo(x) ? slaTxt(x.sla) + "<br>" : ""}${etqEstado(x)}${x.estado === "atendimento" && x.solsAb.length ? `<br><small class="dica">+ ticket com ${x.solsAb.length} solicitação(ões)</small>` : ""}</td></tr>`).join("")}</tbody></table>
+        ${pags > 1 ? `<div class="paginas"><button class="btn v p" id="pAnt"${S.pag ? "" : " disabled"}>‹</button>página ${S.pag + 1} de ${pags} · ${lista.length} cliente(s)<button class="btn v p" id="pProx"${S.pag < pags - 1 ? "" : " disabled"}>›</button></div>` : `<p class="dica" style="text-align:center;margin-top:10px">${lista.length} cliente(s)</p>`}`
+      : `<div class="vazio">${A.orbe("check", "var(--verde)")}<b>Nada aqui</b>Nenhum cliente nesta visão.</div>`}
     </section></div>`;
   m.querySelectorAll("[data-aba]").forEach((b) => (b.onclick = () => { S.aba = b.dataset.aba; S.pag = 0; ls.set("wd.tk.aba", S.aba); render(); }));
   m.querySelectorAll("[data-fila]").forEach((b) => (b.onclick = () => { S.fila = b.dataset.fila; S.pag = 0; if (S.fila && ["meus"].includes(S.aba)) S.aba = "equipe"; render(); }));
@@ -471,95 +547,123 @@ function telaCaixa(m) {
   const tq = $("#tiraQ"); if (tq) tq.onclick = (e) => { e.preventDefault(); S.q = ""; $("#qTopo").value = ""; render(); };
   m.querySelectorAll("tr.linha").forEach((tr) => (tr.onclick = (e) => { if (e.target.closest("input")) return; abrirTicket(tr.dataset.t); }));
   m.querySelectorAll("[data-sel]").forEach((c2) => (c2.onchange = () => { c2.checked ? S.sel.add(c2.dataset.sel) : S.sel.delete(c2.dataset.sel); $("#nSel").textContent = S.sel.size ? S.sel.size + " selecionado(s)" : ""; }));
-  const sp = $("#selPag"); if (sp) sp.onchange = () => { pag.forEach((t) => (sp.checked ? S.sel.add(t.id) : S.sel.delete(t.id))); render(); };
+  const sp = $("#selPag"); if (sp) sp.onchange = () => { pag.forEach((x) => (sp.checked ? S.sel.add(x.cid) : S.sel.delete(x.cid))); render(); };
   const la = $("#loteAlvo");
   if (la) la.onchange = async () => {
     if (!la.value) return;
-    if (!S.sel.size) { A.toast("Marque os atendimentos primeiro."); la.value = ""; return; }
+    if (!S.sel.size) { A.toast("Marque os clientes primeiro."); la.value = ""; return; }
     const alvo = la.value === "__ninguem" ? "" : la.value;
-    if (!(await A.confirmar(`Transferir <b>${S.sel.size}</b> atendimento(s) para <b>${esc(alvo ? nomeU(alvo) : "ninguém")}</b>?`, { rotulo: "Transferir" }))) { la.value = ""; return; }
-    try { const r = await chamar("/lote", { method: "POST", body: { ids: [...S.sel], atribuir: alvo } }); S.sel.clear(); ok(`${r.feitos} transferido(s).`); await carregar(); } catch (e) { falha(e); }
+    if (!(await A.confirmar(`Transferir <b>${S.sel.size}</b> cliente(s) para <b>${esc(alvo ? nomeU(alvo) : "ninguém")}</b>? Vale para todas as solicitações abertas deles.`, { rotulo: "Transferir" }))) { la.value = ""; return; }
+    let n = 0;
+    for (const cid of [...S.sel]) { try { await assumirCliente(cid, alvo); n++; } catch (e) { falha(e); } }
+    S.sel.clear(); ok(`${n} cliente(s) transferido(s).`); await carregar();
   };
   const bn = $("#btNovo"); if (bn) bn.onclick = () => ir("abrir");
   const pa = $("#pAnt"); if (pa) pa.onclick = () => { S.pag--; render(); };
   const pp = $("#pProx"); if (pp) pp.onclick = () => { S.pag++; render(); };
 }
 
-/* ══════ ATENDIMENTO (3 colunas) ══════ */
-async function telaAtendimento(m, tid) {
-  if (!S.det || S.det.ticket.id !== tid) {
-    m.innerHTML = `<div class="vazio"><b>Abrindo atendimento…</b></div>`;
-    try { S.det = await chamar(tidUrl(tid), {}, "abrindo…"); } catch (e) { m.innerHTML = `<div class="vazio">${A.orbe("atencao", "var(--rosa)")}<b>${esc(e.message)}</b><button class="btn v" id="volta">← Caixa</button></div>`; $("#volta").onclick = () => ir("caixa"); return; }
+/* ══════ O CLIENTE (chamado único): conversa · solicitações · cliente + ERP ══════ */
+const ROT_TIPO = { app: "📱 Cliente pelo app", cliente: "📱 Cliente pelo app", resposta: "Respondido no app", nota: "Nota interna", contato: "Contato com o cliente", abertura: "Abertura" };
+const CLS_TIPO = { app: "cliente app", cliente: "cliente app", abertura: "cliente" };
+async function telaCliente(m, cid) {
+  if (!S.det || S.det.cid !== cid) {
+    m.innerHTML = `<div class="vazio"><b>Abrindo o chamado do cliente…</b></div>`;
+    try { S.det = await chamar("/cliente/" + encodeURIComponent(cid), {}, "abrindo…"); }
+    catch (e) { m.innerHTML = `<div class="vazio">${A.orbe("atencao", "var(--rosa)")}<b>${esc(e.message)}</b><button class="btn v" id="volta">← Caixa</button></div>`; $("#volta").onclick = () => { fecharAba(cid); ir("caixa"); }; return; }
   }
-  const { ticket: t, outros, erp } = S.det, me = S.e.eu, arv = S.e.motivos, aberto = ABERTOS.includes(t.status);
-  const comigo = (t.atendentes || []).includes(me.usuario) || t.atribuido_para === me.usuario;
-  const coments = t.comentarios || [];
-  const tipoMsg = (c) => c.tipo || (String(c.texto || "").startsWith("📨") || String(c.texto || "").startsWith("✅ Setor") ? "pendencia" : "nota");
-  const pend = (t.solicitacoes_setor || []);
-  const pedidosAb = pend.filter((s) => s.tipo === "pedido"), resp = Object.fromEntries(pend.filter((s) => s.tipo === "resposta").map((s) => [s.pedido_id, s]));
-  const filhos = Object.entries(arv[t.motivo_pai] || {}).filter(([, i]) => i.ativo !== false);
-  const caminho = String(t.etapa_atual || "").split(" › ");
-  const tipoPadrao = t.app_pendente || t.origem === "app" ? "resposta" : "nota";
+  const D = S.det, me = S.e.eu, arv = S.e.motivos, sols = D.solicitacoes;
+  const chat = sols.find((s) => s.chat && ABERTOS.includes(s.status)) || null;
+  const probs = sols.filter((s) => !s.chat), abertas = probs.filter((s) => ABERTOS.includes(s.status)), fechadas = sols.filter((s) => !ABERTOS.includes(s.status));
+  const sel = sols.find((s) => s.id === S.solSel) || chat || abertas[0] || probs[0] || sols[0];
+  S.solSel = sel.id;
+  const alvos = [...(chat ? [chat] : []), ...abertas]; if (!alvos.includes(sel)) alvos.push(sel);
+  if (!alvos.some((s) => s.id === S.alvo)) S.alvo = (chat || (ABERTOS.includes(sel.status) ? sel : abertas[0]) || sel).id;
+  const alvo = sols.find((s) => s.id === S.alvo);
+  const estado = chat ? "atendimento" : abertas.length ? "ticket" : "concluido";
+  const comigo = D.dono.includes(me.usuario), temDono = D.dono.length > 0, vivoC = estado !== "concluido";
+  const rot = (s) => s.chat ? "📱 Chat" + (ABERTOS.includes(s.status) ? "" : " (concluído)") : (s.motivo_filho || s.assunto || "Solicitação") + (s.erp_pedido_numero ? " #" + s.erp_pedido_numero : "");
+  const sla1 = sols.filter((s) => ABERTOS.includes(s.status) && s.sla?.min != null).sort((a, b) => a.sla.min - b.sla.min)[0];
+  // linha do tempo única (todas as solicitações + chat), cada balão com a cor da solicitação
+  const tl = [];
+  for (const s of sols) {
+    tl.push({ s, tipo: s.origem === "app" ? "app" : "abertura", autor: s.solicitante_nome || nomeU(s.aberto_por) || "Abertura", data: s.chat_iniciado_em || s.criado_em, texto: s.descricao || "" });
+    (s.comentarios || []).forEach((c) => tl.push({ s, tipo: tipoMsg(c), autor: c.autor, data: c.data, texto: c.texto, escrito_em: c.escrito_em }));
+  }
+  tl.sort((a, b) => String(a.data || "").localeCompare(String(b.data || "")));
+  const tipoPadrao = alvo.chat || alvo.app_pendente || alvo.origem === "app" ? "resposta" : "nota";
+  const tipoSel = S.tipoMsg && S.tipoMsg.alvo === alvo.id ? S.tipoMsg.tipo : tipoPadrao;
+  const filhos = (s) => Object.entries(arv[s.motivo_pai] || {}).filter(([, i]) => i.ativo !== false);
+  const pend = sel.solicitacoes_setor || [], pedidosAb = pend.filter((x) => x.tipo === "pedido"), resp = Object.fromEntries(pend.filter((x) => x.tipo === "resposta").map((x) => [x.pedido_id, x]));
+  const selAberta = ABERTOS.includes(sel.status), caminho = String(sel.etapa_atual || "").split(" › ");
+  const cartao = (s) => `<button type="button" class="sol-card${s.id === sel.id ? " sel" : ""}${s.chat ? " chat" : ""}" data-sol="${esc(s.id)}" style="--c:${corSol(s.cor)}">
+      <span class="t1"><b>${esc(rot(s))}</b>${etqSt(s.status)}${s.app_pendente ? etq("📱 respondeu", "#22d3ee") : ""}</span>
+      <small>${s.chat ? esc(s.assunto || "") : esc(s.motivo_pai || "não classificado")}${s.departamento ? " · " + esc(s.departamento) : ""}${ABERTOS.includes(s.status) ? " · " + slaTxt(s.sla) : ""}${(s.pend_abertas || []).length ? ` · ${s.pend_abertas.length} pendência(s)` : ""}</small></button>`;
   m.innerHTML = `
-  <section class="at-cab vidro">
-    <div style="display:flex;gap:10px;align-items:center;margin-bottom:6px"><span class="dica">#${curto(t.id)} · aberto ${dh(t.criado_em)} por ${esc(t.solicitante_nome || nomeU(t.aberto_por) || "—")}${t.origem ? " · origem " + esc(t.origem) : ""}</span>${t.app_pendente ? `<span class="mini c" style="--c:var(--ciano)">📱 cliente aguardando resposta desde ${dh(t.app_pendente_desde)}</span>` : ""}</div>
-    <h1>${esc(t.assunto || "(sem assunto)")}</h1>
-    <div class="linha1">${etqSt(t.status)} ${slaTxt(t.sla)} ${t.prioridade ? etq(PRIO[t.prioridade]?.[0] || t.prioridade, PRIO[t.prioridade]?.[1] || "#888") : ""}
-      <span>· ${esc(t.cliente_nome || "")} · cód. ${esc(t.cliente_codigo || "")}${t.erp_pedido_numero ? ` · pedido #${esc(t.erp_pedido_numero)}` : ""}</span>
-      <span>· com <b>${t.atribuido_para ? esc(nomeU(t.atribuido_para)) : "ninguém"}</b></span></div>
+  <section class="at-cab vidro" style="--c:${estado === "atendimento" ? "var(--ciano)" : "var(--vidro-borda-forte)"}">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px"><span class="dica">Chamado nº <b>${esc(D.cliente.codigo || cid)}</b> · ${sols.length} registro(s) no histórico</span>${etq(ESTADO[estado][0], ESTADO[estado][1])}${chat && chat.app_pendente ? `<span class="mini c" style="--c:var(--ciano)">📱 aguardando resposta desde ${dh(chat.app_pendente_desde)}</span>` : ""}</div>
+    <h1>${esc(D.cliente.nome || "Cliente")}</h1>
+    <div class="linha1">${vivoC && sla1 ? slaTxt(sla1.sla) : ""} <span>· ${chat ? "chat ativo + " : ""}${abertas.length} solicitação(ões) aberta(s)</span> <span>· dono <b>${temDono ? esc(nomeU(D.dono[0])) : "ninguém"}</b></span></div>
     <div class="acoes">
-      ${aberto && !comigo && pode("atender") && (!t.atribuido_para || pode("transferir")) ? `<button type="button" class="btn v p" id="paraMim">Transferir para mim</button>` : ""}
-      ${aberto && pode("transferir") ? `<select class="entrada" id="transf" style="width:auto;padding:7px 10px"><option value="">Transferir para…</option><option value="__ninguem">— sem responsável —</option>${S.e.usuarios.map((u) => `<option value="${esc(u.usuario)}">${esc(u.nome)}${u.depto ? " · " + esc(u.depto) : ""}</option>`).join("")}</select>` : ""}
-      ${pode("atender") ? `<select class="entrada" id="prio" style="width:auto;padding:7px 10px">${Object.entries(PRIO).map(([k, [r]]) => `<option value="${k}"${(t.prioridade || "normal") === k ? " selected" : ""}>Prioridade: ${r}</option>`).join("")}</select>` : ""}
-      ${aberto && pode("atender") ? `<button type="button" class="btn v p" data-st="${t.status === "aguardando" ? "em_andamento" : "aguardando"}">${t.status === "aguardando" ? "Retomar" : "Aguardar o cliente"}</button>` : ""}
-      ${aberto && pode("encerrar") ? `<button type="button" class="btn p" data-st="resolvido">${svg("check")} Concluir</button><button type="button" class="btn perigo p" data-st="cancelado">Cancelar</button>` : ""}
-      ${!aberto && pode("atender") ? `<button type="button" class="btn v p" data-st="em_andamento">Reabrir</button>` : ""}
-      ${t.status === "resolvido" && pode("encerrar") ? `<button type="button" class="btn v p" data-st="finalizado">Finalizar</button>` : ""}
+      ${vivoC && !comigo && pode("atender") && (!temDono || pode("transferir")) ? `<button type="button" class="btn v p" id="paraMim">${temDono ? "Transferir para mim" : "Assumir o cliente"}</button>` : ""}
+      ${vivoC && pode("transferir") ? `<select class="entrada" id="transf" style="width:auto;padding:7px 10px"><option value="">Transferir cliente para…</option><option value="__ninguem">— sem responsável —</option>${S.e.usuarios.map((u) => `<option value="${esc(u.usuario)}">${esc(u.nome)}${u.depto ? " · " + esc(u.depto) : ""}</option>`).join("")}</select>` : ""}
+      ${pode("abrir") ? `<button type="button" class="btn v p" id="novaSol">${svg("mais")} Nova solicitação</button>` : ""}
     </div>
   </section>
   <div class="at">
     <section class="col vidro">
-      <h3>${svg("mensagem")} Conversa <small>${coments.length} registro(s)</small></h3>
+      <h3>${svg("mensagem")} Conversa do cliente <small>${tl.length} registro(s)</small></h3>
+      <div class="legenda">${sols.filter((s) => ABERTOS.includes(s.status) || s.id === sel.id).map((s) => `<span class="chip-sol" style="--c:${corSol(s.cor)}">${esc(rot(s))}</span>`).join("")}</div>
       <div class="conversa" id="conversa">
-        <div class="msg cliente${t.origem === "app" ? " app" : ""}"><span class="q">${t.origem === "app" ? "<b>📱 Cliente pelo app</b> · " : ""}${esc(t.solicitante_nome || t.cliente_nome || "Abertura")} · ${dh(t.criado_em)}</span>${esc(t.descricao || "")}</div>
-        ${coments.map((c) => { const tp = tipoMsg(c); return `<div class="msg ${tp === "cliente" ? "cliente app" : tp}"><span class="q">${tp === "cliente" ? "<b>📱 Cliente pelo app</b> · " : tp === "resposta" ? "<b>Respondido no app</b> · " : ""}${esc(c.autor || "")} · ${dh(c.data)}${tp === "nota" ? " · nota interna" : tp === "contato" ? " · contato com o cliente" : ""}${c.escrito_em ? ` · escrito sem internet às ${dh(c.escrito_em)}` : ""}</span>${esc(c.texto || "")}</div>`; }).join("")}
+        ${tl.map((x) => `<div class="msg ${CLS_TIPO[x.tipo] || x.tipo}" style="--sol:${corSol(x.s.cor)}"><span class="q"><i class="tag-sol" style="--c:${corSol(x.s.cor)}">${esc(rot(x.s))}</i> ${ROT_TIPO[x.tipo] ? `<b>${ROT_TIPO[x.tipo]}</b> · ` : ""}${esc(x.autor || "")} · ${dh(x.data)}${x.escrito_em ? ` · escrito sem internet às ${dh(x.escrito_em)}` : ""}</span>${esc(x.texto || "")}</div>`).join("")}
       </div>
       ${pode("atender") ? `<div class="resp">
-        <div class="tipos seg" id="tipoResp"><button type="button" data-tipo="resposta" class="${tipoPadrao === "resposta" ? "ativo" : ""}" style="--c:var(--ouro)">📱 Responder no app</button><button type="button" data-tipo="nota" class="${tipoPadrao === "nota" ? "ativo" : ""}">Nota interna</button><button type="button" data-tipo="contato" style="--c:var(--verde)">Registrar contato</button></div>
+        <div class="alvos"><span class="dica">Registrar em:</span>${alvos.map((s) => `<button type="button" class="chip-sol alvo${s.id === alvo.id ? " ativo" : ""}" data-alvo="${esc(s.id)}" style="--c:${corSol(s.cor)}">${esc(rot(s))}</button>`).join("")}</div>
+        <div class="tipos seg" id="tipoResp" style="margin-top:8px"><button type="button" data-tipo="resposta" class="${tipoSel === "resposta" ? "ativo" : ""}" style="--c:var(--azul)">📱 Responder no app</button><button type="button" data-tipo="nota" class="${tipoSel === "nota" ? "ativo" : ""}" style="--c:var(--ouro)">Nota interna</button><button type="button" data-tipo="contato" class="${tipoSel === "contato" ? "ativo" : ""}" style="--c:var(--verde)">Registrar contato</button></div>
         <textarea class="entrada" id="txt" placeholder="Escreva aqui… (Ctrl+Enter envia)" style="margin-top:8px;min-height:90px"></textarea>
         <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;align-items:center"><button type="button" class="btn p" id="enviar">Enviar</button>
-          ${aberto ? `<select class="entrada" id="stDepois" style="width:auto;padding:6px 9px"><option value="">e manter situação</option><option value="aguardando">e aguardar o cliente</option>${pode("encerrar") ? `<option value="resolvido">e concluir</option>` : ""}</select>` : ""}
-          <span class="dica" id="dicaTipo">${DICA_TIPO[tipoPadrao]}</span></div>
+          ${ABERTOS.includes(alvo.status) ? `<select class="entrada" id="stDepois" style="width:auto;padding:6px 9px"><option value="">e manter situação</option><option value="aguardando">e aguardar o cliente</option>${pode("encerrar") && !alvo.chat ? `<option value="resolvido">e concluir esta solicitação</option>` : ""}</select>` : ""}
+          <span class="dica" id="dicaTipo">${DICA_TIPO[tipoSel]}</span></div>
       </div>` : ""}
     </section>
 
     <section class="col vidro">
-      <h3>${svg("ajustes")} Tabulação e andamento</h3>
-      ${t.etapa_travada ? `<div class="trava">🔒 <b>${esc(t.motivo_pai || "")} › ${esc(t.etapa_atual || "")}</b><br>Prazo combinado: <b>${d10(t.etapa_data_prevista)}</b> · travado por ${esc(t.etapa_definida_por || "")} em ${dh(t.etapa_definida_em)}. Esta trilha não muda mais.</div>`
-      : pode("atender") ? `
-        <label class="campo">Motivo<select id="mPai"><option value="">Escolha…</option>${Object.keys(arv).map((p) => `<option${p === t.motivo_pai ? " selected" : ""}>${esc(p)}</option>`).join("")}</select></label>
-        <label class="campo">Submotivo<select id="mFilho"><option value="">Escolha…</option>${filhos.map(([f, i]) => `<option value="${esc(f)}"${f === t.motivo_filho ? " selected" : ""}>${esc(f)}${i.sla != null ? ` · SLA ${i.sla}d` : ""}</option>`).join("")}</select></label>
-        <label class="campo">Etapa${t.etapa_atual ? ` <small class="dica">· atual: ${esc(caminho.slice(1).join(" › ") || "—")}</small>` : ""}<select id="mEtapa"></select></label>
-        <label class="campo">Prazo combinado com o cliente <small class="dica">(opcional — preenchido, o prazo passa a ser esta data e a trilha TRAVA)</small><input type="date" id="mData"></label>
-        <button type="button" class="btn p" id="classificar">Salvar etapa</button>
-        <p class="dica">A 1ª classificação congela o SLA de triagem (${t.sla1_definido ? (t.sla1_cumprido ? "foi cumprido ✔" : "foi perdido ✘") : "ainda correndo"}).</p>`
-      : `<p class="dica">${esc(t.motivo_pai || "não classificado")} ${t.etapa_atual ? "› " + esc(t.etapa_atual) : ""}</p>`}
-      ${(t.historico_etapas || []).length ? `<details><summary class="dica" style="cursor:pointer">Trilha de etapas (${t.historico_etapas.length})</summary>${t.historico_etapas.slice().reverse().map((h) => `<p class="dica">${dh(h.quando)} · ${esc(h.etapa)} · ${esc(h.por || "")}${h.vermelha ? ` · prazo ${d10(h.data_prevista)}` : ""}</p>`).join("")}</details>` : ""}
-      <div class="sec">Pendências com outros setores</div>
-      ${pedidosAb.length ? pedidosAb.map((p) => { const r = resp[p.id]; return `<div class="pend-it ${r ? "ok" : ""}"><b>${esc(p.setor_origem)} → ${esc(p.setor_destino)}</b> · ${dh(p.solicitado_em)} · ${esc(p.solicitado_por_nome || "")}<br>${esc(p.mensagem || "")}
-        ${r ? `<p class="dica" style="margin-top:4px">✅ ${esc(r.respondido_por_nome || "")} · ${dh(r.respondido_em)}: ${esc(r.resposta || "")}</p>` : pode("atender") ? `<div style="display:flex;gap:6px;margin-top:6px"><input class="entrada" data-resp="${esc(p.id)}" placeholder="Responder pelo setor ${esc(p.setor_destino)}…" style="padding:6px 9px"><button type="button" class="btn v p" data-respbt="${esc(p.id)}">Responder</button></div>` : ""}</div>`; }).join("") : `<p class="dica">Nenhuma pendência.</p>`}
-      ${aberto && pode("atender") ? `<div class="g2"><select class="entrada" id="pSetor"><option value="">Pedir ajuda a…</option>${S.e.departamentos.map((d) => `<option>${esc(d)}</option>`).join("")}</select><input class="entrada" id="pMsg" placeholder="O que precisa do setor?"></div><button type="button" class="btn v p" id="pedir">Pedir ajuda</button>` : ""}
+      <h3>${svg("lista")} Solicitações <small>${abertas.length} aberta(s)</small></h3>
+      ${chat ? cartao(chat) : ""}
+      ${abertas.map(cartao).join("") || (!chat ? `<p class="dica">Nenhuma solicitação aberta.</p>` : `<p class="dica">Nenhum ticket aberto — só o chat.</p>`)}
+      ${fechadas.length ? `<details${fechadas.some((s) => s.id === sel.id) ? " open" : ""}><summary class="dica" style="cursor:pointer">Concluídas (${fechadas.length})</summary><div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">${fechadas.map(cartao).join("")}</div></details>` : ""}
+      <div class="painel-sol" style="--c:${corSol(sel.cor)}">
+        <div class="sec" style="margin-top:4px;color:${corSol(sel.cor)}">${esc(rot(sel))}</div>
+        <div class="acoes" style="display:flex;gap:6px;flex-wrap:wrap">
+          ${pode("atender") && !sel.chat ? `<select class="entrada" id="prio" style="width:auto;padding:6px 9px">${Object.entries(PRIO).map(([k2, [r]]) => `<option value="${k2}"${(sel.prioridade || "normal") === k2 ? " selected" : ""}>Prioridade: ${r}</option>`).join("")}</select>` : ""}
+          ${selAberta && pode("atender") ? `<button type="button" class="btn v p" data-st="${sel.status === "aguardando" ? "em_andamento" : "aguardando"}">${sel.status === "aguardando" ? "Retomar" : "Aguardar o cliente"}</button>` : ""}
+          ${selAberta && pode("encerrar") ? (sel.chat ? `<button type="button" class="btn p" id="concluirChat">${svg("check")} Concluir chat</button>` : `<button type="button" class="btn p" data-st="resolvido">${svg("check")} Concluir</button><button type="button" class="btn perigo p" data-st="cancelado">Cancelar</button>`) : ""}
+          ${!selAberta && pode("atender") && !sel.chat ? `<button type="button" class="btn v p" data-st="em_andamento">Reabrir</button>` : ""}
+          ${sel.status === "resolvido" && pode("encerrar") && !sel.chat ? `<button type="button" class="btn v p" data-st="finalizado">Finalizar</button>` : ""}
+        </div>
+        ${sel.chat ? `<p class="dica">Chat do app (${esc(sel.assunto || "")}). Ao concluir, você escolhe: anexar a conversa ao chamado ou transformá-la numa solicitação.</p>`
+        : sel.etapa_travada ? `<div class="trava">🔒 <b>${esc(sel.motivo_pai || "")} › ${esc(sel.etapa_atual || "")}</b><br>Prazo combinado: <b>${d10(sel.etapa_data_prevista)}</b> · travado por ${esc(sel.etapa_definida_por || "")} em ${dh(sel.etapa_definida_em)}.</div>`
+        : pode("atender") ? `
+          <label class="campo">Motivo<select id="mPai"><option value="">Escolha…</option>${Object.keys(arv).map((p) => `<option${p === sel.motivo_pai ? " selected" : ""}>${esc(p)}</option>`).join("")}</select></label>
+          <label class="campo">Submotivo<select id="mFilho"><option value="">Escolha…</option>${filhos(sel).map(([f, i]) => `<option value="${esc(f)}"${f === sel.motivo_filho ? " selected" : ""}>${esc(f)}${i.sla != null ? ` · SLA ${i.sla}d` : ""}</option>`).join("")}</select></label>
+          <label class="campo">Etapa${sel.etapa_atual ? ` <small class="dica">· atual: ${esc(caminho.slice(1).join(" › ") || "—")}</small>` : ""}<select id="mEtapa"></select></label>
+          <label class="campo">Prazo combinado com o cliente <small class="dica">(opcional — trava a trilha)</small><input type="date" id="mData"></label>
+          <button type="button" class="btn p" id="classificar">Salvar etapa</button>` : `<p class="dica">${esc(sel.motivo_pai || "não classificado")} ${sel.etapa_atual ? "› " + esc(sel.etapa_atual) : ""}</p>`}
+        ${(sel.historico_etapas || []).length ? `<details><summary class="dica" style="cursor:pointer">Trilha de etapas (${sel.historico_etapas.length})</summary>${sel.historico_etapas.slice().reverse().map((h) => `<p class="dica">${dh(h.quando)} · ${esc(h.etapa)} · ${esc(h.por || "")}${h.vermelha ? ` · prazo ${d10(h.data_prevista)}` : ""}</p>`).join("")}</details>` : ""}
+        ${!sel.chat ? `<div class="sec">Pendências com outros setores</div>
+        ${pedidosAb.length ? pedidosAb.map((p) => { const r = resp[p.id]; return `<div class="pend-it ${r ? "ok" : ""}"><b>${esc(p.setor_origem)} → ${esc(p.setor_destino)}</b> · ${dh(p.solicitado_em)} · ${esc(p.solicitado_por_nome || "")}<br>${esc(p.mensagem || "")}
+          ${r ? `<p class="dica" style="margin-top:4px">✅ ${esc(r.respondido_por_nome || "")} · ${dh(r.respondido_em)}: ${esc(r.resposta || "")}</p>` : pode("atender") ? `<div style="display:flex;gap:6px;margin-top:6px"><input class="entrada" data-resp="${esc(p.id)}" placeholder="Responder pelo setor ${esc(p.setor_destino)}…" style="padding:6px 9px"><button type="button" class="btn v p" data-respbt="${esc(p.id)}">Responder</button></div>` : ""}</div>`; }).join("") : `<p class="dica">Nenhuma pendência.</p>`}
+        ${selAberta && pode("atender") ? `<div class="g2"><select class="entrada" id="pSetor"><option value="">Pedir ajuda a…</option>${S.e.departamentos.map((d) => `<option>${esc(d)}</option>`).join("")}</select><input class="entrada" id="pMsg" placeholder="O que precisa do setor?"></div><button type="button" class="btn v p" id="pedir">Pedir ajuda</button>` : ""}` : ""}
+      </div>
     </section>
 
     <section class="col cli vidro">
       <h3>${svg("usuario")} Cliente</h3>
-      <dl class="ficha"><dt>Nome</dt><dd>${esc(t.cliente_nome || "—")}</dd><dt>Código</dt><dd>${esc(t.cliente_codigo || "—")}</dd><dt>Telefone</dt><dd>${esc(t.cliente_telefone || "não informado")}</dd><dt>Setor</dt><dd>${esc(t.departamento || "—")}</dd></dl>
-      ${erpBloco(t, erp)}
-      <div class="sec">Outros atendimentos (${outros.length})</div>
-      ${outros.length ? outros.map((o) => `<div class="ped" style="cursor:pointer" data-outro="${esc(o.id)}"><div class="t1"><b>#${curto(o.id)}</b>${etqSt(o.status)}<span class="dica">${dh(o.criado_em)}</span></div>${esc(o.assunto || "")}</div>`).join("") : `<p class="dica">Nenhum outro atendimento deste cliente.</p>`}
+      <dl class="ficha"><dt>Nome</dt><dd>${esc(D.cliente.nome || "—")}</dd><dt>Chamado</dt><dd>nº ${esc(D.cliente.codigo || "—")}</dd><dt>Telefone</dt><dd>${esc(D.cliente.telefone || "não informado")}</dd><dt>Dono</dt><dd>${temDono ? esc(nomeU(D.dono[0])) : "ninguém"}</dd></dl>
+      ${erpBloco(sel, D.erp)}
     </section>
   </div>`;
-  ligarAtendimento(m, t, erp);
+  ligarCliente(m, D, sel, alvo, chat, abertas);
 }
 
 function erpBloco(t, erp) {
@@ -585,31 +689,44 @@ function erpBloco(t, erp) {
       <div class="acoes">${ac(p)}</div></div>`).join("") || `<p class="dica">Nenhum pedido encontrado.</p>`}`;
 }
 
-function ligarAtendimento(m, t, erp) {
-  const tid = t.id, recarregarDet = async () => { S.det = null; await carregar(); };
-  { const vb = $("#volta"); if (vb) vb.onclick = () => { S.det = null; ir("caixa"); }; }
-  { const tx = $("#txt"); if (tx) { if (S.rasc[tid]) tx.value = S.rasc[tid]; tx.addEventListener("input", () => { S.rasc[tid] = tx.value; }); } }
-  const pm = $("#paraMim"); if (pm) pm.onclick = async () => { try { await chamar(tidUrl(tid) + "/alterar", { method: "POST", body: { atribuir: S.e.eu.usuario } }); ok("Agora está com você."); await recarregarDet(); } catch (e) { falha(e); } };
-  const tr = $("#transf"); if (tr) tr.onchange = async () => { if (!tr.value) return; const alvo = tr.value === "__ninguem" ? "" : tr.value; try { await chamar(tidUrl(tid) + "/alterar", { method: "POST", body: { atribuir: alvo } }); ok("Transferido."); await recarregarDet(); } catch (e) { falha(e); } };
-  const pr = $("#prio"); if (pr) pr.onchange = async () => { try { await chamar(tidUrl(tid) + "/alterar", { method: "POST", body: { prioridade: pr.value } }); await recarregarDet(); } catch (e) { falha(e); } };
+/* modal: motivo › submotivo (+ pedido) — usado em "Nova solicitação" e em "Concluir chat → virar solicitação" */
+function camposMotivo(prefixo, D, extra = "") {
+  const arv = S.e.motivos, peds = (D.erp?.pedidos || []).filter((p) => p.status !== "rascunho");
+  return `<div class="g2"><label class="campo">Motivo<select id="${prefixo}Pai"><option value="">Escolha…</option>${Object.keys(arv).map((p) => `<option>${esc(p)}</option>`).join("")}</select></label>
+    <label class="campo">Submotivo<select id="${prefixo}Filho"><option value="">Escolha o motivo</option></select></label></div>
+    ${peds.length ? `<label class="campo" style="margin-top:8px">Pedido (opcional)<select id="${prefixo}Ped"><option value="">Não é sobre um pedido</option>${peds.map((p) => `<option value="${esc(p.id)}" data-num="${esc(p.numero)}">Pedido #${p.numero} · ${esc((ERP_ST[p.status] || [p.status])[0])}</option>`).join("")}</select></label>` : ""}${extra}`;
+}
+function ligarMotivo(prefixo) {
+  const arv = S.e.motivos, mp = $("#" + prefixo + "Pai"), mf = $("#" + prefixo + "Filho");
+  mp.onchange = () => { mf.innerHTML = `<option value="">Escolha…</option>` + Object.entries(arv[mp.value] || {}).filter(([, i]) => i.ativo !== false).map(([f, i]) => `<option value="${esc(f)}">${esc(f)}${i.sla != null ? ` · SLA ${i.sla}d` : ""}</option>`).join(""); };
+}
+
+function ligarCliente(m, D, sel, alvo, chat, abertas) {
+  const cid = D.cid, recarregarDet = async () => { S.det = null; await carregar(); };
+  { const tx = $("#txt"); if (tx) { if (S.rasc[cid]) tx.value = S.rasc[cid]; tx.addEventListener("input", () => { S.rasc[cid] = tx.value; }); } }
+  const pm = $("#paraMim"); if (pm) pm.onclick = async () => { try { await assumirCliente(cid, S.e.eu.usuario); ok("O cliente agora está com você."); await recarregarDet(); } catch (e) { falha(e); } };
+  const tr = $("#transf"); if (tr) tr.onchange = async () => { if (!tr.value) return; const a2 = tr.value === "__ninguem" ? "" : tr.value; try { await assumirCliente(cid, a2); ok("Cliente transferido."); await recarregarDet(); } catch (e) { falha(e); } };
+  const pr = $("#prio"); if (pr) pr.onchange = async () => { try { await chamar(tidUrl(sel.id) + "/alterar", { method: "POST", body: { prioridade: pr.value } }); await recarregarDet(); } catch (e) { falha(e); } };
+  m.querySelectorAll("[data-sol]").forEach((b) => (b.onclick = () => { guardarRascunho(); S.solSel = b.dataset.sol; const s = D.solicitacoes.find((x) => x.id === S.solSel); if (s && (ABERTOS.includes(s.status) || !S.alvo)) S.alvo = s.id; render(); }));
+  m.querySelectorAll("[data-alvo]").forEach((b) => (b.onclick = () => { guardarRascunho(); S.alvo = b.dataset.alvo; S.tipoMsg = null; render(); }));
   m.querySelectorAll("[data-st]").forEach((b) => (b.onclick = async () => {
     const st = b.dataset.st;
-    if (st === "cancelado" && !(await A.confirmar("Cancelar este atendimento?", { perigo: true, rotulo: "Cancelar atendimento" }))) return;
-    try { await chamar(tidUrl(tid) + "/alterar", { method: "POST", body: { status: st } }); ok("Situação: " + (ST_INFO[st] || [st])[0]); await recarregarDet(); } catch (e) { falha(e); }
+    if (st === "cancelado" && !(await A.confirmar("Cancelar esta solicitação?", { perigo: true, rotulo: "Cancelar solicitação" }))) return;
+    try { await chamar(tidUrl(sel.id) + "/alterar", { method: "POST", body: { status: st } }); ok("Situação: " + (ST_INFO[st] || [st])[0]); await recarregarDet(); } catch (e) { falha(e); }
   }));
   let tipo = m.querySelector("[data-tipo].ativo")?.dataset.tipo || "nota";
-  m.querySelectorAll("[data-tipo]").forEach((b) => (b.onclick = () => { tipo = b.dataset.tipo; m.querySelectorAll("[data-tipo]").forEach((x) => x.classList.toggle("ativo", x === b)); const d = $("#dicaTipo"); if (d) d.textContent = DICA_TIPO[tipo]; }));
+  m.querySelectorAll("[data-tipo]").forEach((b) => (b.onclick = () => { tipo = b.dataset.tipo; S.tipoMsg = { alvo: alvo.id, tipo }; m.querySelectorAll("[data-tipo]").forEach((x) => x.classList.toggle("ativo", x === b)); const d = $("#dicaTipo"); if (d) d.textContent = DICA_TIPO[tipo]; }));
   const env = $("#enviar");
   if (env) {
     const enviar = async () => { const txt = $("#txt").value.trim(); if (!txt) return; const body = { texto: txt, tipo }; const sd = $("#stDepois")?.value; if (sd) body.status = sd;
-      try { await chamar(tidUrl(tid) + "/comentar", { method: "POST", body }); delete S.rasc[tid]; await recarregarDet(); } catch (e) { falha(e); } };
+      try { await chamar(tidUrl(alvo.id) + "/comentar", { method: "POST", body }); delete S.rasc[cid]; await recarregarDet(); } catch (e) { falha(e); } };
     env.onclick = enviar; $("#txt").onkeydown = (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) enviar(); };
   }
   const conv = $("#conversa"); if (conv) conv.scrollTop = conv.scrollHeight;
-  // tabulação
+  // tabulação da solicitação selecionada
   const mp = $("#mPai"), mf = $("#mFilho"), me2 = $("#mEtapa");
   if (mp) {
-    const arv = S.e.motivos, atual = String(t.etapa_atual || "").split(" › ")[1] || "";
+    const arv = S.e.motivos, atual = String(sel.etapa_atual || "").split(" › ")[1] || "";
     const etapas = () => { const info = (arv[mp.value] || {})[mf.value] || {}; me2.innerHTML = `<option value="">— sem etapa —</option>` + (info.etapas || []).map((x) => `<option${x === atual ? " selected" : ""}>${esc(x)}</option>`).join(""); };
     mp.onchange = () => { mf.innerHTML = `<option value="">Escolha…</option>` + Object.entries(arv[mp.value] || {}).filter(([, i]) => i.ativo !== false).map(([f, i]) => `<option value="${esc(f)}">${esc(f)}${i.sla != null ? ` · SLA ${i.sla}d` : ""}</option>`).join(""); etapas(); };
     mf.onchange = etapas; etapas();
@@ -617,32 +734,65 @@ function ligarAtendimento(m, t, erp) {
       if (!mp.value || !mf.value) { A.toast("Escolha motivo e submotivo."); return; }
       const data = $("#mData").value;
       if (data && !(await A.confirmar(`Travar a trilha com prazo em <b>${d10(data)}</b>? Depois disso ela não pode mais ser mudada.`, { rotulo: "Travar prazo" }))) return;
-      try { await chamar(tidUrl(tid) + "/classificar", { method: "POST", body: { motivo_pai: mp.value, motivo_filho: mf.value, etapa: me2.value, data_prevista: data } }); ok("Etapa salva."); await recarregarDet(); } catch (e) { falha(e); }
+      try { await chamar(tidUrl(sel.id) + "/classificar", { method: "POST", body: { motivo_pai: mp.value, motivo_filho: mf.value, etapa: me2.value, data_prevista: data } }); ok("Etapa salva."); await recarregarDet(); } catch (e) { falha(e); }
     };
   }
   const pd = $("#pedir"); if (pd) pd.onclick = async () => { const setor = $("#pSetor").value, msg = $("#pMsg").value.trim(); if (!setor || !msg) { A.toast("Escolha o setor e escreva o pedido."); return; }
-    try { await chamar(tidUrl(tid) + "/pendencia", { method: "POST", body: { setor, mensagem: msg } }); ok("Pedido enviado ao setor " + setor + "."); await recarregarDet(); } catch (e) { falha(e); } };
+    try { await chamar(tidUrl(sel.id) + "/pendencia", { method: "POST", body: { setor, mensagem: msg } }); ok("Pedido enviado ao setor " + setor + "."); await recarregarDet(); } catch (e) { falha(e); } };
   m.querySelectorAll("[data-respbt]").forEach((b) => (b.onclick = async () => { const v = m.querySelector(`[data-resp="${CSS.escape(b.dataset.respbt)}"]`).value.trim(); if (!v) return;
-    try { await chamar(tidUrl(tid) + "/pendencia", { method: "POST", body: { responder: b.dataset.respbt, mensagem: v } }); await recarregarDet(); } catch (e) { falha(e); } }));
-  m.querySelectorAll("[data-outro]").forEach((d) => (d.onclick = () => { guardarRascunho(); S.det = null; abrirTicket(d.dataset.outro); }));
-  // ERP
-  const tc = $("#trocaCli"); if (tc) tc.onclick = (e) => { e.preventDefault(); vincularCliente(t); };
+    try { await chamar(tidUrl(sel.id) + "/pendencia", { method: "POST", body: { responder: b.dataset.respbt, mensagem: v } }); await recarregarDet(); } catch (e) { falha(e); } }));
+  // concluir o chat: anexar ao chamado OU virar solicitação
+  const cc = $("#concluirChat"); if (cc) cc.onclick = () => {
+    const md = A.modal({ titulo: "Concluir o chat do app", icone: "check", largura: 560,
+      html: `<p class="dica" style="margin-bottom:10px">Só a central encerra. O cliente vê o chat encerrado e passa a acompanhar tudo pelo chamado nº <b>${esc(D.cliente.codigo || cid)}</b>.</p>
+        <label class="chk"><input type="radio" name="modo" value="anexar" checked> <b>Anexar a conversa ao chamado</b> — fica no histórico, sem abrir solicitação</label>
+        <label class="chk" style="margin-top:6px"><input type="radio" name="modo" value="solicitacao"> <b>Transformar em solicitação</b> — vira mais um problema do chamado, com motivo e SLA</label>
+        <div id="ccSol" class="oculto" style="margin-top:10px">${camposMotivo("cc", D)}</div>`,
+      botoes: [{ rotulo: "Voltar" }, { rotulo: "Concluir chat", classe: "btn", principal: true, acao: async () => {
+        const modo = document.querySelector('input[name="modo"]:checked').value, body = { modo };
+        if (modo === "solicitacao") { body.motivo_pai = $("#ccPai").value; body.motivo_filho = $("#ccFilho").value; body.pedido_id = $("#ccPed")?.value || ""; if (!body.motivo_pai || !body.motivo_filho) { A.toast("Escolha motivo e submotivo."); return false; } }
+        try { await chamar(tidUrl(chat.id) + "/concluir-chat", { method: "POST", body }); ok(modo === "anexar" ? "Chat concluído e anexado ao chamado." : "Chat virou solicitação do chamado."); S.solSel = modo === "solicitacao" ? chat.id : null; S.alvo = null; await recarregarDet(); }
+        catch (e) { falha(e); return false; } } }] });
+    document.querySelectorAll('input[name="modo"]').forEach((r) => (r.onchange = () => $("#ccSol").classList.toggle("oculto", document.querySelector('input[name="modo"]:checked').value !== "solicitacao")));
+    ligarMotivo("cc");
+  };
+  // nova solicitação no MESMO chamado
+  const ns = $("#novaSol"); if (ns) ns.onclick = () => {
+    A.modal({ titulo: `Nova solicitação · chamado nº ${D.cliente.codigo || cid}`, icone: "mais", largura: 600,
+      html: `<p class="dica" style="margin-bottom:10px">Entra no chamado do cliente (não abre outro). Mesmo motivo + mesmo pedido já aberto não é permitido.</p>
+        <label class="campo">Setor<select id="nsDep">${S.e.departamentos.map((d) => `<option>${esc(d)}</option>`).join("")}</select></label>
+        <div style="margin-top:8px">${camposMotivo("ns", D)}</div>
+        <label class="campo" style="margin-top:8px">Descrição<textarea id="nsDesc" rows="4"></textarea></label>`,
+      botoes: [{ rotulo: "Cancelar" }, { rotulo: "Adicionar ao chamado", classe: "btn", principal: true, acao: async () => {
+        const pai = $("#nsPai").value, filho = $("#nsFilho").value, desc = $("#nsDesc").value.trim(), pedSel = $("#nsPed");
+        if (!pai || !filho || !desc) { A.toast("Escolha motivo, submotivo e descreva."); return false; }
+        const body = { cliente_codigo: D.cliente.codigo, cliente_nome: D.cliente.nome, cliente_telefone: D.cliente.telefone, departamento: $("#nsDep").value,
+          motivo_pai: pai, motivo_filho: filho, assunto: filho, descricao: desc, erp_cliente_id: D.erp?.clientes?.[0]?.id || "" };
+        if (pedSel && pedSel.value) { body.erp_pedido_id = pedSel.value; body.erp_pedido_numero = +pedSel.selectedOptions[0].dataset.num || pedSel.selectedOptions[0].dataset.num; body.assunto += " · pedido #" + body.erp_pedido_numero; }
+        try { const r = await chamar("/tickets", { method: "POST", body }); ok("Solicitação adicionada ao chamado nº " + (r.chamado || D.cliente.codigo) + "."); S.solSel = r.id; S.alvo = r.id; await recarregarDet(); }
+        catch (e) { falha(e); return false; } } }] });
+    ligarMotivo("ns");
+  };
+  // ERP (ações registradas na solicitação selecionada — ou na primeira aberta)
+  const tidErp = (!sel.chat && ABERTOS.includes(sel.status) ? sel : abertas[0] || sel).id;
+  const tc = $("#trocaCli"); if (tc) tc.onclick = (e) => { e.preventDefault(); vincularCliente({ id: tidErp }); };
   const abrirErp = () => { try { (window.top || window).postMessage({ hub: "abrir", id: "erp" }, location.origin); } catch (_) {} };
   m.querySelectorAll("[data-erp-ver]").forEach((b) => (b.onclick = abrirErp));
   m.querySelectorAll("[data-nova-palavra]").forEach((a) => (a.onclick = async (ev) => { ev.preventDefault();
     if (!(await A.confirmar("Gerar uma <b>nova palavra-chave</b> para este pedido? A antiga deixa de valer no app do cliente.", { rotulo: "Gerar nova" }))) return;
     try { const r = await chamar(`/app/palavra/${a.dataset.novaPalavra}/nova`, { method: "POST" }); ok("Nova palavra-chave: " + r.palavra_chave); await recarregarDet(); } catch (e) { falha(e); } }));
+  const erp = D.erp;
   m.querySelectorAll("[data-erp-agendar]").forEach((b) => (b.onclick = () => {
     const p = erp.pedidos.find((x) => x.id === b.dataset.erpAgendar);
     A.modal({ titulo: `${p.status === "agendado" ? "Reagendar" : "Agendar"} pedido #${p.numero}`, icone: "calendario", largura: 480,
       html: `<div class="g2"><label class="campo">Nova data<input type="date" id="aD" min="${erp.hoje}" value="${p.agendamento?.data && p.agendamento.data >= erp.hoje ? p.agendamento.data : ""}"></label>
         <label class="campo">Janela<select id="aJ">${(erp.janelas || []).map((j) => `<option${p.agendamento?.janela === j ? " selected" : ""}>${esc(j)}</option>`).join("")}</select></label></div>
         <label class="campo" style="margin-top:8px">Observação da entrega<input id="aO" value="${esc(p.agendamento?.obs || "")}"></label>
-        <p class="dica" style="margin-top:8px">Muda a agenda direto no ERP — e fica registrado neste atendimento.</p>`,
+        <p class="dica" style="margin-top:8px">Muda a agenda direto no ERP — e fica registrado no chamado do cliente.</p>`,
       botoes: [{ rotulo: "Cancelar" }, { rotulo: "Salvar no ERP", classe: "btn", principal: true, acao: async () => {
         const data = $("#aD").value; if (!data) { A.toast("Escolha a data."); return false; }
         try { await chamar(`/api/erp/pedidos/${p.id}/acao`, { method: "POST", body: { acao: "agendar", data, janela: $("#aJ").value, obs: $("#aO").value } });
-          ok("Agenda alterada no ERP — o ticket recebe o registro."); await recarregarDet(); setTimeout(() => recarregarDet().catch(() => {}), 2500); } catch (e) { falha(e); return false; }
+          ok("Agenda alterada no ERP — o chamado recebe o registro."); await recarregarDet(); setTimeout(() => recarregarDet().catch(() => {}), 2500); } catch (e) { falha(e); return false; }
       } }] });
   }));
   m.querySelectorAll("[data-erp-cancelar]").forEach((b) => (b.onclick = async () => {
@@ -650,12 +800,12 @@ function ligarAtendimento(m, t, erp) {
     const motivo = await new Promise((res) => { let r = null; A.modal({ titulo: `Cancelar pedido #${p.numero}`, icone: "atencao", cor: "var(--rosa)", largura: 440, html: `<label class="campo">Motivo<input id="cM" autofocus></label><p class="dica" style="margin-top:8px">Cancela no ERP e libera a reserva de estoque.</p>`, botoes: [{ rotulo: "Voltar" }, { rotulo: "Cancelar pedido", classe: "btn perigo", principal: true, acao: () => { r = $("#cM").value; } }], aoFechar: () => res(r) }); });
     if (motivo === null) return;
     try { await chamar(`/api/erp/pedidos/${p.id}/acao`, { method: "POST", body: { acao: "cancelar", motivo } });
-      ok("Pedido cancelado no ERP — o ticket recebe o registro."); await recarregarDet(); setTimeout(() => recarregarDet().catch(() => {}), 2500); } catch (e) { falha(e); }
+      ok("Pedido cancelado no ERP — o chamado recebe o registro."); await recarregarDet(); setTimeout(() => recarregarDet().catch(() => {}), 2500); } catch (e) { falha(e); }
   }));
   m.querySelectorAll("[data-erp-troca]").forEach((b) => (b.onclick = async () => {
     const p = erp.pedidos.find((x) => x.id === b.dataset.erpTroca);
     if (!(await A.confirmar(`Gerar no ERP a <b>troca</b> do pedido #${p.numero}? Ela nasce em rascunho, levando os mesmos itens e recolhendo os do cliente.`, { rotulo: "Gerar troca" }))) return;
-    try { const r = await chamar(tidUrl(tid) + "/erp-troca", { method: "POST", body: { pedido_id: p.id } }); ok(`Troca #${r.pedido.numero} criada no ERP.`); await recarregarDet(); } catch (e) { falha(e); }
+    try { const r = await chamar(tidUrl(tidErp) + "/erp-troca", { method: "POST", body: { pedido_id: p.id } }); ok(`Troca #${r.pedido.numero} criada no ERP.`); await recarregarDet(); } catch (e) { falha(e); }
   }));
 }
 function vincularCliente(t) {
@@ -715,13 +865,15 @@ function telaAbrir(m) {
   $("#nNome").oninput = () => { nCli = ""; buscarErp($("#nNome").value); };
   $("#nCod").onchange = () => { const cod = norm($("#nCod").value); const h = S.e.tickets.filter((t) => norm(t.cliente_codigo) === cod);
     if (h.length && !$("#nNome").value) $("#nNome").value = h[0].cliente_nome || "";
-    $("#nHist").innerHTML = h.length ? `<div class="aviso ouro">Este cliente já tem ${h.length} atendimento(s): ${h.slice(0, 4).map((t) => `#${curto(t.id)} ${esc(t.assunto || "")} (${(ST_INFO[t.status] || [t.status])[0]})`).join(" · ")}</div>` : ""; };
+    const hab = h.filter((t) => ABERTOS.includes(t.status) && !t.chat);
+    $("#nHist").innerHTML = hab.length ? `<div class="aviso ouro">Este cliente já tem o <b>chamado nº ${esc(hab[0].cliente_codigo)}</b> com ${hab.length} solicitação(ões) aberta(s): ${hab.slice(0, 4).map((t) => esc(t.motivo_filho || t.assunto || "")).join(" · ")}. O que você abrir agora entra nele como mais uma solicitação.</div>`
+      : h.length ? `<p class="dica">Histórico do cliente: ${h.length} solicitação(ões) já concluída(s) — a nova reabre o chamado nº ${esc(h[0].cliente_codigo)}.</p>` : ""; };
   $("#nCriar").onclick = async () => {
     const body = { departamento: S.setorAbrir, cliente_codigo: $("#nCod").value.trim(), cliente_nome: $("#nNome").value.trim(), cliente_telefone: $("#nTel").value.trim(),
       prioridade: $("#nPrio").value, motivo_pai: $("#nPai").value, motivo_filho: $("#nFilho").value, assunto: $("#nAss").value.trim(), descricao: $("#nDesc").value.trim(), atribuir_a_mim: !!$("#nMeu")?.checked };
     if (nCli) body.erp_cliente_id = nCli;
     if (!body.cliente_codigo || !body.cliente_nome || !body.assunto || !body.descricao) { A.toast("Preencha código e nome do cliente, assunto e descrição."); return; }
-    try { const r = await chamar("/tickets", { method: "POST", body }); ok("Chamado aberto."); S.setorAbrir = ""; await carregar(); abrirTicket(r.id); } catch (e) { falha(e); }
+    try { const r = await chamar("/tickets", { method: "POST", body }); ok(r.agrupado ? `Agrupado ao chamado nº ${r.chamado} do cliente — virou mais uma solicitação.` : `Chamado nº ${r.chamado} aberto.`); S.setorAbrir = ""; await carregar(); S.sec = "caixa"; abrirTicket(r.id); } catch (e) { falha(e); }
   };
 }
 
@@ -740,20 +892,23 @@ function telaInternos(m) {
 
 /* ══════ GESTÃO ══════ */
 function telaGestao(m) {
-  const ts = S.e.tickets, ab = ts.filter((t) => ABERTOS.includes(t.status));
-  const d7 = new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10).replace("T", " ");
-  const abertos7 = ts.filter((t) => String(t.criado_em) >= d7).length, concl7 = ts.filter((t) => !ABERTOS.includes(t.status) && String(t.atualizado_em) >= d7).length;
-  const por = (f, l = ab) => { const o = {}; l.forEach((t) => { const k = f(t); o[k] = (o[k] || 0) + 1; }); return Object.entries(o).sort((a, b) => b[1] - a[1]); };
-  const k = (r, v, s, c) => `<div class="kpi" style="--c:${c}"><small>${r}</small><b>${v}</b><span>${s || ""}</span></div>`;
+  const ts = S.e.tickets, cs = clientes(), cab = cs.filter(vivo), c = contagens();
+  const solsAb = ts.filter((t) => !t.chat && ABERTOS.includes(t.status));
+  const d7 = new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10);
+  const abertas7 = ts.filter((t) => !t.chat && String(t.criado_em) >= d7).length, concl7 = ts.filter((t) => !t.chat && !ABERTOS.includes(t.status) && String(t.atualizado_em) >= d7).length;
+  const chats7 = ts.filter((t) => t.chat && String(t.criado_em) >= d7).length;
+  const por = (f, l) => { const o = {}; l.forEach((t) => { const k = f(t); o[k] = (o[k] || 0) + 1; }); return Object.entries(o).sort((a, b) => b[1] - a[1]); };
+  const k = (r, v, s2, cor) => `<div class="kpi" style="--c:${cor}"><small>${r}</small><b>${v}</b><span>${s2 || ""}</span></div>`;
   const barras = (l) => { const max = Math.max(1, ...l.map((x) => x[1])); return l.slice(0, 12).map(([n, v]) => `<div style="display:grid;grid-template-columns:160px 1fr 40px;gap:8px;align-items:center;font-size:.78rem;margin-bottom:5px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(n)}</span><span style="height:8px;border-radius:5px;background:rgba(255,255,255,.06)"><i style="display:block;height:100%;width:${v / max * 100}%;border-radius:5px;background:var(--ouro)"></i></span><b style="text-align:right">${v}</b></div>`).join(""); };
-  const porAt = {}; ab.forEach((t) => { const a = t.atribuido_para || "_"; porAt[a] = porAt[a] || { n: 0, venc: 0, hoje: 0 }; porAt[a].n++; if (t.sla.estado === "venc") porAt[a].venc++; if (t.sla.estado === "hoje") porAt[a].hoje++; });
-  m.innerHTML = `<section class="painel vidro"><h2 style="margin:0 0 12px;font:700 1.25rem var(--titulo)">Painel de gestão</h2>
-    <div class="kpis">${k("Abertos agora", ab.length, "", "var(--azul)")}${k("Sem dono", ab.filter((t) => t.sem_dono).length, "ninguém pegou", "var(--ouro)")}${k("Vencidos", ab.filter((t) => t.sla.estado === "venc").length, "", "var(--rosa)")}${k("Abertos (7 dias)", abertos7, "", "var(--violeta)")}${k("Concluídos (7 dias)", concl7, "", "var(--verde)")}${k("Do ERP (abertos)", ab.filter((t) => (t.origem || "").startsWith("erp")).length, "avaria/recusa/ausente", "var(--ciano)")}</div>
+  const porAt = {}; cab.forEach((x) => { const a = x.atribuido_para || "_"; porAt[a] = porAt[a] || { n: 0, at: 0, sols: 0, venc: 0, hoje: 0 }; const v = porAt[a]; v.n++; if (x.estado === "atendimento") v.at++; v.sols += x.solsAb.length; if (x.sla?.estado === "venc") v.venc++; if (x.sla?.estado === "hoje") v.hoje++; });
+  m.innerHTML = `<section class="painel vidro"><h2 style="margin:0 0 4px;font:700 1.25rem var(--titulo)">Painel de gestão</h2>
+    <p class="dica" style="margin-bottom:12px">Cada cliente conta uma vez: está em <b>atendimento</b> (chat do app ativo) ou é um <b>ticket pendente</b>. As solicitações são os problemas dentro dos tickets.</p>
+    <div class="kpis">${k("Atendimentos agora", c.atend, "chats do app ativos", "var(--ciano)")}${k("Tickets pendentes", c.tks, "clientes com solicitação aberta", "var(--azul)")}${k("Solicitações abertas", solsAb.length, `média ${c.tks ? (solsAb.length / Math.max(1, cab.filter((x) => x.solsAb.length).length)).toFixed(1) : 0} por cliente`, "var(--violeta)")}${k("Sem dono", c.novos, "clientes", "var(--ouro)")}${k("Vencidos", c.venc, "clientes", "var(--rosa)")}${k("Solicitações (7 dias)", abertas7, `${concl7} concluídas · ${chats7} chats`, "var(--verde)")}</div>
     <div class="cartoes" style="margin-top:14px">
-      <div class="cartao"><h3>Caixas por motivo</h3>${barras(por((t) => t.motivo_pai || "— sem motivo —"))}</div>
-      <div class="cartao"><h3>Por setor</h3>${barras(por((t) => t.departamento || "—"))}</div>
-      <div class="cartao"><h3>Atendimentos por pessoa</h3><table class="tab"><thead><tr><th>Atendente</th><th>Abertos</th><th>Vencem hoje</th><th>Vencidos</th></tr></thead><tbody>
-        ${Object.entries(porAt).sort((a, b) => b[1].n - a[1].n).map(([a, v]) => `<tr><td>${a === "_" ? "— sem dono —" : esc(nomeU(a))}</td><td>${v.n}</td><td>${v.hoje}</td><td style="color:${v.venc ? "var(--rosa)" : ""}">${v.venc}</td></tr>`).join("")}</tbody></table></div>
+      <div class="cartao"><h3>Solicitações abertas por motivo</h3>${barras(por((t) => t.motivo_pai || "— sem motivo —", solsAb))}</div>
+      <div class="cartao"><h3>Solicitações abertas por setor</h3>${barras(por((t) => t.departamento || "—", solsAb))}</div>
+      <div class="cartao"><h3>Clientes por pessoa</h3><table class="tab"><thead><tr><th>Atendente</th><th>Clientes</th><th>Em atendimento</th><th>Solicitações</th><th>Vencem hoje</th><th>Vencidos</th></tr></thead><tbody>
+        ${Object.entries(porAt).sort((a, b) => b[1].n - a[1].n).map(([a, v]) => `<tr><td>${a === "_" ? "— sem dono —" : esc(nomeU(a))}</td><td>${v.n}</td><td>${v.at}</td><td>${v.sols}</td><td>${v.hoje}</td><td style="color:${v.venc ? "var(--rosa)" : ""}">${v.venc}</td></tr>`).join("")}</tbody></table></div>
     </div></section>`;
 }
 
