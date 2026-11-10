@@ -19,8 +19,12 @@ Link geral para os clientes:  https://<seu-hub>/cliente/   (instalável como app
     solicitação é AGRUPADA nele (o app avisa). Em atendimento (chat ativo), não
     abre: o atendente registra a solicitação pelo chat.
   • Pedidos: status em linguagem de cliente, data e janela da entrega,
-    tentativas, itens. Rascunhos e dados internos (custo, histórico com login
-    de funcionário, observações, palavra-chave) NÃO saem daqui.
+    tentativas, itens e a PALAVRA-CHAVE do pedido (login e, no futuro, entrega).
+    Rascunhos e dados internos (custo, histórico com login de funcionário,
+    observações) NÃO saem daqui.
+  • Chamados no app = as SOLICITAÇÕES (os tickets do atendente): o que ficou
+    definido (motivo, etapa, prazo combinado, situação) e as ATUALIZAÇÕES que
+    a central registrou ("Registrar contato"). A conversa fica só no Atendimento.
   • O cliente só vê o que é público: a abertura feita por ele e as mensagens
     com interno=False (as dele e as "Responder no app" da central).
   • Sem internet: o app guarda chats/chamados/mensagens numa fila e reenvia
@@ -339,6 +343,7 @@ def pedidos_do_cliente(cid: str) -> list[dict]:
                       for i in p.get("itens", [])],
             "tentativas": [{"n": x.get("n"), "data": str(x.get("data") or "")[:10], "resultado": RES_TENT.get(x.get("resultado"), x.get("resultado"))}
                            for x in p.get("tentativas", [])],
+            "palavra_chave": p.get("palavra_chave") if st not in ("cancelado", "recusado") else "",
             "endereco": ", ".join(x for x in (f"{end.get('logradouro', '')} {end.get('numero', '')}".strip(), end.get("bairro"),
                                                 f"{end.get('cidade', '')}/{end.get('uf', '')}".strip("/")) if x),
         })
@@ -384,26 +389,46 @@ def _pode_escrever(t: dict) -> bool:
     return st in T.ABERTOS if tipo_app(t) == "chat" else (st in T.ABERTOS or st == "resolvido")
 
 
+def atualizacoes(t: dict) -> list[dict]:
+    """O que a central registrou para o cliente nesta solicitação (Registrar contato / respostas),
+    a partir de quando ela virou solicitação — a conversa do chat que a originou NÃO entra."""
+    desde = str(t.get("criado_em") or "")
+    out = []
+    if t.get("origem") == "app" and t.get("descricao") and not t.get("convertido_de_chat"):
+        out.append({"de": "cliente", "texto": t["descricao"], "data": t.get("criado_em")})
+    for c in t.get("comentarios") or []:
+        if c.get("interno") is not False or c.get("tipo") not in ("contato", "resposta", "atualizacao"):
+            continue
+        if str(c.get("data") or "") < desde:
+            continue
+        out.append({"de": "central", "autor": _primeiro_nome(c.get("autor")), "texto": c.get("texto", ""), "data": c.get("data")})
+    return out
+
+
+def definido(t: dict) -> dict:
+    """O que ficou combinado nesta solicitação (sem detalhe interno)."""
+    etapa = str(t.get("etapa_atual") or "").split(" › ")
+    return {"motivo": " › ".join(x for x in (t.get("motivo_pai"), t.get("motivo_filho")) if x),
+            "etapa": etapa[1] if len(etapa) > 1 else "",
+            "prazo": str(t.get("etapa_data_prevista") or "")[:10] if t.get("etapa_vermelha") else "",
+            "resolvido_em": t.get("resolvido_em") if t.get("status") in ("resolvido", "finalizado") else ""}
+
+
 def chamado_unico(cli: dict, ts: list[dict]) -> dict | None:
-    """O chamado do cliente (número = código): solicitações + linha do tempo pública de tudo que não é o chat ativo."""
-    ativo = chat_ativo(ts)
-    sols = [t for t in ts if t is not ativo]
-    if not sols:
+    """O chamado do cliente (número = código): as solicitações, cada uma com o definido e as atualizações.
+    Chats NÃO entram aqui — conversa é a aba Atendimento."""
+    probs = [t for t in ts if not T.eh_chat(t)]
+    if not probs:
         return None
-    probs = [t for t in sols if not T.eh_chat(t)]
-    linha = []
-    for t in sols:
-        cor, rot = T.cor_de(t), ("Chat" if T.eh_chat(t) else (t.get("assunto") or "Solicitação"))
-        for m in mensagens_publicas(t):
-            linha.append({**m, "sol": t["id"].split("#")[-1], "cor": cor, "rotulo": rot})
-    linha.sort(key=lambda m: str(m.get("data") or ""))
-    abertas = [t for t in probs if t.get("status") in T.ABERTOS]
-    return {"numero": cli.get("codigo"), "aberto": bool(abertas),
-            "rotulo": ("Em andamento" if abertas else "Sem pendências"),
-            "solicitacoes": sorted(({**resumo_cliente(t), "cor": T.cor_de(t)} for t in probs),
-                                   key=lambda x: (not x["aberto"], str(x["criado_em"] or ""))),
-            "mensagens": linha, "pode_escrever": any(_pode_escrever(t) for t in probs),
-            "resposta_nova_em": max((m["data"] for m in linha if m["de"] == "central"), default=None)}
+    sols = []
+    for t in probs:
+        at = atualizacoes(t)
+        sols.append({**resumo_cliente(t), "cor": T.cor_de(t), "definido": definido(t), "atualizacoes": at,
+                     "atualizada_em": max((a["data"] or "" for a in at if a["de"] == "central"), default=None)})
+    sols.sort(key=lambda x: (not x["aberto"], str(x["criado_em"] or "")))
+    abertas = [x for x in sols if x["aberto"]]
+    return {"numero": cli.get("codigo"), "aberto": bool(abertas), "rotulo": "Em andamento" if abertas else "Sem pendências",
+            "solicitacoes": sols, "resposta_nova_em": max((x["atualizada_em"] or "" for x in sols), default=None) or None}
 
 
 def destino_da_mensagem(ts: list[dict]) -> dict | None:

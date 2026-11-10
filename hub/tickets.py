@@ -616,7 +616,8 @@ async def comentar(tid: str, request: Request):
     tipo = c.get("tipo") if c.get("tipo") in ("nota", "contato", "resposta") else "nota"
 
     def fn(s):
-        _coment(s, me, texto[:5000], interno=tipo != "resposta", tipo=tipo)
+        # "resposta" (no chat) e "contato" (atualização da solicitação) o cliente VÊ no app; nota interna não
+        _coment(s, me, texto[:5000], interno=tipo not in ("resposta", "contato"), tipo=tipo)
         if tipo == "resposta":   # "Responder no app": o cliente vê no app e sai da fila "cliente aguardando"
             s["app_pendente"] = False
             s.pop("app_pendente_desde", None)
