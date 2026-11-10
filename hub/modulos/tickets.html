@@ -126,14 +126,16 @@ button.kpi:hover{border-color:color-mix(in srgb,var(--c) 50%,transparent)}
 .conversa{display:flex;flex-direction:column;gap:8px;max-height:56vh;overflow:auto;padding-right:4px}
 .msg{padding:9px 12px;border-radius:13px;font-size:.83rem;line-height:1.5;background:rgba(255,255,255,.04);border:1px solid var(--vidro-borda);white-space:pre-wrap;word-break:break-word}
 .msg .q{display:block;font-size:.68rem;color:var(--txt3);margin-bottom:3px;white-space:normal}
-.msg.cliente{border-color:rgba(96,165,250,.35);background:rgba(96,165,250,.07)}
-.msg.nota{border-color:rgba(var(--ouro-rgb),.3);background:rgba(var(--ouro-rgb),.06)}
-.msg.sistema{font-size:.74rem;color:var(--txt3);background:transparent;border-style:dashed;padding:6px 10px}
-.msg.pendencia{border-color:rgba(139,92,246,.35);background:rgba(139,92,246,.07)}
-.msg.contato{border-color:rgba(52,211,153,.3);background:rgba(52,211,153,.06)}
-.msg.app{border-color:rgba(34,211,238,.45);background:rgba(34,211,238,.08);margin-right:18%}
-.msg.resposta{border-color:rgba(232,179,61,.5);background:rgba(232,179,61,.1);margin-left:18%}
-.msg .q b{color:var(--ciano)} .msg.resposta .q b{color:var(--ouro2)}
+/* cor do balão = QUEM falou / que tipo de registro é */
+.msg.cliente{border-color:var(--vidro-borda-forte);background:rgba(255,255,255,.05)}                       /* abertura do chamado */
+.msg.app{border-color:rgba(34,211,238,.5);background:rgba(34,211,238,.09);margin-right:18%}                 /* 📱 cliente pelo app — ciano */
+.msg.resposta{border-color:rgba(96,165,250,.55);background:rgba(96,165,250,.12);margin-left:18%}           /* respondido no app — azul */
+.msg.nota{border-color:rgba(var(--ouro-rgb),.4);background:rgba(var(--ouro-rgb),.07)}                      /* nota interna — dourado */
+.msg.contato{border-color:rgba(52,211,153,.4);background:rgba(52,211,153,.07)}                             /* contato com o cliente — verde */
+.msg.pendencia{border-color:rgba(139,92,246,.4);background:rgba(139,92,246,.08)}                           /* entre setores — violeta */
+.msg.sistema{font-size:.74rem;color:var(--txt3);background:transparent;border-style:dashed;padding:6px 10px}  /* sistema / ERP — cinza */
+.msg .q b{color:var(--ciano)} .msg.resposta .q b{color:var(--azul)} .msg.nota .q b{color:var(--ouro2)} .msg.contato .q b{color:var(--verde)}
+.tipos button[data-tipo].ativo{color:#0b0b0d;background:var(--c);box-shadow:0 0 18px -4px var(--c)}
 .link-app{display:flex;gap:6px;align-items:center}.link-app code{flex:1;padding:8px 10px;border-radius:10px;background:rgba(255,255,255,.05);border:1px solid var(--vidro-borda);font-size:.78rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ura-it{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1.1fr) minmax(0,.9fr) minmax(0,.8fr) auto;gap:5px;align-items:center}.ura-it input,.ura-it select{padding:6px 8px;font-size:.76rem}
 .resp textarea{min-height:90px}
@@ -522,10 +524,10 @@ async function telaAtendimento(m, tid) {
       <h3>${svg("mensagem")} Conversa <small>${coments.length} registro(s)</small></h3>
       <div class="conversa" id="conversa">
         <div class="msg cliente${t.origem === "app" ? " app" : ""}"><span class="q">${t.origem === "app" ? "<b>📱 Cliente pelo app</b> · " : ""}${esc(t.solicitante_nome || t.cliente_nome || "Abertura")} · ${dh(t.criado_em)}</span>${esc(t.descricao || "")}</div>
-        ${coments.map((c) => { const tp = tipoMsg(c); return `<div class="msg ${tp === "cliente" ? "cliente app" : tp}"><span class="q">${tp === "cliente" ? "<b>📱 Cliente pelo app</b> · " : tp === "resposta" ? "<b>Respondido no app</b> · " : ""}${esc(c.autor || "")} · ${dh(c.data)}${tp === "nota" ? " · nota interna" : tp === "contato" ? " · contato com o cliente" : ""}${c.escrito_em ? ` · escrito sem internet às ${dh(c.escrito_em)}` : ""}</span>${esc(c.texto || "")}</div>`; }).join("")}
+        ${coments.map((c) => { const tp = tipoMsg(c); return `<div class="msg ${tp === "cliente" ? "cliente app" : tp}"><span class="q">${tp === "cliente" ? "<b>📱 Cliente pelo app</b> · " : tp === "resposta" ? "<b>Respondido no app</b> · " : tp === "nota" ? "<b>Nota interna</b> · " : tp === "contato" ? "<b>Contato com o cliente</b> · " : ""}${esc(c.autor || "")} · ${dh(c.data)}${c.escrito_em ? ` · escrito sem internet às ${dh(c.escrito_em)}` : ""}</span>${esc(c.texto || "")}</div>`; }).join("")}
       </div>
       ${pode("atender") ? `<div class="resp">
-        <div class="tipos seg" id="tipoResp"><button type="button" data-tipo="resposta" class="${tipoPadrao === "resposta" ? "ativo" : ""}" style="--c:var(--ouro)">📱 Responder no app</button><button type="button" data-tipo="nota" class="${tipoPadrao === "nota" ? "ativo" : ""}">Nota interna</button><button type="button" data-tipo="contato" style="--c:var(--verde)">Registrar contato</button></div>
+        <div class="tipos seg" id="tipoResp"><button type="button" data-tipo="resposta" class="${tipoPadrao === "resposta" ? "ativo" : ""}" style="--c:var(--azul)">📱 Responder no app</button><button type="button" data-tipo="nota" class="${tipoPadrao === "nota" ? "ativo" : ""}" style="--c:var(--ouro)">Nota interna</button><button type="button" data-tipo="contato" style="--c:var(--verde)">Registrar contato</button></div>
         <textarea class="entrada" id="txt" placeholder="Escreva aqui… (Ctrl+Enter envia)" style="margin-top:8px;min-height:90px"></textarea>
         <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;align-items:center"><button type="button" class="btn p" id="enviar">Enviar</button>
           ${aberto ? `<select class="entrada" id="stDepois" style="width:auto;padding:6px 9px"><option value="">e manter situação</option><option value="aguardando">e aguardar o cliente</option>${pode("encerrar") ? `<option value="resolvido">e concluir</option>` : ""}</select>` : ""}
