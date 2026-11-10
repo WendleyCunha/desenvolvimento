@@ -389,7 +389,8 @@ def resumo(t: dict, me: dict, agora_dt: datetime) -> dict:
     pend = pend_abertas(t)
     return {k: t.get(k) for k in ("id", "status", "prioridade", "assunto", "departamento", "motivo_pai", "motivo_filho", "etapa_atual",
                                    "cliente_codigo", "cliente_nome", "cliente_telefone", "atribuido_para", "aberto_por", "solicitante_nome",
-                                   "criado_em", "atualizado_em", "origem", "erp_pedido_id", "erp_pedido_numero", "etapa_travada")} | {
+                                   "criado_em", "atualizado_em", "origem", "erp_pedido_id", "erp_pedido_numero", "etapa_travada",
+                                   "app_opcao", "app_pendente_desde")} | {"app_pendente": bool(t.get("app_pendente")),
         "atendentes": t.get("atendentes") or [], "sla": sla, "pendencias": [s.get("setor_destino") for s in pend],
         "n_comentarios": len(t.get("comentarios") or []), "nao_visto": nao_visto(t, me), "meu": atribuido(t, me),
         "sem_dono": not (t.get("atendentes") or t.get("atribuido_para")),
@@ -417,7 +418,16 @@ def estado(request: Request, dias_concluidos: int = 30):
             "usuarios": [{"usuario": k, "nome": v["nome"], "depto": v["depto"]} for k, v in sorted(usu.items(), key=lambda kv: norm(kv[1]["nome"]))],
             "config": {k: v for k, v in hub_cfg().items() if k != "mapa_usuarios"} | ({"mapa_usuarios": hub_cfg().get("mapa_usuarios")} if p["acoes"].get("configurar") else {}),
             "sync": {"leituras": BASE.leituras, "completa": BASE.t_completa}, "erp": _erp_ligado(),
-            "banco": "bancowendley" if banco_proprio() else "hub"}
+            "banco": "bancowendley" if banco_proprio() else "hub", "app_cliente": _app_cliente()}
+
+
+def _app_cliente() -> dict:
+    """Ajustes do app do cliente (/cliente/) com os padrões preenchidos — import tardio (cliente_app importa este módulo)."""
+    try:
+        import cliente_app
+        return cliente_app.cfg_app()
+    except Exception:  # noqa: BLE001
+        return {}
 
 
 def _ticket(tid: str, p: dict, me: dict) -> dict:
@@ -546,6 +556,10 @@ async def comentar(tid: str, request: Request):
 
     def fn(s):
         _coment(s, me, texto[:5000], interno=tipo != "resposta", tipo=tipo)
+        if tipo == "resposta":   # "Responder no app": o cliente vê no app e sai da fila "cliente aguardando"
+            s["app_pendente"] = False
+            s.pop("app_pendente_desde", None)
+            s["app_respondido_em"] = agora()
         if c.get("status") in STATUS:
             s["status"] = c["status"]
         elif s.get("status") == "aberto" and atribuido(s, me):
@@ -731,6 +745,24 @@ async def salvar_config(request: Request):
             raise HTTPException(400, "SLA inválido.") from None
     if "setor_usuarios" in c:
         novo["setor_usuarios"] = {str(k): str(v) for k, v in (c["setor_usuarios"] or {}).items() if k}
+    if "app_cliente" in c:   # app do cliente (/cliente/) — liga/desliga, nome, saudação e menu da URA
+        a = c["app_cliente"] or {}
+        atual = dict(novo.get("app_cliente") or {})
+        if "ativo" in a:
+            atual["ativo"] = bool(a["ativo"])
+        for k, lim in (("empresa", 60), ("saudacao", 300)):
+            if k in a:
+                atual[k] = str(a[k] or "").strip()[:lim]
+        if "ura" in a:
+            ura = []
+            for i, op in enumerate((a["ura"] or [])[:12]):
+                rot = str((op or {}).get("rotulo") or "").strip()[:60]
+                if rot:
+                    ura.append({"id": re.sub(r"[^a-z0-9_-]", "", str(op.get("id") or "").lower())[:30] or f"op{i + 1}", "rotulo": rot,
+                                "descricao": str(op.get("descricao") or "").strip()[:80],
+                                "motivo_pai": str(op.get("motivo_pai") or "").strip()[:80], "departamento": str(op.get("departamento") or "").strip()[:60]})
+            atual["ura"] = ura
+        novo["app_cliente"] = atual
     doc_cfg("tickets_hub").set(novo, timeout=banco.TIMEOUT)
     BASE.cfg_cache["tickets_hub"] = novo
     BASE.t_cfg = 0

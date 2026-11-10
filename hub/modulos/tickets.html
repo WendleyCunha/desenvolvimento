@@ -130,6 +130,11 @@ button.kpi:hover{border-color:color-mix(in srgb,var(--c) 50%,transparent)}
 .msg.sistema{font-size:.74rem;color:var(--txt3);background:transparent;border-style:dashed;padding:6px 10px}
 .msg.pendencia{border-color:rgba(139,92,246,.35);background:rgba(139,92,246,.07)}
 .msg.contato{border-color:rgba(52,211,153,.3);background:rgba(52,211,153,.06)}
+.msg.app{border-color:rgba(34,211,238,.45);background:rgba(34,211,238,.08);margin-right:18%}
+.msg.resposta{border-color:rgba(232,179,61,.5);background:rgba(232,179,61,.1);margin-left:18%}
+.msg .q b{color:var(--ciano)} .msg.resposta .q b{color:var(--ouro2)}
+.link-app{display:flex;gap:6px;align-items:center}.link-app code{flex:1;padding:8px 10px;border-radius:10px;background:rgba(255,255,255,.05);border:1px solid var(--vidro-borda);font-size:.78rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ura-it{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1.1fr) minmax(0,.9fr) minmax(0,.8fr) auto;gap:5px;align-items:center}.ura-it input,.ura-it select{padding:6px 8px;font-size:.76rem}
 .resp textarea{min-height:90px}
 .resp .tipos{display:flex;gap:4px;flex-wrap:wrap}
 .campo{margin:0}
@@ -225,6 +230,7 @@ async function chamar(url, op = {}, msg = "salvando…") {
 const falha = (e) => A.toast("⚠ " + esc(e.message), [], { cor: "var(--rosa)", duracao: 9000 });
 const ok = (t) => A.toast(t, [], { cor: "var(--verde)", duracao: 3500 });
 const tidUrl = (id) => "/ticket/" + encodeURIComponent(id);
+const DICA_TIPO = { resposta: "O cliente recebe esta mensagem no app (aba Chamados).", nota: "Nota interna: o cliente não vê.", contato: "“Registrar contato” = você falou com o cliente por telefone/WhatsApp (o cliente não vê)." };
 
 /* ══════ CARREGAR ══════ */
 async function carregar() {
@@ -254,11 +260,12 @@ function contagens() {
     espera: ab.filter((t) => t.status === "aguardando").length, concl: ts.filter((t) => !ABERTOS.includes(t.status)).length, todos: ts.length,
     alerta: ab.filter((t) => t.nao_visto).length,
     internos: ab.filter((t) => (t.pendencias || []).length).length,
+    app: ab.filter((t) => t.app_pendente).length,
   };
 }
 function nav() {
   const c = contagens();
-  const itens = [["meudia", "Meu dia"], ["caixa", "Caixa", c.alerta], ["abrir", "Abrir chamado", 0, "abrir"], ["internos", "Tickets internos", c.internos],
+  const itens = [["meudia", "Meu dia"], ["caixa", "Caixa", c.alerta + c.app], ["abrir", "Abrir chamado", 0, "abrir"], ["internos", "Tickets internos", c.internos],
     ["gestao", "Gestão", 0, "gestao"], ["ajustes", "Ajustes", 0, "configurar"]];
   $("#nav").innerHTML = itens.filter((i) => !i[3] || pode(i[3])).map((i) => `<button type="button" data-sec="${i[0]}" class="${S.sec === i[0] ? "ativo" : ""}">${i[1]}${i[2] ? `<em>${i[2]}</em>` : ""}</button>`).join("");
   $("#nav").querySelectorAll("[data-sec]").forEach((b) => (b.onclick = () => ir(b.dataset.sec)));
@@ -292,7 +299,7 @@ function telaMeuDia(m) {
     <div class="sec">Seu mês</div>
     <div class="kpis">${k("Resolvidos (30 dias)", concl30.length, "comparado com você mesmo", "var(--verde)")}${k("Abertos por mim", ts.filter((t) => t.aberto_por === me.usuario).length, "chamados que eu abri", "var(--violeta)")}</div>
     <div class="sec">A área</div>
-    <div class="kpis">${k("Sem dono", c.novos, "chegaram e ninguém pegou", "var(--ouro)", "novos")}${k("Vencidos", c.venc, "na caixa toda", "var(--rosa)", "venc")}${k("Aguardando o cliente", c.espera, "", "var(--laranja)", "espera")}${k("Pendências entre setores", c.internos, "", "var(--violeta)")}</div>
+    <div class="kpis">${k("Sem dono", c.novos, "chegaram e ninguém pegou", "var(--ouro)", "novos")}${k("Vencidos", c.venc, "na caixa toda", "var(--rosa)", "venc")}${k("Aguardando o cliente", c.espera, "", "var(--laranja)", "espera")}${k("Pendências entre setores", c.internos, "", "var(--violeta)")}${k("Cliente aguardando no app", c.app, "mandou mensagem e espera resposta", "var(--ciano)", "app")}</div>
     ${e.banco === "hub" ? `<p class="dica" style="margin-top:14px">Rodando no banco do hub. Para usar os mesmos tickets do Streamlit (bancowendley), crie FIRESTORE_CREDS_TICKETS no Render.</p>` : ""}
   </section>`;
   m.querySelectorAll("[data-ir]").forEach((b) => (b.onclick = () => { S.aba = b.dataset.ir; S.fila = ""; S.q = ""; S.pag = 0; ls.set("wd.tk.aba", S.aba); ir("caixa"); }));
@@ -305,12 +312,12 @@ function filtrar() {
   const ts = S.e.tickets, me = S.e.eu;
   const porAba = { meus: (t) => t.meu && ABERTOS.includes(t.status), equipe: (t) => ABERTOS.includes(t.status), novos: (t) => ABERTOS.includes(t.status) && t.sem_dono,
     hoje: (t) => ABERTOS.includes(t.status) && t.sla.estado === "hoje", venc: (t) => ABERTOS.includes(t.status) && t.sla.estado === "venc",
-    espera: (t) => t.status === "aguardando", concl: (t) => !ABERTOS.includes(t.status), todos: () => true, abertos_por_mim: (t) => t.aberto_por === me.usuario };
+    espera: (t) => t.status === "aguardando", app: (t) => ABERTOS.includes(t.status) && t.app_pendente, concl: (t) => !ABERTOS.includes(t.status), todos: () => true, abertos_por_mim: (t) => t.aberto_por === me.usuario };
   let l = ts.filter(porAba[S.aba] || porAba.equipe);
   if (S.fila) {
     const [tipo, val] = S.fila.split(":");
     l = l.filter((t) => tipo === "dep" ? (t.departamento || "—") === val : tipo === "mot" ? (t.motivo_pai || "— sem motivo —") === val : tipo === "pend" ? (t.pendencias || []).includes(val)
-      : tipo === "erp" ? (t.origem || "").startsWith("erp") : tipo === "com" ? (val === "_ninguem" ? t.sem_dono : (t.atendentes || []).includes(val) || t.atribuido_para === val) : true);
+      : tipo === "erp" ? (t.origem || "").startsWith("erp") : tipo === "app" ? (val === "pend" ? t.app_pendente : t.origem === "app") : tipo === "com" ? (val === "_ninguem" ? t.sem_dono : (t.atendentes || []).includes(val) || t.atribuido_para === val) : true);
   }
   if (S.q) { const q = norm(S.q); l = l.filter((t) => norm(`${t.id} ${curto(t.id)} ${t.assunto} ${t.cliente_nome} ${t.cliente_codigo} ${t.cliente_telefone} ${t.erp_pedido_numero || ""} ${t.motivo_pai} ${t.motivo_filho}`).includes(q)); }
   const ordem = { urgencia: (a, b) => (a.sla.min ?? 1e12) - (b.sla.min ?? 1e12), prioridade: (a, b) => Object.keys(PRIO).indexOf(a.prioridade || "normal") - Object.keys(PRIO).indexOf(b.prioridade || "normal") || (a.sla.min ?? 1e12) - (b.sla.min ?? 1e12),
@@ -320,13 +327,13 @@ function filtrar() {
 }
 function telaCaixa(m) {
   const c = contagens(), ab = S.e.tickets.filter((t) => ABERTOS.includes(t.status));
-  const grupo = (titulo, chave, valores) => valores.length ? `<h4>${titulo}</h4>` + valores.map(([v, n, cor]) => `<button type="button" data-fila="${chave}:${esc(v)}" class="${S.fila === chave + ":" + v ? "ativo" : ""}" style="--c:${cor || "var(--txt3)"}"><i></i>${esc(v === "_ninguem" ? "— sem dono —" : chave === "com" ? nomeU(v) : v)}<em>${n}</em></button>`).join("") : "";
+  const grupo = (titulo, chave, valores) => valores.length ? `<h4>${titulo}</h4>` + valores.map(([v, n, cor]) => `<button type="button" data-fila="${chave}:${esc(v)}" class="${S.fila === chave + ":" + v ? "ativo" : ""}" style="--c:${cor || "var(--txt3)"}"><i></i>${esc(v === "_ninguem" ? "— sem dono —" : chave === "com" ? nomeU(v) : chave === "app" ? (v === "pend" ? "Aguardando resposta" : "Abertos pelo app") : v)}<em>${n}</em></button>`).join("") : "";
   const conta = (f) => { const o = {}; ab.forEach((t) => f(t).forEach((k) => (o[k] = (o[k] || 0) + 1))); return Object.entries(o).sort((a, b) => b[1] - a[1]); };
   const cor = (s) => { let h = 0; for (const ch of String(s)) h = (h * 31 + ch.charCodeAt(0)) % 360; return `hsl(${h} 70% 62%)`; };
   const lista = filtrar(), porPag = 25, pags = Math.max(1, Math.ceil(lista.length / porPag));
   S.pag = Math.min(S.pag, pags - 1);
   const pag = lista.slice(S.pag * porPag, S.pag * porPag + porPag);
-  const abas = [["meus", "Meus", c.meus], ["equipe", "Equipe", c.equipe], ["novos", "Novos", c.novos], ["hoje", "⏰ Vence hoje", c.hoje], ["venc", "🚨 Vencidos", c.venc], ["espera", "Em espera", c.espera], ["concl", "Concluídos", c.concl], ["todos", "Todos", c.todos]];
+  const abas = [["meus", "Meus", c.meus], ["equipe", "Equipe", c.equipe], ["novos", "Novos", c.novos], ["hoje", "⏰ Vence hoje", c.hoje], ["venc", "🚨 Vencidos", c.venc], ["espera", "Em espera", c.espera], ["app", "📱 Cliente aguardando", c.app], ["concl", "Concluídos", c.concl], ["todos", "Todos", c.todos]];
   m.innerHTML = `<div class="caixa">
     <aside class="filas vidro">
       <button type="button" data-fila="" class="${!S.fila ? "ativo" : ""}"><i></i>Todas as filas<em>${ab.length}</em></button>
@@ -334,6 +341,7 @@ function telaCaixa(m) {
       ${grupo("Caixas por motivo", "mot", conta((t) => [t.motivo_pai || "— sem motivo —"]).map(([k, n]) => [k, n, cor(k)]))}
       ${grupo("Pendências com setores", "pend", conta((t) => t.pendencias || []).map(([k, n]) => [k, n, "var(--violeta)"]))}
       ${S.e.erp ? grupo("Vindos do ERP", "erp", ab.some((t) => (t.origem || "").startsWith("erp")) ? [["ERP", ab.filter((t) => (t.origem || "").startsWith("erp")).length, "var(--ciano)"]] : []) : ""}
+      ${grupo("App do cliente", "app", [ab.some((t) => t.app_pendente) ? ["pend", ab.filter((t) => t.app_pendente).length, "var(--ciano)"] : null, ab.some((t) => t.origem === "app") ? ["todos", ab.filter((t) => t.origem === "app").length, "var(--ciano)"] : null].filter(Boolean))}
       ${pode("equipe") || pode("setor") ? grupo("Por atendente", "com", [["_ninguem", ab.filter((t) => t.sem_dono).length, "var(--ouro)"], ...conta((t) => t.atribuido_para ? [t.atribuido_para] : []).map(([k, n]) => [k, n, cor(k)])]) : ""}
     </aside>
     <section class="painel vidro">
@@ -353,7 +361,7 @@ function telaCaixa(m) {
           ${pode("transferir") ? `<td><input type="checkbox" data-sel="${esc(t.id)}"${S.sel.has(t.id) ? " checked" : ""}></td>` : ""}
           <td>${t.nao_visto ? `<span class="pisca" title="Interação nova"></span>` : ""}<b>${curto(t.id)}</b></td>
           <td class="ass"><b>${esc(t.assunto || "(sem assunto)")}</b><small>${t.motivo_pai ? `${esc(t.motivo_pai)}${t.motivo_filho ? " / " + esc(t.motivo_filho) : ""}${t.etapa_atual ? " · etapa " + esc(String(t.etapa_atual).split(" › ").pop()) : ""}` : "não classificado"}${t.departamento ? " · " + esc(t.departamento) : ""}</small>
-            <span style="display:flex;gap:4px;flex-wrap:wrap;margin-top:3px">${t.prioridade && t.prioridade !== "normal" ? etq(PRIO[t.prioridade]?.[0] || t.prioridade, PRIO[t.prioridade]?.[1] || "#888") : ""}${(t.pendencias || []).map((p) => etq("aguarda " + p, "#8b5cf6")).join("")}${t.erp_pedido_numero ? etq("pedido #" + t.erp_pedido_numero, "#22d3ee") : ""}${t.origem === "erp_auto" ? etq("automático do ERP", "#22d3ee") : ""}</span></td>
+            <span style="display:flex;gap:4px;flex-wrap:wrap;margin-top:3px">${t.prioridade && t.prioridade !== "normal" ? etq(PRIO[t.prioridade]?.[0] || t.prioridade, PRIO[t.prioridade]?.[1] || "#888") : ""}${(t.pendencias || []).map((p) => etq("aguarda " + p, "#8b5cf6")).join("")}${t.erp_pedido_numero ? etq("pedido #" + t.erp_pedido_numero, "#22d3ee") : ""}${t.origem === "erp_auto" ? etq("automático do ERP", "#22d3ee") : ""}${t.app_pendente ? etq("📱 cliente aguardando", "#22d3ee") : t.origem === "app" ? etq("app", "#22d3ee") : ""}</span></td>
           <td class="so-largo">${esc(t.cliente_nome || "")}<br><small class="dica">cód. ${esc(t.cliente_codigo || "")}</small></td>
           <td class="so-largo">${dh(t.criado_em)}</td>
           <td>${t.sem_dono ? `<span class="dica">— sem dono —</span>` : esc(nomeU(t.atribuido_para).split(" ")[0])}</td>
@@ -395,9 +403,10 @@ async function telaAtendimento(m, tid) {
   const pedidosAb = pend.filter((s) => s.tipo === "pedido"), resp = Object.fromEntries(pend.filter((s) => s.tipo === "resposta").map((s) => [s.pedido_id, s]));
   const filhos = Object.entries(arv[t.motivo_pai] || {}).filter(([, i]) => i.ativo !== false);
   const caminho = String(t.etapa_atual || "").split(" › ");
+  const tipoPadrao = t.app_pendente || t.origem === "app" ? "resposta" : "nota";
   m.innerHTML = `
   <section class="at-cab vidro">
-    <div style="display:flex;gap:10px;align-items:center;margin-bottom:6px"><button type="button" class="btn v p" id="volta">${svg("voltar")} Caixa</button><span class="dica">#${curto(t.id)} · aberto ${dh(t.criado_em)} por ${esc(t.solicitante_nome || nomeU(t.aberto_por) || "—")}${t.origem ? " · origem " + esc(t.origem) : ""}</span></div>
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:6px"><button type="button" class="btn v p" id="volta">${svg("voltar")} Caixa</button><span class="dica">#${curto(t.id)} · aberto ${dh(t.criado_em)} por ${esc(t.solicitante_nome || nomeU(t.aberto_por) || "—")}${t.origem ? " · origem " + esc(t.origem) : ""}</span>${t.app_pendente ? `<span class="mini c" style="--c:var(--ciano)">📱 cliente aguardando resposta desde ${dh(t.app_pendente_desde)}</span>` : ""}</div>
     <h1>${esc(t.assunto || "(sem assunto)")}</h1>
     <div class="linha1">${etqSt(t.status)} ${slaTxt(t.sla)} ${t.prioridade ? etq(PRIO[t.prioridade]?.[0] || t.prioridade, PRIO[t.prioridade]?.[1] || "#888") : ""}
       <span>· ${esc(t.cliente_nome || "")} · cód. ${esc(t.cliente_codigo || "")}${t.erp_pedido_numero ? ` · pedido #${esc(t.erp_pedido_numero)}` : ""}</span>
@@ -416,15 +425,15 @@ async function telaAtendimento(m, tid) {
     <section class="col vidro">
       <h3>${svg("mensagem")} Conversa <small>${coments.length} registro(s)</small></h3>
       <div class="conversa" id="conversa">
-        <div class="msg cliente"><span class="q">${esc(t.solicitante_nome || t.cliente_nome || "Abertura")} · ${dh(t.criado_em)}</span>${esc(t.descricao || "")}</div>
-        ${coments.map((c) => `<div class="msg ${tipoMsg(c)}"><span class="q">${esc(c.autor || "")} · ${dh(c.data)}${tipoMsg(c) === "nota" ? " · nota interna" : tipoMsg(c) === "contato" ? " · contato com o cliente" : ""}</span>${esc(c.texto || "")}</div>`).join("")}
+        <div class="msg cliente${t.origem === "app" ? " app" : ""}"><span class="q">${t.origem === "app" ? "<b>📱 Cliente pelo app</b> · " : ""}${esc(t.solicitante_nome || t.cliente_nome || "Abertura")} · ${dh(t.criado_em)}</span>${esc(t.descricao || "")}</div>
+        ${coments.map((c) => { const tp = tipoMsg(c); return `<div class="msg ${tp === "cliente" ? "cliente app" : tp}"><span class="q">${tp === "cliente" ? "<b>📱 Cliente pelo app</b> · " : tp === "resposta" ? "<b>Respondido no app</b> · " : ""}${esc(c.autor || "")} · ${dh(c.data)}${tp === "nota" ? " · nota interna" : tp === "contato" ? " · contato com o cliente" : ""}</span>${esc(c.texto || "")}</div>`; }).join("")}
       </div>
       ${pode("atender") ? `<div class="resp">
-        <div class="tipos seg" id="tipoResp"><button type="button" data-tipo="nota" class="ativo">Nota interna</button><button type="button" data-tipo="contato" style="--c:var(--verde)">Registrar contato</button></div>
+        <div class="tipos seg" id="tipoResp"><button type="button" data-tipo="resposta" class="${tipoPadrao === "resposta" ? "ativo" : ""}" style="--c:var(--ouro)">📱 Responder no app</button><button type="button" data-tipo="nota" class="${tipoPadrao === "nota" ? "ativo" : ""}">Nota interna</button><button type="button" data-tipo="contato" style="--c:var(--verde)">Registrar contato</button></div>
         <textarea class="entrada" id="txt" placeholder="Escreva aqui… (Ctrl+Enter envia)" style="margin-top:8px;min-height:90px"></textarea>
         <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;align-items:center"><button type="button" class="btn p" id="enviar">Enviar</button>
           ${aberto ? `<select class="entrada" id="stDepois" style="width:auto;padding:6px 9px"><option value="">e manter situação</option><option value="aguardando">e aguardar o cliente</option>${pode("encerrar") ? `<option value="resolvido">e concluir</option>` : ""}</select>` : ""}
-          <span class="dica">Nota interna o cliente não vê. “Registrar contato” = você falou com o cliente por telefone/WhatsApp.</span></div>
+          <span class="dica" id="dicaTipo">${DICA_TIPO[tipoPadrao]}</span></div>
       </div>` : ""}
     </section>
 
@@ -490,8 +499,8 @@ function ligarAtendimento(m, t, erp) {
     if (st === "cancelado" && !(await A.confirmar("Cancelar este atendimento?", { perigo: true, rotulo: "Cancelar atendimento" }))) return;
     try { await chamar(tidUrl(tid) + "/alterar", { method: "POST", body: { status: st } }); ok("Situação: " + (ST_INFO[st] || [st])[0]); await recarregarDet(); } catch (e) { falha(e); }
   }));
-  let tipo = "nota";
-  m.querySelectorAll("[data-tipo]").forEach((b) => (b.onclick = () => { tipo = b.dataset.tipo; m.querySelectorAll("[data-tipo]").forEach((x) => x.classList.toggle("ativo", x === b)); }));
+  let tipo = m.querySelector("[data-tipo].ativo")?.dataset.tipo || "nota";
+  m.querySelectorAll("[data-tipo]").forEach((b) => (b.onclick = () => { tipo = b.dataset.tipo; m.querySelectorAll("[data-tipo]").forEach((x) => x.classList.toggle("ativo", x === b)); const d = $("#dicaTipo"); if (d) d.textContent = DICA_TIPO[tipo]; }));
   const env = $("#enviar");
   if (env) {
     const enviar = async () => { const txt = $("#txt").value.trim(); if (!txt) return; const body = { texto: txt, tipo }; const sd = $("#stDepois")?.value; if (sd) body.status = sd;
@@ -650,6 +659,7 @@ function telaGestao(m) {
 /* ══════ AJUSTES ══════ */
 function telaAjustes(m) {
   const e = S.e, cfg = e.config, arv = JSON.parse(JSON.stringify(e.motivos)), deps = e.departamentos.slice();
+  const ap = e.app_cliente || {}, ura = JSON.parse(JSON.stringify(ap.ura || []));
   const pais = () => Object.entries(arv).map(([p, fs]) => `<div class="pai"><b>${esc(p)}</b> <button type="button" class="btn-ic p" data-delpai="${esc(p)}" title="Tirar motivo">${svg("lixo")}</button>
     ${Object.entries(fs).map(([f, i]) => `<div class="filho"><input class="entrada" value="${esc(f)}" disabled><input class="entrada" type="number" min="0" step="0.5" data-sla="${esc(p)}|${esc(f)}" value="${i.sla ?? ""}" title="SLA em dias"><input class="entrada" data-et="${esc(p)}|${esc(f)}" value="${esc((i.etapas || []).join(", "))}" title="Etapas separadas por vírgula"><label class="chk" title="Ativo"><input type="checkbox" data-at="${esc(p)}|${esc(f)}"${i.ativo === false ? "" : " checked"}></label></div>`).join("")}
     <div class="filho"><input class="entrada" data-novofilho="${esc(p)}" placeholder="+ submotivo"><span></span><span></span><span></span></div></div>`).join("");
@@ -669,6 +679,14 @@ function telaAjustes(m) {
         <label class="campo">SLA (dias)<input type="number" min="0" step="0.5" id="sErp" value="${cfg.sla_erp_dias ?? 2}"></label>
         <p class="dica">No cadastro de cliente do ERP há o campo <b>Código do cliente</b> — é ele que liga o atendimento aos pedidos (também casa por telefone ou nome).</p>
         <button type="button" class="btn p" id="salvarErp">Salvar</button></div>
+      <div class="cartao" style="grid-column:1/-1"><h3>${svg("mensagem")} App do cliente</h3>
+        <p class="dica">Link geral para enviar aos clientes. Eles entram com <b>CPF + e-mail do cadastro do ERP</b>, veem os pedidos e prazos, abrem chamados pela URA e conversam com a central — tudo cai aqui na Caixa (fila “App do cliente”).</p>
+        <div class="link-app"><code id="linkApp">${esc(location.origin + "/cliente/")}</code><button type="button" class="btn v p" id="copiarLink">Copiar</button><a class="btn v p" href="/cliente/" target="_blank" rel="noopener">Abrir ↗</a></div>
+        <label class="chk"><input type="checkbox" id="appAtivo"${ap.ativo === false ? "" : " checked"}> Atendimento pelo app ligado</label>
+        <div class="g2"><label class="campo">Nome no topo do app<input id="appEmp" value="${esc(ap.empresa || "")}"></label><label class="campo">Saudação da URA<input id="appSaud" value="${esc(ap.saudacao || "")}"></label></div>
+        <p class="dica">Menu “Falar com a central” — cada opção abre o chamado já com motivo e setor:</p>
+        <div id="uraLista" style="display:flex;flex-direction:column;gap:5px"></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="btn v p" id="uraAdd">+ opção</button><button type="button" class="btn p" id="salvarApp">Salvar app do cliente</button></div></div>
       <div class="cartao"><h3>${svg("usuarios")} Setor de cada pessoa</h3>
         <p class="dica">Define o que cada um vê em “Tickets internos” e quem tem permissão de “ver o próprio setor”.${e.banco === "hub" ? "" : " (No bancowendley o setor vem do cadastro de usuários do Streamlit.)"}</p>
         <div style="max-height:320px;overflow:auto;display:flex;flex-direction:column;gap:5px">${e.usuarios.map((u) => `<div class="g2" style="align-items:center"><span style="font-size:.82rem">${esc(u.nome)} <small class="dica">@${esc(u.usuario)}</small></span>
@@ -692,11 +710,27 @@ function telaAjustes(m) {
     try { await chamar("/config", { method: "PUT", body: { auto_erp: auto, depto_erp: $("#dErp").value, motivo_pai_erp: $("#mErp").value, sla_erp_dias: +$("#sErp").value || 0 } }); ok("Salvo."); await carregar(); } catch (er) { falha(er); } };
   const ss = $("#salvarSetores"); if (ss) ss.onclick = async () => { const mapa = {}; m.querySelectorAll("[data-setoru]").forEach((s2) => { if (s2.value) mapa[s2.dataset.setoru] = s2.value; });
     try { await chamar("/config", { method: "PUT", body: { setor_usuarios: mapa } }); ok("Setores salvos."); await carregar(); } catch (er) { falha(er); } };
+  const desenhaUra = () => { $("#uraLista").innerHTML = ura.map((o, i) => `<div class="ura-it"><input class="entrada" data-ura="${i}|rotulo" value="${esc(o.rotulo || "")}" placeholder="Opção (ex.: Troca)"><input class="entrada" data-ura="${i}|descricao" value="${esc(o.descricao || "")}" placeholder="Descrição curta">
+      <select class="entrada" data-ura="${i}|motivo_pai"><option value="">motivo —</option>${Object.keys(arv).map((p2) => `<option${p2 === o.motivo_pai ? " selected" : ""}>${esc(p2)}</option>`).join("")}</select>
+      <select class="entrada" data-ura="${i}|departamento"><option value="">setor —</option>${deps.map((d) => `<option${d === o.departamento ? " selected" : ""}>${esc(d)}</option>`).join("")}</select>
+      <button type="button" class="btn-ic p" data-uradel="${i}" title="Tirar opção">${svg("lixo")}</button></div>`).join("");
+    m.querySelectorAll("[data-ura]").forEach((x) => (x.oninput = x.onchange = () => { const [i, k2] = x.dataset.ura.split("|"); ura[+i][k2] = x.value; }));
+    m.querySelectorAll("[data-uradel]").forEach((b) => (b.onclick = () => { ura.splice(+b.dataset.uradel, 1); desenhaUra(); })); };
+  desenhaUra();
+  $("#uraAdd").onclick = () => { ura.push({ id: "", rotulo: "", descricao: "", motivo_pai: "", departamento: "" }); desenhaUra(); };
+  $("#copiarLink").onclick = async () => { try { await navigator.clipboard.writeText($("#linkApp").textContent); ok("Link copiado."); } catch (_) { A.toast("Selecione e copie o link."); } };
+  $("#salvarApp").onclick = async () => {
+    const lista = ura.filter((o) => String(o.rotulo || "").trim()).map((o) => ({ ...o, id: o.id || norm(o.rotulo).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30) }));
+    if (!lista.length) { A.toast("Deixe ao menos uma opção no menu."); return; }
+    try { await chamar("/config", { method: "PUT", body: { app_cliente: { ativo: $("#appAtivo").checked, empresa: $("#appEmp").value, saudacao: $("#appSaud").value, ura: lista } } }); ok("App do cliente salvo."); await carregar(); } catch (er) { falha(er); } };
   $("#recarregar").onclick = async () => { try { await chamar("/recarregar", { method: "POST" }, "relendo…"); await carregar(); ok("Relido."); } catch (er) { falha(er); } };
 }
 
 /* ══════ INÍCIO ══════ */
 carregar();
+/* com um atendimento aberto: se o cliente escreveu pelo app, a conversa atualiza sozinha (sem perder o que você está digitando) */
+setInterval(() => { if (document.visibilityState !== "visible" || !S.aberto || document.querySelector(".aur-modal-fundo") || $("#txt")?.value) return;
+  A.api(API + "/estado").then((e) => { if (e.versao !== S.e?.versao) { S.e = e; S.det = null; if (!document.activeElement || !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) render(); } }).catch(() => {}); }, 20000);
 setInterval(() => { if (document.visibilityState === "visible" && !S.aberto && !document.querySelector(".aur-modal-fundo")) A.api(API + "/estado").then((e) => { if (e.versao !== S.e?.versao) { S.e = e; if (!document.activeElement || !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) render(); } }).catch(() => {}); }, 30000);
 })();
 </script>

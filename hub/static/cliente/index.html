@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Central do Cliente</title>
+<meta name="description" content="Acompanhe seus pedidos, prazos de entrega e fale com a nossa central.">
+<meta name="theme-color" content="#05060a">
+<link rel="manifest" href="/cliente/manifest.webmanifest">
+<link rel="icon" href="data:,">
+<link rel="apple-touch-icon" href="/static/app/icone-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Atendimento">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/aurora.css?v=3">
+<!--
+═══════════════════════════════════════════════════════════════════════════════
+ static/cliente/index.html — APP DO CLIENTE (servido em /cliente/)
+ Entrar (CPF + e-mail) · Atendimento (URA em conversa) · Pedidos · Chamados (chat)
+ Visual: kit Aurora Glass do hub (/static/aurora.css + aurora.js), igual ao
+ app público de Relatórios. API: /api/cliente/* (hub/cliente_app.py).
+═══════════════════════════════════════════════════════════════════════════════
+-->
+<style>
+html,body{min-height:100%}
+body{margin:0;background:var(--noite);color:var(--txt);font-size:15px;-webkit-tap-highlight-color:transparent}
+.app{position:relative;z-index:1;max-width:560px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column}
+.oculto{display:none!important}
+svg.i{width:20px;height:20px}
+
+/* topo de vidro */
+.topo{position:sticky;top:0;z-index:20;margin:max(10px,env(safe-area-inset-top)) 12px 0;padding:10px 12px;border-radius:20px;display:flex;align-items:center;gap:12px}
+.topo.vidro{background:linear-gradient(135deg,rgba(14,17,26,.88),rgba(8,10,16,.82))}
+html[data-claro] .topo.vidro{background:rgba(255,255,255,.82)}
+.topo .tx{min-width:0;flex:1}
+.topo b{display:block;font:700 1rem/1.25 var(--titulo);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.topo small{display:block;font-size:.58rem;letter-spacing:2px;text-transform:uppercase;font-weight:700;background:var(--grad-ouro);-webkit-background-clip:text;background-clip:text;color:transparent;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+main{flex:1;padding:16px 14px calc(92px + env(safe-area-inset-bottom))}
+main.chat-modo{padding-bottom:calc(160px + env(safe-area-inset-bottom))}
+
+/* abas de baixo (vidro) */
+.abas{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(10px + env(safe-area-inset-bottom));z-index:20;width:calc(100% - 24px);max-width:536px;padding:5px;border-radius:20px;display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
+.abas.vidro{background:linear-gradient(135deg,rgba(14,17,26,.92),rgba(8,10,16,.88))}
+html[data-claro] .abas.vidro{background:rgba(255,255,255,.88)}
+.abas button{position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 4px 7px;border-radius:15px;color:var(--txt3);font:600 .7rem var(--sans);transition:.2s}
+.abas button.ativo{color:var(--txt);background:linear-gradient(135deg,rgba(var(--ouro-rgb),.24),rgba(var(--ouro-rgb),.08));box-shadow:inset 0 0 0 1px rgba(var(--ouro-rgb),.45)}
+.abas button.ativo svg.i{color:var(--ouro2);filter:drop-shadow(0 0 6px rgba(var(--ouro-rgb),.7))}
+.abas em{position:absolute;top:4px;left:calc(50% + 6px);min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--rosa);color:#fff;font:700 .66rem/18px var(--sans);font-style:normal;box-shadow:0 0 12px var(--rosa)}
+
+/* entrar */
+.entrar{min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding:max(24px,env(safe-area-inset-top)) 18px calc(24px + env(safe-area-inset-bottom));max-width:440px;margin:0 auto;width:100%}
+.entrar .marca{text-align:center;margin-bottom:14px}
+.entrar .marca .atomo{margin:0 auto 6px}
+.entrar h1{font:700 1.6rem/1.15 var(--titulo);margin:6px 0 4px;letter-spacing:-.01em;text-align:center}
+.entrar .sub{color:var(--txt2);margin:0 0 18px;text-align:center;font-size:.9rem}
+.entrar .cartao{padding:20px 18px;border-radius:24px;display:flex;flex-direction:column;gap:14px}
+.entrar .campo input{padding:13px 14px;font-size:1rem}
+.btn.grande{width:100%;padding:14px 18px;font-size:1rem;border-radius:14px}
+.erro{color:#fecdd3;background:rgba(251,113,133,.1);border:1px solid rgba(251,113,133,.35);border-radius:14px;padding:11px 13px;font-size:.86rem;line-height:1.45}
+html[data-claro] .erro{color:var(--rosa)}
+.nota{font-size:.76rem;color:var(--txt3);text-align:center;margin:14px 0 0;display:flex;gap:6px;justify-content:center;align-items:center}
+.nota svg.i{width:14px;height:14px;color:var(--ouro2)}
+
+/* conversa (URA e chamado) */
+.fio{display:flex;flex-direction:column;gap:10px}
+.bolha{max-width:86%;padding:10px 14px;border-radius:18px;white-space:pre-wrap;word-break:break-word;font-size:.92rem;line-height:1.5;animation:entra .2s var(--suave)}
+.bolha.bot,.bolha.central{align-self:flex-start;border-bottom-left-radius:6px;background:linear-gradient(160deg,rgba(255,255,255,.08),rgba(255,255,255,.025));border:1px solid var(--vidro-borda);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur)}
+html[data-claro] .bolha.bot,html[data-claro] .bolha.central{background:rgba(255,255,255,.85)}
+.bolha.cli{align-self:flex-end;border-bottom-right-radius:6px;background:var(--grad-ouro);color:#1a1206;font-weight:500;box-shadow:0 12px 28px -14px rgba(var(--ouro-rgb),.9),inset 0 1px 0 rgba(255,255,255,.35)}
+.bolha small{display:block;font-size:.68rem;opacity:.65;margin-top:4px}
+.bolha .quem{display:block;font:600 .64rem var(--titulo);letter-spacing:.12em;text-transform:uppercase;color:var(--ouro2);margin-bottom:3px}
+.bolha.central .quem{color:var(--ciano)}
+.dia{align-self:center;font-size:.66rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--txt3);border:1px solid var(--vidro-borda);border-radius:20px;padding:3px 10px;background:rgba(255,255,255,.03)}
+@keyframes entra{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.bolha,.opcoes{animation:none}}
+.opcoes{display:flex;flex-direction:column;gap:8px;align-self:stretch;animation:entra .22s var(--suave)}
+.op{display:flex;align-items:center;gap:12px;text-align:left;padding:11px 13px;border-radius:16px;background:linear-gradient(160deg,rgba(255,255,255,.06),rgba(255,255,255,.015));border:1px solid var(--vidro-borda);transition:.22s var(--suave)}
+html[data-claro] .op{background:rgba(255,255,255,.75)}
+.op:hover,.op:focus-visible{border-color:rgba(var(--ouro-rgb),.55);box-shadow:0 0 24px -8px rgba(var(--ouro-rgb),.6);transform:translateY(-1px)}
+.op .n{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;flex:none;font:700 .86rem var(--titulo);color:var(--ouro2);background:rgba(var(--ouro-rgb),.12);border:1px solid rgba(var(--ouro-rgb),.35)}
+.op b{display:block;font:600 .95rem/1.3 var(--titulo)}
+.op small{display:block;color:var(--txt3);font-size:.78rem}
+.op.leve{padding:8px 12px;border-style:dashed;background:transparent}
+.op.leve .n{background:transparent;border-color:var(--vidro-borda);color:var(--txt3)}
+.op.leve b{font:600 .85rem var(--sans);color:var(--txt2)}
+
+/* compositor (fixo, acima das abas) */
+.compor{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom));z-index:15;width:calc(100% - 24px);max-width:536px}
+.compor .caixa{display:flex;gap:8px;align-items:flex-end;padding:6px 6px 6px 14px;border-radius:22px;background:linear-gradient(135deg,rgba(14,17,26,.94),rgba(8,10,16,.9))}
+html[data-claro] .compor .caixa{background:rgba(255,255,255,.92)}
+.compor textarea{flex:1;border:0;outline:none;background:transparent;resize:none;max-height:120px;min-height:24px;padding:8px 0;line-height:1.4;color:var(--txt)}
+.compor textarea::placeholder{color:var(--txt3)}
+.compor .btn{width:42px;height:42px;padding:0;border-radius:50%;flex:none}
+.compor .btn[disabled]{opacity:.35;transform:none;box-shadow:none;cursor:default}
+
+/* cartões */
+h2.tit{font:700 1.12rem var(--titulo);margin:4px 2px 12px}
+.cartao{border-radius:20px;padding:14px 16px;margin-bottom:12px}
+button.cartao{display:block;width:100%;text-align:left;transition:.22s var(--suave)}
+button.cartao:hover{transform:translateY(-2px);border-color:rgba(var(--ouro-rgb),.4)}
+.cartao .l1{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.cartao .l1 b{font:700 1rem var(--titulo)}
+.cartao .l1 .dir{margin-left:auto}
+.cartao p{margin:6px 0 0;color:var(--txt2);font-size:.86rem}
+.cartao p.min{font-size:.72rem;color:var(--txt3)}
+.etq{--c:var(--ouro);display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:9px;font-size:.68rem;font-weight:650;color:var(--c);border:1px solid color-mix(in srgb,var(--c) 40%,transparent);background:color-mix(in srgb,var(--c) 12%,transparent);white-space:nowrap}
+.etq.ok{--c:var(--verde)} .etq.alerta{--c:var(--laranja)} .etq.ruim{--c:var(--rosa)} .etq.cinza{--c:var(--txt3)} .etq.azul{--c:var(--azul)}
+.ponto{width:9px;height:9px;border-radius:50%;background:var(--ciano);box-shadow:0 0 10px var(--ciano);display:inline-block;animation:aurRespira 1.2s infinite}
+.entrega{display:flex;gap:12px;align-items:center;margin-top:12px;padding:12px;border-radius:14px;background:rgba(var(--ouro-rgb),.08);border:1px solid rgba(var(--ouro-rgb),.3)}
+.entrega svg.i{width:24px;height:24px;color:var(--ouro2);flex:none;filter:drop-shadow(0 0 6px rgba(var(--ouro-rgb),.6))}
+.entrega b{display:block;font:700 .98rem var(--titulo);text-transform:capitalize}
+.entrega small{color:var(--txt2);font-size:.8rem}
+.trilha{display:grid;grid-template-columns:repeat(4,1fr);margin:16px 0 6px;position:relative}
+.trilha::before{content:"";position:absolute;left:12.5%;right:12.5%;top:9px;height:3px;background:var(--vidro-borda-forte);border-radius:2px}
+.trilha .barra{position:absolute;left:12.5%;top:9px;height:3px;background:linear-gradient(90deg,var(--ouro),var(--verde));border-radius:2px;box-shadow:0 0 10px rgba(52,211,153,.6)}
+.trilha span{position:relative;display:flex;flex-direction:column;align-items:center;gap:6px;font-size:.66rem;color:var(--txt3);text-align:center;font-weight:600}
+.trilha span i{width:21px;height:21px;border-radius:50%;background:var(--noite);border:3px solid var(--vidro-borda-forte);display:block}
+.trilha span.feito i{background:var(--verde);border-color:var(--verde);box-shadow:0 0 10px var(--verde)}
+.trilha span.feito{color:var(--txt2)}
+.trilha span.agora i{border-color:var(--ouro);box-shadow:0 0 0 4px rgba(var(--ouro-rgb),.18),0 0 14px rgba(var(--ouro-rgb),.7)}
+.trilha span.agora{color:var(--txt)}
+.itens{margin:0;padding:0;list-style:none;font-size:.88rem;color:var(--txt2)}
+.itens li{padding:7px 0;border-top:1px solid var(--vidro-borda);display:flex;gap:8px}
+.itens li:first-child{border-top:0}
+.itens li b{color:var(--ouro2);min-width:26px}
+.total{display:flex;justify-content:space-between;margin-top:8px;padding-top:10px;border-top:1px solid var(--vidro-borda);font-size:.9rem;color:var(--txt2)}
+.total b{font:700 1rem var(--titulo);color:var(--txt)}
+.sec{display:flex;align-items:center;gap:8px;margin:18px 2px 10px;font-size:.62rem;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:var(--txt3)}
+.sec::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,var(--vidro-borda),transparent)}
+.vazio{display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;color:var(--txt3);padding:40px 16px;font-size:.88rem}
+.vazio b{color:var(--txt);font:600 1rem var(--titulo)}
+.aviso{font-size:.84rem;border-radius:14px;padding:11px 13px;color:var(--ouro2);background:rgba(var(--ouro-rgb),.07);border:1px solid rgba(var(--ouro-rgb),.3);margin-bottom:12px;line-height:1.5}
+.aviso a{color:var(--ouro2);font-weight:700}
+.carregando{display:grid;place-items:center;min-height:80vh}
+.rodape{text-align:center;font-size:.7rem;color:var(--txt3);margin-top:18px;line-height:1.6}
+</style>
+</head>
+<body>
+<div class="app" id="app"><div class="carregando"><span id="logo0"></span></div></div>
+
+<script src="/static/aurora.js?v=3"></script>
+<script>
+(() => {
+"use strict";
+const A = Aurora, svg = A.svg, esc = A.esc, $ = (s, r = document) => r.querySelector(s);
+const ls = { get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch (_) { return d; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} } };
+A.fundo();
+document.querySelector('link[rel="icon"]').href = A.ATOMO_SVG;
+{ const l = $("#logo0"); if (l) l.outerHTML = A.atomo(72); }
+const ICO = { chat: svg("mensagem"), caixa: svg("caixa"), lista: svg("lista"), enviar: svg("seta"), voltar: svg("voltar"),
+  caminhao: svg("calendario"), escudo: svg("escudo"), sair: svg("sair") };
+const SEM = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
+const dataBR = (s) => { s = String(s || ""); return s.length >= 10 ? `${s.slice(8, 10)}/${s.slice(5, 7)}` : ""; };
+const dataLonga = (s) => { if (!s || s.length < 10) return ""; const d = new Date(s.slice(0, 10) + "T12:00:00"); return `${SEM[d.getDay()]}, ${dataBR(s)}`; };
+const hora = (s) => String(s || "").slice(11, 16);
+const brl = (v) => v == null ? "" : Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const ST_COR = { confirmado: "azul", agendado: "", em_carga: "azul", em_rota: "ok", entregue: "ok", reagendar: "alerta", cancelado: "cinza", recusado: "ruim" };
+const TK_COR = { aberto: "", em_andamento: "azul", aguardando: "alerta", resolvido: "ok", finalizado: "cinza", cancelado: "cinza" };
+
+async function api(url, op = {}) {
+  try { return await A.api(url, op); }
+  catch (e) { if (!e.status || /^HTTP \d/.test(e.message)) e.message = "Não foi possível agora. Tente de novo."; throw e; }
+}
+function toast(t) { A.toast(esc(t), [], { cor: "var(--rosa)", duracao: 5000 }); }
+
+const S = { eu: null, aba: "atendimento", tela: null, fio: [], fluxo: null, chamado: null, versao: null };
+const app = $("#app");
+
+/* ═══════════ ENTRAR ═══════════ */
+function telaEntrar(info, erro = "") {
+  app.innerHTML = `<form class="entrar" id="fEntrar" novalidate>
+    <div class="marca">${A.atomo(88)}<h1>${esc(info?.empresa || "Central do Cliente")}</h1>
+      <p class="sub">Acompanhe seus pedidos, prazos de entrega e fale com a nossa equipe.</p></div>
+    <div class="cartao vidro vidro-borda-viva">
+      ${erro ? `<div class="erro">${esc(erro)}</div>` : ""}
+      ${info && !info.ativo ? `<div class="erro">O atendimento pelo app está pausado no momento.</div>` : ""}
+      <label class="campo">CPF<input id="cpf" inputmode="numeric" autocomplete="off" placeholder="000.000.000-00" maxlength="18" required></label>
+      <label class="campo">E-mail usado na compra<input id="email" type="email" inputmode="email" autocomplete="email" placeholder="voce@email.com" required></label>
+      <button class="btn grande" type="submit" id="btEntrar">Entrar</button>
+    </div>
+    <p class="nota">${ICO.escudo} Conferimos seus dados com o cadastro da loja. Não pedimos senha.</p>
+  </form>`;
+  const cpf = $("#cpf");
+  cpf.value = ls.get("cli.cpf", "");
+  $("#email").value = ls.get("cli.email", "");
+  cpf.oninput = () => { const d = cpf.value.replace(/\D/g, "").slice(0, 14);
+    cpf.value = d.length <= 11 ? d.replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d{1,2})$/, "$1-$2")
+      : d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{0,2}).*/, "$1.$2.$3/$4-$5"); };
+  cpf.oninput();
+  $("#fEntrar").onsubmit = async (ev) => {
+    ev.preventDefault();
+    const b = $("#btEntrar"); b.disabled = true; b.textContent = "Conferindo…";
+    try {
+      await api("/api/cliente/entrar", { method: "POST", body: { cpf: cpf.value, email: $("#email").value } });
+      ls.set("cli.cpf", cpf.value); ls.set("cli.email", $("#email").value.trim());
+      await carregar(true);
+    } catch (e) { telaEntrar(info, e.message); }
+  };
+}
+
+/* ═══════════ CARREGAR ═══════════ */
+async function carregar(primeira = false) {
+  try { S.eu = await api("/api/cliente/eu"); S.versao = S.eu.versao; }
+  catch (e) {
+    if (e.status === 401) { let info = null; try { info = await api("/api/cliente/info"); } catch (_) {} telaEntrar(info); return; }
+    app.innerHTML = `<div class="vazio" style="padding-top:30vh">${A.orbe("atencao", "var(--rosa)")}<b>Não conseguimos carregar</b>${esc(e.message)}<br><br><button class="btn v" onclick="location.reload()">Tentar de novo</button></div>`;
+    return;
+  }
+  if (primeira || !S.fio.length) iniciarURA();
+  render();
+}
+
+/* ═══════════ CASCA ═══════════ */
+function naoLidos() { const visto = ls.get("cli.visto", {}); return S.eu.chamados.filter((c) => c.resposta_nova_em && c.resposta_nova_em > (visto[c.id] || "")).length; }
+function render() {
+  const eu = S.eu, nl = naoLidos();
+  const emChamado = S.aba === "chamados" && S.chamado, emPedido = S.aba === "pedidos" && S.tela;
+  const titulo = emChamado ? (S.chamado.assunto || "Chamado") : emPedido ? `Pedido #${S.tela}` : (eu.empresa || "Central do Cliente");
+  const sub = emChamado ? `Protocolo ${S.chamado.id.slice(0, 6).toUpperCase()}` : `Olá, ${eu.nome} · Atendimento`;
+  app.innerHTML = `
+    <header class="topo vidro vidro-borda-viva">
+      ${emChamado || emPedido ? `<button class="btn-ic" id="voltar" aria-label="Voltar">${ICO.voltar}</button>` : A.atomo(38, { mini: true })}
+      <span class="tx"><b>${esc(titulo)}</b><small>${esc(sub)}</small></span>
+      ${!emChamado && !emPedido ? `<button class="btn-ic" id="sair" title="Sair" aria-label="Sair">${ICO.sair}</button>` : ""}
+    </header>
+    <main id="main"></main>
+    <nav class="abas vidro vidro-borda-viva">
+      <button data-aba="atendimento" class="${S.aba === "atendimento" ? "ativo" : ""}">${ICO.chat}Atendimento</button>
+      <button data-aba="pedidos" class="${S.aba === "pedidos" ? "ativo" : ""}">${ICO.caixa}Pedidos</button>
+      <button data-aba="chamados" class="${S.aba === "chamados" ? "ativo" : ""}">${ICO.lista}Chamados${nl ? `<em>${nl}</em>` : ""}</button>
+    </nav>`;
+  app.querySelectorAll("[data-aba]").forEach((b) => (b.onclick = () => { S.aba = b.dataset.aba; S.tela = null; S.chamado = null; render(); scrollTo(0, 0); }));
+  const v = $("#voltar"); if (v) v.onclick = () => { S.tela = null; S.chamado = null; render(); };
+  const s = $("#sair"); if (s) s.onclick = async () => { try { await api("/api/cliente/sair", { method: "POST" }); } catch (_) {} S.fio = []; carregar(); };
+  const m = $("#main");
+  if (S.aba === "pedidos") S.tela ? telaPedido(m) : telaPedidos(m);
+  else if (S.aba === "chamados") S.chamado ? telaChamado(m) : telaChamados(m);
+  else telaURA(m);
+}
+
+/* ═══════════ URA (atendimento automático em conversa) ═══════════ */
+const MENU = [
+  { id: "pedidos", rotulo: "Meus pedidos", descricao: "Status de cada pedido" },
+  { id: "prazo", rotulo: "Prazo de entrega", descricao: "Quando chega" },
+  { id: "chamados", rotulo: "Meus chamados", descricao: "Acompanhar e responder" },
+  { id: "central", rotulo: "Falar com a central", descricao: "Abrir um atendimento" },
+];
+function bot(texto, opcoes = null) { S.fio.push({ de: "bot", texto }); S.fluxo = opcoes; }
+function eu_(texto) { S.fio.push({ de: "cli", texto }); }
+function iniciarURA() { S.fio = []; bot(`${S.eu.saudacao || "Olá! Escolha uma opção:"}`.replace(/^Olá!?/, `Olá, ${S.eu.nome}!`), { tipo: "menu" }); }
+function voltarMenu() { bot("Posso ajudar em mais alguma coisa?", { tipo: "menu" }); }
+const abertosPed = () => S.eu.pedidos.filter((p) => !["entregue", "cancelado", "recusado"].includes(p.status));
+
+function escolherMenu(id) {
+  const op = MENU.find((x) => x.id === id); eu_(op.rotulo);
+  const ab = abertosPed();
+  if (id === "pedidos") {
+    if (!S.eu.pedidos.length) bot("Não encontrei pedidos no seu cadastro. Se você comprou recentemente, ele aparece aqui assim que for confirmado.");
+    else bot(S.eu.pedidos.slice(0, 5).map((p) => `• Pedido #${p.numero} — ${p.rotulo}${p.entrega && p.status !== "entregue" ? ` (entrega ${dataBR(p.entrega.data)}${p.entrega.janela ? ", " + p.entrega.janela : ""})` : ""}`).join("\n")
+      + "\n\nToque em “Pedidos” lá embaixo para ver os detalhes.");
+    voltarMenu();
+  } else if (id === "prazo") {
+    if (!ab.length) bot(S.eu.pedidos.length ? "Você não tem entregas pendentes. Todos os seus pedidos já foram concluídos. 🙂" : "Não encontrei pedidos no seu cadastro.");
+    else bot(ab.map((p) => p.entrega ? `📦 Pedido #${p.numero}: entrega ${dataLonga(p.entrega.data)}${p.entrega.janela ? ` — período ${p.entrega.janela.toLowerCase()}` : ""}.`
+      : `📦 Pedido #${p.numero}: ${p.texto || p.rotulo} Assim que a data for marcada, ela aparece aqui.`).join("\n"));
+    voltarMenu();
+  } else if (id === "chamados") {
+    const abertos = S.eu.chamados.filter((c) => c.aberto);
+    if (!S.eu.chamados.length) { bot("Você não tem chamados. Quer falar com a central?", { tipo: "simnao" }); return; }
+    bot(abertos.length ? `Você tem ${abertos.length} chamado(s) em andamento. Toque em um para abrir a conversa:` : "Seus chamados recentes:", { tipo: "chamados" });
+  } else if (id === "central") perguntarAssunto();
+}
+function perguntarAssunto(pedidoId = "") { bot("Sobre o que você quer falar?", { tipo: "assunto", pedido: pedidoId }); }
+function escolherAssunto(op, pedidoId) {
+  eu_(op.rotulo);
+  const ab = S.eu.pedidos.filter((p) => p.status !== "cancelado");
+  if (pedidoId || !ab.length) pedirTexto(op, pedidoId);
+  else bot("É sobre algum pedido?", { tipo: "pedido", op });
+}
+function pedirTexto(op, pedidoId) {
+  const p = S.eu.pedidos.find((x) => x.id === pedidoId);
+  bot(`Certo${p ? `, pedido #${p.numero}` : ""}. Escreva sua mensagem com o máximo de detalhes — um atendente da nossa central vai responder por aqui.`, { tipo: "texto", op, pedido: pedidoId });
+}
+
+function telaURA(m) {
+  const f = S.fluxo || {};
+  m.classList.toggle("chat-modo", f.tipo === "texto");
+  const ops = (lista, attr) => `<div class="opcoes">${lista.map((o, i) => `<button class="op" ${attr}="${esc(o.id)}"><span class="n">${i + 1}</span><span><b>${esc(o.rotulo)}</b>${o.descricao ? `<small>${esc(o.descricao)}</small>` : ""}</span></button>`).join("")}</div>`;
+  const leve = (txt, attr, val) => `<button class="op leve" ${attr}="${esc(val)}"><span class="n">↩</span><span><b>${esc(txt)}</b></span></button>`;
+  let extra = "";
+  if (f.tipo === "menu") extra = ops(MENU, "data-menu");
+  else if (f.tipo === "assunto") extra = ops(S.eu.ura, "data-assunto") + `<div class="opcoes">${leve("Voltar ao menu", "data-menu-volta", "1")}</div>`;
+  else if (f.tipo === "pedido") extra = `<div class="opcoes">${S.eu.pedidos.filter((p) => p.status !== "cancelado").slice(0, 6).map((p, i) => `<button class="op" data-ped="${esc(p.id)}"><span class="n">${i + 1}</span><span><b>Pedido #${p.numero}</b><small>${esc(p.rotulo)}${p.entrega ? " · entrega " + dataBR(p.entrega.data) : ""}</small></span></button>`).join("")}
+    <button class="op leve" data-ped=""><span class="n">—</span><span><b>Não é sobre um pedido</b></span></button></div>`;
+  else if (f.tipo === "chamados") extra = `<div class="opcoes">${S.eu.chamados.slice(0, 6).map((c) => `<button class="op" data-abrirch="${esc(c.id)}"><span class="n">${c.aberto ? "●" : "✓"}</span><span><b>${esc(c.assunto)}</b><small>${esc(c.rotulo)} · ${dataBR(c.atualizado_em)}</small></span></button>`).join("")}${leve("Voltar ao menu", "data-menu-volta", "1")}</div>`;
+  else if (f.tipo === "simnao") extra = `<div class="opcoes"><button class="op" data-sim="1"><span class="n">1</span><span><b>Sim, falar com a central</b></span></button>${leve("Voltar ao menu", "data-menu-volta", "1")}</div>`;
+  else if (f.tipo === "texto") extra = `<div class="opcoes">${leve("Cancelar e voltar ao menu", "data-menu-volta", "1")}</div>`;
+  m.innerHTML = `<div class="fio" id="fio">${S.fio.map((b) => `<div class="bolha ${b.de}">${b.de === "bot" ? `<span class="quem">Atendimento automático</span>` : ""}${esc(b.texto)}</div>`).join("")}${extra}</div>
+    ${f.tipo === "texto" ? compositor("Escreva sua mensagem…") : ""}`;
+  m.querySelectorAll("[data-menu]").forEach((b) => (b.onclick = () => { escolherMenu(b.dataset.menu); render(); rolar(); }));
+  m.querySelectorAll("[data-menu-volta]").forEach((b) => (b.onclick = () => { eu_("Voltar ao menu"); bot("Tudo bem. Escolha uma opção:", { tipo: "menu" }); render(); rolar(); }));
+  m.querySelectorAll("[data-assunto]").forEach((b) => (b.onclick = () => { escolherAssunto(S.eu.ura.find((u) => u.id === b.dataset.assunto), f.pedido || ""); render(); rolar(); }));
+  m.querySelectorAll("[data-ped]").forEach((b) => (b.onclick = () => { const p = S.eu.pedidos.find((x) => x.id === b.dataset.ped); eu_(p ? `Pedido #${p.numero}` : "Não é sobre um pedido"); pedirTexto(f.op, b.dataset.ped); render(); rolar(); }));
+  m.querySelectorAll("[data-abrirch]").forEach((b) => (b.onclick = () => abrirChamado(b.dataset.abrirch)));
+  const sim = m.querySelector("[data-sim]"); if (sim) sim.onclick = () => { eu_("Sim"); perguntarAssunto(); render(); rolar(); };
+  if (f.tipo === "texto") ligarCompositor(async (texto) => {
+    const r = await api("/api/cliente/chamados", { method: "POST", body: { opcao: f.op.id, pedido_id: f.pedido || "", texto } });
+    eu_(texto);
+    bot(r.existente ? "Você já tinha um atendimento aberto sobre esse assunto — juntei sua mensagem a ele. A central responde por lá. 👍"
+      : "Pronto! Seu atendimento foi aberto. Assim que a central responder, você vê aqui em “Chamados”.", { tipo: "menu" });
+    await carregar(); abrirChamado(r.id);
+  });
+  rolar();
+}
+
+/* ═══════════ PEDIDOS ═══════════ */
+function telaPedidos(m) {
+  const ps = S.eu.pedidos;
+  if (!ps.length) { m.innerHTML = `<div class="vazio">${A.orbe("caixa", "var(--ouro)")}<b>Nenhum pedido por aqui</b>Seus pedidos aparecem assim que forem confirmados pela loja.</div>`; return; }
+  const ab = abertosPed(), fe = ps.filter((p) => !ab.includes(p));
+  const cartao = (p) => `<button class="cartao vidro" data-p="${esc(p.id)}"><div class="l1"><b>${p.tipo === "troca" ? "Troca" : "Pedido"} #${p.numero}</b><span class="etq ${ST_COR[p.status] || ""} dir">${esc(p.rotulo)}</span></div>
+    <p>${esc(p.itens.map((i) => `${i.qtd}× ${i.nome}`).join(", "))}</p>
+    ${p.entrega && !["entregue", "cancelado"].includes(p.status) ? `<div class="entrega">${ICO.caminhao}<span><b>${esc(dataLonga(p.entrega.data))}</b><small>${p.entrega.janela ? "Período: " + esc(p.entrega.janela) : "Entrega agendada"}</small></span></div>` : p.texto && p.status !== "entregue" ? `<p>${esc(p.texto)}</p>` : ""}</button>`;
+  m.innerHTML = `${ab.length ? `<h2 class="tit">Em andamento</h2>${ab.map(cartao).join("")}` : ""}${fe.length ? `<div class="sec">Concluídos</div>${fe.map(cartao).join("")}` : ""}`;
+  m.querySelectorAll("[data-p]").forEach((b) => (b.onclick = () => { const p = ps.find((x) => x.id === b.dataset.p); S.tela = p.numero; S.pedidoId = p.id; render(); scrollTo(0, 0); }));
+}
+function telaPedido(m) {
+  const p = S.eu.pedidos.find((x) => x.id === S.pedidoId);
+  if (!p) { S.tela = null; render(); return; }
+  const fora = ["cancelado", "recusado"].includes(p.status);
+  const larg = p.passo <= 0 ? 0 : (p.passo / 3) * 75;
+  m.innerHTML = `<div class="cartao vidro vidro-borda-viva">
+      <div class="l1"><b>${p.tipo === "troca" ? "Troca" : "Pedido"} #${p.numero}</b><span class="etq ${ST_COR[p.status] || ""} dir">${esc(p.rotulo)}</span></div>
+      ${p.texto ? `<p>${esc(p.texto)}</p>` : ""}
+      ${!fora ? `<div class="trilha"><div class="barra" style="width:${larg}%"></div>${p.trilha.map((t, i) => `<span class="${i < p.passo || p.status === "entregue" ? "feito" : i === p.passo ? "agora" : ""}"><i></i>${esc(t)}</span>`).join("")}</div>` : ""}
+      ${p.entrega && !["entregue", "cancelado"].includes(p.status) ? `<div class="entrega">${ICO.caminhao}<span><b>${esc(dataLonga(p.entrega.data))}</b><small>${p.entrega.janela ? "Período: " + esc(p.entrega.janela) : "Entrega agendada"}</small></span></div>` : ""}
+    </div>
+    <div class="sec">Itens</div>
+    <div class="cartao vidro"><ul class="itens">${p.itens.map((i) => `<li><b>${i.qtd}×</b>${esc(i.nome)}</li>`).join("")}</ul>
+      ${p.valor_total ? `<div class="total"><span>Total</span><b>${brl(p.valor_total)}</b></div>` : ""}</div>
+    ${p.endereco ? `<div class="sec">Endereço de entrega</div><div class="cartao vidro"><p style="margin:0">${esc(p.endereco)}</p></div>` : ""}
+    ${p.tentativas.length ? `<div class="sec">Tentativas de entrega</div><div class="cartao vidro"><ul class="itens">${p.tentativas.map((t) => `<li><b>${t.n}ª</b>${dataBR(t.data)} — ${esc(t.resultado)}</li>`).join("")}</ul></div>` : ""}
+    <p class="nota" style="text-align:left;margin:4px 2px 10px">Pedido feito em ${dataBR(p.criado_em)}/${String(p.criado_em).slice(0, 4)}</p>
+    <button class="btn grande" id="ajuda">${ICO.chat} Preciso de ajuda com este pedido</button>`;
+  $("#ajuda").onclick = () => { S.aba = "atendimento"; S.tela = null; eu_(`Ajuda com o pedido #${p.numero}`); perguntarAssunto(p.id); render(); };
+}
+
+/* ═══════════ CHAMADOS ═══════════ */
+function telaChamados(m) {
+  const cs = S.eu.chamados, visto = ls.get("cli.visto", {});
+  if (!cs.length) { m.innerHTML = `<div class="vazio">${A.orbe("mensagem", "var(--ciano)")}<b>Nenhum chamado</b>Quando você falar com a central, a conversa fica aqui.<button class="btn" id="novo" style="margin-top:6px">${ICO.chat} Falar com a central</button></div>`;
+    $("#novo").onclick = () => { S.aba = "atendimento"; eu_("Falar com a central"); perguntarAssunto(); render(); }; return; }
+  const ab = cs.filter((c) => c.aberto), fe = cs.filter((c) => !c.aberto);
+  const cartao = (c) => { const novo = c.resposta_nova_em && c.resposta_nova_em > (visto[c.id] || "");
+    return `<button class="cartao vidro" data-c="${esc(c.id)}"><div class="l1">${novo ? `<span class="ponto" title="Resposta nova"></span>` : ""}<b>${esc(c.assunto)}</b><span class="etq ${TK_COR[c.status] || ""} dir">${esc(c.rotulo)}</span></div>
+      ${c.ultima ? `<p>${c.ultima.de === "cliente" ? "Você: " : "Central: "}${esc(c.ultima.texto)}</p>` : `<p>Aberto em ${dataBR(c.criado_em)}</p>`}
+      <p class="min">Protocolo ${esc(c.id.slice(0, 6).toUpperCase())} · ${dataBR(c.atualizado_em)} ${hora(c.atualizado_em)}</p></button>`; };
+  m.innerHTML = `<button class="btn grande" id="novo" style="margin-bottom:16px">${ICO.chat} Novo atendimento</button>
+    ${ab.length ? `<h2 class="tit">Em andamento</h2>${ab.map(cartao).join("")}` : ""}${fe.length ? `<div class="sec">Encerrados</div>${fe.map(cartao).join("")}` : ""}`;
+  $("#novo").onclick = () => { S.aba = "atendimento"; eu_("Falar com a central"); perguntarAssunto(); render(); };
+  m.querySelectorAll("[data-c]").forEach((b) => (b.onclick = () => abrirChamado(b.dataset.c)));
+}
+async function abrirChamado(id) {
+  try { S.chamado = await api("/api/cliente/chamado/" + encodeURIComponent(id)); }
+  catch (e) { toast(e.message); return; }
+  S.aba = "chamados"; marcarVisto(S.chamado); render();
+}
+function marcarVisto(c) { if (!c) return; const v = ls.get("cli.visto", {}); v[c.id] = c.resposta_nova_em || c.atualizado_em || ""; ls.set("cli.visto", v); }
+function telaChamado(m) {
+  const c = S.chamado;
+  m.classList.toggle("chat-modo", c.pode_escrever);
+  let dia = "";
+  const bolhas = c.mensagens.map((x) => { const d = String(x.data || "").slice(0, 10), sep = d && d !== dia ? `<div class="dia">${esc(dataLonga(d))}</div>` : ""; dia = d || dia;
+    return sep + `<div class="bolha ${x.de === "cliente" ? "cli" : "central"}">${x.de !== "cliente" ? `<span class="quem">${esc(x.autor ? x.autor + " · Central" : "Central")}</span>` : ""}${esc(x.texto)}<small>${hora(x.data)}</small></div>`; }).join("");
+  m.innerHTML = `<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap"><span class="etq ${TK_COR[c.status] || ""}">${esc(c.rotulo)}</span>${c.pedido ? `<span class="etq azul">Pedido #${esc(c.pedido)}</span>` : ""}</div>
+    ${c.status === "aguardando" ? `<div class="aviso">A central está aguardando sua resposta.</div>` : ""}
+    <div class="fio" id="fio">${bolhas || `<div class="vazio" style="padding:20px">Este atendimento foi aberto pela nossa central. Se quiser, escreva abaixo.</div>`}
+    ${c.status === "aberto" && c.mensagens.every((x) => x.de === "cliente") ? `<div class="bolha bot"><span class="quem">Atendimento automático</span>Recebemos sua mensagem. Um atendente vai responder aqui em breve — você não precisa ficar com o app aberto.</div>` : ""}</div>
+    ${c.pode_escrever ? compositor(c.status === "resolvido" ? "Ainda precisa de ajuda? Escreva aqui…" : "Escreva sua mensagem…")
+      : `<div class="aviso" style="margin-top:14px">Este atendimento foi encerrado. Precisa de algo mais? <a href="#" id="novo">Abrir novo atendimento</a></div>`}`;
+  const nv = $("#novo"); if (nv) nv.onclick = (e) => { e.preventDefault(); S.chamado = null; S.aba = "atendimento"; eu_("Falar com a central"); perguntarAssunto(); render(); };
+  if (c.pode_escrever) ligarCompositor(async (texto) => {
+    await api(`/api/cliente/chamado/${encodeURIComponent(c.id)}/mensagem`, { method: "POST", body: { texto } });
+    S.chamado = await api("/api/cliente/chamado/" + encodeURIComponent(c.id)); marcarVisto(S.chamado);
+    try { S.eu = await api("/api/cliente/eu"); S.versao = S.eu.versao; } catch (_) {}
+    render();
+  }, false);
+  rolar();
+}
+
+/* ═══════════ compositor de mensagem ═══════════ */
+function compositor(ph) { return `<div class="compor"><div class="caixa vidro vidro-borda-viva"><textarea id="txt" rows="1" maxlength="2000" placeholder="${esc(ph)}" aria-label="Mensagem"></textarea><button class="btn" id="env" aria-label="Enviar" disabled>${ICO.enviar}</button></div></div>`; }
+function ligarCompositor(enviar) {
+  const t = $("#txt"), b = $("#env");
+  const ajusta = () => { t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 120) + "px"; b.disabled = !t.value.trim(); };
+  t.oninput = ajusta;
+  const vai = async () => { const v = t.value.trim(); if (!v || b.disabled) return; b.disabled = true; t.disabled = true;
+    try { await enviar(v); } catch (e) { toast(e.message); t.disabled = false; b.disabled = false; if (e.status === 401) carregar(); } };
+  b.onclick = vai;
+  t.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey && matchMedia("(pointer:fine)").matches) { e.preventDefault(); vai(); } };
+}
+function rolar() { requestAnimationFrame(() => scrollTo({ top: document.body.scrollHeight, behavior: "smooth" })); }
+
+/* ═══════════ novidades (só com o app aberto) ═══════════ */
+setInterval(async () => {
+  if (document.visibilityState !== "visible" || !S.eu) return;
+  if (document.activeElement && document.activeElement.id === "txt" && document.activeElement.value) return;
+  try {
+    const n = await api("/api/cliente/novidades");
+    if (n.versao === S.versao) return;
+    S.eu = await api("/api/cliente/eu"); S.versao = S.eu.versao;
+    if (S.chamado) { S.chamado = await api("/api/cliente/chamado/" + encodeURIComponent(S.chamado.id)); marcarVisto(S.chamado); }
+    if (S.aba !== "atendimento") render(); else { const n2 = naoLidos(); const a = app.querySelector('[data-aba="chamados"]'); if (a) a.innerHTML = `${ICO.lista}Chamados${n2 ? `<em>${n2}</em>` : ""}`; }
+  } catch (e) { if (e.status === 401) carregar(); }
+}, 15000);
+
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("/cliente/sw.js", { scope: "/cliente/" }).catch(() => {});
+carregar(true);
+})();
+</script>
+</body>
+</html>
