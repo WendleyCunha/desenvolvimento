@@ -186,7 +186,8 @@ def test_pedidos_so_os_meus_sem_rascunho_e_sem_dado_interno(t):
     assert [p["numero"] for p in ps] == [101, 99]                       # 102 é rascunho, 103 é da Bia
     p = ps[0]
     assert p["rotulo"] == "Entrega agendada" and p["entrega"] == {"data": "2026-11-14", "janela": "Manhã"}
-    assert "historico" not in p and "obs" not in p and "joao" not in str(p) and "SOL42" not in str(ps)
+    assert "historico" not in p and "obs" not in p and "joao" not in str(p)
+    assert p["palavra_chave"] == "SOL42" and ps[1]["palavra_chave"] == ""   # o cliente vê a do pedido dele; cancelado não mostra
 
 
 def test_freio_de_tentativas(t):
@@ -249,7 +250,7 @@ def test_chamado_pelo_cliente_com_motivo_e_submotivo(t):
     assert t.post("/api/cliente/chamados", json={"motivo_pai": "Compras", "motivo_filho": "Falta de Peças", "pedido_id": "ped3", "texto": "x"}).status_code == 404
     ch = t.get("/api/cliente/eu").json()["chamado"]
     assert ch["numero"] == cod and len(ch["solicitacoes"]) == 2 and {s["cor"] for s in ch["solicitacoes"]} == {0, 1}
-    assert [m["texto"] for m in ch["mensagens"]] == ["Quero cancelar", "sem pedido"]
+    assert [s["atualizacoes"][0]["texto"] for s in ch["solicitacoes"]] == ["Quero cancelar", "sem pedido"]   # o que o cliente pediu
 
 
 def test_em_atendimento_nao_abre_chamado(t):
@@ -290,15 +291,16 @@ def test_concluir_chat_anexando_ou_virando_solicitacao(t):
     c1 = t.post("/api/cliente/chat", json={"opcao": "outro", "texto": "Dúvida rápida"}).json()["id"]
     assert t.post(url_tk(central(t, c1)["id"]) + "/concluir-chat", json={"modo": "anexar"}).status_code == 200
     eu = t.get("/api/cliente/eu").json()
-    assert eu["chat"] is None and [m["texto"] for m in eu["chamado"]["mensagens"]] == ["Dúvida rápida"]   # ficou no histórico
-    assert eu["chamado"]["solicitacoes"] == []                                                          # sem virar problema
+    assert eu["chat"] is None and eu["chamado"] is None                 # anexado: fica no histórico da conversa, não vira solicitação
     c2 = t.post("/api/cliente/chat", json={"opcao": "troca", "texto": "Veio rasgado"}).json()["id"]
     tid = central(t, c2)["id"]
     assert t.post(url_tk(tid) + "/concluir-chat", json={"modo": "solicitacao", "motivo_pai": "Pedido", "motivo_filho": "Troca Adaptação", "pedido_id": "ped1"}).status_code == 200
     tk = central(t, c2)
     assert tk["chat"] is False and tk["app_tipo"] == "chamado" and tk["motivo_filho"] == "Troca Adaptação" and tk["status"] in ("aberto", "em_andamento")
     eu = t.get("/api/cliente/eu").json()
-    assert eu["chat"] is None and [s["assunto"] for s in eu["chamado"]["solicitacoes"]] == ["Troca Adaptação · pedido #101"]
+    sol = eu["chamado"]["solicitacoes"]
+    assert eu["chat"] is None and [s["assunto"] for s in sol] == ["Troca Adaptação · pedido #101"]
+    assert sol[0]["atualizacoes"] == []                                  # a conversa do chat NÃO aparece em Chamados
     assert t.post(url_tk(tid) + "/concluir-chat", json={"modo": "anexar"}).status_code == 409     # já não é chat
 
 
@@ -361,3 +363,16 @@ def test_ajustes_do_app_salvam_pela_central(t):
     T.BASE.t_cfg = time.time() + 3600      # sem reler o resto do banco falso: usa o que a central acabou de gravar
     cfg = C.cfg_app()
     assert cfg["empresa"] == "KingStar Atende" and cfg["exigir_palavra"] and cfg["ura"][0]["id"] == "op1"
+
+
+def test_chamados_no_app_mostram_o_definido_e_as_atualizacoes(t):
+    entrar(t)
+    sid = t.post("/api/cliente/chamados", json={"motivo_pai": "Logística", "motivo_filho": "Danos à Residência", "texto": "Riscaram a parede"}).json()["id"]
+    tid = central(t, sid)["id"]
+    t.post(url_tk(tid) + "/comentar", json={"texto": "Liguei: o técnico vai na quinta.", "tipo": "contato"})   # cliente vê
+    t.post(url_tk(tid) + "/comentar", json={"texto": "cliente nervoso", "tipo": "nota"})                       # só a equipe
+    t.post(url_tk(tid) + "/classificar", json={"motivo_pai": "Logística", "motivo_filho": "Danos à Residência", "etapa": "Apurar", "data_prevista": "2099-01-15"})
+    s = t.get("/api/cliente/eu").json()["chamado"]["solicitacoes"][0]
+    assert [a["texto"] for a in s["atualizacoes"]] == ["Riscaram a parede", "Liguei: o técnico vai na quinta."]
+    assert s["definido"]["etapa"] == "Apurar" and s["definido"]["prazo"] == "2099-01-15" and s["definido"]["motivo"] == "Logística › Danos à Residência"
+    assert "nervoso" not in str(s)

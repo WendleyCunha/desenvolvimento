@@ -191,6 +191,17 @@ button.kpi:hover{border-color:color-mix(in srgb,var(--c) 50%,transparent)}
 .at-cab{border-left:4px solid var(--c,transparent)}
 .tab tr.linha.app td:first-child{box-shadow:inset 3px 0 0 var(--ciano)}
 .tab tr.linha.app{background:rgba(34,211,238,.04)}
+.cab-cli{position:sticky;top:122px;z-index:34;display:flex;align-items:center;gap:8px;padding:6px 10px;margin-bottom:10px;border-radius:14px;font-size:.78rem;white-space:nowrap;overflow-x:auto;
+  border-left:4px solid var(--c);background:linear-gradient(135deg,rgba(14,17,26,.94),rgba(8,10,16,.9))}
+.cab-cli .num{font:700 .82rem var(--titulo);color:var(--txt)} .cab-cli .nome{font:700 .92rem var(--titulo);max-width:260px;overflow:hidden;text-overflow:ellipsis}
+.cab-cli .dado{color:var(--txt3)} .cab-cli .dado b{color:var(--txt2)} .cab-cli .esp{flex:1;min-width:8px}
+.cab-cli select.entrada{width:auto;padding:5px 8px;font-size:.76rem} .cab-cli .btn.p{padding:5px 10px}
+#gradeCli .wg-corpo{display:flex;flex-direction:column;gap:9px}
+#gradeCli .conversa{max-height:none;flex:1;min-height:60px}
+.painel-cli.min .wg-corpo,.painel-cli.min .wg-redim{display:none}
+.registro{display:flex;flex-direction:column;gap:6px;max-height:260px;overflow:auto;padding-right:3px}
+.tab th.ordenavel{cursor:pointer;user-select:none}.tab th.ordenavel:hover{color:var(--txt)}.tab th.ordenavel i{font-style:normal;opacity:.5;margin-left:2px}.tab th.ordenavel.on{color:var(--ouro2)}.tab th.ordenavel.on i{opacity:1}
+@media (max-width:800px){.cab-cli{top:0;position:relative}}
 .resumo-real{display:flex;gap:16px;flex-wrap:wrap;font-size:.8rem;color:var(--txt2);margin:0 2px 10px}
 .resumo-real b{font:700 1.05rem var(--titulo);color:var(--txt);margin-right:3px}
 /* abas de atendimento (tipo navegador): app à esquerda (cor), tickets à direita (neutros) */
@@ -389,7 +400,7 @@ function renderAbas() {
     b.onauxclick = (ev) => { if (ev.button === 1) { ev.preventDefault(); fecharAba(b.dataset.abaTk); } };   // botão do meio fecha, como no navegador
   });
 }
-function guardarRascunho() { const t = $("#txt"); if (t && S.aberto) S.rasc[S.aberto] = t.value; }
+function guardarRascunho() { if (!S.aberto) return; const t = $("#txt"), c = $("#txtChat"); if (t) S.rasc[S.aberto] = t.value; if (c) S.rasc[S.aberto + ":chat"] = c.value; }
 /* cliente respondeu no app → aviso na hora (prioridade) */
 function novoEstado(e) {
   const antes = new Set(S.e ? clientes().filter((c) => c.app_pendente).map((c) => c.cid) : []), primeira = !S.e;
@@ -487,6 +498,12 @@ function filtrar() {
   }
   if (S.q) { const q = norm(S.q); l = l.filter((c) => c.busca.includes(q)); }
   const sm = (c) => c.sla?.min ?? 1e12;
+  if (S.ordCol) {   // clique no cabeçalho: A-Z / Z-A
+    const chave = { codigo: (c) => String(c.cliente_codigo || c.cid), nome: (c) => norm(c.cliente_nome), desde: (c) => String(c.criado_em || ""),
+      dono: (c) => c.sem_dono ? "\uffff" : norm(nomeU(c.atribuido_para)), sla: (c) => vivo(c) ? sm(c) : 1e13 }[S.ordCol];
+    const d = S.ordDir || 1;
+    return l.sort((a, b) => { const x = chave(a), y = chave(b); return d * (typeof x === "number" ? x - y : String(x).localeCompare(String(y), "pt-BR", { numeric: true })); });
+  }
   const ordem = { urgencia: (a, b) => (b.app_pendente - a.app_pendente) || sm(a) - sm(b), prioridade: (a, b) => Object.keys(PRIO).indexOf(a.prioridade) - Object.keys(PRIO).indexOf(b.prioridade) || sm(a) - sm(b),
     antigo: (a, b) => String(a.criado_em).localeCompare(String(b.criado_em)), recente: (a, b) => String(b.atualizado_em).localeCompare(String(a.atualizado_em)),
     atendente: (a, b) => nomeU(a.atribuido_para).localeCompare(nomeU(b.atribuido_para)) };
@@ -529,7 +546,7 @@ function telaCaixa(m) {
           ${pode("abrir") ? `<button type="button" class="btn p" id="btNovo">${svg("mais")} Chamado</button>` : ""}
         </div>
       </div>
-      ${pag.length ? `<table class="tab"><thead><tr>${pode("transferir") ? `<th><input type="checkbox" id="selPag"></th>` : ""}<th>Chamado</th><th>Cliente e solicitações</th><th class="so-largo">Desde</th><th>Dono</th><th>SLA / situação</th></tr></thead><tbody>
+      ${pag.length ? `<table class="tab"><thead><tr>${pode("transferir") ? `<th><input type="checkbox" id="selPag"></th>` : ""}${[["codigo", "Chamado", ""], ["nome", "Cliente e solicitações", ""], ["desde", "Desde", "so-largo"], ["dono", "Dono", ""], ["sla", "SLA / situação", ""]].map(([k2, r, cl]) => `<th class="ordenavel${cl ? " " + cl : ""}${S.ordCol === k2 ? " on" : ""}" data-col="${k2}" title="Ordenar A-Z / Z-A">${r} <i>${S.ordCol === k2 ? (S.ordDir === -1 ? "▼" : "▲") : "↕"}</i></th>`).join("")}</tr></thead><tbody>
         ${pag.map((x) => `<tr class="linha${x.estado === "atendimento" ? " app" : ""}${x.app_pendente || x.nao_visto ? " alerta" : ""}" data-t="${esc(x.cid)}">
           ${pode("transferir") ? `<td><input type="checkbox" data-sel="${esc(x.cid)}"${S.sel.has(x.cid) ? " checked" : ""}></td>` : ""}
           <td>${x.app_pendente || x.nao_visto ? `<span class="pisca" title="Cliente respondeu"></span>` : ""}<b>${x.estado === "atendimento" ? "📱" : "#"}${esc(x.cliente_codigo || x.cid)}</b></td>
@@ -543,7 +560,8 @@ function telaCaixa(m) {
     </section></div>`;
   m.querySelectorAll("[data-aba]").forEach((b) => (b.onclick = () => { S.aba = b.dataset.aba; S.pag = 0; ls.set("wd.tk.aba", S.aba); render(); }));
   m.querySelectorAll("[data-fila]").forEach((b) => (b.onclick = () => { S.fila = b.dataset.fila; S.pag = 0; if (S.fila && ["meus"].includes(S.aba)) S.aba = "equipe"; render(); }));
-  $("#ord").onchange = (e) => { S.ord = e.target.value; ls.set("wd.tk.ord", S.ord); render(); };
+  $("#ord").onchange = (e) => { S.ord = e.target.value; S.ordCol = null; ls.set("wd.tk.ord", S.ord); render(); };
+  m.querySelectorAll("th[data-col]").forEach((th) => (th.onclick = () => { const c2 = th.dataset.col; S.ordDir = S.ordCol === c2 ? -(S.ordDir || 1) : 1; S.ordCol = c2; S.pag = 0; render(); }));
   const tq = $("#tiraQ"); if (tq) tq.onclick = (e) => { e.preventDefault(); S.q = ""; $("#qTopo").value = ""; render(); };
   m.querySelectorAll("tr.linha").forEach((tr) => (tr.onclick = (e) => { if (e.target.closest("input")) return; abrirTicket(tr.dataset.t); }));
   m.querySelectorAll("[data-sel]").forEach((c2) => (c2.onchange = () => { c2.checked ? S.sel.add(c2.dataset.sel) : S.sel.delete(c2.dataset.sel); $("#nSel").textContent = S.sel.size ? S.sel.size + " selecionado(s)" : ""; }));
@@ -564,8 +582,19 @@ function telaCaixa(m) {
 }
 
 /* ══════ O CLIENTE (chamado único): conversa · solicitações · cliente + ERP ══════ */
-const ROT_TIPO = { app: "📱 Cliente pelo app", cliente: "📱 Cliente pelo app", resposta: "Respondido no app", nota: "Nota interna", contato: "Contato com o cliente", abertura: "Abertura" };
+const ROT_TIPO = { app: "📱 Cliente pelo app", cliente: "📱 Cliente pelo app", resposta: "Respondido no app", nota: "Nota interna", contato: "Contato / atualização · cliente vê", abertura: "Abertura", pendencia: "Entre setores", sistema: "" };
 const CLS_TIPO = { app: "cliente app", cliente: "cliente app", abertura: "cliente" };
+/* painéis ajustáveis (igual ao módulo Tarefas): mover pelo cabeçalho, redimensionar pelo canto */
+const LAYOUT_CLI = "wd.tk.layoutCliente.v1";
+const PAINEIS = {
+  conversa: { titulo: "Conversa do cliente (app)", icone: "mensagem", cor: "#22d3ee", x: 0, y: 0, w: 12, h: 8, minW: 4, minH: 1 },
+  sols: { titulo: "Solicitações", icone: "lista", cor: "#e8b33d", x: 0, y: 8, w: 7, h: 15, minW: 4, minH: 5 },
+  cli: { titulo: "Cliente e pedidos", icone: "usuario", cor: "#60a5fa", x: 7, y: 8, w: 5, h: 15, minW: 3, minH: 5 },
+};
+function layoutCliente() {
+  let salvo = []; try { salvo = JSON.parse(ls.get(LAYOUT_CLI, "[]")) || []; } catch (_) {}
+  return Object.entries(PAINEIS).map(([id, d]) => ({ id, ...d, ...(salvo.find((l) => l.id === id) || {}) }));
+}
 async function telaCliente(m, cid) {
   if (!S.det || S.det.cid !== cid) {
     m.innerHTML = `<div class="vazio"><b>Abrindo o chamado do cliente…</b></div>`;
@@ -575,95 +604,110 @@ async function telaCliente(m, cid) {
   const D = S.det, me = S.e.eu, arv = S.e.motivos, sols = D.solicitacoes;
   const chat = sols.find((s) => s.chat && ABERTOS.includes(s.status)) || null;
   const probs = sols.filter((s) => !s.chat), abertas = probs.filter((s) => ABERTOS.includes(s.status)), fechadas = sols.filter((s) => !ABERTOS.includes(s.status));
-  const sel = sols.find((s) => s.id === S.solSel) || chat || abertas[0] || probs[0] || sols[0];
+  const sel = sols.find((s) => s.id === S.solSel) || abertas[0] || chat || probs[0] || sols[0];
   S.solSel = sel.id;
-  const alvos = [...(chat ? [chat] : []), ...abertas]; if (!alvos.includes(sel)) alvos.push(sel);
-  if (!alvos.some((s) => s.id === S.alvo)) S.alvo = (chat || (ABERTOS.includes(sel.status) ? sel : abertas[0]) || sel).id;
-  const alvo = sols.find((s) => s.id === S.alvo);
   const estado = chat ? "atendimento" : abertas.length ? "ticket" : "concluido";
   const comigo = D.dono.includes(me.usuario), temDono = D.dono.length > 0, vivoC = estado !== "concluido";
   const rot = (s) => s.chat ? "📱 Chat" + (ABERTOS.includes(s.status) ? "" : " (concluído)") : (s.motivo_filho || s.assunto || "Solicitação") + (s.erp_pedido_numero ? " #" + s.erp_pedido_numero : "");
   const sla1 = sols.filter((s) => ABERTOS.includes(s.status) && s.sla?.min != null).sort((a, b) => a.sla.min - b.sla.min)[0];
-  // linha do tempo única (todas as solicitações + chat), cada balão com a cor da solicitação
+  // Conversa: linha do tempo única (chat + abertura de cada solicitação), cada balão com a cor da solicitação
   const tl = [];
   for (const s of sols) {
     tl.push({ s, tipo: s.origem === "app" ? "app" : "abertura", autor: s.solicitante_nome || nomeU(s.aberto_por) || "Abertura", data: s.chat_iniciado_em || s.criado_em, texto: s.descricao || "" });
     (s.comentarios || []).forEach((c) => tl.push({ s, tipo: tipoMsg(c), autor: c.autor, data: c.data, texto: c.texto, escrito_em: c.escrito_em }));
   }
   tl.sort((a, b) => String(a.data || "").localeCompare(String(b.data || "")));
-  const tipoPadrao = alvo.chat || alvo.app_pendente || alvo.origem === "app" ? "resposta" : "nota";
-  const tipoSel = S.tipoMsg && S.tipoMsg.alvo === alvo.id ? S.tipoMsg.tipo : tipoPadrao;
-  const filhos = (s) => Object.entries(arv[s.motivo_pai] || {}).filter(([, i]) => i.ativo !== false);
+  const balao = (x) => `<div class="msg ${CLS_TIPO[x.tipo] || x.tipo}" style="--sol:${corSol(x.s.cor)}"><span class="q"><i class="tag-sol" style="--c:${corSol(x.s.cor)}">${esc(rot(x.s))}</i> ${ROT_TIPO[x.tipo] ? `<b>${ROT_TIPO[x.tipo]}</b> · ` : ""}${esc(x.autor || "")} · ${dh(x.data)}${x.escrito_em ? ` · escrito sem internet às ${dh(x.escrito_em)}` : ""}</span>${esc(x.texto || "")}</div>`;
+  // Registro da solicitação selecionada (o que o cliente vê no app = contato/atualização)
+  const desde = String(sel.criado_em || "");
+  const registro = sel.chat ? [] : [{ tipo: sel.origem === "app" && !sel.convertido_de_chat ? "app" : "abertura", autor: sel.solicitante_nome || nomeU(sel.aberto_por) || "Abertura", data: sel.criado_em, texto: sel.descricao || "" }]
+    .concat((sel.comentarios || []).filter((c) => String(c.data || "") >= desde).map((c) => ({ tipo: tipoMsg(c), autor: c.autor, data: c.data, texto: c.texto })));
+  const filhos = Object.entries(arv[sel.motivo_pai] || {}).filter(([, i]) => i.ativo !== false);
   const pend = sel.solicitacoes_setor || [], pedidosAb = pend.filter((x) => x.tipo === "pedido"), resp = Object.fromEntries(pend.filter((x) => x.tipo === "resposta").map((x) => [x.pedido_id, x]));
   const selAberta = ABERTOS.includes(sel.status), caminho = String(sel.etapa_atual || "").split(" › ");
+  const tipoSol = S.tipoSol || "contato", tipoChat = S.tipoChat || "resposta";
   const cartao = (s) => `<button type="button" class="sol-card${s.id === sel.id ? " sel" : ""}${s.chat ? " chat" : ""}" data-sol="${esc(s.id)}" style="--c:${corSol(s.cor)}">
       <span class="t1"><b>${esc(rot(s))}</b>${etqSt(s.status)}${s.app_pendente ? etq("📱 respondeu", "#22d3ee") : ""}</span>
       <small>${s.chat ? esc(s.assunto || "") : esc(s.motivo_pai || "não classificado")}${s.departamento ? " · " + esc(s.departamento) : ""}${ABERTOS.includes(s.status) ? " · " + slaTxt(s.sla) : ""}${(s.pend_abertas || []).length ? ` · ${s.pend_abertas.length} pendência(s)` : ""}</small></button>`;
-  m.innerHTML = `
-  <section class="at-cab vidro" style="--c:${estado === "atendimento" ? "var(--ciano)" : "var(--vidro-borda-forte)"}">
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px"><span class="dica">Chamado nº <b>${esc(D.cliente.codigo || cid)}</b> · ${sols.length} registro(s) no histórico</span>${etq(ESTADO[estado][0], ESTADO[estado][1])}${chat && chat.app_pendente ? `<span class="mini c" style="--c:var(--ciano)">📱 aguardando resposta desde ${dh(chat.app_pendente_desde)}</span>` : ""}</div>
-    <h1>${esc(D.cliente.nome || "Cliente")}</h1>
-    <div class="linha1">${vivoC && sla1 ? slaTxt(sla1.sla) : ""} <span>· ${chat ? "chat ativo + " : ""}${abertas.length} solicitação(ões) aberta(s)</span> <span>· dono <b>${temDono ? esc(nomeU(D.dono[0])) : "ninguém"}</b></span></div>
-    <div class="acoes">
-      ${vivoC && !comigo && pode("atender") && (!temDono || pode("transferir")) ? `<button type="button" class="btn v p" id="paraMim">${temDono ? "Transferir para mim" : "Assumir o cliente"}</button>` : ""}
-      ${vivoC && pode("transferir") ? `<select class="entrada" id="transf" style="width:auto;padding:7px 10px"><option value="">Transferir cliente para…</option><option value="__ninguem">— sem responsável —</option>${S.e.usuarios.map((u) => `<option value="${esc(u.usuario)}">${esc(u.nome)}${u.depto ? " · " + esc(u.depto) : ""}</option>`).join("")}</select>` : ""}
-      ${pode("abrir") ? `<button type="button" class="btn v p" id="novaSol">${svg("mais")} Nova solicitação</button>` : ""}
-    </div>
-  </section>
-  <div class="at">
-    <section class="col vidro">
-      <h3>${svg("mensagem")} Conversa do cliente <small>${tl.length} registro(s)</small></h3>
-      <div class="legenda">${sols.filter((s) => ABERTOS.includes(s.status) || s.id === sel.id).map((s) => `<span class="chip-sol" style="--c:${corSol(s.cor)}">${esc(rot(s))}</span>`).join("")}</div>
-      <div class="conversa" id="conversa">
-        ${tl.map((x) => `<div class="msg ${CLS_TIPO[x.tipo] || x.tipo}" style="--sol:${corSol(x.s.cor)}"><span class="q"><i class="tag-sol" style="--c:${corSol(x.s.cor)}">${esc(rot(x.s))}</i> ${ROT_TIPO[x.tipo] ? `<b>${ROT_TIPO[x.tipo]}</b> · ` : ""}${esc(x.autor || "")} · ${dh(x.data)}${x.escrito_em ? ` · escrito sem internet às ${dh(x.escrito_em)}` : ""}</span>${esc(x.texto || "")}</div>`).join("")}
-      </div>
-      ${pode("atender") ? `<div class="resp">
-        <div class="alvos"><span class="dica">Registrar em:</span>${alvos.map((s) => `<button type="button" class="chip-sol alvo${s.id === alvo.id ? " ativo" : ""}" data-alvo="${esc(s.id)}" style="--c:${corSol(s.cor)}">${esc(rot(s))}</button>`).join("")}</div>
-        <div class="tipos seg" id="tipoResp" style="margin-top:8px"><button type="button" data-tipo="resposta" class="${tipoSel === "resposta" ? "ativo" : ""}" style="--c:var(--azul)">📱 Responder no app</button><button type="button" data-tipo="nota" class="${tipoSel === "nota" ? "ativo" : ""}" style="--c:var(--ouro)">Nota interna</button><button type="button" data-tipo="contato" class="${tipoSel === "contato" ? "ativo" : ""}" style="--c:var(--verde)">Registrar contato</button></div>
-        <textarea class="entrada" id="txt" placeholder="Escreva aqui… (Ctrl+Enter envia)" style="margin-top:8px;min-height:90px"></textarea>
-        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;align-items:center"><button type="button" class="btn p" id="enviar">Enviar</button>
-          ${ABERTOS.includes(alvo.status) ? `<select class="entrada" id="stDepois" style="width:auto;padding:6px 9px"><option value="">e manter situação</option><option value="aguardando">e aguardar o cliente</option>${pode("encerrar") && !alvo.chat ? `<option value="resolvido">e concluir esta solicitação</option>` : ""}</select>` : ""}
-          <span class="dica" id="dicaTipo">${DICA_TIPO[tipoSel]}</span></div>
-      </div>` : ""}
-    </section>
-
-    <section class="col vidro">
-      <h3>${svg("lista")} Solicitações <small>${abertas.length} aberta(s)</small></h3>
-      ${chat ? cartao(chat) : ""}
-      ${abertas.map(cartao).join("") || (!chat ? `<p class="dica">Nenhuma solicitação aberta.</p>` : `<p class="dica">Nenhum ticket aberto — só o chat.</p>`)}
+  if (S.convAberta == null || S.convAbertaDe !== cid) { S.convAberta = !!chat; S.convAbertaDe = cid; }   // sem chat ativo, a conversa abre MINIMIZADA
+  const corpo = {
+    conversa: `<div class="legenda">${sols.filter((s) => ABERTOS.includes(s.status)).map((s) => `<span class="chip-sol" style="--c:${corSol(s.cor)}">${esc(rot(s))}</span>`).join("")}</div>
+      <div class="conversa" id="conversa">${tl.map(balao).join("")}</div>
+      ${chat && pode("atender") ? `<div class="resp">
+        <div class="tipos seg"><button type="button" data-tchat="resposta" class="${tipoChat === "resposta" ? "ativo" : ""}" style="--c:var(--azul)">📱 Responder no app</button><button type="button" data-tchat="nota" class="${tipoChat === "nota" ? "ativo" : ""}" style="--c:var(--ouro)">Nota interna</button></div>
+        <textarea class="entrada" id="txtChat" placeholder="Responder ao cliente no chat… (Ctrl+Enter envia)" style="margin-top:8px;min-height:64px"></textarea>
+        <div style="display:flex;gap:6px;margin-top:6px;align-items:center"><button type="button" class="btn p" id="enviarChat">Enviar no chat</button><span class="dica">${tipoChat === "resposta" ? "O cliente vê na aba Atendimento do app." : "Só a equipe vê."}</span></div>
+      </div>` : `<p class="dica">${chat ? "" : "Sem chat ativo. Aqui fica o histórico da conversa com o cliente — o atendimento do ticket é feito em Solicitações."}</p>`}`,
+    sols: `${chat ? cartao(chat) : ""}
+      ${abertas.map(cartao).join("") || (!chat ? `<p class="dica">Nenhuma solicitação aberta.</p>` : "")}
       ${fechadas.length ? `<details${fechadas.some((s) => s.id === sel.id) ? " open" : ""}><summary class="dica" style="cursor:pointer">Concluídas (${fechadas.length})</summary><div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">${fechadas.map(cartao).join("")}</div></details>` : ""}
       <div class="painel-sol" style="--c:${corSol(sel.cor)}">
-        <div class="sec" style="margin-top:4px;color:${corSol(sel.cor)}">${esc(rot(sel))}</div>
-        <div class="acoes" style="display:flex;gap:6px;flex-wrap:wrap">
+        <div class="sec" style="margin-top:2px;color:${corSol(sel.cor)}">${esc(rot(sel))} ${!sel.chat ? `<small class="dica" style="margin-left:6px;letter-spacing:0;text-transform:none">o cliente acompanha em Chamados no app</small>` : ""}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
           ${pode("atender") && !sel.chat ? `<select class="entrada" id="prio" style="width:auto;padding:6px 9px">${Object.entries(PRIO).map(([k2, [r]]) => `<option value="${k2}"${(sel.prioridade || "normal") === k2 ? " selected" : ""}>Prioridade: ${r}</option>`).join("")}</select>` : ""}
           ${selAberta && pode("atender") ? `<button type="button" class="btn v p" data-st="${sel.status === "aguardando" ? "em_andamento" : "aguardando"}">${sel.status === "aguardando" ? "Retomar" : "Aguardar o cliente"}</button>` : ""}
           ${selAberta && pode("encerrar") ? (sel.chat ? `<button type="button" class="btn p" id="concluirChat">${svg("check")} Concluir chat</button>` : `<button type="button" class="btn p" data-st="resolvido">${svg("check")} Concluir</button><button type="button" class="btn perigo p" data-st="cancelado">Cancelar</button>`) : ""}
           ${!selAberta && pode("atender") && !sel.chat ? `<button type="button" class="btn v p" data-st="em_andamento">Reabrir</button>` : ""}
           ${sel.status === "resolvido" && pode("encerrar") && !sel.chat ? `<button type="button" class="btn v p" data-st="finalizado">Finalizar</button>` : ""}
         </div>
-        ${sel.chat ? `<p class="dica">Chat do app (${esc(sel.assunto || "")}). Ao concluir, você escolhe: anexar a conversa ao chamado ou transformá-la numa solicitação.</p>`
-        : sel.etapa_travada ? `<div class="trava">🔒 <b>${esc(sel.motivo_pai || "")} › ${esc(sel.etapa_atual || "")}</b><br>Prazo combinado: <b>${d10(sel.etapa_data_prevista)}</b> · travado por ${esc(sel.etapa_definida_por || "")} em ${dh(sel.etapa_definida_em)}.</div>`
-        : pode("atender") ? `
+        ${sel.chat ? `<p class="dica">Chat do app (${esc(sel.assunto || "")}) — responda no painel Conversa. Ao concluir, você escolhe: anexar ao chamado ou transformar numa solicitação.</p>` : `
+        <div class="registro">${registro.map((x) => `<div class="msg ${CLS_TIPO[x.tipo] || x.tipo}" style="--sol:${corSol(sel.cor)}"><span class="q">${ROT_TIPO[x.tipo] ? `<b>${ROT_TIPO[x.tipo]}</b> · ` : ""}${esc(x.autor || "")} · ${dh(x.data)}</span>${esc(x.texto || "")}</div>`).join("")}</div>
+        ${pode("atender") ? `<div class="resp">
+          <div class="tipos seg"><button type="button" data-tsol="contato" class="${tipoSol === "contato" ? "ativo" : ""}" style="--c:var(--verde)">Registrar contato / atualização</button><button type="button" data-tsol="nota" class="${tipoSol === "nota" ? "ativo" : ""}" style="--c:var(--ouro)">Nota interna</button></div>
+          <textarea class="entrada" id="txt" placeholder="${tipoSol === "contato" ? "O que foi definido / falado com o cliente… (ele vê no app, em Chamados)" : "Anotação só da equipe…"}" style="margin-top:8px;min-height:70px"></textarea>
+          <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center"><button type="button" class="btn p" id="enviar">Registrar</button>
+            ${selAberta ? `<select class="entrada" id="stDepois" style="width:auto;padding:6px 9px"><option value="">e manter situação</option><option value="aguardando">e aguardar o cliente</option>${pode("encerrar") ? `<option value="resolvido">e concluir</option>` : ""}</select>` : ""}
+            <span class="dica">${tipoSol === "contato" ? "👁 O cliente vê no app, em Chamados." : "Só a equipe vê."}</span></div>
+        </div>` : ""}
+        ${sel.etapa_travada ? `<div class="trava">🔒 <b>${esc(sel.motivo_pai || "")} › ${esc(sel.etapa_atual || "")}</b><br>Prazo combinado: <b>${d10(sel.etapa_data_prevista)}</b> · travado por ${esc(sel.etapa_definida_por || "")} em ${dh(sel.etapa_definida_em)}.</div>`
+        : pode("atender") ? `<details${sel.motivo_filho ? "" : " open"}><summary class="dica" style="cursor:pointer">Tabulação e etapa${sel.etapa_atual ? " · atual: " + esc(caminho.slice(1).join(" › ") || "—") : ""}</summary>
+          <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
           <label class="campo">Motivo<select id="mPai"><option value="">Escolha…</option>${Object.keys(arv).map((p) => `<option${p === sel.motivo_pai ? " selected" : ""}>${esc(p)}</option>`).join("")}</select></label>
-          <label class="campo">Submotivo<select id="mFilho"><option value="">Escolha…</option>${filhos(sel).map(([f, i]) => `<option value="${esc(f)}"${f === sel.motivo_filho ? " selected" : ""}>${esc(f)}${i.sla != null ? ` · SLA ${i.sla}d` : ""}</option>`).join("")}</select></label>
-          <label class="campo">Etapa${sel.etapa_atual ? ` <small class="dica">· atual: ${esc(caminho.slice(1).join(" › ") || "—")}</small>` : ""}<select id="mEtapa"></select></label>
-          <label class="campo">Prazo combinado com o cliente <small class="dica">(opcional — trava a trilha)</small><input type="date" id="mData"></label>
-          <button type="button" class="btn p" id="classificar">Salvar etapa</button>` : `<p class="dica">${esc(sel.motivo_pai || "não classificado")} ${sel.etapa_atual ? "› " + esc(sel.etapa_atual) : ""}</p>`}
+          <label class="campo">Submotivo<select id="mFilho"><option value="">Escolha…</option>${filhos.map(([f, i]) => `<option value="${esc(f)}"${f === sel.motivo_filho ? " selected" : ""}>${esc(f)}${i.sla != null ? ` · SLA ${i.sla}d` : ""}</option>`).join("")}</select></label>
+          <label class="campo">Etapa<select id="mEtapa"></select></label>
+          <label class="campo">Prazo combinado com o cliente <small class="dica">(opcional — trava a trilha; o cliente vê)</small><input type="date" id="mData"></label>
+          <button type="button" class="btn p" id="classificar">Salvar etapa</button></div></details>` : `<p class="dica">${esc(sel.motivo_pai || "não classificado")} ${sel.etapa_atual ? "› " + esc(sel.etapa_atual) : ""}</p>`}
         ${(sel.historico_etapas || []).length ? `<details><summary class="dica" style="cursor:pointer">Trilha de etapas (${sel.historico_etapas.length})</summary>${sel.historico_etapas.slice().reverse().map((h) => `<p class="dica">${dh(h.quando)} · ${esc(h.etapa)} · ${esc(h.por || "")}${h.vermelha ? ` · prazo ${d10(h.data_prevista)}` : ""}</p>`).join("")}</details>` : ""}
-        ${!sel.chat ? `<div class="sec">Pendências com outros setores</div>
+        <div class="sec">Pendências com outros setores</div>
         ${pedidosAb.length ? pedidosAb.map((p) => { const r = resp[p.id]; return `<div class="pend-it ${r ? "ok" : ""}"><b>${esc(p.setor_origem)} → ${esc(p.setor_destino)}</b> · ${dh(p.solicitado_em)} · ${esc(p.solicitado_por_nome || "")}<br>${esc(p.mensagem || "")}
           ${r ? `<p class="dica" style="margin-top:4px">✅ ${esc(r.respondido_por_nome || "")} · ${dh(r.respondido_em)}: ${esc(r.resposta || "")}</p>` : pode("atender") ? `<div style="display:flex;gap:6px;margin-top:6px"><input class="entrada" data-resp="${esc(p.id)}" placeholder="Responder pelo setor ${esc(p.setor_destino)}…" style="padding:6px 9px"><button type="button" class="btn v p" data-respbt="${esc(p.id)}">Responder</button></div>` : ""}</div>`; }).join("") : `<p class="dica">Nenhuma pendência.</p>`}
-        ${selAberta && pode("atender") ? `<div class="g2"><select class="entrada" id="pSetor"><option value="">Pedir ajuda a…</option>${S.e.departamentos.map((d) => `<option>${esc(d)}</option>`).join("")}</select><input class="entrada" id="pMsg" placeholder="O que precisa do setor?"></div><button type="button" class="btn v p" id="pedir">Pedir ajuda</button>` : ""}` : ""}
-      </div>
-    </section>
-
-    <section class="col cli vidro">
-      <h3>${svg("usuario")} Cliente</h3>
-      <dl class="ficha"><dt>Nome</dt><dd>${esc(D.cliente.nome || "—")}</dd><dt>Chamado</dt><dd>nº ${esc(D.cliente.codigo || "—")}</dd><dt>Telefone</dt><dd>${esc(D.cliente.telefone || "não informado")}</dd><dt>Dono</dt><dd>${temDono ? esc(nomeU(D.dono[0])) : "ninguém"}</dd></dl>
-      ${erpBloco(sel, D.erp)}
-    </section>
-  </div>`;
-  ligarCliente(m, D, sel, alvo, chat, abertas);
+        ${selAberta && pode("atender") ? `<div class="g2"><select class="entrada" id="pSetor"><option value="">Pedir ajuda a…</option>${S.e.departamentos.map((d) => `<option>${esc(d)}</option>`).join("")}</select><input class="entrada" id="pMsg" placeholder="O que precisa do setor?"></div><button type="button" class="btn v p" id="pedir">Pedir ajuda</button>` : ""}`}
+      </div>`,
+    cli: `<dl class="ficha"><dt>Nome</dt><dd>${esc(D.cliente.nome || "—")}</dd><dt>Chamado</dt><dd>nº ${esc(D.cliente.codigo || "—")}</dd><dt>Telefone</dt><dd>${esc(D.cliente.telefone || "não informado")}</dd><dt>Dono</dt><dd>${temDono ? esc(nomeU(D.dono[0])) : "ninguém"}</dd></dl>
+      ${erpBloco(sel, D.erp)}`,
+  };
+  // cabeçalho FINO e CONGELADO + grade de painéis ajustáveis
+  m.innerHTML = `
+  <section class="cab-cli vidro" style="--c:${estado === "atendimento" ? "var(--ciano)" : "var(--vidro-borda-forte)"}">
+    <b class="num">${estado === "atendimento" ? "📱" : "#"}${esc(D.cliente.codigo || cid)}</b>${etq(ESTADO[estado][0], ESTADO[estado][1])}
+    <b class="nome" title="${esc(D.cliente.nome || "")}">${esc(D.cliente.nome || "Cliente")}</b>
+    ${vivoC && sla1 ? `<span>${slaTxt(sla1.sla)}</span>` : ""}
+    <span class="dado">${chat ? "chat ativo + " : ""}${abertas.length} solicitação(ões)</span>
+    <span class="dado">dono <b>${temDono ? esc(nomeU(D.dono[0]).split(" ")[0]) : "ninguém"}</b></span>
+    ${chat && chat.app_pendente ? `<span class="mini c" style="--c:var(--ciano)">📱 aguardando desde ${dh(chat.app_pendente_desde)}</span>` : ""}
+    <span class="esp"></span>
+    ${vivoC && !comigo && pode("atender") && (!temDono || pode("transferir")) ? `<button type="button" class="btn v p" id="paraMim">${temDono ? "Para mim" : "Assumir"}</button>` : ""}
+    ${vivoC && pode("transferir") ? `<select class="entrada" id="transf"><option value="">Transferir…</option><option value="__ninguem">— sem responsável —</option>${S.e.usuarios.map((u) => `<option value="${esc(u.usuario)}">${esc(u.nome)}</option>`).join("")}</select>` : ""}
+    ${pode("abrir") ? `<button type="button" class="btn v p" id="novaSol">${svg("mais")} Solicitação</button>` : ""}
+    <button type="button" class="btn-ic p" id="layoutPadrao" title="Voltar os painéis ao lugar original">${svg("grade")}</button>
+  </section>
+  <div id="gradeCli"></div>`;
+  const grade = new A.Grade($("#gradeCli"), { colunas: 12, linha: 40, espaco: 12, aoMudar: (l) => { const salvo = l.map((x) => (x.id === "conversa" && !S.convAberta) ? { ...x, h: S.convH || PAINEIS.conversa.h } : x); ls.set(LAYOUT_CLI, JSON.stringify(salvo)); } });
+  for (const l of layoutCliente()) {
+    const d = PAINEIS[l.id], el = document.createElement("section");
+    const min = l.id === "conversa" && !S.convAberta;
+    el.className = "wg vidro painel-cli" + (min ? " min" : ""); el.dataset.wg = l.id; el.style.setProperty("--c", d.cor);
+    el.innerHTML = `<header class="wg-cab" title="Arraste para mover">${A.orbe(d.icone, d.cor, "p")}<h3>${d.titulo}${l.id === "sols" ? ` <small class="dica">${abertas.length} aberta(s)</small>` : l.id === "conversa" ? ` <small class="dica">${tl.length} registro(s)${chat && chat.app_pendente ? " · 📱 cliente aguardando" : ""}</small>` : ""}</h3>
+      <span class="acs">${l.id === "conversa" ? `<button type="button" class="btn-ic p" id="minConv" title="${min ? "Mostrar a conversa" : "Minimizar"}">${svg(min ? "maximizar" : "minimizar")}</button>` : ""}<button type="button" class="btn-ic p" data-wmax="${l.id}" title="Expandir">${svg("maximizar")}</button></span></header>
+      <div class="wg-corpo">${corpo[l.id]}</div><span class="wg-redim" title="Arraste para redimensionar"></span>`;
+    if (l.id === "conversa") { if (!min && l.h > 2) S.convH = l.h; }
+    grade.adicionar({ id: l.id, x: l.x, y: l.y, w: l.w, h: min ? 1 : (l.id === "conversa" ? Math.max(l.h, 4) : l.h), minW: d.minW, minH: min ? 1 : (d.minH === 1 ? 3 : d.minH), el });
+  }
+  grade.resolver(null); grade.aplicar();   // acomoda tudo (a conversa minimizada não deixa buraco)
+  m.querySelectorAll("[data-wmax]").forEach((b) => (b.onclick = () => grade.max(b.dataset.wmax)));
+  $("#minConv").onclick = () => { S.convAberta = !S.convAberta; guardarRascunho(); render(); };
+  $("#layoutPadrao").onclick = () => { ls.set(LAYOUT_CLI, "[]"); render(); };
+  ligarCliente(m, D, sel, chat, abertas);
 }
 
 function erpBloco(t, erp) {
@@ -701,27 +745,32 @@ function ligarMotivo(prefixo) {
   mp.onchange = () => { mf.innerHTML = `<option value="">Escolha…</option>` + Object.entries(arv[mp.value] || {}).filter(([, i]) => i.ativo !== false).map(([f, i]) => `<option value="${esc(f)}">${esc(f)}${i.sla != null ? ` · SLA ${i.sla}d` : ""}</option>`).join(""); };
 }
 
-function ligarCliente(m, D, sel, alvo, chat, abertas) {
+function ligarCliente(m, D, sel, chat, abertas) {
   const cid = D.cid, recarregarDet = async () => { S.det = null; await carregar(); };
-  { const tx = $("#txt"); if (tx) { if (S.rasc[cid]) tx.value = S.rasc[cid]; tx.addEventListener("input", () => { S.rasc[cid] = tx.value; }); } }
+  const rascunho = (id, chave) => { const tx = $("#" + id); if (tx) { if (S.rasc[chave]) tx.value = S.rasc[chave]; tx.addEventListener("input", () => { S.rasc[chave] = tx.value; }); } };
+  rascunho("txt", cid); rascunho("txtChat", cid + ":chat");
   const pm = $("#paraMim"); if (pm) pm.onclick = async () => { try { await assumirCliente(cid, S.e.eu.usuario); ok("O cliente agora está com você."); await recarregarDet(); } catch (e) { falha(e); } };
   const tr = $("#transf"); if (tr) tr.onchange = async () => { if (!tr.value) return; const a2 = tr.value === "__ninguem" ? "" : tr.value; try { await assumirCliente(cid, a2); ok("Cliente transferido."); await recarregarDet(); } catch (e) { falha(e); } };
   const pr = $("#prio"); if (pr) pr.onchange = async () => { try { await chamar(tidUrl(sel.id) + "/alterar", { method: "POST", body: { prioridade: pr.value } }); await recarregarDet(); } catch (e) { falha(e); } };
-  m.querySelectorAll("[data-sol]").forEach((b) => (b.onclick = () => { guardarRascunho(); S.solSel = b.dataset.sol; const s = D.solicitacoes.find((x) => x.id === S.solSel); if (s && (ABERTOS.includes(s.status) || !S.alvo)) S.alvo = s.id; render(); }));
-  m.querySelectorAll("[data-alvo]").forEach((b) => (b.onclick = () => { guardarRascunho(); S.alvo = b.dataset.alvo; S.tipoMsg = null; render(); }));
+  m.querySelectorAll("[data-sol]").forEach((b) => (b.onclick = () => { guardarRascunho(); S.solSel = b.dataset.sol; render(); }));
   m.querySelectorAll("[data-st]").forEach((b) => (b.onclick = async () => {
     const st = b.dataset.st;
     if (st === "cancelado" && !(await A.confirmar("Cancelar esta solicitação?", { perigo: true, rotulo: "Cancelar solicitação" }))) return;
     try { await chamar(tidUrl(sel.id) + "/alterar", { method: "POST", body: { status: st } }); ok("Situação: " + (ST_INFO[st] || [st])[0]); await recarregarDet(); } catch (e) { falha(e); }
   }));
-  let tipo = m.querySelector("[data-tipo].ativo")?.dataset.tipo || "nota";
-  m.querySelectorAll("[data-tipo]").forEach((b) => (b.onclick = () => { tipo = b.dataset.tipo; S.tipoMsg = { alvo: alvo.id, tipo }; m.querySelectorAll("[data-tipo]").forEach((x) => x.classList.toggle("ativo", x === b)); const d = $("#dicaTipo"); if (d) d.textContent = DICA_TIPO[tipo]; }));
-  const env = $("#enviar");
-  if (env) {
-    const enviar = async () => { const txt = $("#txt").value.trim(); if (!txt) return; const body = { texto: txt, tipo }; const sd = $("#stDepois")?.value; if (sd) body.status = sd;
-      try { await chamar(tidUrl(alvo.id) + "/comentar", { method: "POST", body }); delete S.rasc[cid]; await recarregarDet(); } catch (e) { falha(e); } };
-    env.onclick = enviar; $("#txt").onkeydown = (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) enviar(); };
-  }
+  m.querySelectorAll("[data-tsol]").forEach((b) => (b.onclick = () => { guardarRascunho(); S.tipoSol = b.dataset.tsol; render(); }));
+  m.querySelectorAll("[data-tchat]").forEach((b) => (b.onclick = () => { guardarRascunho(); S.tipoChat = b.dataset.tchat; render(); }));
+  const registrar = async (campo, alvoId, tipo, chave, status) => {
+    const txt = $("#" + campo).value.trim(); if (!txt) return;
+    const body = { texto: txt, tipo }; if (status) body.status = status;
+    try { await chamar(tidUrl(alvoId) + "/comentar", { method: "POST", body }); delete S.rasc[chave]; await recarregarDet(); } catch (e) { falha(e); }
+  };
+  const env = $("#enviar");   // solicitação: Registrar contato (o cliente vê no app) ou nota interna
+  if (env) { const vai = () => registrar("txt", sel.id, S.tipoSol || "contato", cid, $("#stDepois")?.value);
+    env.onclick = vai; $("#txt").onkeydown = (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) vai(); }; }
+  const envC = $("#enviarChat");   // chat: Responder no app ou nota interna
+  if (envC) { const vai = () => registrar("txtChat", chat.id, S.tipoChat || "resposta", cid + ":chat");
+    envC.onclick = vai; $("#txtChat").onkeydown = (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) vai(); }; }
   const conv = $("#conversa"); if (conv) conv.scrollTop = conv.scrollHeight;
   // tabulação da solicitação selecionada
   const mp = $("#mPai"), mf = $("#mFilho"), me2 = $("#mEtapa");
@@ -751,7 +800,7 @@ function ligarCliente(m, D, sel, alvo, chat, abertas) {
       botoes: [{ rotulo: "Voltar" }, { rotulo: "Concluir chat", classe: "btn", principal: true, acao: async () => {
         const modo = document.querySelector('input[name="modo"]:checked').value, body = { modo };
         if (modo === "solicitacao") { body.motivo_pai = $("#ccPai").value; body.motivo_filho = $("#ccFilho").value; body.pedido_id = $("#ccPed")?.value || ""; if (!body.motivo_pai || !body.motivo_filho) { A.toast("Escolha motivo e submotivo."); return false; } }
-        try { await chamar(tidUrl(chat.id) + "/concluir-chat", { method: "POST", body }); ok(modo === "anexar" ? "Chat concluído e anexado ao chamado." : "Chat virou solicitação do chamado."); S.solSel = modo === "solicitacao" ? chat.id : null; S.alvo = null; await recarregarDet(); }
+        try { await chamar(tidUrl(chat.id) + "/concluir-chat", { method: "POST", body }); ok(modo === "anexar" ? "Chat concluído e anexado ao chamado." : "Chat virou solicitação do chamado."); S.solSel = modo === "solicitacao" ? chat.id : null; await recarregarDet(); }
         catch (e) { falha(e); return false; } } }] });
     document.querySelectorAll('input[name="modo"]').forEach((r) => (r.onchange = () => $("#ccSol").classList.toggle("oculto", document.querySelector('input[name="modo"]:checked').value !== "solicitacao")));
     ligarMotivo("cc");
@@ -769,7 +818,7 @@ function ligarCliente(m, D, sel, alvo, chat, abertas) {
         const body = { cliente_codigo: D.cliente.codigo, cliente_nome: D.cliente.nome, cliente_telefone: D.cliente.telefone, departamento: $("#nsDep").value,
           motivo_pai: pai, motivo_filho: filho, assunto: filho, descricao: desc, erp_cliente_id: D.erp?.clientes?.[0]?.id || "" };
         if (pedSel && pedSel.value) { body.erp_pedido_id = pedSel.value; body.erp_pedido_numero = +pedSel.selectedOptions[0].dataset.num || pedSel.selectedOptions[0].dataset.num; body.assunto += " · pedido #" + body.erp_pedido_numero; }
-        try { const r = await chamar("/tickets", { method: "POST", body }); ok("Solicitação adicionada ao chamado nº " + (r.chamado || D.cliente.codigo) + "."); S.solSel = r.id; S.alvo = r.id; await recarregarDet(); }
+        try { const r = await chamar("/tickets", { method: "POST", body }); ok("Solicitação adicionada ao chamado nº " + (r.chamado || D.cliente.codigo) + "."); S.solSel = r.id; await recarregarDet(); }
         catch (e) { falha(e); return false; } } }] });
     ligarMotivo("ns");
   };
@@ -989,7 +1038,7 @@ function telaAjustes(m) {
 /* ══════ INÍCIO ══════ */
 carregar();
 /* com um atendimento aberto: se o cliente escreveu pelo app, a conversa atualiza sozinha (sem perder o que você está digitando) */
-setInterval(() => { if (document.visibilityState !== "visible" || !S.aberto || document.querySelector(".aur-modal-fundo") || $("#txt")?.value) return;
+setInterval(() => { if (document.visibilityState !== "visible" || !S.aberto || document.querySelector(".aur-modal-fundo") || $("#txt")?.value || $("#txtChat")?.value) return;
   A.api(API + "/estado").then((e) => { if (e.versao !== S.e?.versao) { guardarRascunho(); novoEstado(e); S.det = null; if (!document.activeElement || !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) render(); } }).catch(() => {}); }, 20000);
 setInterval(() => { if (document.visibilityState === "visible" && !S.aberto && !document.querySelector(".aur-modal-fundo")) A.api(API + "/estado").then((e) => { if (e.versao !== S.e?.versao) { novoEstado(e); if (!document.activeElement || !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) render(); } }).catch(() => {}); }, 30000);
 })();
