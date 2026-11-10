@@ -20,7 +20,8 @@
     "setor": "Ver todos os atendimentos do próprio setor",
     "equipe": "Ver todos os atendimentos (equipe inteira)",
     "gestao": "Painel de gestão",
-    "configurar": "Ajustes: motivos, setores, usuários, ERP"
+    "configurar": "Ajustes: motivos, setores, usuários, ERP",
+    "palavra_chave": "Ver a palavra-chave dos pedidos (login do app do cliente)"
   },
   "campos": {}
 }
@@ -173,6 +174,30 @@ button.kpi:hover{border-color:color-mix(in srgb,var(--c) 50%,transparent)}
 .filho{display:grid;grid-template-columns:minmax(0,1fr) 60px minmax(0,1.6fr) auto;gap:6px;align-items:center;margin-top:5px}
 .filho input{padding:6px 8px;font-size:.78rem}
 .oculto{display:none!important}
+/* abas de atendimento (tipo navegador): app à esquerda (cor), tickets à direita (neutros) */
+.abas-tk{position:sticky;top:76px;z-index:35;display:flex;align-items:flex-end;gap:6px;margin:12px 0 -6px;padding:6px 6px 0;border-radius:16px 16px 0 0;overflow-x:auto;scrollbar-width:thin}
+.abas-tk:empty{display:none}
+.abas-tk .grupo{display:flex;gap:4px;align-items:flex-end;flex:none}
+.abas-tk .meio{flex:1;min-width:12px;align-self:center;height:1px}
+.abas-tk .rot{font-size:.56rem;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:var(--txt3);padding:0 4px 9px;white-space:nowrap}
+.aba-tk{position:relative;display:flex;align-items:center;gap:6px;max-width:220px;padding:8px 8px 8px 11px;border-radius:12px 12px 0 0;font-size:.76rem;font-weight:600;color:var(--txt2);
+  background:rgba(255,255,255,.03);border:1px solid var(--vidro-borda);border-bottom:0;transition:.15s;flex:none}
+.aba-tk:hover{color:var(--txt);background:rgba(255,255,255,.07)}
+.aba-tk .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.aba-tk .nm small{color:var(--txt3);font-weight:600;margin-right:4px}
+.aba-tk .x{display:grid;place-items:center;width:18px;height:18px;border-radius:6px;color:var(--txt3);font-size:13px;line-height:1;flex:none}
+.aba-tk .x:hover{background:rgba(251,113,133,.18);color:var(--rosa)}
+.aba-tk.ativo{color:var(--txt);background:linear-gradient(180deg,rgba(255,255,255,.11),rgba(255,255,255,.05));border-color:var(--vidro-borda-forte);box-shadow:0 -2px 0 var(--txt2) inset}
+.aba-tk.app{color:var(--ciano);background:rgba(34,211,238,.07);border-color:rgba(34,211,238,.35)}
+.aba-tk.app .nm small{color:rgba(34,211,238,.7)}
+.aba-tk.app.ativo{background:linear-gradient(180deg,rgba(34,211,238,.22),rgba(34,211,238,.08));color:var(--txt);border-color:rgba(34,211,238,.6);box-shadow:0 -3px 0 var(--ciano) inset}
+.aba-tk.pend{border-color:var(--rosa);color:var(--txt)}
+.aba-tk.pend::after{content:attr(data-sinal);position:absolute;top:-8px;right:6px;padding:0 6px;border-radius:8px;font:700 .56rem/15px var(--sans);letter-spacing:.4px;text-transform:uppercase;background:var(--rosa);color:#fff;box-shadow:0 0 12px var(--rosa)}
+.aba-tk.pend .pisca{background:var(--rosa);box-shadow:0 0 10px var(--rosa)}
+.aba-caixa{display:flex;align-items:center;gap:6px;padding:8px 12px;border-radius:12px 12px 0 0;font-size:.78rem;font-weight:700;color:var(--txt2);border:1px solid var(--vidro-borda);border-bottom:0;background:rgba(255,255,255,.03);flex:none}
+.aba-caixa.ativo{color:var(--ouro2);background:rgba(var(--ouro-rgb),.12);border-color:rgba(var(--ouro-rgb),.45);box-shadow:0 -3px 0 var(--ouro) inset}
+.aba-caixa svg.i{width:15px;height:15px}
+@media (max-width:800px){.abas-tk{top:0}}
 @media (max-width:1100px){.at{grid-template-columns:1fr 1fr}.at .col.cli{grid-column:1/-1}}
 @media (max-width:800px){.caixa,.at{grid-template-columns:1fr}.filas{position:relative;top:0;max-height:none}.topo{position:relative;top:0}.tab .so-largo{display:none}.busca-topo .entrada{width:130px}}
 </style>
@@ -183,8 +208,10 @@ button.kpi:hover{border-color:color-mix(in srgb,var(--c) 50%,transparent)}
     <div class="marca"><span id="logo"></span><span><b>Atendimento</b><small>Concierge · hub</small></span></div>
     <nav class="nav" id="nav"></nav>
     <form class="busca-topo" id="fBusca"><input class="entrada" id="qTopo" placeholder="Nº, cliente, pedido…"><button class="btn-ic" type="submit" title="Buscar" id="btBusca"></button></form>
+    <button type="button" class="btn-ic oculto" id="btPalavra" title="Palavra-chave dos pedidos (app do cliente)"></button>
     <span class="sync" id="sync"><i></i><span>…</span></span>
   </header>
+  <div class="abas-tk" id="abasTk"></div>
   <main id="main"><div class="vazio"><b>Carregando…</b></div></main>
 </div>
 
@@ -206,6 +233,8 @@ const ls = { get(k, d) { try { return localStorage.getItem(k) ?? d; } catch (_) 
 const S = { e: null, sec: ls.get("wd.tk.sec", "meudia"), aba: ls.get("wd.tk.aba", "meus"), fila: "", ord: ls.get("wd.tk.ord", "urgencia"),
   q: "", pag: 0, sel: new Set(), atend: "", aberto: null, det: null, setorAbrir: "" };
 const pode = (a) => !!S.e?.perm?.acoes?.[a];
+S.abas = (() => { try { return JSON.parse(ls.get("wd.tk.abas", "[]")) || []; } catch (_) { return []; } })();
+S.rasc = {};   // texto não enviado de cada aba (ao alternar, nada se perde)
 const nomeU = (u) => S.e?.usuarios.find((x) => x.usuario === u)?.nome || u || "";
 const dh = (s) => { s = String(s || ""); return s.length >= 16 ? `${s.slice(8, 10)}/${s.slice(5, 7)} ${s.slice(11, 16)}` : s.length >= 10 ? `${s.slice(8, 10)}/${s.slice(5, 7)}/${s.slice(0, 4)}` : "—"; };
 const d10 = (s) => { s = String(s || ""); return s.length >= 10 ? `${s.slice(8, 10)}/${s.slice(5, 7)}/${s.slice(0, 4)}` : "—"; };
@@ -232,14 +261,30 @@ const ok = (t) => A.toast(t, [], { cor: "var(--verde)", duracao: 3500 });
 const tidUrl = (id) => "/ticket/" + encodeURIComponent(id);
 const DICA_TIPO = { resposta: "O cliente recebe esta mensagem no app (aba Chamados).", nota: "Nota interna: o cliente não vê.", contato: "“Registrar contato” = você falou com o cliente por telefone/WhatsApp (o cliente não vê)." };
 
+/* ══════ PALAVRA-CHAVE (só quem tem a permissão) ══════ */
+function consultaPalavra() {
+  A.modal({ titulo: "Palavra-chave dos pedidos", icone: "cadeado", largura: 560,
+    html: `<p class="dica" style="margin-bottom:8px">Gerada quando o pedido é criado no ERP. O cliente usa no login do app (se estiver exigida em Ajustes). Só passe ao próprio cliente.</p>
+      <input class="entrada" id="pq" placeholder="Nome, código, CPF ou telefone do cliente…" autofocus><div id="pres" style="margin-top:10px;display:flex;flex-direction:column;gap:8px"></div>`,
+    botoes: [{ rotulo: "Fechar" }] });
+  let tm;
+  $("#pq").oninput = (e) => { clearTimeout(tm); tm = setTimeout(async () => {
+    const q = e.target.value.trim(); if (q.length < 2) { $("#pres").innerHTML = ""; return; }
+    try { const r = await chamar("/app/palavras?q=" + encodeURIComponent(q), {}, "buscando…");
+      $("#pres").innerHTML = r.clientes.map((c) => `<div class="ped"><div class="t1"><b>${esc(c.nome)}</b><span class="dica">cód. ${esc(c.codigo || "—")}</span></div>
+        ${c.pedidos.length ? `<ul>${c.pedidos.map((p) => `<li>Pedido #${p.numero} · ${esc((ERP_ST[p.status] || [p.status])[0])} — ${p.palavra_chave ? `<b style="color:var(--ouro2);letter-spacing:1px">${esc(p.palavra_chave)}</b>` : "<i>sem palavra</i>"}</li>`).join("")}</ul>` : `<p class="dica">Nenhum pedido.</p>`}</div>`).join("") || `<p class="dica">Nenhum cliente encontrado.</p>`;
+    } catch (er) { falha(er); } }, 300); };
+}
+
 /* ══════ CARREGAR ══════ */
 async function carregar() {
-  try { S.e = await chamar("/estado", {}, "carregando…"); }
+  try { novoEstado(await chamar("/estado", {}, "carregando…")); }
   catch (e) {
     $("#main").innerHTML = e.message === "sem_banco_tickets" ? `<div class="vazio">${A.orbe("atencao", "var(--rosa)")}<b>Banco não configurado</b>Falta FIRESTORE_CREDS no Render.</div>`
       : `<div class="vazio">${A.orbe("atencao", "var(--rosa)")}<b>Não foi possível carregar</b>${esc(e.message)}</div>`;
     return;
   }
+  const bp = $("#btPalavra"); bp.classList.toggle("oculto", !pode("palavra_chave")); bp.innerHTML = svg("cadeado"); bp.onclick = consultaPalavra;
   rota();
 }
 function rota() {
@@ -249,7 +294,57 @@ function rota() {
 }
 addEventListener("hashchange", rota);
 function ir(sec) { S.sec = sec; S.aberto = null; ls.set("wd.tk.sec", sec); if (location.hash) history.replaceState(null, "", location.pathname + location.search); render(); scrollTo(0, 0); }
-function abrirTicket(id) { S.aberto = id; history.replaceState(null, "", "#t=" + encodeURIComponent(id)); render(); scrollTo(0, 0); }
+function salvarAbas() { ls.set("wd.tk.abas", JSON.stringify(S.abas.slice(0, 20))); }
+function fecharAba(id) {
+  const i = S.abas.indexOf(id); if (i < 0) return;
+  S.abas.splice(i, 1); salvarAbas(); delete S.rasc[id];
+  if (S.aberto === id) { const prox = S.abas[i] || S.abas[i - 1]; S.det = null; if (prox) abrirTicket(prox); else ir("caixa"); }
+  else renderAbas();
+}
+/* faixa de abas: Caixa · [app — coloridas, quem respondeu primeiro] ……… [tickets — neutros] */
+function renderAbas() {
+  const el = $("#abasTk");
+  if (!S.e || S.sec !== "caixa" || !S.abas.length) { el.innerHTML = ""; return; }
+  const porId = Object.fromEntries(S.e.tickets.map((t) => [t.id, t]));
+  const info = (id) => porId[id] || (S.det?.ticket?.id === id ? S.det.ticket : null) || { id };
+  const ehApp = (id) => info(id).origem === "app";
+  const sinal = (t) => t.app_pendente ? "respondeu" : t.nao_visto ? "novo" : "";
+  const aba = (id) => { const t = info(id), sn = sinal(t), nome = String(t.cliente_nome || "").split(" ")[0];
+    return `<button type="button" class="aba-tk${ehApp(id) ? " app" : ""}${S.aberto === id ? " ativo" : ""}${sn ? " pend" : ""}" data-aba-tk="${esc(id)}" data-sinal="${sn}" title="${esc((t.assunto || "") + (t.cliente_nome ? " · " + t.cliente_nome : ""))}">
+      ${sn ? `<span class="pisca"></span>` : ""}<span class="nm"><small>${ehApp(id) ? "📱" : "#"}${curto(id)}</small>${esc(nome || t.assunto || "")}</span><span class="x" data-fechar="${esc(id)}" title="Fechar aba">×</span></button>`; };
+  const app = S.abas.filter(ehApp).sort((a, b) => (sinal(info(b)) ? 1 : 0) - (sinal(info(a)) ? 1 : 0));   // quem respondeu vem primeiro
+  const tks = S.abas.filter((id) => !ehApp(id));
+  el.innerHTML = `<button type="button" class="aba-caixa${!S.aberto ? " ativo" : ""}" id="abaCaixa">${svg("voltar")} Caixa</button>
+    ${app.length ? `<div class="grupo"><span class="rot">App</span>${app.map(aba).join("")}</div>` : ""}
+    <span class="meio"></span>
+    ${tks.length ? `<div class="grupo"><span class="rot">Tickets</span>${tks.map(aba).join("")}</div>` : ""}`;
+  $("#abaCaixa").onclick = () => { guardarRascunho(); S.det = null; ir("caixa"); };
+  el.querySelectorAll("[data-aba-tk]").forEach((b) => {
+    b.onclick = (ev) => {
+      const f = ev.target.closest("[data-fechar]");
+      if (f) { ev.stopPropagation(); fecharAba(f.dataset.fechar); return; }
+      if (S.aberto === b.dataset.abaTk) return;
+      guardarRascunho(); S.det = null; abrirTicket(b.dataset.abaTk);
+    };
+    b.onauxclick = (ev) => { if (ev.button === 1) { ev.preventDefault(); fecharAba(b.dataset.abaTk); } };   // botão do meio fecha, como no navegador
+  });
+}
+function guardarRascunho() { const t = $("#txt"); if (t && S.aberto) S.rasc[S.aberto] = t.value; }
+/* cliente respondeu no app → aviso na hora (prioridade) */
+function novoEstado(e) {
+  const antes = new Set((S.e?.tickets || []).filter((t) => t.app_pendente).map((t) => t.id)), primeira = !S.e;
+  S.e = e;
+  const abertos = ["aberto", "em_andamento", "aguardando"];
+  if (!primeira) {
+    const chegaram = S.e.tickets.filter((t) => t.app_pendente && !antes.has(t.id) && abertos.includes(t.status) && (t.meu || t.sem_dono || S.abas.includes(t.id)));
+    chegaram.slice(0, 3).forEach((t) => A.toast(`📱 <b>${esc(t.cliente_nome || "Cliente")}</b> escreveu no app — ${esc(t.assunto || "")}`,
+      [{ rotulo: "Atender", acao: () => { S.sec = "caixa"; ls.set("wd.tk.sec", "caixa"); guardarRascunho(); S.det = null; abrirTicket(t.id); } }], { cor: "var(--ciano)", duracao: 12000 }));
+    if (chegaram.length) { try { A.som && A.som(); } catch (_) {} }
+  }
+  const n = S.e.tickets.filter((t) => t.app_pendente && abertos.includes(t.status)).length;
+  document.title = (n ? `(${n}) ` : "") + "Atendimento";
+}
+function abrirTicket(id) { if (!S.abas.includes(id)) { S.abas.push(id); salvarAbas(); } S.aberto = id; history.replaceState(null, "", "#t=" + encodeURIComponent(id)); render(); scrollTo(0, 0); }
 
 /* ══════ NAV ══════ */
 function contagens() {
@@ -274,6 +369,7 @@ $("#fBusca").onsubmit = (e) => { e.preventDefault(); S.q = $("#qTopo").value.tri
 function render() {
   if (!S.e) return;
   nav();
+  renderAbas();
   const m = $("#main");
   if (S.sec === "caixa" && S.aberto) return telaAtendimento(m, S.aberto);
   ({ meudia: telaMeuDia, caixa: telaCaixa, abrir: telaAbrir, internos: telaInternos, gestao: telaGestao, ajustes: telaAjustes }[S.sec] || telaMeuDia)(m);
@@ -361,7 +457,7 @@ function telaCaixa(m) {
           ${pode("transferir") ? `<td><input type="checkbox" data-sel="${esc(t.id)}"${S.sel.has(t.id) ? " checked" : ""}></td>` : ""}
           <td>${t.nao_visto ? `<span class="pisca" title="Interação nova"></span>` : ""}<b>${curto(t.id)}</b></td>
           <td class="ass"><b>${esc(t.assunto || "(sem assunto)")}</b><small>${t.motivo_pai ? `${esc(t.motivo_pai)}${t.motivo_filho ? " / " + esc(t.motivo_filho) : ""}${t.etapa_atual ? " · etapa " + esc(String(t.etapa_atual).split(" › ").pop()) : ""}` : "não classificado"}${t.departamento ? " · " + esc(t.departamento) : ""}</small>
-            <span style="display:flex;gap:4px;flex-wrap:wrap;margin-top:3px">${t.prioridade && t.prioridade !== "normal" ? etq(PRIO[t.prioridade]?.[0] || t.prioridade, PRIO[t.prioridade]?.[1] || "#888") : ""}${(t.pendencias || []).map((p) => etq("aguarda " + p, "#8b5cf6")).join("")}${t.erp_pedido_numero ? etq("pedido #" + t.erp_pedido_numero, "#22d3ee") : ""}${t.origem === "erp_auto" ? etq("automático do ERP", "#22d3ee") : ""}${t.app_pendente ? etq("📱 cliente aguardando", "#22d3ee") : t.origem === "app" ? etq("app", "#22d3ee") : ""}</span></td>
+            <span style="display:flex;gap:4px;flex-wrap:wrap;margin-top:3px">${t.prioridade && t.prioridade !== "normal" ? etq(PRIO[t.prioridade]?.[0] || t.prioridade, PRIO[t.prioridade]?.[1] || "#888") : ""}${(t.pendencias || []).map((p) => etq("aguarda " + p, "#8b5cf6")).join("")}${t.erp_pedido_numero ? etq("pedido #" + t.erp_pedido_numero, "#22d3ee") : ""}${t.origem === "erp_auto" ? etq("automático do ERP", "#22d3ee") : ""}${t.origem === "app" ? etq(t.app_tipo === "chamado" ? "app · chamado" : "app · chat", "#22d3ee") : ""}${t.app_pendente ? etq("📱 cliente aguardando", "#22d3ee") : ""}</span></td>
           <td class="so-largo">${esc(t.cliente_nome || "")}<br><small class="dica">cód. ${esc(t.cliente_codigo || "")}</small></td>
           <td class="so-largo">${dh(t.criado_em)}</td>
           <td>${t.sem_dono ? `<span class="dica">— sem dono —</span>` : esc(nomeU(t.atribuido_para).split(" ")[0])}</td>
@@ -406,7 +502,7 @@ async function telaAtendimento(m, tid) {
   const tipoPadrao = t.app_pendente || t.origem === "app" ? "resposta" : "nota";
   m.innerHTML = `
   <section class="at-cab vidro">
-    <div style="display:flex;gap:10px;align-items:center;margin-bottom:6px"><button type="button" class="btn v p" id="volta">${svg("voltar")} Caixa</button><span class="dica">#${curto(t.id)} · aberto ${dh(t.criado_em)} por ${esc(t.solicitante_nome || nomeU(t.aberto_por) || "—")}${t.origem ? " · origem " + esc(t.origem) : ""}</span>${t.app_pendente ? `<span class="mini c" style="--c:var(--ciano)">📱 cliente aguardando resposta desde ${dh(t.app_pendente_desde)}</span>` : ""}</div>
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:6px"><span class="dica">#${curto(t.id)} · aberto ${dh(t.criado_em)} por ${esc(t.solicitante_nome || nomeU(t.aberto_por) || "—")}${t.origem ? " · origem " + esc(t.origem) : ""}</span>${t.app_pendente ? `<span class="mini c" style="--c:var(--ciano)">📱 cliente aguardando resposta desde ${dh(t.app_pendente_desde)}</span>` : ""}</div>
     <h1>${esc(t.assunto || "(sem assunto)")}</h1>
     <div class="linha1">${etqSt(t.status)} ${slaTxt(t.sla)} ${t.prioridade ? etq(PRIO[t.prioridade]?.[0] || t.prioridade, PRIO[t.prioridade]?.[1] || "#888") : ""}
       <span>· ${esc(t.cliente_nome || "")} · cód. ${esc(t.cliente_codigo || "")}${t.erp_pedido_numero ? ` · pedido #${esc(t.erp_pedido_numero)}` : ""}</span>
@@ -426,7 +522,7 @@ async function telaAtendimento(m, tid) {
       <h3>${svg("mensagem")} Conversa <small>${coments.length} registro(s)</small></h3>
       <div class="conversa" id="conversa">
         <div class="msg cliente${t.origem === "app" ? " app" : ""}"><span class="q">${t.origem === "app" ? "<b>📱 Cliente pelo app</b> · " : ""}${esc(t.solicitante_nome || t.cliente_nome || "Abertura")} · ${dh(t.criado_em)}</span>${esc(t.descricao || "")}</div>
-        ${coments.map((c) => { const tp = tipoMsg(c); return `<div class="msg ${tp === "cliente" ? "cliente app" : tp}"><span class="q">${tp === "cliente" ? "<b>📱 Cliente pelo app</b> · " : tp === "resposta" ? "<b>Respondido no app</b> · " : ""}${esc(c.autor || "")} · ${dh(c.data)}${tp === "nota" ? " · nota interna" : tp === "contato" ? " · contato com o cliente" : ""}</span>${esc(c.texto || "")}</div>`; }).join("")}
+        ${coments.map((c) => { const tp = tipoMsg(c); return `<div class="msg ${tp === "cliente" ? "cliente app" : tp}"><span class="q">${tp === "cliente" ? "<b>📱 Cliente pelo app</b> · " : tp === "resposta" ? "<b>Respondido no app</b> · " : ""}${esc(c.autor || "")} · ${dh(c.data)}${tp === "nota" ? " · nota interna" : tp === "contato" ? " · contato com o cliente" : ""}${c.escrito_em ? ` · escrito sem internet às ${dh(c.escrito_em)}` : ""}</span>${esc(c.texto || "")}</div>`; }).join("")}
       </div>
       ${pode("atender") ? `<div class="resp">
         <div class="tipos seg" id="tipoResp"><button type="button" data-tipo="resposta" class="${tipoPadrao === "resposta" ? "ativo" : ""}" style="--c:var(--ouro)">📱 Responder no app</button><button type="button" data-tipo="nota" class="${tipoPadrao === "nota" ? "ativo" : ""}">Nota interna</button><button type="button" data-tipo="contato" style="--c:var(--verde)">Registrar contato</button></div>
@@ -482,6 +578,7 @@ function erpBloco(t, erp) {
       : `<div class="aviso ouro">Não achei este cliente no ERP pelo código, telefone ou nome.${pode("atender") ? ` <a href="#" id="trocaCli">Vincular cliente do ERP</a>` : ""}</div>`}
     ${erp.pedidos.map((p) => `<div class="ped" style="--c:${(ERP_ST[p.status] || ["", "#888"])[1]}">
       <div class="t1"><b>${p.tipo === "troca" ? "Troca" : "Pedido"} #${p.numero}</b>${etq((ERP_ST[p.status] || [p.status])[0], (ERP_ST[p.status] || ["", "#888"])[1])}${p.pendencia === "ausente" ? etq("ausente — reagendar", "#fb923c") : ""}${p.pendencia === "reposicao" ? etq("reposição de avaria", "#fb7185") : ""}${p.sem_estoque ? etq("sem estoque", "#fb7185") : ""}</div>
+      ${erp.pode.palavra && p.status !== "rascunho" ? `<p class="dica" style="margin-top:4px">🔑 Palavra-chave: ${p.palavra_chave ? `<b style="color:var(--ouro2);letter-spacing:1px">${esc(p.palavra_chave)}</b>` : "<i>sem palavra</i>"} · <a href="#" data-nova-palavra="${p.id}">${p.palavra_chave ? "gerar outra" : "gerar"}</a></p>` : ""}
       <p class="dica" style="margin-top:3px">${d10(p.criado_em)}${p.agendamento ? ` · entrega ${d10(p.agendamento.data)} ${esc(p.agendamento.janela || "")}` : ""}${p.carga ? ` · carga ${esc(p.carga)}` : ""}</p>
       <ul>${p.itens.map((i) => `<li>${i.qtd}× ${esc(i.nome)}</li>`).join("")}</ul>
       ${p.tentativas.length ? `<p class="dica">Tentativas: ${p.tentativas.map((x) => `${x.n}ª ${esc(x.resultado)} ${d10(x.data)}${x.motivo ? " (" + esc(x.motivo) + ")" : ""}`).join(" · ")}</p>` : ""}
@@ -490,7 +587,8 @@ function erpBloco(t, erp) {
 
 function ligarAtendimento(m, t, erp) {
   const tid = t.id, recarregarDet = async () => { S.det = null; await carregar(); };
-  $("#volta").onclick = () => { S.det = null; ir("caixa"); };
+  { const vb = $("#volta"); if (vb) vb.onclick = () => { S.det = null; ir("caixa"); }; }
+  { const tx = $("#txt"); if (tx) { if (S.rasc[tid]) tx.value = S.rasc[tid]; tx.addEventListener("input", () => { S.rasc[tid] = tx.value; }); } }
   const pm = $("#paraMim"); if (pm) pm.onclick = async () => { try { await chamar(tidUrl(tid) + "/alterar", { method: "POST", body: { atribuir: S.e.eu.usuario } }); ok("Agora está com você."); await recarregarDet(); } catch (e) { falha(e); } };
   const tr = $("#transf"); if (tr) tr.onchange = async () => { if (!tr.value) return; const alvo = tr.value === "__ninguem" ? "" : tr.value; try { await chamar(tidUrl(tid) + "/alterar", { method: "POST", body: { atribuir: alvo } }); ok("Transferido."); await recarregarDet(); } catch (e) { falha(e); } };
   const pr = $("#prio"); if (pr) pr.onchange = async () => { try { await chamar(tidUrl(tid) + "/alterar", { method: "POST", body: { prioridade: pr.value } }); await recarregarDet(); } catch (e) { falha(e); } };
@@ -504,7 +602,7 @@ function ligarAtendimento(m, t, erp) {
   const env = $("#enviar");
   if (env) {
     const enviar = async () => { const txt = $("#txt").value.trim(); if (!txt) return; const body = { texto: txt, tipo }; const sd = $("#stDepois")?.value; if (sd) body.status = sd;
-      try { await chamar(tidUrl(tid) + "/comentar", { method: "POST", body }); await recarregarDet(); } catch (e) { falha(e); } };
+      try { await chamar(tidUrl(tid) + "/comentar", { method: "POST", body }); delete S.rasc[tid]; await recarregarDet(); } catch (e) { falha(e); } };
     env.onclick = enviar; $("#txt").onkeydown = (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) enviar(); };
   }
   const conv = $("#conversa"); if (conv) conv.scrollTop = conv.scrollHeight;
@@ -526,11 +624,14 @@ function ligarAtendimento(m, t, erp) {
     try { await chamar(tidUrl(tid) + "/pendencia", { method: "POST", body: { setor, mensagem: msg } }); ok("Pedido enviado ao setor " + setor + "."); await recarregarDet(); } catch (e) { falha(e); } };
   m.querySelectorAll("[data-respbt]").forEach((b) => (b.onclick = async () => { const v = m.querySelector(`[data-resp="${CSS.escape(b.dataset.respbt)}"]`).value.trim(); if (!v) return;
     try { await chamar(tidUrl(tid) + "/pendencia", { method: "POST", body: { responder: b.dataset.respbt, mensagem: v } }); await recarregarDet(); } catch (e) { falha(e); } }));
-  m.querySelectorAll("[data-outro]").forEach((d) => (d.onclick = () => { S.det = null; abrirTicket(d.dataset.outro); }));
+  m.querySelectorAll("[data-outro]").forEach((d) => (d.onclick = () => { guardarRascunho(); S.det = null; abrirTicket(d.dataset.outro); }));
   // ERP
   const tc = $("#trocaCli"); if (tc) tc.onclick = (e) => { e.preventDefault(); vincularCliente(t); };
   const abrirErp = () => { try { (window.top || window).postMessage({ hub: "abrir", id: "erp" }, location.origin); } catch (_) {} };
   m.querySelectorAll("[data-erp-ver]").forEach((b) => (b.onclick = abrirErp));
+  m.querySelectorAll("[data-nova-palavra]").forEach((a) => (a.onclick = async (ev) => { ev.preventDefault();
+    if (!(await A.confirmar("Gerar uma <b>nova palavra-chave</b> para este pedido? A antiga deixa de valer no app do cliente.", { rotulo: "Gerar nova" }))) return;
+    try { const r = await chamar(`/app/palavra/${a.dataset.novaPalavra}/nova`, { method: "POST" }); ok("Nova palavra-chave: " + r.palavra_chave); await recarregarDet(); } catch (e) { falha(e); } }));
   m.querySelectorAll("[data-erp-agendar]").forEach((b) => (b.onclick = () => {
     const p = erp.pedidos.find((x) => x.id === b.dataset.erpAgendar);
     A.modal({ titulo: `${p.status === "agendado" ? "Reagendar" : "Agendar"} pedido #${p.numero}`, icone: "calendario", largura: 480,
@@ -683,8 +784,11 @@ function telaAjustes(m) {
         <p class="dica">Link geral para enviar aos clientes. Eles entram com <b>CPF + e-mail do cadastro do ERP</b>, veem os pedidos e prazos, abrem chamados pela URA e conversam com a central — tudo cai aqui na Caixa (fila “App do cliente”).</p>
         <div class="link-app"><code id="linkApp">${esc(location.origin + "/cliente/")}</code><button type="button" class="btn v p" id="copiarLink">Copiar</button><a class="btn v p" href="/cliente/" target="_blank" rel="noopener">Abrir ↗</a></div>
         <label class="chk"><input type="checkbox" id="appAtivo"${ap.ativo === false ? "" : " checked"}> Atendimento pelo app ligado</label>
+        <div class="aviso ouro" style="display:flex;flex-direction:column;gap:6px"><label class="chk"><input type="checkbox" id="appPalavra"${ap.exigir_palavra ? " checked" : ""}> <b>Exigir palavra-chave no login</b> (CPF + e-mail + palavra-chave do pedido)</label>
+          <span>A palavra-chave nasce com o pedido no ERP e só aparece para quem tem a permissão “Ver a palavra-chave” (no atendimento, no pedido do cliente, e no botão 🔒 do topo).${ap.pedidos_sem_palavra ? ` <b>${ap.pedidos_sem_palavra}</b> pedido(s) antigos ainda estão sem palavra.` : ""}</span>
+          ${ap.pedidos_sem_palavra ? `<button type="button" class="btn v p" id="gerarPalavras" style="align-self:flex-start">Gerar palavra-chave nos pedidos antigos</button>` : ""}</div>
         <div class="g2"><label class="campo">Nome no topo do app<input id="appEmp" value="${esc(ap.empresa || "")}"></label><label class="campo">Saudação da URA<input id="appSaud" value="${esc(ap.saudacao || "")}"></label></div>
-        <p class="dica">Menu “Falar com a central” — cada opção abre o chamado já com motivo e setor:</p>
+        <p class="dica">Assuntos que a URA pergunta (uma vez só) antes de virar chat — cada um define motivo e setor. Na aba Chamados do app, o cliente abre pela árvore de motivos acima.</p>
         <div id="uraLista" style="display:flex;flex-direction:column;gap:5px"></div>
         <div style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="btn v p" id="uraAdd">+ opção</button><button type="button" class="btn p" id="salvarApp">Salvar app do cliente</button></div></div>
       <div class="cartao"><h3>${svg("usuarios")} Setor de cada pessoa</h3>
@@ -718,11 +822,12 @@ function telaAjustes(m) {
     m.querySelectorAll("[data-uradel]").forEach((b) => (b.onclick = () => { ura.splice(+b.dataset.uradel, 1); desenhaUra(); })); };
   desenhaUra();
   $("#uraAdd").onclick = () => { ura.push({ id: "", rotulo: "", descricao: "", motivo_pai: "", departamento: "" }); desenhaUra(); };
+  const gp = $("#gerarPalavras"); if (gp) gp.onclick = async () => { try { const r = await chamar("/app/palavras/gerar", { method: "POST" }, "gerando…"); ok(`${r.feitos} pedido(s) ganharam palavra-chave.`); await carregar(); } catch (er) { falha(er); } };
   $("#copiarLink").onclick = async () => { try { await navigator.clipboard.writeText($("#linkApp").textContent); ok("Link copiado."); } catch (_) { A.toast("Selecione e copie o link."); } };
   $("#salvarApp").onclick = async () => {
     const lista = ura.filter((o) => String(o.rotulo || "").trim()).map((o) => ({ ...o, id: o.id || norm(o.rotulo).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30) }));
     if (!lista.length) { A.toast("Deixe ao menos uma opção no menu."); return; }
-    try { await chamar("/config", { method: "PUT", body: { app_cliente: { ativo: $("#appAtivo").checked, empresa: $("#appEmp").value, saudacao: $("#appSaud").value, ura: lista } } }); ok("App do cliente salvo."); await carregar(); } catch (er) { falha(er); } };
+    try { await chamar("/config", { method: "PUT", body: { app_cliente: { ativo: $("#appAtivo").checked, exigir_palavra: $("#appPalavra").checked, empresa: $("#appEmp").value, saudacao: $("#appSaud").value, ura: lista } } }); ok("App do cliente salvo."); await carregar(); } catch (er) { falha(er); } };
   $("#recarregar").onclick = async () => { try { await chamar("/recarregar", { method: "POST" }, "relendo…"); await carregar(); ok("Relido."); } catch (er) { falha(er); } };
 }
 
@@ -730,8 +835,8 @@ function telaAjustes(m) {
 carregar();
 /* com um atendimento aberto: se o cliente escreveu pelo app, a conversa atualiza sozinha (sem perder o que você está digitando) */
 setInterval(() => { if (document.visibilityState !== "visible" || !S.aberto || document.querySelector(".aur-modal-fundo") || $("#txt")?.value) return;
-  A.api(API + "/estado").then((e) => { if (e.versao !== S.e?.versao) { S.e = e; S.det = null; if (!document.activeElement || !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) render(); } }).catch(() => {}); }, 20000);
-setInterval(() => { if (document.visibilityState === "visible" && !S.aberto && !document.querySelector(".aur-modal-fundo")) A.api(API + "/estado").then((e) => { if (e.versao !== S.e?.versao) { S.e = e; if (!document.activeElement || !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) render(); } }).catch(() => {}); }, 30000);
+  A.api(API + "/estado").then((e) => { if (e.versao !== S.e?.versao) { guardarRascunho(); novoEstado(e); S.det = null; if (!document.activeElement || !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) render(); } }).catch(() => {}); }, 20000);
+setInterval(() => { if (document.visibilityState === "visible" && !S.aberto && !document.querySelector(".aur-modal-fundo")) A.api(API + "/estado").then((e) => { if (e.versao !== S.e?.versao) { novoEstado(e); if (!document.activeElement || !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) render(); } }).catch(() => {}); }, 30000);
 })();
 </script>
 </body>

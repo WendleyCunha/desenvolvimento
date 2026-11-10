@@ -281,6 +281,25 @@ def garantir_codigo(tx: "Tx", cliente_id: str) -> str:
     return cli["codigo"]
 
 
+# ── PALAVRA-CHAVE DO PEDIDO: nasce com o pedido; só os atendentes enxergam ──
+# Serve para o cliente entrar no app (/cliente/) e, no futuro, para confirmar
+# a entrega na casa dele. Palavra simples + 2 números, fácil de ditar.
+_PALAVRAS = ("SOL", "LUA", "MAR", "RIO", "CEU", "FLOR", "MEL", "PAZ", "LUZ", "AZUL", "VERDE", "OURO", "PRATA", "CAFE", "BOLO",
+             "UVA", "MANGA", "CAJU", "COCO", "LIMA", "PERA", "FIGO", "MILHO", "TRIGO", "PALMA", "PINHO", "CEDRO", "IPE", "ROSA",
+             "LIRIO", "CRAVO", "ONDA", "AREIA", "PEDRA", "SERRA", "VALE", "PRAIA", "ILHA", "PONTE", "TORRE", "VELA", "BARCO",
+             "TREM", "NUVEM", "CHUVA", "VENTO", "NEVE", "FOGO", "BRISA", "AURORA", "ESTRELA", "COMETA", "PLUMA", "SEDA", "LINHO",
+             "ALGODAO", "SONO", "SONHO", "NINHO", "CASA", "JARDIM", "POMAR", "HORTA", "TUCANO", "ARARA", "PANDA", "LEAO", "TIGRE")
+
+
+def gerar_palavra() -> str:
+    rnd = random.SystemRandom()
+    return f"{rnd.choice(_PALAVRAS)}{rnd.randint(10, 99)}"
+
+
+def normalizar_palavra(t) -> str:
+    return re.sub(r"[^A-Z0-9]", "", str(t or "").upper())
+
+
 def _copia(d):
     if isinstance(d, dict):
         return {k: _copia(v) for k, v in d.items()}
@@ -322,6 +341,7 @@ def _filtrar(p: dict, col: str, d: dict) -> dict:
             for k in ("doc", "telefone", "email"):
                 d.pop(k, None)
     elif col == "pedidos":
+        d.pop("palavra_chave", None)   # só os atendentes veem (módulo Atendimento)
         if oculto("preco"):
             d.pop("valor_total", None)
             d["itens"] = [{k: v for k, v in i.items() if k != "preco"} for i in d.get("itens", [])]
@@ -698,6 +718,7 @@ def _novo_pedido(tx: Tx, u: dict, p: dict, c: dict, em: str | None = None) -> di
     ped["pendentes"] = [{"produto_id": i["produto_id"], "qtd": i["qtd"]} for i in ped["itens"]]
     ped["valor_total"] = _total(ped)
     ped["numero"] = _num_seq(tx, "pedido")
+    ped["palavra_chave"] = gerar_palavra()
     pid = _id()
     _hist(ped, u, "Pedido criado" + (" (troca)" if tipo == "troca" else ""), em)
     if c.get("confirmar"):

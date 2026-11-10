@@ -390,7 +390,7 @@ def resumo(t: dict, me: dict, agora_dt: datetime) -> dict:
     return {k: t.get(k) for k in ("id", "status", "prioridade", "assunto", "departamento", "motivo_pai", "motivo_filho", "etapa_atual",
                                    "cliente_codigo", "cliente_nome", "cliente_telefone", "atribuido_para", "aberto_por", "solicitante_nome",
                                    "criado_em", "atualizado_em", "origem", "erp_pedido_id", "erp_pedido_numero", "etapa_travada",
-                                   "app_opcao", "app_pendente_desde")} | {"app_pendente": bool(t.get("app_pendente")),
+                                   "app_opcao", "app_pendente_desde", "app_tipo")} | {"app_pendente": bool(t.get("app_pendente")),
         "atendentes": t.get("atendentes") or [], "sla": sla, "pendencias": [s.get("setor_destino") for s in pend],
         "n_comentarios": len(t.get("comentarios") or []), "nao_visto": nao_visto(t, me), "meu": atribuido(t, me),
         "sem_dono": not (t.get("atendentes") or t.get("atribuido_para")),
@@ -425,9 +425,18 @@ def _app_cliente() -> dict:
     """Ajustes do app do cliente (/cliente/) com os padrões preenchidos — import tardio (cliente_app importa este módulo)."""
     try:
         import cliente_app
-        return cliente_app.cfg_app()
+        c = cliente_app.cfg_app()
     except Exception:  # noqa: BLE001
         return {}
+    e = _erp()
+    if e and banco.configurado():
+        try:
+            e.ST.carregar()
+            c["pedidos_sem_palavra"] = sum(1 for d in e.ST.dados["pedidos"].values()
+                                           if not d.get("palavra_chave") and d.get("status") not in ("cancelado", "rascunho"))
+        except Exception:  # noqa: BLE001
+            pass
+    return c
 
 
 def _ticket(tid: str, p: dict, me: dict) -> dict:
@@ -745,11 +754,12 @@ async def salvar_config(request: Request):
             raise HTTPException(400, "SLA inválido.") from None
     if "setor_usuarios" in c:
         novo["setor_usuarios"] = {str(k): str(v) for k, v in (c["setor_usuarios"] or {}).items() if k}
-    if "app_cliente" in c:   # app do cliente (/cliente/) — liga/desliga, nome, saudação e menu da URA
+    if "app_cliente" in c:   # app do cliente (/cliente/) — liga/desliga, nome, saudação, menu da URA, palavra-chave
         a = c["app_cliente"] or {}
         atual = dict(novo.get("app_cliente") or {})
-        if "ativo" in a:
-            atual["ativo"] = bool(a["ativo"])
+        for k in ("ativo", "exigir_palavra"):
+            if k in a:
+                atual[k] = bool(a[k])
         for k, lim in (("empresa", 60), ("saudacao", 300)):
             if k in a:
                 atual[k] = str(a[k] or "").strip()[:lim]
@@ -843,9 +853,9 @@ def clientes_erp_do_ticket(t: dict) -> list[str]:
     return achados
 
 
-def _ped_resumo(e, pid: str, d: dict) -> dict:
+def _ped_resumo(e, pid: str, d: dict, ver_palavra: bool = False) -> dict:
     car = e.ST.dados["cargas"].get(d.get("carga_id") or "")
-    return {"id": pid, "numero": d.get("numero"), "tipo": d.get("tipo"), "status": d.get("status"), "pendencia": d.get("pendencia"),
+    return ({"palavra_chave": d.get("palavra_chave") or ""} if ver_palavra else {}) | {"id": pid, "numero": d.get("numero"), "tipo": d.get("tipo"), "status": d.get("status"), "pendencia": d.get("pendencia"),
             "agendamento": d.get("agendamento"), "valor_total": d.get("valor_total"), "criado_em": d.get("criado_em"),
             "carga": car.get("numero") if car else None, "cliente_id": d.get("cliente_id"), "cliente_nome": d.get("cliente_nome"),
             "itens": [{"nome": (e.ST.dados["produtos"].get(i["produto_id"]) or {}).get("nome", i["produto_id"]), "qtd": i.get("qtd")}
@@ -863,16 +873,17 @@ def erp_do_ticket(t: dict, u: dict) -> dict:
         perm = {"acoes": {}}
     if not perm["acoes"].get("acessar"):
         return {"sem_acesso": True}
+    ver = ver_palavra(u)
     ids = clientes_erp_do_ticket(t)
-    peds = [_ped_resumo(e, pid, d) for pid, d in e.ST.dados["pedidos"].items() if d.get("cliente_id") in ids]
+    peds = [_ped_resumo(e, pid, d, ver) for pid, d in e.ST.dados["pedidos"].items() if d.get("cliente_id") in ids]
     for lig in [t.get("erp_pedido_id")] + [x.get("id") for x in t.get("erp_trocas") or []]:
         if lig and lig in e.ST.dados["pedidos"] and not any(x["id"] == lig for x in peds):
-            peds.append(_ped_resumo(e, lig, e.ST.dados["pedidos"][lig]))
+            peds.append(_ped_resumo(e, lig, e.ST.dados["pedidos"][lig], ver))
     peds.sort(key=lambda x: str(x.get("criado_em") or ""), reverse=True)
     ligados = {t.get("erp_pedido_id")} | {x.get("id") for x in t.get("erp_trocas") or []}
     peds.sort(key=lambda x: x["id"] not in ligados)   # os do atendimento primeiro
     clientes = [{"id": i, "nome": e.ST.dados["parceiros"][i].get("nome"), "codigo": e.ST.dados["parceiros"][i].get("codigo", "")} for i in ids]
-    return {"clientes": clientes, "pedidos": peds[:20], "pode": {k: bool(perm["acoes"].get(k)) for k in ("agendar", "pedidos", "cancelar")},
+    return {"clientes": clientes, "pedidos": peds[:20], "pode": {k: bool(perm["acoes"].get(k)) for k in ("agendar", "pedidos", "cancelar")} | {"palavra": ver},
             "janelas": e.ST.config.get("janelas", []), "hoje": e.hoje()}
 
 
@@ -1112,3 +1123,83 @@ def auto_de_baixa(pid: str, resultado: str, motivo: str, usuario_hub: dict):
             "origem": "erp_auto", "erp_evento": resultado, "cliente_codigo": cod}, me)
     except Exception as ex:  # noqa: BLE001
         print(f"[tickets] ticket automático da baixa falhou: {type(ex).__name__}: {ex}")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PALAVRA-CHAVE DO PEDIDO (login do app do cliente · futuro: confirmar entrega)
+# Gerada pelo ERP quando o pedido nasce (erp._novo_pedido). Só quem tem a
+# permissão "Ver a palavra-chave" no Atendimento enxerga — o módulo ERP não mostra.
+# ══════════════════════════════════════════════════════════════════════════════
+def ver_palavra(u: dict) -> bool:
+    try:
+        esq = acesso.obter_esquema(MOD)
+        return bool(esq is not None and acesso.permissoes(u, MOD, esq)["acoes"].get("palavra_chave"))
+    except Exception:  # noqa: BLE001
+        return False
+
+
+@router.get("/app/palavras")
+def consultar_palavras(request: Request, q: str = ""):
+    """Busca o cliente (nome, código, CPF ou telefone) e mostra a palavra-chave de cada pedido."""
+    u, p, me = _contexto(request)
+    _exigir(p, "palavra_chave", "ver a palavra-chave dos pedidos")
+    e = _erp()
+    e.ST.carregar()
+    qn, qd = norm(q), digitos(q)
+    if len(qn) < 2:
+        return {"clientes": []}
+    saida = []
+    for cid, c in e.ST.dados["parceiros"].items():
+        if c.get("tipo") != "cliente":
+            continue
+        if not ((qn in norm(c.get("nome"))) or norm(c.get("codigo")) == qn
+                or (len(qd) >= 4 and (qd in digitos(c.get("doc")) or qd in digitos(c.get("telefone"))))):
+            continue
+        peds = sorted(((pid, d) for pid, d in e.ST.dados["pedidos"].items() if d.get("cliente_id") == cid and d.get("status") != "rascunho"),
+                      key=lambda x: -(x[1].get("numero") or 0))
+        saida.append({"id": cid, "nome": c.get("nome"), "codigo": c.get("codigo", ""),
+                      "pedidos": [{"id": pid, "numero": d.get("numero"), "status": d.get("status"), "palavra_chave": d.get("palavra_chave") or ""}
+                                  for pid, d in peds[:10]]})
+        if len(saida) >= 10:
+            break
+    return {"clientes": saida}
+
+
+@router.post("/app/palavra/{pid}/nova")
+def nova_palavra(pid: str, request: Request):
+    """Troca a palavra-chave de um pedido (ex.: o cliente perdeu ou ela vazou)."""
+    u, p, me = _contexto(request)
+    _exigir(p, "palavra_chave", "trocar a palavra-chave")
+    e = _erp()
+    e.ST.carregar()
+    with e.ST.trava:
+        tx = e.Tx(u)
+        ped = tx.get("pedidos", pid)
+        if not ped:
+            raise HTTPException(404, "Pedido não encontrado.")
+        ped["palavra_chave"] = e.gerar_palavra()
+        ped["atualizado_em"] = e.agora()
+        tx.put("pedidos", pid, ped)
+        tx.commit()
+    return {"ok": True, "palavra_chave": ped["palavra_chave"]}
+
+
+@router.post("/app/palavras/gerar")
+def gerar_palavras_antigas(request: Request):
+    """Pedidos criados antes da palavra-chave existir ganham uma agora (rascunho e cancelado ficam de fora)."""
+    u, p, me = _contexto(request)
+    _exigir(p, "configurar", "gerar palavras-chave")
+    e = _erp()
+    e.ST.carregar()
+    feitos = 0
+    with e.ST.trava:
+        tx = e.Tx(u)
+        for pid, d in list(e.ST.dados["pedidos"].items()):
+            if d.get("palavra_chave") or d.get("status") in ("cancelado", "rascunho"):
+                continue
+            ped = tx.get("pedidos", pid)
+            ped["palavra_chave"] = e.gerar_palavra()
+            tx.put("pedidos", pid, ped)
+            feitos += 1
+        tx.commit()
+    return {"ok": True, "feitos": feitos}

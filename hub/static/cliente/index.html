@@ -138,6 +138,21 @@ button.cartao:hover{transform:translateY(-2px);border-color:rgba(var(--ouro-rgb)
 .aviso a{color:var(--ouro2);font-weight:700}
 .carregando{display:grid;place-items:center;min-height:80vh}
 .rodape{text-align:center;font-size:.7rem;color:var(--txt3);margin-top:18px;line-height:1.6}
+
+/* sem internet / fila */
+.faixa{position:sticky;top:calc(76px + env(safe-area-inset-top));z-index:18;margin:8px 12px 0;padding:8px 12px;border-radius:14px;font-size:.8rem;display:flex;gap:8px;align-items:center;
+  color:var(--laranja);background:rgba(251,146,60,.1);border:1px solid rgba(251,146,60,.35);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur)}
+.faixa.ok{color:var(--verde);background:rgba(52,211,153,.1);border-color:rgba(52,211,153,.35)}
+.faixa svg.i{width:16px;height:16px}
+.bolha.pend{opacity:.72;border:1px dashed rgba(26,18,6,.5)}
+.bolha.pend small{opacity:.9}
+.cartao.pend{border-style:dashed;opacity:.85}
+/* formulário de chamado */
+.form{display:flex;flex-direction:column;gap:12px}
+.form .campo select,.form .campo textarea{font-size:.95rem}
+.form textarea{min-height:120px}
+.dica{font-size:.76rem;color:var(--txt3);margin:0;line-height:1.5}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:20px;font-size:.72rem;font-weight:650;color:var(--ouro2);background:rgba(var(--ouro-rgb),.1);border:1px solid rgba(var(--ouro-rgb),.35)}
 </style>
 </head>
 <body>
@@ -147,43 +162,111 @@ button.cartao:hover{transform:translateY(-2px);border-color:rgba(var(--ouro-rgb)
 <script>
 (() => {
 "use strict";
+/* ═══════════════════════════════════════════════════════════════════════
+   APP DO CLIENTE
+   Atendimento = UM chat (a URA pergunta o assunto uma vez) · Pedidos ·
+   Chamados (o cliente abre com Motivo › Submotivo).
+   Sem internet: mostra o que já foi carregado e guarda o que o cliente
+   escreve numa FILA — envia sozinho quando a internet volta / ao logar.
+   ═══════════════════════════════════════════════════════════════════════ */
 const A = Aurora, svg = A.svg, esc = A.esc, $ = (s, r = document) => r.querySelector(s);
-const ls = { get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch (_) { return d; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} } };
+const ls = { get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch (_) { return d; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} }, del(k) { try { localStorage.removeItem(k); } catch (_) {} } };
 A.fundo();
 document.querySelector('link[rel="icon"]').href = A.ATOMO_SVG;
 { const l = $("#logo0"); if (l) l.outerHTML = A.atomo(72); }
-const ICO = { chat: svg("mensagem"), caixa: svg("caixa"), lista: svg("lista"), enviar: svg("seta"), voltar: svg("voltar"),
-  caminhao: svg("calendario"), escudo: svg("escudo"), sair: svg("sair") };
+const ICO = { chat: svg("mensagem"), caixa: svg("caixa"), lista: svg("lista"), enviar: svg("seta"), voltar: svg("voltar"), cal: svg("calendario"),
+  escudo: svg("escudo"), sair: svg("sair"), mais: svg("mais"), onda: svg("onda"), atencao: svg("atencao"), relogio: svg("relogio") };
 const SEM = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
 const dataBR = (s) => { s = String(s || ""); return s.length >= 10 ? `${s.slice(8, 10)}/${s.slice(5, 7)}` : ""; };
 const dataLonga = (s) => { if (!s || s.length < 10) return ""; const d = new Date(s.slice(0, 10) + "T12:00:00"); return `${SEM[d.getDay()]}, ${dataBR(s)}`; };
 const hora = (s) => String(s || "").slice(11, 16);
 const brl = (v) => v == null ? "" : Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const agoraLocal = () => { const d = new Date(), z = (n) => String(n).padStart(2, "0"); return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}:${z(d.getSeconds())}`; };
+const novoReq = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)).replace(/-/g, "").slice(0, 32);
 const ST_COR = { confirmado: "azul", agendado: "", em_carga: "azul", em_rota: "ok", entregue: "ok", reagendar: "alerta", cancelado: "cinza", recusado: "ruim" };
 const TK_COR = { aberto: "", em_andamento: "azul", aguardando: "alerta", resolvido: "ok", finalizado: "cinza", cancelado: "cinza" };
 
+/* ── rede ── */
+const SEM_REDE = "sem_rede";
 async function api(url, op = {}) {
   try { return await A.api(url, op); }
-  catch (e) { if (!e.status || /^HTTP \d/.test(e.message)) e.message = "Não foi possível agora. Tente de novo."; throw e; }
+  catch (e) {
+    if (!e.status) { const x = new Error("Sem internet agora."); x.status = 0; x.codigo = SEM_REDE; throw x; }
+    if (/^HTTP \d/.test(e.message)) e.message = "Não foi possível agora. Tente de novo.";
+    throw e;
+  }
 }
-function toast(t) { A.toast(esc(t), [], { cor: "var(--rosa)", duracao: 5000 }); }
+function toast(t, cor = "var(--rosa)") { A.toast(esc(t), [], { cor, duracao: 5000 }); }
 
-const S = { eu: null, aba: "atendimento", tela: null, fio: [], fluxo: null, chamado: null, versao: null };
+/* ── estado ── */
+const S = { eu: null, aba: ls.get("cli.aba", "atendimento"), sub: null, versao: null, offline: false, assunto: null, rascunho: "" };
+// sub: null | {tela:"pedido", id} | {tela:"chamado", id} | {tela:"novo"}
 const app = $("#app");
 
+/* ═══════════ CACHE (para abrir sem internet) ═══════════ */
+const cache = {
+  eu: () => ls.get("cli.eu", null), salvarEu: (e) => ls.set("cli.eu", e),
+  ch: (id) => (ls.get("cli.chs", {})[id] || null),
+  salvarCh: (c) => { const m = ls.get("cli.chs", {}); m[c.id] = { ...c, _em: Date.now() };
+    const ks = Object.keys(m).sort((a, b) => m[b]._em - m[a]._em); ks.slice(12).forEach((k) => delete m[k]); ls.set("cli.chs", m); },
+  limpar: () => ["cli.eu", "cli.chs", "cli.fila", "cli.visto"].forEach(ls.del),
+};
+
+/* ═══════════ FILA (o que foi escrito sem internet) ═══════════ */
+const fila = {
+  itens: () => ls.get("cli.fila", []),
+  por: (i) => { const l = fila.itens(); l.push(i); ls.set("cli.fila", l); },
+  tirar: (req) => ls.set("cli.fila", fila.itens().filter((x) => x.req !== req)),
+  enviando: false,
+};
+async function enviarFila() {
+  if (fila.enviando || !fila.itens().length) return;
+  fila.enviando = true;
+  let enviou = 0;
+  try {
+    for (const it of fila.itens()) {
+      try { await api(it.url, { method: "POST", body: it.body }); fila.tirar(it.req); enviou++; }
+      catch (e) {
+        if (e.codigo === SEM_REDE || e.status === 429 || e.status >= 500) break;   // tenta de novo depois
+        if (e.status === 401) { break; }                                           // precisa entrar — a fila espera
+        fila.tirar(it.req); toast(`Não deu para enviar “${it.resumo}”: ${e.message}`);   // recusado de vez (ex.: chamado duplicado)
+      }
+    }
+  } finally { fila.enviando = false; }
+  if (enviou) { toast(enviou === 1 ? "Mensagem pendente enviada ✓" : `${enviou} mensagens pendentes enviadas ✓`, "var(--verde)"); await atualizar(); }
+}
+/* Envia agora; sem internet, guarda na fila e devolve {fila:true}. */
+async function enviar(url, body, resumo) {
+  const it = { req: novoReq(), url, resumo: String(resumo || "").slice(0, 40) };
+  it.body = { ...body, req: it.req };
+  try { const r = await api(url, { method: "POST", body: it.body }); return r; }
+  catch (e) {
+    if (e.codigo !== SEM_REDE) throw e;
+    it.body.escrito_em = agoraLocal(); it.quando = it.body.escrito_em;
+    fila.por(it); S.offline = true;
+    return { fila: true, item: it };
+  }
+}
+
 /* ═══════════ ENTRAR ═══════════ */
-function telaEntrar(info, erro = "") {
+async function telaEntrar(erro = "") {
+  let info = ls.get("cli.info", null);
+  try { info = await api("/api/cliente/info"); ls.set("cli.info", info); } catch (_) {}
+  const pend = fila.itens().length;
   app.innerHTML = `<form class="entrar" id="fEntrar" novalidate>
     <div class="marca">${A.atomo(88)}<h1>${esc(info?.empresa || "Central do Cliente")}</h1>
       <p class="sub">Acompanhe seus pedidos, prazos de entrega e fale com a nossa equipe.</p></div>
     <div class="cartao vidro vidro-borda-viva">
+      ${pend ? `<div class="aviso">${ICO.relogio} Você tem <b>${pend}</b> mensagem(ns) escrita(s) sem internet. Entre para enviar — vão sozinhas.</div>` : ""}
       ${erro ? `<div class="erro">${esc(erro)}</div>` : ""}
       ${info && !info.ativo ? `<div class="erro">O atendimento pelo app está pausado no momento.</div>` : ""}
       <label class="campo">CPF<input id="cpf" inputmode="numeric" autocomplete="off" placeholder="000.000.000-00" maxlength="18" required></label>
       <label class="campo">E-mail usado na compra<input id="email" type="email" inputmode="email" autocomplete="email" placeholder="voce@email.com" required></label>
+      ${info?.exigir_palavra ? `<label class="campo">Palavra-chave do pedido<input id="palavra" autocomplete="off" autocapitalize="characters" placeholder="Ex.: SOL42" maxlength="20" required style="text-transform:uppercase;letter-spacing:1px"></label>
+        <p class="dica">A palavra-chave é informada pela nossa central quando o seu pedido é feito.</p>` : ""}
       <button class="btn grande" type="submit" id="btEntrar">Entrar</button>
     </div>
-    <p class="nota">${ICO.escudo} Conferimos seus dados com o cadastro da loja. Não pedimos senha.</p>
+    <p class="nota">${ICO.escudo} Conferimos seus dados com o cadastro da loja.</p>
   </form>`;
   const cpf = $("#cpf");
   cpf.value = ls.get("cli.cpf", "");
@@ -196,125 +279,144 @@ function telaEntrar(info, erro = "") {
     ev.preventDefault();
     const b = $("#btEntrar"); b.disabled = true; b.textContent = "Conferindo…";
     try {
-      await api("/api/cliente/entrar", { method: "POST", body: { cpf: cpf.value, email: $("#email").value } });
+      await api("/api/cliente/entrar", { method: "POST", body: { cpf: cpf.value, email: $("#email").value, palavra: $("#palavra")?.value || "" } });
       ls.set("cli.cpf", cpf.value); ls.set("cli.email", $("#email").value.trim());
-      await carregar(true);
-    } catch (e) { telaEntrar(info, e.message); }
+      await carregar();
+    } catch (e) { telaEntrar(e.codigo === SEM_REDE ? "Sem internet. Para entrar pela primeira vez, conecte-se." : e.message); }
   };
 }
 
 /* ═══════════ CARREGAR ═══════════ */
-async function carregar(primeira = false) {
-  try { S.eu = await api("/api/cliente/eu"); S.versao = S.eu.versao; }
-  catch (e) {
-    if (e.status === 401) { let info = null; try { info = await api("/api/cliente/info"); } catch (_) {} telaEntrar(info); return; }
-    app.innerHTML = `<div class="vazio" style="padding-top:30vh">${A.orbe("atencao", "var(--rosa)")}<b>Não conseguimos carregar</b>${esc(e.message)}<br><br><button class="btn v" onclick="location.reload()">Tentar de novo</button></div>`;
-    return;
+async function carregar() {
+  try {
+    S.eu = await api("/api/cliente/eu"); S.versao = S.eu.versao; S.offline = false; cache.salvarEu(S.eu);
+  } catch (e) {
+    if (e.status === 401) { telaEntrar(); return; }
+    const c = cache.eu();
+    if (e.codigo === SEM_REDE && c) { S.eu = c; S.offline = true; }
+    else { app.innerHTML = `<div class="vazio" style="padding-top:30vh">${A.orbe("atencao", "var(--rosa)")}<b>${e.codigo === SEM_REDE ? "Sem internet" : "Não conseguimos carregar"}</b>${esc(e.codigo === SEM_REDE ? "Conecte-se para entrar pela primeira vez." : e.message)}<button class="btn v" onclick="location.reload()">Tentar de novo</button></div>`; return; }
   }
-  if (primeira || !S.fio.length) iniciarURA();
   render();
+  enviarFila();
+}
+async function atualizar() {
+  try {
+    S.eu = await api("/api/cliente/eu"); S.versao = S.eu.versao; S.offline = false; cache.salvarEu(S.eu);
+    if (S.sub?.tela === "chamado") { const c = await api("/api/cliente/chamado/" + encodeURIComponent(S.sub.id)); cache.salvarCh(c); }
+  } catch (e) { if (e.status === 401) { telaEntrar(); return; } if (e.codigo === SEM_REDE) S.offline = true; }
+  if (!(document.activeElement && document.activeElement.id === "txt" && document.activeElement.value)) render();
+  else marcarAbas();
 }
 
 /* ═══════════ CASCA ═══════════ */
-function naoLidos() { const visto = ls.get("cli.visto", {}); return S.eu.chamados.filter((c) => c.resposta_nova_em && c.resposta_nova_em > (visto[c.id] || "")).length; }
+function naoLidos() { const visto = ls.get("cli.visto", {}); return (S.eu?.chamados || []).filter((c) => c.resposta_nova_em && c.resposta_nova_em > (visto[c.id] || "")).length; }
+function marcarVisto(c) { if (!c) return; const v = ls.get("cli.visto", {}); v[c.id] = c.resposta_nova_em || c.atualizado_em || ""; ls.set("cli.visto", v); }
+function ir(aba, sub = null) { S.aba = aba; S.sub = sub; ls.set("cli.aba", aba); render(); scrollTo(0, 0); }
+function marcarAbas() {
+  const nl = naoLidos(), a = app.querySelector('[data-aba="chamados"]');
+  if (a) a.innerHTML = `${ICO.lista}Chamados${nl ? `<em>${nl}</em>` : ""}`;
+}
 function render() {
-  const eu = S.eu, nl = naoLidos();
-  const emChamado = S.aba === "chamados" && S.chamado, emPedido = S.aba === "pedidos" && S.tela;
-  const titulo = emChamado ? (S.chamado.assunto || "Chamado") : emPedido ? `Pedido #${S.tela}` : (eu.empresa || "Central do Cliente");
-  const sub = emChamado ? `Protocolo ${S.chamado.id.slice(0, 6).toUpperCase()}` : `Olá, ${eu.nome} · Atendimento`;
+  { const t = $("#txt"); if (t && t.value && !t.disabled) S.rascunho = t.value; }   // redesenhar nunca apaga o que o cliente está digitando
+  const eu = S.eu, sub = S.sub, nl = naoLidos(), pend = fila.itens().length;
+  let titulo = eu.empresa || "Central do Cliente", linha = `Olá, ${eu.nome}`;
+  if (S.aba === "atendimento" && eu.chat) { titulo = eu.chat.assunto; linha = `Protocolo ${eu.chat.id.slice(0, 6).toUpperCase()} · ${eu.chat.rotulo}`; }
+  if (sub?.tela === "pedido") { const p = eu.pedidos.find((x) => x.id === sub.id); titulo = p ? `Pedido #${p.numero}` : "Pedido"; }
+  if (sub?.tela === "chamado") { const c = cache.ch(sub.id) || eu.chamados.find((x) => x.id === sub.id); titulo = c?.assunto || "Chamado"; linha = `Protocolo ${sub.id.slice(0, 6).toUpperCase()}`; }
+  if (sub?.tela === "novo") { titulo = "Novo chamado"; }
   app.innerHTML = `
     <header class="topo vidro vidro-borda-viva">
-      ${emChamado || emPedido ? `<button class="btn-ic" id="voltar" aria-label="Voltar">${ICO.voltar}</button>` : A.atomo(38, { mini: true })}
-      <span class="tx"><b>${esc(titulo)}</b><small>${esc(sub)}</small></span>
-      ${!emChamado && !emPedido ? `<button class="btn-ic" id="sair" title="Sair" aria-label="Sair">${ICO.sair}</button>` : ""}
+      ${sub ? `<button class="btn-ic" id="voltar" aria-label="Voltar">${ICO.voltar}</button>` : A.atomo(38, { mini: true })}
+      <span class="tx"><b>${esc(titulo)}</b><small>${esc(linha)}</small></span>
+      ${!sub ? `<button class="btn-ic" id="sair" title="Sair" aria-label="Sair">${ICO.sair}</button>` : ""}
     </header>
+    ${S.offline || pend ? `<div class="faixa">${ICO.onda}<span>${S.offline ? "Sem internet — mostrando o que já foi carregado." : ""}${pend ? ` ${pend} envio(s) na fila: vão sozinhos quando a conexão voltar.` : ""}</span></div>` : ""}
     <main id="main"></main>
     <nav class="abas vidro vidro-borda-viva">
       <button data-aba="atendimento" class="${S.aba === "atendimento" ? "ativo" : ""}">${ICO.chat}Atendimento</button>
       <button data-aba="pedidos" class="${S.aba === "pedidos" ? "ativo" : ""}">${ICO.caixa}Pedidos</button>
       <button data-aba="chamados" class="${S.aba === "chamados" ? "ativo" : ""}">${ICO.lista}Chamados${nl ? `<em>${nl}</em>` : ""}</button>
     </nav>`;
-  app.querySelectorAll("[data-aba]").forEach((b) => (b.onclick = () => { S.aba = b.dataset.aba; S.tela = null; S.chamado = null; render(); scrollTo(0, 0); }));
-  const v = $("#voltar"); if (v) v.onclick = () => { S.tela = null; S.chamado = null; render(); };
-  const s = $("#sair"); if (s) s.onclick = async () => { try { await api("/api/cliente/sair", { method: "POST" }); } catch (_) {} S.fio = []; carregar(); };
+  app.querySelectorAll("[data-aba]").forEach((b) => (b.onclick = () => ir(b.dataset.aba)));
+  const v = $("#voltar"); if (v) v.onclick = () => ir(S.aba);
+  const s = $("#sair"); if (s) s.onclick = sair;
   const m = $("#main");
-  if (S.aba === "pedidos") S.tela ? telaPedido(m) : telaPedidos(m);
-  else if (S.aba === "chamados") S.chamado ? telaChamado(m) : telaChamados(m);
-  else telaURA(m);
+  if (S.aba === "pedidos") sub?.tela === "pedido" ? telaPedido(m, sub.id) : telaPedidos(m);
+  else if (S.aba === "chamados") sub?.tela === "chamado" ? telaThread(m, sub.id) : sub?.tela === "novo" ? telaNovoChamado(m) : telaChamados(m);
+  else telaAtendimento(m);
+}
+async function sair() {
+  const pend = fila.itens().length;
+  if (pend && !(await A.confirmar(`Você tem <b>${pend}</b> envio(s) que ainda não saíram (sem internet). Saindo agora, eles se perdem. Sair mesmo assim?`, { perigo: true, rotulo: "Sair" }))) return;
+  try { await api("/api/cliente/sair", { method: "POST" }); } catch (_) {}
+  cache.limpar(); S.eu = null; S.sub = null; S.assunto = null; telaEntrar();
 }
 
-/* ═══════════ URA (atendimento automático em conversa) ═══════════ */
-const MENU = [
-  { id: "pedidos", rotulo: "Meus pedidos", descricao: "Status de cada pedido" },
-  { id: "prazo", rotulo: "Prazo de entrega", descricao: "Quando chega" },
-  { id: "chamados", rotulo: "Meus chamados", descricao: "Acompanhar e responder" },
-  { id: "central", rotulo: "Falar com a central", descricao: "Abrir um atendimento" },
-];
-function bot(texto, opcoes = null) { S.fio.push({ de: "bot", texto }); S.fluxo = opcoes; }
-function eu_(texto) { S.fio.push({ de: "cli", texto }); }
-function iniciarURA() { S.fio = []; bot(`${S.eu.saudacao || "Olá! Escolha uma opção:"}`.replace(/^Olá!?/, `Olá, ${S.eu.nome}!`), { tipo: "menu" }); }
-function voltarMenu() { bot("Posso ajudar em mais alguma coisa?", { tipo: "menu" }); }
-const abertosPed = () => S.eu.pedidos.filter((p) => !["entregue", "cancelado", "recusado"].includes(p.status));
+/* ═══════════ bolhas e compositor ═══════════ */
+function bolhas(msgs, pendentes = []) {
+  let dia = "";
+  const sep = (d) => { d = String(d || "").slice(0, 10); if (!d || d === dia) return ""; dia = d; return `<div class="dia">${esc(dataLonga(d))}</div>`; };
+  return msgs.map((x) => sep(x.data) + `<div class="bolha ${x.de === "cliente" ? "cli" : "central"}">${x.de !== "cliente" ? `<span class="quem">${esc(x.autor ? x.autor + " · Central" : "Central")}</span>` : ""}${esc(x.texto)}<small>${hora(x.data)}</small></div>`).join("")
+    + pendentes.map((it) => `<div class="bolha cli pend">${esc(it.body.texto)}<small>⏳ aguardando internet · ${hora(it.quando)}</small></div>`).join("");
+}
+function compositor(ph) { return `<div class="compor"><div class="caixa vidro vidro-borda-viva"><textarea id="txt" rows="1" maxlength="2000" placeholder="${esc(ph)}" aria-label="Mensagem"></textarea><button class="btn" id="env" aria-label="Enviar" disabled>${ICO.enviar}</button></div></div>`; }
+function ligarCompositor(enviarFn) {
+  const t = $("#txt"), b = $("#env");
+  if (S.rascunho) { t.value = S.rascunho; S.rascunho = ""; }
+  const ajusta = () => { t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 120) + "px"; b.disabled = !t.value.trim(); };
+  t.oninput = ajusta; ajusta();
+  const vai = async () => { const v = t.value.trim(); if (!v || b.disabled) return; b.disabled = true; t.disabled = true;
+    try { await enviarFn(v); } catch (e) { toast(e.message); t.disabled = false; b.disabled = false; if (e.status === 401) telaEntrar(); } };
+  b.onclick = vai;
+  t.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey && matchMedia("(pointer:fine)").matches) { e.preventDefault(); vai(); } };
+}
+function rolar() { requestAnimationFrame(() => scrollTo({ top: document.body.scrollHeight, behavior: "smooth" })); }
 
-function escolherMenu(id) {
-  const op = MENU.find((x) => x.id === id); eu_(op.rotulo);
-  const ab = abertosPed();
-  if (id === "pedidos") {
-    if (!S.eu.pedidos.length) bot("Não encontrei pedidos no seu cadastro. Se você comprou recentemente, ele aparece aqui assim que for confirmado.");
-    else bot(S.eu.pedidos.slice(0, 5).map((p) => `• Pedido #${p.numero} — ${p.rotulo}${p.entrega && p.status !== "entregue" ? ` (entrega ${dataBR(p.entrega.data)}${p.entrega.janela ? ", " + p.entrega.janela : ""})` : ""}`).join("\n")
-      + "\n\nToque em “Pedidos” lá embaixo para ver os detalhes.");
-    voltarMenu();
-  } else if (id === "prazo") {
-    if (!ab.length) bot(S.eu.pedidos.length ? "Você não tem entregas pendentes. Todos os seus pedidos já foram concluídos. 🙂" : "Não encontrei pedidos no seu cadastro.");
-    else bot(ab.map((p) => p.entrega ? `📦 Pedido #${p.numero}: entrega ${dataLonga(p.entrega.data)}${p.entrega.janela ? ` — período ${p.entrega.janela.toLowerCase()}` : ""}.`
-      : `📦 Pedido #${p.numero}: ${p.texto || p.rotulo} Assim que a data for marcada, ela aparece aqui.`).join("\n"));
-    voltarMenu();
-  } else if (id === "chamados") {
-    const abertos = S.eu.chamados.filter((c) => c.aberto);
-    if (!S.eu.chamados.length) { bot("Você não tem chamados. Quer falar com a central?", { tipo: "simnao" }); return; }
-    bot(abertos.length ? `Você tem ${abertos.length} chamado(s) em andamento. Toque em um para abrir a conversa:` : "Seus chamados recentes:", { tipo: "chamados" });
-  } else if (id === "central") perguntarAssunto();
-}
-function perguntarAssunto(pedidoId = "") { bot("Sobre o que você quer falar?", { tipo: "assunto", pedido: pedidoId }); }
-function escolherAssunto(op, pedidoId) {
-  eu_(op.rotulo);
-  const ab = S.eu.pedidos.filter((p) => p.status !== "cancelado");
-  if (pedidoId || !ab.length) pedirTexto(op, pedidoId);
-  else bot("É sobre algum pedido?", { tipo: "pedido", op });
-}
-function pedirTexto(op, pedidoId) {
-  const p = S.eu.pedidos.find((x) => x.id === pedidoId);
-  bot(`Certo${p ? `, pedido #${p.numero}` : ""}. Escreva sua mensagem com o máximo de detalhes — um atendente da nossa central vai responder por aqui.`, { tipo: "texto", op, pedido: pedidoId });
-}
-
-function telaURA(m) {
-  const f = S.fluxo || {};
-  m.classList.toggle("chat-modo", f.tipo === "texto");
-  const ops = (lista, attr) => `<div class="opcoes">${lista.map((o, i) => `<button class="op" ${attr}="${esc(o.id)}"><span class="n">${i + 1}</span><span><b>${esc(o.rotulo)}</b>${o.descricao ? `<small>${esc(o.descricao)}</small>` : ""}</span></button>`).join("")}</div>`;
-  const leve = (txt, attr, val) => `<button class="op leve" ${attr}="${esc(val)}"><span class="n">↩</span><span><b>${esc(txt)}</b></span></button>`;
-  let extra = "";
-  if (f.tipo === "menu") extra = ops(MENU, "data-menu");
-  else if (f.tipo === "assunto") extra = ops(S.eu.ura, "data-assunto") + `<div class="opcoes">${leve("Voltar ao menu", "data-menu-volta", "1")}</div>`;
-  else if (f.tipo === "pedido") extra = `<div class="opcoes">${S.eu.pedidos.filter((p) => p.status !== "cancelado").slice(0, 6).map((p, i) => `<button class="op" data-ped="${esc(p.id)}"><span class="n">${i + 1}</span><span><b>Pedido #${p.numero}</b><small>${esc(p.rotulo)}${p.entrega ? " · entrega " + dataBR(p.entrega.data) : ""}</small></span></button>`).join("")}
-    <button class="op leve" data-ped=""><span class="n">—</span><span><b>Não é sobre um pedido</b></span></button></div>`;
-  else if (f.tipo === "chamados") extra = `<div class="opcoes">${S.eu.chamados.slice(0, 6).map((c) => `<button class="op" data-abrirch="${esc(c.id)}"><span class="n">${c.aberto ? "●" : "✓"}</span><span><b>${esc(c.assunto)}</b><small>${esc(c.rotulo)} · ${dataBR(c.atualizado_em)}</small></span></button>`).join("")}${leve("Voltar ao menu", "data-menu-volta", "1")}</div>`;
-  else if (f.tipo === "simnao") extra = `<div class="opcoes"><button class="op" data-sim="1"><span class="n">1</span><span><b>Sim, falar com a central</b></span></button>${leve("Voltar ao menu", "data-menu-volta", "1")}</div>`;
-  else if (f.tipo === "texto") extra = `<div class="opcoes">${leve("Cancelar e voltar ao menu", "data-menu-volta", "1")}</div>`;
-  m.innerHTML = `<div class="fio" id="fio">${S.fio.map((b) => `<div class="bolha ${b.de}">${b.de === "bot" ? `<span class="quem">Atendimento automático</span>` : ""}${esc(b.texto)}</div>`).join("")}${extra}</div>
-    ${f.tipo === "texto" ? compositor("Escreva sua mensagem…") : ""}`;
-  m.querySelectorAll("[data-menu]").forEach((b) => (b.onclick = () => { escolherMenu(b.dataset.menu); render(); rolar(); }));
-  m.querySelectorAll("[data-menu-volta]").forEach((b) => (b.onclick = () => { eu_("Voltar ao menu"); bot("Tudo bem. Escolha uma opção:", { tipo: "menu" }); render(); rolar(); }));
-  m.querySelectorAll("[data-assunto]").forEach((b) => (b.onclick = () => { escolherAssunto(S.eu.ura.find((u) => u.id === b.dataset.assunto), f.pedido || ""); render(); rolar(); }));
-  m.querySelectorAll("[data-ped]").forEach((b) => (b.onclick = () => { const p = S.eu.pedidos.find((x) => x.id === b.dataset.ped); eu_(p ? `Pedido #${p.numero}` : "Não é sobre um pedido"); pedirTexto(f.op, b.dataset.ped); render(); rolar(); }));
-  m.querySelectorAll("[data-abrirch]").forEach((b) => (b.onclick = () => abrirChamado(b.dataset.abrirch)));
-  const sim = m.querySelector("[data-sim]"); if (sim) sim.onclick = () => { eu_("Sim"); perguntarAssunto(); render(); rolar(); };
-  if (f.tipo === "texto") ligarCompositor(async (texto) => {
-    const r = await api("/api/cliente/chamados", { method: "POST", body: { opcao: f.op.id, pedido_id: f.pedido || "", texto } });
-    eu_(texto);
-    bot(r.existente ? "Você já tinha um atendimento aberto sobre esse assunto — juntei sua mensagem a ele. A central responde por lá. 👍"
-      : "Pronto! Seu atendimento foi aberto. Assim que a central responder, você vê aqui em “Chamados”.", { tipo: "menu" });
-    await carregar(); abrirChamado(r.id);
+/* ═══════════ ATENDIMENTO = UM CHAT ═══════════ */
+function telaAtendimento(m) {
+  const eu = S.eu, chat = eu.chat;
+  const pendChat = fila.itens().filter((it) => it.url === "/api/cliente/chat" || (chat && it.url === `/api/cliente/chamado/${chat.id}/mensagem`));
+  m.classList.add("chat-modo");
+  if (chat) {   // já há conversa → é só ela, sem menu
+    marcarVisto(chat);
+    const msgs = chat.mensagens || [];
+    m.innerHTML = `<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap"><span class="etq ${TK_COR[chat.status] || ""}">${esc(chat.rotulo)}</span><span class="dica">Só a central encerra este atendimento.</span></div>
+      <div class="fio">${bolhas(msgs, pendChat)}
+      ${chat.status === "aberto" && msgs.every((x) => x.de === "cliente") ? `<div class="bolha bot"><span class="quem">Atendimento automático</span>Recebemos sua mensagem. Um atendente vai responder aqui em breve — você não precisa ficar com o app aberto.</div>` : ""}</div>
+      ${chat.status === "aguardando" ? `<div class="aviso" style="margin-top:12px">A central está aguardando sua resposta.</div>` : ""}
+      ${compositor("Escreva sua mensagem…")}`;
+    ligarCompositor(async (texto) => {
+      const r = await enviar(`/api/cliente/chamado/${encodeURIComponent(chat.id)}/mensagem`, { texto }, texto);
+      if (r.fila) { render(); return; }
+      await atualizar();
+    });
+    rolar(); return;
+  }
+  // sem chat ativo: a URA pergunta UMA vez
+  const fechado = (eu.chamados || []).find((c) => c.tipo === "chat" && !c.aberto);
+  const saud = String(eu.saudacao || "Sobre o que você quer falar?").replace(/^Olá!?/, `Olá, ${eu.nome}!`);
+  const op = S.assunto ? eu.ura.find((u) => u.id === S.assunto) : null;
+  const pendNovo = fila.itens().filter((it) => it.url === "/api/cliente/chat");
+  const opAssunto = op || (pendNovo.length ? eu.ura.find((u) => u.id === pendNovo[0].body.opcao) : null);
+  m.innerHTML = `<div class="fio">
+      ${fechado && fechado.atualizado_em && Date.now() - new Date(fechado.atualizado_em.replace(" ", "T")).getTime() < 864e5 ? `<div class="dia">Seu último atendimento foi encerrado pela central</div>` : ""}
+      <div class="bolha bot"><span class="quem">Atendimento automático</span>${esc(saud)}</div>
+      ${opAssunto ? `<div class="bolha cli">${esc(opAssunto.rotulo)}</div>
+        <div class="bolha bot"><span class="quem">Atendimento automático</span>Certo! Escreva sua mensagem com o máximo de detalhes — um atendente da central vai continuar a conversa aqui.</div>
+        ${bolhas([], pendNovo)}
+        ${!pendNovo.length ? `<div class="opcoes"><button class="op leve" id="trocarAssunto"><span class="n">↩</span><span><b>Escolher outro assunto</b></span></button></div>` : ""}`
+      : `<div class="opcoes">${eu.ura.map((o, i) => `<button class="op" data-assunto="${esc(o.id)}"><span class="n">${i + 1}</span><span><b>${esc(o.rotulo)}</b>${o.descricao ? `<small>${esc(o.descricao)}</small>` : ""}</span></button>`).join("")}</div>`}
+    </div>
+    ${opAssunto ? compositor("Escreva sua mensagem…") : ""}`;
+  m.querySelectorAll("[data-assunto]").forEach((b) => (b.onclick = () => { S.assunto = b.dataset.assunto; render(); rolar(); setTimeout(() => $("#txt")?.focus(), 50); }));
+  const ta = $("#trocarAssunto"); if (ta) ta.onclick = () => { S.assunto = null; render(); };
+  if (opAssunto) ligarCompositor(async (texto) => {
+    const r = await enviar("/api/cliente/chat", { opcao: opAssunto.id, texto }, texto);
+    S.assunto = null;
+    if (r.fila) { S.assunto = opAssunto.id; render(); return; }
+    await atualizar();
   });
+  if (!opAssunto) m.classList.remove("chat-modo");
   rolar();
 }
 
@@ -322,105 +424,118 @@ function telaURA(m) {
 function telaPedidos(m) {
   const ps = S.eu.pedidos;
   if (!ps.length) { m.innerHTML = `<div class="vazio">${A.orbe("caixa", "var(--ouro)")}<b>Nenhum pedido por aqui</b>Seus pedidos aparecem assim que forem confirmados pela loja.</div>`; return; }
-  const ab = abertosPed(), fe = ps.filter((p) => !ab.includes(p));
+  const ab = ps.filter((p) => !["entregue", "cancelado", "recusado"].includes(p.status)), fe = ps.filter((p) => !ab.includes(p));
   const cartao = (p) => `<button class="cartao vidro" data-p="${esc(p.id)}"><div class="l1"><b>${p.tipo === "troca" ? "Troca" : "Pedido"} #${p.numero}</b><span class="etq ${ST_COR[p.status] || ""} dir">${esc(p.rotulo)}</span></div>
     <p>${esc(p.itens.map((i) => `${i.qtd}× ${i.nome}`).join(", "))}</p>
-    ${p.entrega && !["entregue", "cancelado"].includes(p.status) ? `<div class="entrega">${ICO.caminhao}<span><b>${esc(dataLonga(p.entrega.data))}</b><small>${p.entrega.janela ? "Período: " + esc(p.entrega.janela) : "Entrega agendada"}</small></span></div>` : p.texto && p.status !== "entregue" ? `<p>${esc(p.texto)}</p>` : ""}</button>`;
+    ${p.entrega && !["entregue", "cancelado"].includes(p.status) ? `<div class="entrega">${ICO.cal}<span><b>${esc(dataLonga(p.entrega.data))}</b><small>${p.entrega.janela ? "Período: " + esc(p.entrega.janela) : "Entrega agendada"}</small></span></div>` : p.texto && p.status !== "entregue" ? `<p>${esc(p.texto)}</p>` : ""}</button>`;
   m.innerHTML = `${ab.length ? `<h2 class="tit">Em andamento</h2>${ab.map(cartao).join("")}` : ""}${fe.length ? `<div class="sec">Concluídos</div>${fe.map(cartao).join("")}` : ""}`;
-  m.querySelectorAll("[data-p]").forEach((b) => (b.onclick = () => { const p = ps.find((x) => x.id === b.dataset.p); S.tela = p.numero; S.pedidoId = p.id; render(); scrollTo(0, 0); }));
+  m.querySelectorAll("[data-p]").forEach((b) => (b.onclick = () => ir("pedidos", { tela: "pedido", id: b.dataset.p })));
 }
-function telaPedido(m) {
-  const p = S.eu.pedidos.find((x) => x.id === S.pedidoId);
-  if (!p) { S.tela = null; render(); return; }
-  const fora = ["cancelado", "recusado"].includes(p.status);
-  const larg = p.passo <= 0 ? 0 : (p.passo / 3) * 75;
+function telaPedido(m, id) {
+  const p = S.eu.pedidos.find((x) => x.id === id);
+  if (!p) { ir("pedidos"); return; }
+  const fora = ["cancelado", "recusado"].includes(p.status), larg = p.passo <= 0 ? 0 : (p.passo / 3) * 75;
   m.innerHTML = `<div class="cartao vidro vidro-borda-viva">
       <div class="l1"><b>${p.tipo === "troca" ? "Troca" : "Pedido"} #${p.numero}</b><span class="etq ${ST_COR[p.status] || ""} dir">${esc(p.rotulo)}</span></div>
       ${p.texto ? `<p>${esc(p.texto)}</p>` : ""}
       ${!fora ? `<div class="trilha"><div class="barra" style="width:${larg}%"></div>${p.trilha.map((t, i) => `<span class="${i < p.passo || p.status === "entregue" ? "feito" : i === p.passo ? "agora" : ""}"><i></i>${esc(t)}</span>`).join("")}</div>` : ""}
-      ${p.entrega && !["entregue", "cancelado"].includes(p.status) ? `<div class="entrega">${ICO.caminhao}<span><b>${esc(dataLonga(p.entrega.data))}</b><small>${p.entrega.janela ? "Período: " + esc(p.entrega.janela) : "Entrega agendada"}</small></span></div>` : ""}
+      ${p.entrega && !["entregue", "cancelado"].includes(p.status) ? `<div class="entrega">${ICO.cal}<span><b>${esc(dataLonga(p.entrega.data))}</b><small>${p.entrega.janela ? "Período: " + esc(p.entrega.janela) : "Entrega agendada"}</small></span></div>` : ""}
     </div>
     <div class="sec">Itens</div>
     <div class="cartao vidro"><ul class="itens">${p.itens.map((i) => `<li><b>${i.qtd}×</b>${esc(i.nome)}</li>`).join("")}</ul>
       ${p.valor_total ? `<div class="total"><span>Total</span><b>${brl(p.valor_total)}</b></div>` : ""}</div>
     ${p.endereco ? `<div class="sec">Endereço de entrega</div><div class="cartao vidro"><p style="margin:0">${esc(p.endereco)}</p></div>` : ""}
     ${p.tentativas.length ? `<div class="sec">Tentativas de entrega</div><div class="cartao vidro"><ul class="itens">${p.tentativas.map((t) => `<li><b>${t.n}ª</b>${dataBR(t.data)} — ${esc(t.resultado)}</li>`).join("")}</ul></div>` : ""}
-    <p class="nota" style="text-align:left;margin:4px 2px 10px">Pedido feito em ${dataBR(p.criado_em)}/${String(p.criado_em).slice(0, 4)}</p>
-    <button class="btn grande" id="ajuda">${ICO.chat} Preciso de ajuda com este pedido</button>`;
-  $("#ajuda").onclick = () => { S.aba = "atendimento"; S.tela = null; eu_(`Ajuda com o pedido #${p.numero}`); perguntarAssunto(p.id); render(); };
+    <p class="nota">Pedido feito em ${dataBR(p.criado_em)}/${String(p.criado_em).slice(0, 4)}</p>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
+      <button class="btn grande" id="falar">${ICO.chat} Falar sobre este pedido</button>
+      <button class="btn v grande" id="chamado">${ICO.lista} Abrir chamado deste pedido</button></div>`;
+  $("#falar").onclick = () => { S.rascunho = `Sobre o pedido #${p.numero}: `; if (!S.eu.chat && !S.assunto) S.assunto = (S.eu.ura.find((u) => u.id === "entrega") || S.eu.ura[0]).id; ir("atendimento"); setTimeout(() => $("#txt")?.focus(), 80); };
+  $("#chamado").onclick = () => ir("chamados", { tela: "novo", pedido: p.id });
 }
 
 /* ═══════════ CHAMADOS ═══════════ */
 function telaChamados(m) {
   const cs = S.eu.chamados, visto = ls.get("cli.visto", {});
-  if (!cs.length) { m.innerHTML = `<div class="vazio">${A.orbe("mensagem", "var(--ciano)")}<b>Nenhum chamado</b>Quando você falar com a central, a conversa fica aqui.<button class="btn" id="novo" style="margin-top:6px">${ICO.chat} Falar com a central</button></div>`;
-    $("#novo").onclick = () => { S.aba = "atendimento"; eu_("Falar com a central"); perguntarAssunto(); render(); }; return; }
-  const ab = cs.filter((c) => c.aberto), fe = cs.filter((c) => !c.aberto);
+  const pend = fila.itens().filter((it) => it.url === "/api/cliente/chamados");
   const cartao = (c) => { const novo = c.resposta_nova_em && c.resposta_nova_em > (visto[c.id] || "");
-    return `<button class="cartao vidro" data-c="${esc(c.id)}"><div class="l1">${novo ? `<span class="ponto" title="Resposta nova"></span>` : ""}<b>${esc(c.assunto)}</b><span class="etq ${TK_COR[c.status] || ""} dir">${esc(c.rotulo)}</span></div>
+    return `<button class="cartao vidro" data-c="${esc(c.id)}" data-tipo="${c.tipo}"><div class="l1">${novo ? `<span class="ponto" title="Resposta nova"></span>` : ""}<b>${esc(c.assunto)}</b><span class="etq ${TK_COR[c.status] || ""} dir">${esc(c.rotulo)}</span></div>
       ${c.ultima ? `<p>${c.ultima.de === "cliente" ? "Você: " : "Central: "}${esc(c.ultima.texto)}</p>` : `<p>Aberto em ${dataBR(c.criado_em)}</p>`}
-      <p class="min">Protocolo ${esc(c.id.slice(0, 6).toUpperCase())} · ${dataBR(c.atualizado_em)} ${hora(c.atualizado_em)}</p></button>`; };
-  m.innerHTML = `<button class="btn grande" id="novo" style="margin-bottom:16px">${ICO.chat} Novo atendimento</button>
-    ${ab.length ? `<h2 class="tit">Em andamento</h2>${ab.map(cartao).join("")}` : ""}${fe.length ? `<div class="sec">Encerrados</div>${fe.map(cartao).join("")}` : ""}`;
-  $("#novo").onclick = () => { S.aba = "atendimento"; eu_("Falar com a central"); perguntarAssunto(); render(); };
-  m.querySelectorAll("[data-c]").forEach((b) => (b.onclick = () => abrirChamado(b.dataset.c)));
+      <p class="min">${c.tipo === "chat" ? "Chat" : c.tipo === "chamado" ? esc(c.motivo || "Chamado") : "Aberto pela central"} · protocolo ${esc(c.id.slice(0, 6).toUpperCase())} · ${dataBR(c.atualizado_em)} ${hora(c.atualizado_em)}</p></button>`; };
+  const ab = cs.filter((c) => c.aberto), fe = cs.filter((c) => !c.aberto);
+  m.innerHTML = `<button class="btn grande" id="novo" style="margin-bottom:16px">${ICO.mais} Abrir chamado</button>
+    ${pend.map((it) => `<div class="cartao vidro pend"><div class="l1"><b>${esc(it.body.motivo_filho)}</b><span class="etq alerta dir">⏳ na fila</span></div><p>${esc(it.body.texto)}</p><p class="min">Escrito sem internet às ${hora(it.quando)} — enviamos quando a conexão voltar.</p></div>`).join("")}
+    ${ab.length ? `<h2 class="tit">Em andamento</h2>${ab.map(cartao).join("")}` : ""}${fe.length ? `<div class="sec">Encerrados</div>${fe.map(cartao).join("")}` : ""}
+    ${!cs.length && !pend.length ? `<div class="vazio">${A.orbe("lista", "var(--ciano)")}<b>Nenhum chamado</b>Abra um chamado para registrar um pedido à loja — ele segue com prazo e protocolo.</div>` : ""}`;
+  $("#novo").onclick = () => ir("chamados", { tela: "novo" });
+  m.querySelectorAll("[data-c]").forEach((b) => (b.onclick = () => {
+    if (b.dataset.tipo === "chat" && S.eu.chat && S.eu.chat.id === b.dataset.c) { ir("atendimento"); return; }
+    ir("chamados", { tela: "chamado", id: b.dataset.c });
+  }));
 }
-async function abrirChamado(id) {
-  try { S.chamado = await api("/api/cliente/chamado/" + encodeURIComponent(id)); }
-  catch (e) { toast(e.message); return; }
-  S.aba = "chamados"; marcarVisto(S.chamado); render();
+function telaNovoChamado(m) {
+  const arv = S.eu.motivos || {}, pais = Object.keys(arv), peds = S.eu.pedidos.filter((p) => p.status !== "cancelado");
+  m.innerHTML = `<form class="cartao vidro vidro-borda-viva form" id="fCh" novalidate>
+    <p class="dica">Registre aqui um pedido à loja. Ele ganha protocolo e prazo — você acompanha e conversa pela aba Chamados.</p>
+    <label class="campo">Motivo<select id="cPai"><option value="">Escolha…</option>${pais.map((p) => `<option>${esc(p)}</option>`).join("")}</select></label>
+    <label class="campo">Submotivo<select id="cFilho" disabled><option value="">Escolha o motivo primeiro</option></select></label>
+    ${peds.length ? `<label class="campo">Pedido (opcional)<select id="cPed"><option value="">Não é sobre um pedido</option>${peds.map((p) => `<option value="${esc(p.id)}"${S.sub.pedido === p.id ? " selected" : ""}>Pedido #${p.numero} · ${esc(p.rotulo)}</option>`).join("")}</select></label>` : ""}
+    <label class="campo">Descreva o que precisa<textarea id="cTxt" maxlength="2000" placeholder="Conte com detalhes — isso agiliza o atendimento."></textarea></label>
+    <button class="btn grande" type="submit" id="cEnv">${ICO.mais} Abrir chamado</button>
+    ${!navigator.onLine ? `<p class="dica">Sem internet agora: o chamado fica guardado e é enviado sozinho quando a conexão voltar.</p>` : ""}
+  </form>`;
+  const cp = $("#cPai"), cf = $("#cFilho");
+  cp.onchange = () => { const fs = arv[cp.value] || []; cf.disabled = !fs.length; cf.innerHTML = `<option value="">${fs.length ? "Escolha…" : "Escolha o motivo primeiro"}</option>` + fs.map((f) => `<option>${esc(f)}</option>`).join(""); };
+  $("#fCh").onsubmit = async (ev) => {
+    ev.preventDefault();
+    const body = { motivo_pai: cp.value, motivo_filho: cf.value, pedido_id: $("#cPed")?.value || "", texto: $("#cTxt").value.trim() };
+    if (!body.motivo_pai || !body.motivo_filho) { toast("Escolha o motivo e o submotivo."); return; }
+    if (!body.texto) { toast("Descreva o que você precisa."); return; }
+    const b = $("#cEnv"); b.disabled = true;
+    try {
+      const r = await enviar("/api/cliente/chamados", body, body.motivo_filho);
+      if (r.fila) { toast("Sem internet: o chamado foi guardado e vai sozinho quando a conexão voltar.", "var(--laranja)"); ir("chamados"); return; }
+      toast("Chamado aberto ✓", "var(--verde)"); await atualizar(); ir("chamados", { tela: "chamado", id: r.id });
+    } catch (e) { b.disabled = false; toast(e.message); if (e.status === 401) telaEntrar(); }
+  };
 }
-function marcarVisto(c) { if (!c) return; const v = ls.get("cli.visto", {}); v[c.id] = c.resposta_nova_em || c.atualizado_em || ""; ls.set("cli.visto", v); }
-function telaChamado(m) {
-  const c = S.chamado;
+async function telaThread(m, id) {
+  let c = cache.ch(id);
+  if (!c) { m.innerHTML = `<div class="carregando">${A.atomo(48)}</div>`; }
+  try { c = await api("/api/cliente/chamado/" + encodeURIComponent(id)); cache.salvarCh(c); }
+  catch (e) { if (e.status === 401) { telaEntrar(); return; } if (!c) { m.innerHTML = `<div class="vazio">${A.orbe("atencao", "var(--rosa)")}<b>${e.codigo === SEM_REDE ? "Sem internet" : "Não encontrado"}</b>${esc(e.message)}</div>`; return; } }
+  if (S.aba !== "chamados" || S.sub?.id !== id) return;   // o cliente já saiu daqui
+  marcarVisto(c);
+  const pend = fila.itens().filter((it) => it.url === `/api/cliente/chamado/${c.id}/mensagem`);
   m.classList.toggle("chat-modo", c.pode_escrever);
-  let dia = "";
-  const bolhas = c.mensagens.map((x) => { const d = String(x.data || "").slice(0, 10), sep = d && d !== dia ? `<div class="dia">${esc(dataLonga(d))}</div>` : ""; dia = d || dia;
-    return sep + `<div class="bolha ${x.de === "cliente" ? "cli" : "central"}">${x.de !== "cliente" ? `<span class="quem">${esc(x.autor ? x.autor + " · Central" : "Central")}</span>` : ""}${esc(x.texto)}<small>${hora(x.data)}</small></div>`; }).join("");
-  m.innerHTML = `<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap"><span class="etq ${TK_COR[c.status] || ""}">${esc(c.rotulo)}</span>${c.pedido ? `<span class="etq azul">Pedido #${esc(c.pedido)}</span>` : ""}</div>
+  m.innerHTML = `<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap"><span class="etq ${TK_COR[c.status] || ""}">${esc(c.rotulo)}</span>${c.motivo ? `<span class="chip">${esc(c.motivo)}</span>` : ""}${c.pedido ? `<span class="etq azul">Pedido #${esc(c.pedido)}</span>` : ""}</div>
     ${c.status === "aguardando" ? `<div class="aviso">A central está aguardando sua resposta.</div>` : ""}
-    <div class="fio" id="fio">${bolhas || `<div class="vazio" style="padding:20px">Este atendimento foi aberto pela nossa central. Se quiser, escreva abaixo.</div>`}
-    ${c.status === "aberto" && c.mensagens.every((x) => x.de === "cliente") ? `<div class="bolha bot"><span class="quem">Atendimento automático</span>Recebemos sua mensagem. Um atendente vai responder aqui em breve — você não precisa ficar com o app aberto.</div>` : ""}</div>
+    <div class="fio">${bolhas(c.mensagens || [], pend) || `<div class="vazio" style="padding:20px">Este atendimento foi aberto pela nossa central.${c.pode_escrever ? " Se quiser, escreva abaixo." : ""}</div>`}</div>
     ${c.pode_escrever ? compositor(c.status === "resolvido" ? "Ainda precisa de ajuda? Escreva aqui…" : "Escreva sua mensagem…")
-      : `<div class="aviso" style="margin-top:14px">Este atendimento foi encerrado. Precisa de algo mais? <a href="#" id="novo">Abrir novo atendimento</a></div>`}`;
-  const nv = $("#novo"); if (nv) nv.onclick = (e) => { e.preventDefault(); S.chamado = null; S.aba = "atendimento"; eu_("Falar com a central"); perguntarAssunto(); render(); };
+      : `<div class="aviso" style="margin-top:14px">Encerrado pela central.${c.tipo === "chat" ? " Para falar de novo, use a aba Atendimento." : " Precisa de algo mais? Abra um novo chamado."}</div>`}`;
   if (c.pode_escrever) ligarCompositor(async (texto) => {
-    await api(`/api/cliente/chamado/${encodeURIComponent(c.id)}/mensagem`, { method: "POST", body: { texto } });
-    S.chamado = await api("/api/cliente/chamado/" + encodeURIComponent(c.id)); marcarVisto(S.chamado);
-    try { S.eu = await api("/api/cliente/eu"); S.versao = S.eu.versao; } catch (_) {}
-    render();
-  }, false);
+    const r = await enviar(`/api/cliente/chamado/${encodeURIComponent(c.id)}/mensagem`, { texto }, texto);
+    if (r.fila) { render(); return; }
+    await atualizar();
+  });
   rolar();
 }
 
-/* ═══════════ compositor de mensagem ═══════════ */
-function compositor(ph) { return `<div class="compor"><div class="caixa vidro vidro-borda-viva"><textarea id="txt" rows="1" maxlength="2000" placeholder="${esc(ph)}" aria-label="Mensagem"></textarea><button class="btn" id="env" aria-label="Enviar" disabled>${ICO.enviar}</button></div></div>`; }
-function ligarCompositor(enviar) {
-  const t = $("#txt"), b = $("#env");
-  const ajusta = () => { t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 120) + "px"; b.disabled = !t.value.trim(); };
-  t.oninput = ajusta;
-  const vai = async () => { const v = t.value.trim(); if (!v || b.disabled) return; b.disabled = true; t.disabled = true;
-    try { await enviar(v); } catch (e) { toast(e.message); t.disabled = false; b.disabled = false; if (e.status === 401) carregar(); } };
-  b.onclick = vai;
-  t.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey && matchMedia("(pointer:fine)").matches) { e.preventDefault(); vai(); } };
-}
-function rolar() { requestAnimationFrame(() => scrollTo({ top: document.body.scrollHeight, behavior: "smooth" })); }
-
-/* ═══════════ novidades (só com o app aberto) ═══════════ */
+/* ═══════════ novidades e volta da internet ═══════════ */
 setInterval(async () => {
   if (document.visibilityState !== "visible" || !S.eu) return;
-  if (document.activeElement && document.activeElement.id === "txt" && document.activeElement.value) return;
+  if (fila.itens().length) { await enviarFila(); return; }
   try {
     const n = await api("/api/cliente/novidades");
-    if (n.versao === S.versao) return;
-    S.eu = await api("/api/cliente/eu"); S.versao = S.eu.versao;
-    if (S.chamado) { S.chamado = await api("/api/cliente/chamado/" + encodeURIComponent(S.chamado.id)); marcarVisto(S.chamado); }
-    if (S.aba !== "atendimento") render(); else { const n2 = naoLidos(); const a = app.querySelector('[data-aba="chamados"]'); if (a) a.innerHTML = `${ICO.lista}Chamados${n2 ? `<em>${n2}</em>` : ""}`; }
-  } catch (e) { if (e.status === 401) carregar(); }
+    if (S.offline) { S.offline = false; await atualizar(); return; }
+    if (n.versao !== S.versao) await atualizar();
+  } catch (e) { if (e.status === 401) telaEntrar(); else if (e.codigo === SEM_REDE && !S.offline) { S.offline = true; render(); } }
 }, 15000);
+addEventListener("online", () => { if (S.eu) { S.offline = false; enviarFila().then(atualizar); } });
+addEventListener("offline", () => { if (S.eu) { S.offline = true; render(); } });
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/cliente/sw.js", { scope: "/cliente/" }).catch(() => {});
-carregar(true);
+carregar();
 })();
 </script>
 </body>
