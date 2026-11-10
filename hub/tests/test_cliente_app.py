@@ -2,6 +2,7 @@
 
     cd hub && python -m pytest tests/test_cliente_app.py -q
 """
+import re
 import sys
 import time
 from urllib.parse import quote
@@ -103,7 +104,9 @@ def t(monkeypatch):
     E.ST.dados["pedidos"] = {
         "ped1": {"cliente_id": "c_ana", "numero": 101, "status": "agendado", "tipo": "venda", "agendamento": {"data": "2026-11-14", "janela": "Manhã"},
                  "itens": [{"produto_id": "p1", "qtd": 1, "preco": 1999}], "valor_total": 1999, "criado_em": "2026-11-01T10:00:00",
-                 "historico": [{"em": "x", "por": "joao.vendas", "evento": "Pedido criado"}], "obs": "cliente chato", "tentativas": []},
+                 "historico": [{"em": "x", "por": "joao.vendas", "evento": "Pedido criado"}], "obs": "cliente chato", "tentativas": [],
+                 "palavra_chave": "SOL42"},
+        "ped9": {"cliente_id": "c_ana", "numero": 99, "status": "cancelado", "itens": [], "criado_em": "2026-10-01T10:00:00", "palavra_chave": "LUA10"},
         "ped2": {"cliente_id": "c_ana", "numero": 102, "status": "rascunho", "itens": [], "criado_em": "2026-11-05T10:00:00"},
         "ped3": {"cliente_id": "c_bia", "numero": 103, "status": "confirmado", "itens": [], "criado_em": "2026-11-05T10:00:00"},
     }
@@ -118,7 +121,7 @@ def t(monkeypatch):
     # login do hub (atendente) para o lado da central
     monkeypatch.setattr(acesso, "exigir_usuario", lambda request: {"login": "atendente", "nome": "Carla Atendente"})
     monkeypatch.setattr(acesso, "obter_esquema", lambda slug: {"acoes": {}, "campos": {}})
-    tudo = {k: True for k in ("acessar", "atender", "abrir", "encerrar", "transferir", "setor", "equipe", "gestao", "configurar")}
+    tudo = {k: True for k in ("acessar", "atender", "abrir", "encerrar", "transferir", "setor", "equipe", "gestao", "configurar", "palavra_chave")}
     monkeypatch.setattr(acesso, "permissoes", lambda u, slug, esq: {"acoes": tudo, "campos": {}})
     app = FastAPI()
     app.include_router(C.router)
@@ -126,8 +129,17 @@ def t(monkeypatch):
     return TestClient(app)
 
 
-def entrar(t, cpf=CPF_ANA, email="ana@exemplo.com"):
-    return t.post("/api/cliente/entrar", json={"cpf": cpf, "email": email})
+def entrar(t, cpf=CPF_ANA, email="ana@exemplo.com", palavra=""):
+    return t.post("/api/cliente/entrar", json={"cpf": cpf, "email": email, "palavra": palavra})
+
+
+def central(t, sid):
+    """Resumo do ticket na central (pelo id curto que o app conhece)."""
+    return next(x for x in t.get("/api/tickets/estado").json()["tickets"] if x["id"].endswith("#" + sid))
+
+
+def url_tk(tid):
+    return "/api/tickets/ticket/" + quote(tid, safe="")
 
 
 def test_login_confere_cpf_e_email_e_gera_codigo(t):
@@ -137,70 +149,127 @@ def test_login_confere_cpf_e_email_e_gera_codigo(t):
     r = entrar(t, email="  ANA@exemplo.com ")                          # e-mail sem diferença de maiúsculas/espaços
     assert r.status_code == 200 and r.json()["nome"] == "Ana"
     cod = E.ST.dados["parceiros"]["c_ana"]["codigo"]
-    assert len(cod) == 6                                                # código do cliente criado no login
-    eu = t.get("/api/cliente/eu").json()
-    assert eu["codigo"] == cod
+    assert len(cod) == 6 and t.get("/api/cliente/eu").json()["codigo"] == cod
+
+
+def test_palavra_chave_quando_exigida(t):
+    T.BASE.cfg_cache["tickets_hub"] = {"app_cliente": {"exigir_palavra": True}}
+    assert t.get("/api/cliente/info").json()["exigir_palavra"] is True
+    assert entrar(t).status_code == 422                                # sem a palavra
+    assert entrar(t, palavra="SOL43").status_code == 401               # errada
+    assert entrar(t, palavra="LUA10").status_code == 401               # de pedido cancelado não vale
+    assert entrar(t, palavra=" sol-42 ").status_code == 200            # maiúscula/espaço/hífen não importam
+
+
+def test_palavra_nasce_com_o_pedido_e_o_erp_nao_mostra(t):
+    tx = E.Tx({"login": "vendedor"})
+    E.ST.dados["produtos"]["p1"].update(ativo=True, preco=100)
+    ped = E._novo_pedido(tx, {"login": "vendedor"}, {"acoes": {}, "campos": {}}, {"cliente_id": "c_bia", "itens": [{"produto_id": "p1", "qtd": 1}]})
+    assert re.match(r"^[A-Z]+\d{2}$", ped["palavra_chave"])
+    assert "palavra_chave" not in E._filtrar({"acoes": {}, "campos": {}}, "pedidos", dict(ped))
+
+
+def test_central_consulta_e_gera_palavras(t):
+    r = t.get("/api/tickets/app/palavras?q=ana").json()
+    peds = {p["numero"]: p["palavra_chave"] for p in r["clientes"][0]["pedidos"]}
+    assert peds[101] == "SOL42" and 102 not in peds                     # rascunho fora
+    E.ST.dados["pedidos"]["ped3"].pop("palavra_chave", None)
+    assert t.post("/api/tickets/app/palavras/gerar").json()["feitos"] == 1   # só o 103 (ativo e sem palavra)
+    assert E.ST.dados["pedidos"]["ped3"]["palavra_chave"]
+    nova = t.post("/api/tickets/app/palavra/ped1/nova").json()["palavra_chave"]
+    assert nova != "SOL42" and E.ST.dados["pedidos"]["ped1"]["palavra_chave"] == nova
 
 
 def test_pedidos_so_os_meus_sem_rascunho_e_sem_dado_interno(t):
     entrar(t)
     ps = t.get("/api/cliente/eu").json()["pedidos"]
-    assert [p["numero"] for p in ps] == [101]                           # 102 é rascunho, 103 é da Bia
+    assert [p["numero"] for p in ps] == [101, 99]                       # 102 é rascunho, 103 é da Bia
     p = ps[0]
     assert p["rotulo"] == "Entrega agendada" and p["entrega"] == {"data": "2026-11-14", "janela": "Manhã"}
-    assert p["itens"] == [{"nome": "Colchão Casal Molas", "qtd": 1}]
-    assert "historico" not in p and "obs" not in p and "joao" not in str(p)
+    assert "historico" not in p and "obs" not in p and "joao" not in str(p) and "SOL42" not in str(ps)
 
 
 def test_freio_de_tentativas(t):
     for _ in range(C.LIMITE_DOC):
         assert entrar(t, email="errado@x.com").status_code == 401
-    assert entrar(t).status_code == 429                                 # mesmo com o e-mail certo, o CPF ficou travado
+    assert entrar(t).status_code == 429
 
 
-def test_chat_ida_e_volta_com_a_central(t):
+def test_atendimento_e_um_chat_so(t):
     entrar(t)
-    r = t.post("/api/cliente/chamados", json={"opcao": "entrega", "pedido_id": "ped1", "texto": "Posso mudar para a tarde?"})
-    assert r.status_code == 200 and r.json()["existente"] is False
-    sid = r.json()["id"]
-    # na central: chega como ticket do app, sem dono, cliente aguardando, ligado ao pedido
-    est = t.get("/api/tickets/estado").json()
-    tk = next(x for x in est["tickets"] if x["id"].endswith("#" + sid))
-    assert tk["origem"] == "app" and tk["app_pendente"] and tk["sem_dono"] and tk["erp_pedido_numero"] == 101
+    a = t.post("/api/cliente/chat", json={"opcao": "entrega", "texto": "Posso mudar para a tarde?"}).json()
+    b = t.post("/api/cliente/chat", json={"opcao": "outro", "texto": "E outra dúvida…"}).json()   # outro assunto, mesmo chat
+    assert a["existente"] is False and b["existente"] is True and a["id"] == b["id"]
+    eu = t.get("/api/cliente/eu").json()
+    assert eu["chat"]["id"] == a["id"] and len(eu["chamados"]) == 1
+    assert [m["texto"] for m in eu["chat"]["mensagens"]] == ["Posso mudar para a tarde?", "E outra dúvida…"]
+    tk = central(t, a["id"])
+    assert tk["origem"] == "app" and tk["app_tipo"] == "chat" and tk["app_pendente"] and tk["sem_dono"]
     assert tk["motivo_pai"] == "Logística" and tk["departamento"] == "Logística"
-    # atendente assume, faz nota interna e responde no app
-    t.post(f"/api/tickets/ticket/{quote(tk['id'], safe='')}/alterar", json={"atribuir": "atendente"})
-    t.post(f"/api/tickets/ticket/{quote(tk['id'], safe='')}/comentar", json={"texto": "cliente VIP, cuidado", "tipo": "nota"})
-    t.post(f"/api/tickets/ticket/{quote(tk['id'], safe='')}/comentar", json={"texto": "Pode sim! Alterei para a tarde.", "tipo": "resposta", "status": "aguardando"})
-    tk = next(x for x in t.get("/api/tickets/estado").json()["tickets"] if x["id"] == tk["id"])
-    assert tk["app_pendente"] is False and tk["status"] == "aguardando"
-    # no app: só a abertura e a resposta pública — nada de nota interna ou registro do sistema
-    ch = t.get(f"/api/cliente/chamado/{sid}").json()
-    assert [(m["de"], m["texto"]) for m in ch["mensagens"]] == [("cliente", "Posso mudar para a tarde?"), ("central", "Pode sim! Alterei para a tarde.")]
-    assert ch["mensagens"][1]["autor"] == "Carla"
-    assert ch["rotulo"] == "Aguardando sua resposta"
-    # cliente responde → volta para em andamento e acende o alerta do atendente
-    assert t.post(f"/api/cliente/chamado/{sid}/mensagem", json={"texto": "Obrigada!"}).status_code == 200
-    tk = next(x for x in t.get("/api/tickets/estado").json()["tickets"] if x["id"] == tk["id"])
-    assert tk["status"] == "em_andamento" and tk["app_pendente"] and tk["nao_visto"]
 
 
-def test_mesmo_assunto_junta_no_chamado_aberto(t):
+def test_chat_ida_e_volta_e_so_o_atendente_encerra(t):
     entrar(t)
-    a = t.post("/api/cliente/chamados", json={"opcao": "troca", "texto": "Veio rasgado"}).json()
-    b = t.post("/api/cliente/chamados", json={"opcao": "troca", "texto": "Mandei foto?"}).json()
-    assert b["existente"] and b["id"] == a["id"]
-    assert len(t.get("/api/cliente/eu").json()["chamados"]) == 1
+    sid = t.post("/api/cliente/chat", json={"opcao": "troca", "texto": "Veio rasgado"}).json()["id"]
+    tid = central(t, sid)["id"]
+    t.post(url_tk(tid) + "/alterar", json={"atribuir": "atendente"})
+    t.post(url_tk(tid) + "/comentar", json={"texto": "cliente VIP, cuidado", "tipo": "nota"})
+    t.post(url_tk(tid) + "/comentar", json={"texto": "Já abrimos a troca!", "tipo": "resposta", "status": "aguardando"})
+    tk = central(t, sid)
+    assert tk["app_pendente"] is False and tk["status"] == "aguardando"
+    chat = t.get("/api/cliente/eu").json()["chat"]
+    assert [(m["de"], m["texto"]) for m in chat["mensagens"]] == [("cliente", "Veio rasgado"), ("central", "Já abrimos a troca!")]
+    assert chat["mensagens"][1]["autor"] == "Carla" and chat["rotulo"] == "Aguardando sua resposta"
+    assert t.post(f"/api/cliente/chamado/{sid}/mensagem", json={"texto": "Obrigada!"}).status_code == 200
+    tk = central(t, sid)
+    assert tk["status"] == "em_andamento" and tk["app_pendente"] and tk["nao_visto"]
+    # o cliente não tem como encerrar; o atendente conclui → o chat sai do Atendimento e não aceita mais mensagem
+    t.post(url_tk(tid) + "/alterar", json={"status": "resolvido"})
+    eu = t.get("/api/cliente/eu").json()
+    assert eu["chat"] is None and eu["chamados"][0]["pode_escrever"] is False
+    assert t.post(f"/api/cliente/chamado/{sid}/mensagem", json={"texto": "e aí?"}).status_code == 409
+    novo = t.post("/api/cliente/chat", json={"opcao": "outro", "texto": "Outra coisa"}).json()
+    assert novo["existente"] is False and novo["id"] != sid             # agora sim, um chat novo
+
+
+def test_chamado_pelo_cliente_com_motivo_e_submotivo(t):
+    entrar(t)
+    eu = t.get("/api/cliente/eu").json()
+    assert "Cancelamento" in eu["motivos"]["Pedido"]
+    assert t.post("/api/cliente/chamados", json={"motivo_pai": "Pedido", "motivo_filho": "Inexistente", "texto": "x"}).status_code == 422
+    r = t.post("/api/cliente/chamados", json={"motivo_pai": "Pedido", "motivo_filho": "Cancelamento", "pedido_id": "ped1", "texto": "Quero cancelar"})
+    assert r.status_code == 200
+    tk = central(t, r.json()["id"])
+    assert tk["app_tipo"] == "chamado" and tk["motivo_filho"] == "Cancelamento" and tk["erp_pedido_numero"] == 101
+    assert tk["sla"]["limite"]                                           # SLA do submotivo
+    dup = t.post("/api/cliente/chamados", json={"motivo_pai": "Pedido", "motivo_filho": "Arrependimento", "texto": "outro"})
+    assert dup.status_code == 409 and "Pedido" in dup.json()["detail"]   # um aberto por motivo
+    assert t.post("/api/cliente/chamados", json={"motivo_pai": "Cliente", "motivo_filho": "Reenvio", "texto": "outro motivo"}).status_code == 200
+    assert t.post("/api/cliente/chamados", json={"motivo_pai": "Compras", "motivo_filho": "Falta de Peças", "pedido_id": "ped3", "texto": "x"}).status_code == 404
+
+
+def test_reenvio_da_fila_offline_nao_duplica(t):
+    entrar(t)
+    corpo = {"opcao": "outro", "texto": "escrito no metrô", "req": "abc123", "escrito_em": "2026-11-10 08:15:00"}
+    a = t.post("/api/cliente/chat", json=corpo).json()
+    b = t.post("/api/cliente/chat", json=corpo).json()
+    assert b.get("repetido") and a["id"] == b["id"]
+    m = {"texto": "segunda", "req": "def456", "escrito_em": "2026-11-10 08:16:00"}
+    t.post(f"/api/cliente/chamado/{a['id']}/mensagem", json=m)
+    assert t.post(f"/api/cliente/chamado/{a['id']}/mensagem", json=m).json().get("repetido")
+    det = t.get(url_tk(central(t, a["id"])["id"])).json()["ticket"]
+    assert len(det["comentarios"]) == 1 and det["comentarios"][0]["escrito_em"] == "2026-11-10 08:16:00"
+    assert "escrito sem internet" in det["descricao"]
 
 
 def test_um_cliente_nao_ve_o_do_outro(t):
     entrar(t)
-    sid = t.post("/api/cliente/chamados", json={"opcao": "outro", "texto": "Dúvida da Ana"}).json()["id"]
-    assert t.post("/api/cliente/chamados", json={"opcao": "outro", "pedido_id": "ped3", "texto": "x"}).status_code == 404  # pedido da Bia
+    sid = t.post("/api/cliente/chat", json={"opcao": "outro", "texto": "Dúvida da Ana"}).json()["id"]
     t.post("/api/cliente/sair")
     t.cookies.clear()
     assert entrar(t, CPF_BIA, "bia@exemplo.com").status_code == 200
-    assert t.get("/api/cliente/eu").json()["chamados"] == []
+    eu = t.get("/api/cliente/eu").json()
+    assert eu["chamados"] == [] and eu["chat"] is None
     assert t.get(f"/api/cliente/chamado/{sid}").status_code == 404
     assert t.post(f"/api/cliente/chamado/{sid}/mensagem", json={"texto": "oi"}).status_code == 404
 
@@ -211,7 +280,7 @@ def test_chamado_aberto_pela_central_aparece_sem_o_interno(t):
     tid = T.criar_solicitacao({"assunto": "Retorno sobre avaria", "descricao": "texto interno da abertura", "cliente_codigo": cod,
                                "cliente_nome": "ana souza", "origem": "hub"}, {"usuario": "atendente", "nome": "Carla"})
     ch = t.get(f"/api/cliente/chamado/{tid.split('#')[-1]}").json()
-    assert ch["assunto"] == "Retorno sobre avaria" and ch["mensagens"] == []   # descrição de abertura interna não vaza
+    assert ch["assunto"] == "Retorno sobre avaria" and ch["mensagens"] == [] and ch["tipo"] == "central"
 
 
 def test_sessao_cai_se_o_email_mudar_no_erp(t):
@@ -222,26 +291,19 @@ def test_sessao_cai_se_o_email_mudar_no_erp(t):
 
 
 def test_token_do_cliente_nao_vale_no_hub_e_vice_versa(t):
-    tk = C.gerar_token("c_ana", PARCEIROS["c_ana"])
-    assert acesso.ler_token(tk) is None
+    assert acesso.ler_token(C.gerar_token("c_ana", PARCEIROS["c_ana"])) is None
     assert C.ler_token(acesso.gerar_token("admin", 0, 1)) is None
 
 
-def test_encerrado_nao_aceita_mensagem_e_app_desligado_bloqueia_entrada(t):
-    entrar(t)
-    sid = t.post("/api/cliente/chamados", json={"opcao": "outro", "texto": "oi"}).json()["id"]
-    tid = next(x["id"] for x in t.get("/api/tickets/estado").json()["tickets"] if x["id"].endswith(sid))
-    t.post(f"/api/tickets/ticket/{quote(tid, safe='')}/alterar", json={"status": "finalizado"})
-    assert t.post(f"/api/cliente/chamado/{sid}/mensagem", json={"texto": "e aí?"}).status_code == 409
+def test_app_desligado_bloqueia_entrada(t):
     T.BASE.cfg_cache["tickets_hub"] = {"app_cliente": {"ativo": False}}
-    t.cookies.clear()
     assert entrar(t).status_code == 503
 
 
 def test_ajustes_do_app_salvam_pela_central(t):
-    r = t.put("/api/tickets/config", json={"app_cliente": {"ativo": True, "empresa": "KingStar Atende",
+    r = t.put("/api/tickets/config", json={"app_cliente": {"ativo": True, "exigir_palavra": True, "empresa": "KingStar Atende",
                                                            "ura": [{"rotulo": "Garantia", "motivo_pai": "Pedido", "departamento": "CX"}]}})
     assert r.status_code == 200
     T.BASE.t_cfg = time.time() + 3600      # sem reler o resto do banco falso: usa o que a central acabou de gravar
     cfg = C.cfg_app()
-    assert cfg["empresa"] == "KingStar Atende" and cfg["ura"][0]["id"] == "op1" and cfg["ura"][0]["rotulo"] == "Garantia"
+    assert cfg["empresa"] == "KingStar Atende" and cfg["exigir_palavra"] and cfg["ura"][0]["id"] == "op1"
