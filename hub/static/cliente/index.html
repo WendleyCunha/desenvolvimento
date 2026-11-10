@@ -4,188 +4,169 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Central do Cliente</title>
-<meta name="theme-color" content="#14213d">
 <meta name="description" content="Acompanhe seus pedidos, prazos de entrega e fale com a nossa central.">
+<meta name="theme-color" content="#05060a">
 <link rel="manifest" href="/cliente/manifest.webmanifest">
-<link rel="icon" href="/static/app/icone-192.png">
+<link rel="icon" href="data:,">
 <link rel="apple-touch-icon" href="/static/app/icone-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Atendimento">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/aurora.css?v=3">
 <!--
 ═══════════════════════════════════════════════════════════════════════════════
  static/cliente/index.html — APP DO CLIENTE (servido em /cliente/)
  Entrar (CPF + e-mail) · Atendimento (URA em conversa) · Pedidos · Chamados (chat)
- API: /api/cliente/* (hub/cliente_app.py). Sem dependência do kit do hub.
+ Visual: kit Aurora Glass do hub (/static/aurora.css + aurora.js), igual ao
+ app público de Relatórios. API: /api/cliente/* (hub/cliente_app.py).
 ═══════════════════════════════════════════════════════════════════════════════
 -->
 <style>
-:root{
-  --fundo:#f4f5f8;--cartao:#fff;--txt:#14161c;--txt2:#4a5060;--txt3:#7c8292;--linha:#e3e6ec;
-  --marca:#14213d;--marca2:#1f3363;--acento:#d99a1e;--acento-claro:#fdf3df;
-  --ok:#16a34a;--ok-claro:#e7f6ec;--alerta:#c2410c;--alerta-claro:#fdeee5;--ruim:#be123c;--ruim-claro:#fde8ed;
-  --bolha-cli:#14213d;--bolha-central:#fff;--sombra:0 1px 2px rgba(20,22,28,.06),0 4px 16px rgba(20,22,28,.06);
-  --r:16px;--sans:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-}
-@media (prefers-color-scheme:dark){:root{
-  --fundo:#0d0f14;--cartao:#171a22;--txt:#eef0f5;--txt2:#b6bccb;--txt3:#828a9c;--linha:#272c38;
-  --marca:#e8b33d;--marca2:#f5d27a;--acento:#e8b33d;--acento-claro:rgba(232,179,61,.12);
-  --ok-claro:rgba(22,163,74,.15);--alerta-claro:rgba(194,65,12,.18);--ruim-claro:rgba(190,18,60,.18);
-  --bolha-cli:#e8b33d;--bolha-central:#1f2330;--sombra:none;
-}}
-*{box-sizing:border-box}
-html,body{margin:0;height:100%}
-body{background:var(--fundo);color:var(--txt);font:15px/1.5 var(--sans);-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent}
-button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
-input,textarea{font:inherit;color:inherit}
-.app{max-width:560px;margin:0 auto;min-height:100%;display:flex;flex-direction:column}
+html,body{min-height:100%}
+body{margin:0;background:var(--noite);color:var(--txt);font-size:15px;-webkit-tap-highlight-color:transparent}
+.app{position:relative;z-index:1;max-width:560px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column}
 .oculto{display:none!important}
+svg.i{width:20px;height:20px}
 
-/* topo */
-.topo{position:sticky;top:0;z-index:20;background:var(--marca);color:#fff;padding:calc(12px + env(safe-area-inset-top)) 16px 12px;display:flex;align-items:center;gap:12px}
-@media (prefers-color-scheme:dark){.topo{background:#121520;color:var(--txt);border-bottom:1px solid var(--linha)}}
-.topo .av{width:38px;height:38px;border-radius:12px;background:rgba(255,255,255,.14);display:grid;place-items:center;font-weight:700}
-.topo>span:not(.av){min-width:0;flex:1}
-.topo b{display:block;font-size:1rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.topo small{display:block;font-size:.75rem;opacity:.75}
-.topo .sair{margin-left:auto;font-size:.8rem;opacity:.85;padding:6px 10px;border-radius:10px}
-.topo .sair:hover{background:rgba(255,255,255,.1)}
-.topo .voltar{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;margin-left:-6px}
-.topo .voltar:hover{background:rgba(255,255,255,.1)}
+/* topo de vidro */
+.topo{position:sticky;top:0;z-index:20;margin:max(10px,env(safe-area-inset-top)) 12px 0;padding:10px 12px;border-radius:20px;display:flex;align-items:center;gap:12px}
+.topo.vidro{background:linear-gradient(135deg,rgba(14,17,26,.88),rgba(8,10,16,.82))}
+html[data-claro] .topo.vidro{background:rgba(255,255,255,.82)}
+.topo .tx{min-width:0;flex:1}
+.topo b{display:block;font:700 1rem/1.25 var(--titulo);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.topo small{display:block;font-size:.58rem;letter-spacing:2px;text-transform:uppercase;font-weight:700;background:var(--grad-ouro);-webkit-background-clip:text;background-clip:text;color:transparent;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
-main{flex:1;padding:16px 16px calc(84px + env(safe-area-inset-bottom))}
-main.chat-modo{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
+main{flex:1;padding:16px 14px calc(92px + env(safe-area-inset-bottom))}
+main.chat-modo{padding-bottom:calc(160px + env(safe-area-inset-bottom))}
 
-/* navegação de baixo */
-.abas{position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--cartao);border-top:1px solid var(--linha);padding-bottom:env(safe-area-inset-bottom)}
-.abas div{max-width:560px;margin:0 auto;display:grid;grid-template-columns:repeat(3,1fr)}
-.abas button{padding:10px 4px 9px;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:.72rem;font-weight:600;color:var(--txt3);position:relative}
-.abas button svg{width:22px;height:22px}
-.abas button.ativo{color:var(--marca)}
-.abas em{position:absolute;top:6px;left:calc(50% + 6px);min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--ruim);color:#fff;font:700 .66rem/18px var(--sans);font-style:normal}
+/* abas de baixo (vidro) */
+.abas{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(10px + env(safe-area-inset-bottom));z-index:20;width:calc(100% - 24px);max-width:536px;padding:5px;border-radius:20px;display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
+.abas.vidro{background:linear-gradient(135deg,rgba(14,17,26,.92),rgba(8,10,16,.88))}
+html[data-claro] .abas.vidro{background:rgba(255,255,255,.88)}
+.abas button{position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 4px 7px;border-radius:15px;color:var(--txt3);font:600 .7rem var(--sans);transition:.2s}
+.abas button.ativo{color:var(--txt);background:linear-gradient(135deg,rgba(var(--ouro-rgb),.24),rgba(var(--ouro-rgb),.08));box-shadow:inset 0 0 0 1px rgba(var(--ouro-rgb),.45)}
+.abas button.ativo svg.i{color:var(--ouro2);filter:drop-shadow(0 0 6px rgba(var(--ouro-rgb),.7))}
+.abas em{position:absolute;top:4px;left:calc(50% + 6px);min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--rosa);color:#fff;font:700 .66rem/18px var(--sans);font-style:normal;box-shadow:0 0 12px var(--rosa)}
 
 /* entrar */
-.entrar{min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding:24px 20px calc(24px + env(safe-area-inset-bottom));max-width:420px;margin:0 auto}
-.entrar .selo{width:64px;height:64px;border-radius:20px;background:var(--marca);display:grid;place-items:center;margin-bottom:18px}
-.entrar .selo svg{width:32px;height:32px;color:#fff}
-@media (prefers-color-scheme:dark){.entrar .selo svg{color:#14161c}}
-.entrar h1{font-size:1.6rem;line-height:1.2;margin:0 0 6px;letter-spacing:-.02em}
-.entrar p.sub{color:var(--txt2);margin:0 0 24px}
-.campo{display:block;margin-bottom:14px}
-.campo span{display:block;font-size:.8rem;font-weight:600;color:var(--txt2);margin-bottom:6px}
-.campo input{width:100%;padding:14px 14px;border-radius:12px;border:1.5px solid var(--linha);background:var(--cartao);font-size:1rem;outline:none;transition:border-color .15s}
-.campo input:focus{border-color:var(--marca)}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:14px 18px;border-radius:12px;font-weight:600;background:var(--marca);color:#fff;width:100%;font-size:1rem;transition:opacity .15s,transform .1s}
-@media (prefers-color-scheme:dark){.btn{color:#14161c}}
-.btn:active{transform:scale(.99)}
-.btn[disabled]{opacity:.55;cursor:default}
-.btn.sec{background:var(--cartao);color:var(--txt);border:1.5px solid var(--linha)}
-.erro{background:var(--ruim-claro);color:var(--ruim);border-radius:12px;padding:12px 14px;font-size:.88rem;margin-bottom:14px}
-@media (prefers-color-scheme:dark){.erro{color:#fecdd3}}
-.nota{font-size:.78rem;color:var(--txt3);margin-top:16px;text-align:center}
+.entrar{min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding:max(24px,env(safe-area-inset-top)) 18px calc(24px + env(safe-area-inset-bottom));max-width:440px;margin:0 auto;width:100%}
+.entrar .marca{text-align:center;margin-bottom:14px}
+.entrar .marca .atomo{margin:0 auto 6px}
+.entrar h1{font:700 1.6rem/1.15 var(--titulo);margin:6px 0 4px;letter-spacing:-.01em;text-align:center}
+.entrar .sub{color:var(--txt2);margin:0 0 18px;text-align:center;font-size:.9rem}
+.entrar .cartao{padding:20px 18px;border-radius:24px;display:flex;flex-direction:column;gap:14px}
+.entrar .campo input{padding:13px 14px;font-size:1rem}
+.btn.grande{width:100%;padding:14px 18px;font-size:1rem;border-radius:14px}
+.erro{color:#fecdd3;background:rgba(251,113,133,.1);border:1px solid rgba(251,113,133,.35);border-radius:14px;padding:11px 13px;font-size:.86rem;line-height:1.45}
+html[data-claro] .erro{color:var(--rosa)}
+.nota{font-size:.76rem;color:var(--txt3);text-align:center;margin:14px 0 0;display:flex;gap:6px;justify-content:center;align-items:center}
+.nota svg.i{width:14px;height:14px;color:var(--ouro2)}
 
-/* conversa da URA e do chamado */
+/* conversa (URA e chamado) */
 .fio{display:flex;flex-direction:column;gap:10px}
-.bolha{max-width:86%;padding:10px 14px;border-radius:18px;white-space:pre-wrap;word-break:break-word;box-shadow:var(--sombra);animation:entra .18s ease-out}
-.bolha.bot,.bolha.central{background:var(--bolha-central);border:1px solid var(--linha);border-bottom-left-radius:6px;align-self:flex-start}
-.bolha.cli{background:var(--bolha-cli);color:#fff;border-bottom-right-radius:6px;align-self:flex-end}
-@media (prefers-color-scheme:dark){.bolha.cli{color:#14161c}}
+.bolha{max-width:86%;padding:10px 14px;border-radius:18px;white-space:pre-wrap;word-break:break-word;font-size:.92rem;line-height:1.5;animation:entra .2s var(--suave)}
+.bolha.bot,.bolha.central{align-self:flex-start;border-bottom-left-radius:6px;background:linear-gradient(160deg,rgba(255,255,255,.08),rgba(255,255,255,.025));border:1px solid var(--vidro-borda);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur)}
+html[data-claro] .bolha.bot,html[data-claro] .bolha.central{background:rgba(255,255,255,.85)}
+.bolha.cli{align-self:flex-end;border-bottom-right-radius:6px;background:var(--grad-ouro);color:#1a1206;font-weight:500;box-shadow:0 12px 28px -14px rgba(var(--ouro-rgb),.9),inset 0 1px 0 rgba(255,255,255,.35)}
 .bolha small{display:block;font-size:.68rem;opacity:.65;margin-top:4px}
-.bolha .quem{display:block;font-size:.72rem;font-weight:700;color:var(--acento);margin-bottom:2px}
-.dia{align-self:center;font-size:.7rem;font-weight:600;color:var(--txt3);background:var(--cartao);border:1px solid var(--linha);border-radius:20px;padding:3px 10px}
+.bolha .quem{display:block;font:600 .64rem var(--titulo);letter-spacing:.12em;text-transform:uppercase;color:var(--ouro2);margin-bottom:3px}
+.bolha.central .quem{color:var(--ciano)}
+.dia{align-self:center;font-size:.66rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--txt3);border:1px solid var(--vidro-borda);border-radius:20px;padding:3px 10px;background:rgba(255,255,255,.03)}
 @keyframes entra{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-@media (prefers-reduced-motion:reduce){.bolha{animation:none}}
-.opcoes{display:flex;flex-direction:column;gap:8px;align-self:stretch;animation:entra .2s ease-out}
-.op{display:flex;align-items:center;gap:12px;text-align:left;padding:12px 14px;border-radius:14px;background:var(--cartao);border:1.5px solid var(--linha);transition:border-color .15s}
-.op:hover,.op:focus-visible{border-color:var(--marca);outline:none}
-.op .n{width:30px;height:30px;border-radius:9px;background:var(--acento-claro);color:var(--acento);display:grid;place-items:center;font-weight:700;font-size:.85rem;flex:none}
-.op b{display:block;font-weight:600;font-size:.94rem}
+@media (prefers-reduced-motion:reduce){.bolha,.opcoes{animation:none}}
+.opcoes{display:flex;flex-direction:column;gap:8px;align-self:stretch;animation:entra .22s var(--suave)}
+.op{display:flex;align-items:center;gap:12px;text-align:left;padding:11px 13px;border-radius:16px;background:linear-gradient(160deg,rgba(255,255,255,.06),rgba(255,255,255,.015));border:1px solid var(--vidro-borda);transition:.22s var(--suave)}
+html[data-claro] .op{background:rgba(255,255,255,.75)}
+.op:hover,.op:focus-visible{border-color:rgba(var(--ouro-rgb),.55);box-shadow:0 0 24px -8px rgba(var(--ouro-rgb),.6);transform:translateY(-1px)}
+.op .n{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;flex:none;font:700 .86rem var(--titulo);color:var(--ouro2);background:rgba(var(--ouro-rgb),.12);border:1px solid rgba(var(--ouro-rgb),.35)}
+.op b{display:block;font:600 .95rem/1.3 var(--titulo)}
 .op small{display:block;color:var(--txt3);font-size:.78rem}
-.op.leve{padding:9px 12px;border-style:dashed}
-.op.leve .n{background:transparent;color:var(--txt3)}
+.op.leve{padding:8px 12px;border-style:dashed;background:transparent}
+.op.leve .n{background:transparent;border-color:var(--vidro-borda);color:var(--txt3)}
+.op.leve b{font:600 .85rem var(--sans);color:var(--txt2)}
 
-/* compositor (fixo embaixo) */
-.compor{position:fixed;left:0;right:0;bottom:calc(58px + env(safe-area-inset-bottom));z-index:15;background:linear-gradient(transparent,var(--fundo) 30%);padding:14px 12px 8px}
-.compor.sem-abas{bottom:0;padding-bottom:calc(10px + env(safe-area-inset-bottom))}
-.compor div{max-width:560px;margin:0 auto;display:flex;gap:8px;align-items:flex-end;background:var(--cartao);border:1.5px solid var(--linha);border-radius:22px;padding:6px 6px 6px 14px;box-shadow:var(--sombra)}
-.compor textarea{flex:1;border:0;outline:none;background:transparent;resize:none;max-height:120px;min-height:24px;padding:7px 0;line-height:1.4}
-.compor button{width:40px;height:40px;border-radius:50%;background:var(--marca);color:#fff;display:grid;place-items:center;flex:none}
-@media (prefers-color-scheme:dark){.compor button{color:#14161c}}
-.compor button[disabled]{opacity:.4}
-.compor button svg{width:20px;height:20px}
+/* compositor (fixo, acima das abas) */
+.compor{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom));z-index:15;width:calc(100% - 24px);max-width:536px}
+.compor .caixa{display:flex;gap:8px;align-items:flex-end;padding:6px 6px 6px 14px;border-radius:22px;background:linear-gradient(135deg,rgba(14,17,26,.94),rgba(8,10,16,.9))}
+html[data-claro] .compor .caixa{background:rgba(255,255,255,.92)}
+.compor textarea{flex:1;border:0;outline:none;background:transparent;resize:none;max-height:120px;min-height:24px;padding:8px 0;line-height:1.4;color:var(--txt)}
+.compor textarea::placeholder{color:var(--txt3)}
+.compor .btn{width:42px;height:42px;padding:0;border-radius:50%;flex:none}
+.compor .btn[disabled]{opacity:.35;transform:none;box-shadow:none;cursor:default}
 
 /* cartões */
-h2.tit{font-size:1.15rem;margin:4px 2px 12px;letter-spacing:-.01em}
-.cartao{background:var(--cartao);border-radius:var(--r);border:1px solid var(--linha);padding:14px 16px;box-shadow:var(--sombra);margin-bottom:12px}
-button.cartao{display:block;width:100%;text-align:left}
+h2.tit{font:700 1.12rem var(--titulo);margin:4px 2px 12px}
+.cartao{border-radius:20px;padding:14px 16px;margin-bottom:12px}
+button.cartao{display:block;width:100%;text-align:left;transition:.22s var(--suave)}
+button.cartao:hover{transform:translateY(-2px);border-color:rgba(var(--ouro-rgb),.4)}
 .cartao .l1{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.cartao .l1 b{font-size:1rem}
+.cartao .l1 b{font:700 1rem var(--titulo)}
 .cartao .l1 .dir{margin-left:auto}
-.cartao p{margin:6px 0 0;color:var(--txt2);font-size:.88rem}
-.etq{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:20px;font-size:.72rem;font-weight:600;background:var(--acento-claro);color:var(--acento)}
-.etq.ok{background:var(--ok-claro);color:var(--ok)} .etq.alerta{background:var(--alerta-claro);color:var(--alerta)} .etq.ruim{background:var(--ruim-claro);color:var(--ruim)} .etq.cinza{background:rgba(124,130,146,.14);color:var(--txt3)}
-.ponto{width:9px;height:9px;border-radius:50%;background:var(--ruim);display:inline-block}
-.entrega{display:flex;gap:12px;align-items:center;margin-top:12px;padding:12px;border-radius:12px;background:var(--acento-claro)}
-.entrega svg{width:26px;height:26px;color:var(--acento);flex:none}
-.entrega b{display:block;font-size:.95rem}
+.cartao p{margin:6px 0 0;color:var(--txt2);font-size:.86rem}
+.cartao p.min{font-size:.72rem;color:var(--txt3)}
+.etq{--c:var(--ouro);display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:9px;font-size:.68rem;font-weight:650;color:var(--c);border:1px solid color-mix(in srgb,var(--c) 40%,transparent);background:color-mix(in srgb,var(--c) 12%,transparent);white-space:nowrap}
+.etq.ok{--c:var(--verde)} .etq.alerta{--c:var(--laranja)} .etq.ruim{--c:var(--rosa)} .etq.cinza{--c:var(--txt3)} .etq.azul{--c:var(--azul)}
+.ponto{width:9px;height:9px;border-radius:50%;background:var(--ciano);box-shadow:0 0 10px var(--ciano);display:inline-block;animation:aurRespira 1.2s infinite}
+.entrega{display:flex;gap:12px;align-items:center;margin-top:12px;padding:12px;border-radius:14px;background:rgba(var(--ouro-rgb),.08);border:1px solid rgba(var(--ouro-rgb),.3)}
+.entrega svg.i{width:24px;height:24px;color:var(--ouro2);flex:none;filter:drop-shadow(0 0 6px rgba(var(--ouro-rgb),.6))}
+.entrega b{display:block;font:700 .98rem var(--titulo);text-transform:capitalize}
 .entrega small{color:var(--txt2);font-size:.8rem}
 .trilha{display:grid;grid-template-columns:repeat(4,1fr);margin:16px 0 6px;position:relative}
-.trilha::before{content:"";position:absolute;left:12.5%;right:12.5%;top:9px;height:3px;background:var(--linha);border-radius:2px}
-.trilha .barra{position:absolute;left:12.5%;top:9px;height:3px;background:var(--ok);border-radius:2px;transition:width .3s}
-.trilha span{position:relative;display:flex;flex-direction:column;align-items:center;gap:6px;font-size:.68rem;color:var(--txt3);text-align:center;font-weight:600}
-.trilha span i{width:21px;height:21px;border-radius:50%;background:var(--cartao);border:3px solid var(--linha);display:block}
-.trilha span.feito i{background:var(--ok);border-color:var(--ok)}
+.trilha::before{content:"";position:absolute;left:12.5%;right:12.5%;top:9px;height:3px;background:var(--vidro-borda-forte);border-radius:2px}
+.trilha .barra{position:absolute;left:12.5%;top:9px;height:3px;background:linear-gradient(90deg,var(--ouro),var(--verde));border-radius:2px;box-shadow:0 0 10px rgba(52,211,153,.6)}
+.trilha span{position:relative;display:flex;flex-direction:column;align-items:center;gap:6px;font-size:.66rem;color:var(--txt3);text-align:center;font-weight:600}
+.trilha span i{width:21px;height:21px;border-radius:50%;background:var(--noite);border:3px solid var(--vidro-borda-forte);display:block}
+.trilha span.feito i{background:var(--verde);border-color:var(--verde);box-shadow:0 0 10px var(--verde)}
 .trilha span.feito{color:var(--txt2)}
-.trilha span.agora i{border-color:var(--ok);background:var(--cartao);box-shadow:0 0 0 4px var(--ok-claro)}
+.trilha span.agora i{border-color:var(--ouro);box-shadow:0 0 0 4px rgba(var(--ouro-rgb),.18),0 0 14px rgba(var(--ouro-rgb),.7)}
 .trilha span.agora{color:var(--txt)}
-.itens{margin:10px 0 0;padding:0;list-style:none;font-size:.88rem;color:var(--txt2)}
-.itens li{padding:6px 0;border-top:1px solid var(--linha);display:flex;gap:8px}
+.itens{margin:0;padding:0;list-style:none;font-size:.88rem;color:var(--txt2)}
+.itens li{padding:7px 0;border-top:1px solid var(--vidro-borda);display:flex;gap:8px}
 .itens li:first-child{border-top:0}
-.itens li b{color:var(--txt);min-width:26px}
-.sec{font-size:.72rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--txt3);margin:18px 2px 8px}
-.vazio{text-align:center;color:var(--txt3);padding:40px 16px}
-.vazio svg{width:44px;height:44px;opacity:.5;margin-bottom:8px}
-.vazio b{display:block;color:var(--txt2);font-size:1rem;margin-bottom:4px}
-.aviso{font-size:.84rem;border-radius:12px;padding:12px 14px;background:var(--acento-claro);color:var(--txt2);margin-bottom:12px}
-.carregando{display:grid;place-items:center;min-height:60vh;color:var(--txt3)}
-.giro{width:28px;height:28px;border-radius:50%;border:3px solid var(--linha);border-top-color:var(--marca);animation:gira .8s linear infinite}
-@keyframes gira{to{transform:rotate(360deg)}}
-.toast{position:fixed;left:50%;bottom:calc(150px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#14161c;color:#fff;padding:10px 16px;border-radius:12px;font-size:.88rem;z-index:50;max-width:calc(100% - 32px);box-shadow:0 8px 24px rgba(0,0,0,.2)}
+.itens li b{color:var(--ouro2);min-width:26px}
+.total{display:flex;justify-content:space-between;margin-top:8px;padding-top:10px;border-top:1px solid var(--vidro-borda);font-size:.9rem;color:var(--txt2)}
+.total b{font:700 1rem var(--titulo);color:var(--txt)}
+.sec{display:flex;align-items:center;gap:8px;margin:18px 2px 10px;font-size:.62rem;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:var(--txt3)}
+.sec::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,var(--vidro-borda),transparent)}
+.vazio{display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;color:var(--txt3);padding:40px 16px;font-size:.88rem}
+.vazio b{color:var(--txt);font:600 1rem var(--titulo)}
+.aviso{font-size:.84rem;border-radius:14px;padding:11px 13px;color:var(--ouro2);background:rgba(var(--ouro-rgb),.07);border:1px solid rgba(var(--ouro-rgb),.3);margin-bottom:12px;line-height:1.5}
+.aviso a{color:var(--ouro2);font-weight:700}
+.carregando{display:grid;place-items:center;min-height:80vh}
+.rodape{text-align:center;font-size:.7rem;color:var(--txt3);margin-top:18px;line-height:1.6}
 </style>
 </head>
 <body>
-<div class="app" id="app"><div class="carregando"><div class="giro"></div></div></div>
+<div class="app" id="app"><div class="carregando"><span id="logo0"></span></div></div>
 
+<script src="/static/aurora.js?v=3"></script>
 <script>
 (() => {
 "use strict";
-const $ = (s, r = document) => r.querySelector(s);
-const esc = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const A = Aurora, svg = A.svg, esc = A.esc, $ = (s, r = document) => r.querySelector(s);
 const ls = { get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch (_) { return d; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} } };
-const ICO = {
-  chat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z"/></svg>',
-  caixa: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8 12 3 3 8v8l9 5 9-5V8Z"/><path d="m3 8 9 5 9-5M12 13v8"/></svg>',
-  lista: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></svg>',
-  enviar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 14-7-5 14-2.5-5.5L5 12Z"/></svg>',
-  voltar: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>',
-  caminhao: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h11v10H3zM14 9h4l3 3v4h-7"/><circle cx="7" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/></svg>',
-  escudo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 6v6c0 4.5 3.4 8 8 9 4.6-1 8-4.5 8-9V6l-8-3Z"/><path d="m9 12 2 2 4-4"/></svg>',
-};
+A.fundo();
+document.querySelector('link[rel="icon"]').href = A.ATOMO_SVG;
+{ const l = $("#logo0"); if (l) l.outerHTML = A.atomo(72); }
+const ICO = { chat: svg("mensagem"), caixa: svg("caixa"), lista: svg("lista"), enviar: svg("seta"), voltar: svg("voltar"),
+  caminhao: svg("calendario"), escudo: svg("escudo"), sair: svg("sair") };
 const SEM = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
 const dataBR = (s) => { s = String(s || ""); return s.length >= 10 ? `${s.slice(8, 10)}/${s.slice(5, 7)}` : ""; };
 const dataLonga = (s) => { if (!s || s.length < 10) return ""; const d = new Date(s.slice(0, 10) + "T12:00:00"); return `${SEM[d.getDay()]}, ${dataBR(s)}`; };
 const hora = (s) => String(s || "").slice(11, 16);
 const brl = (v) => v == null ? "" : Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-const ST_COR = { confirmado: "", agendado: "", em_carga: "", em_rota: "ok", entregue: "ok", reagendar: "alerta", cancelado: "cinza", recusado: "ruim" };
-const TK_COR = { aberto: "", em_andamento: "", aguardando: "alerta", resolvido: "ok", finalizado: "cinza", cancelado: "cinza" };
+const ST_COR = { confirmado: "azul", agendado: "", em_carga: "azul", em_rota: "ok", entregue: "ok", reagendar: "alerta", cancelado: "cinza", recusado: "ruim" };
+const TK_COR = { aberto: "", em_andamento: "azul", aguardando: "alerta", resolvido: "ok", finalizado: "cinza", cancelado: "cinza" };
 
 async function api(url, op = {}) {
-  const r = await fetch(url, { method: op.method || "GET", headers: op.body ? { "Content-Type": "application/json" } : {}, body: op.body ? JSON.stringify(op.body) : undefined, credentials: "same-origin" });
-  let d = null; try { d = await r.json(); } catch (_) {}
-  if (!r.ok) { const e = new Error((d && d.detail) || "Não foi possível agora. Tente de novo."); e.status = r.status; throw e; }
-  return d;
+  try { return await A.api(url, op); }
+  catch (e) { if (!e.status || /^HTTP \d/.test(e.message)) e.message = "Não foi possível agora. Tente de novo."; throw e; }
 }
-function toast(t) { const el = document.createElement("div"); el.className = "toast"; el.textContent = t; document.body.appendChild(el); setTimeout(() => el.remove(), 3500); }
+function toast(t) { A.toast(esc(t), [], { cor: "var(--rosa)", duracao: 5000 }); }
 
 const S = { eu: null, aba: "atendimento", tela: null, fio: [], fluxo: null, chamado: null, versao: null };
 const app = $("#app");
@@ -193,15 +174,16 @@ const app = $("#app");
 /* ═══════════ ENTRAR ═══════════ */
 function telaEntrar(info, erro = "") {
   app.innerHTML = `<form class="entrar" id="fEntrar" novalidate>
-    <div class="selo">${ICO.chat}</div>
-    <h1>${esc(info?.empresa || "Central do Cliente")}</h1>
-    <p class="sub">Acompanhe seus pedidos, prazos de entrega e fale com a nossa equipe.</p>
-    ${erro ? `<div class="erro">${esc(erro)}</div>` : ""}
-    ${info && !info.ativo ? `<div class="erro">O atendimento pelo app está pausado no momento.</div>` : ""}
-    <label class="campo"><span>CPF</span><input id="cpf" inputmode="numeric" autocomplete="off" placeholder="000.000.000-00" maxlength="18" required></label>
-    <label class="campo"><span>E-mail usado na compra</span><input id="email" type="email" inputmode="email" autocomplete="email" placeholder="voce@email.com" required></label>
-    <button class="btn" type="submit" id="btEntrar">Entrar</button>
-    <p class="nota">${ICO.escudo.replace("<svg", '<svg width="14" height="14" style="vertical-align:-2px"')} Conferimos seus dados com o cadastro da loja. Não pedimos senha.</p>
+    <div class="marca">${A.atomo(88)}<h1>${esc(info?.empresa || "Central do Cliente")}</h1>
+      <p class="sub">Acompanhe seus pedidos, prazos de entrega e fale com a nossa equipe.</p></div>
+    <div class="cartao vidro vidro-borda-viva">
+      ${erro ? `<div class="erro">${esc(erro)}</div>` : ""}
+      ${info && !info.ativo ? `<div class="erro">O atendimento pelo app está pausado no momento.</div>` : ""}
+      <label class="campo">CPF<input id="cpf" inputmode="numeric" autocomplete="off" placeholder="000.000.000-00" maxlength="18" required></label>
+      <label class="campo">E-mail usado na compra<input id="email" type="email" inputmode="email" autocomplete="email" placeholder="voce@email.com" required></label>
+      <button class="btn grande" type="submit" id="btEntrar">Entrar</button>
+    </div>
+    <p class="nota">${ICO.escudo} Conferimos seus dados com o cadastro da loja. Não pedimos senha.</p>
   </form>`;
   const cpf = $("#cpf");
   cpf.value = ls.get("cli.cpf", "");
@@ -226,7 +208,7 @@ async function carregar(primeira = false) {
   try { S.eu = await api("/api/cliente/eu"); S.versao = S.eu.versao; }
   catch (e) {
     if (e.status === 401) { let info = null; try { info = await api("/api/cliente/info"); } catch (_) {} telaEntrar(info); return; }
-    app.innerHTML = `<div class="vazio" style="padding-top:30vh"><b>Não conseguimos carregar</b>${esc(e.message)}<br><br><button class="btn sec" style="width:auto" onclick="location.reload()">Tentar de novo</button></div>`;
+    app.innerHTML = `<div class="vazio" style="padding-top:30vh">${A.orbe("atencao", "var(--rosa)")}<b>Não conseguimos carregar</b>${esc(e.message)}<br><br><button class="btn v" onclick="location.reload()">Tentar de novo</button></div>`;
     return;
   }
   if (primeira || !S.fio.length) iniciarURA();
@@ -239,19 +221,19 @@ function render() {
   const eu = S.eu, nl = naoLidos();
   const emChamado = S.aba === "chamados" && S.chamado, emPedido = S.aba === "pedidos" && S.tela;
   const titulo = emChamado ? (S.chamado.assunto || "Chamado") : emPedido ? `Pedido #${S.tela}` : (eu.empresa || "Central do Cliente");
-  const sub = emChamado ? `Protocolo ${S.chamado.id.slice(0, 6).toUpperCase()}` : `Olá, ${eu.nome}`;
+  const sub = emChamado ? `Protocolo ${S.chamado.id.slice(0, 6).toUpperCase()}` : `Olá, ${eu.nome} · Atendimento`;
   app.innerHTML = `
-    <header class="topo">
-      ${emChamado || emPedido ? `<button class="voltar" id="voltar" aria-label="Voltar">${ICO.voltar}</button>` : `<span class="av">${esc((eu.nome || "?").slice(0, 1))}</span>`}
-      <span><b>${esc(titulo)}</b><small>${esc(sub)}</small></span>
-      ${!emChamado && !emPedido ? `<button class="sair" id="sair">Sair</button>` : ""}
+    <header class="topo vidro vidro-borda-viva">
+      ${emChamado || emPedido ? `<button class="btn-ic" id="voltar" aria-label="Voltar">${ICO.voltar}</button>` : A.atomo(38, { mini: true })}
+      <span class="tx"><b>${esc(titulo)}</b><small>${esc(sub)}</small></span>
+      ${!emChamado && !emPedido ? `<button class="btn-ic" id="sair" title="Sair" aria-label="Sair">${ICO.sair}</button>` : ""}
     </header>
     <main id="main"></main>
-    <nav class="abas"><div>
+    <nav class="abas vidro vidro-borda-viva">
       <button data-aba="atendimento" class="${S.aba === "atendimento" ? "ativo" : ""}">${ICO.chat}Atendimento</button>
       <button data-aba="pedidos" class="${S.aba === "pedidos" ? "ativo" : ""}">${ICO.caixa}Pedidos</button>
       <button data-aba="chamados" class="${S.aba === "chamados" ? "ativo" : ""}">${ICO.lista}Chamados${nl ? `<em>${nl}</em>` : ""}</button>
-    </div></nav>`;
+    </nav>`;
   app.querySelectorAll("[data-aba]").forEach((b) => (b.onclick = () => { S.aba = b.dataset.aba; S.tela = null; S.chamado = null; render(); scrollTo(0, 0); }));
   const v = $("#voltar"); if (v) v.onclick = () => { S.tela = null; S.chamado = null; render(); };
   const s = $("#sair"); if (s) s.onclick = async () => { try { await api("/api/cliente/sair", { method: "POST" }); } catch (_) {} S.fio = []; carregar(); };
@@ -339,9 +321,9 @@ function telaURA(m) {
 /* ═══════════ PEDIDOS ═══════════ */
 function telaPedidos(m) {
   const ps = S.eu.pedidos;
-  if (!ps.length) { m.innerHTML = `<div class="vazio">${ICO.caixa}<b>Nenhum pedido por aqui</b>Seus pedidos aparecem assim que forem confirmados pela loja.</div>`; return; }
+  if (!ps.length) { m.innerHTML = `<div class="vazio">${A.orbe("caixa", "var(--ouro)")}<b>Nenhum pedido por aqui</b>Seus pedidos aparecem assim que forem confirmados pela loja.</div>`; return; }
   const ab = abertosPed(), fe = ps.filter((p) => !ab.includes(p));
-  const cartao = (p) => `<button class="cartao" data-p="${esc(p.id)}"><div class="l1"><b>${p.tipo === "troca" ? "Troca" : "Pedido"} #${p.numero}</b><span class="etq ${ST_COR[p.status] || ""} dir">${esc(p.rotulo)}</span></div>
+  const cartao = (p) => `<button class="cartao vidro" data-p="${esc(p.id)}"><div class="l1"><b>${p.tipo === "troca" ? "Troca" : "Pedido"} #${p.numero}</b><span class="etq ${ST_COR[p.status] || ""} dir">${esc(p.rotulo)}</span></div>
     <p>${esc(p.itens.map((i) => `${i.qtd}× ${i.nome}`).join(", "))}</p>
     ${p.entrega && !["entregue", "cancelado"].includes(p.status) ? `<div class="entrega">${ICO.caminhao}<span><b>${esc(dataLonga(p.entrega.data))}</b><small>${p.entrega.janela ? "Período: " + esc(p.entrega.janela) : "Entrega agendada"}</small></span></div>` : p.texto && p.status !== "entregue" ? `<p>${esc(p.texto)}</p>` : ""}</button>`;
   m.innerHTML = `${ab.length ? `<h2 class="tit">Em andamento</h2>${ab.map(cartao).join("")}` : ""}${fe.length ? `<div class="sec">Concluídos</div>${fe.map(cartao).join("")}` : ""}`;
@@ -352,33 +334,33 @@ function telaPedido(m) {
   if (!p) { S.tela = null; render(); return; }
   const fora = ["cancelado", "recusado"].includes(p.status);
   const larg = p.passo <= 0 ? 0 : (p.passo / 3) * 75;
-  m.innerHTML = `<div class="cartao">
+  m.innerHTML = `<div class="cartao vidro vidro-borda-viva">
       <div class="l1"><b>${p.tipo === "troca" ? "Troca" : "Pedido"} #${p.numero}</b><span class="etq ${ST_COR[p.status] || ""} dir">${esc(p.rotulo)}</span></div>
       ${p.texto ? `<p>${esc(p.texto)}</p>` : ""}
       ${!fora ? `<div class="trilha"><div class="barra" style="width:${larg}%"></div>${p.trilha.map((t, i) => `<span class="${i < p.passo || p.status === "entregue" ? "feito" : i === p.passo ? "agora" : ""}"><i></i>${esc(t)}</span>`).join("")}</div>` : ""}
       ${p.entrega && !["entregue", "cancelado"].includes(p.status) ? `<div class="entrega">${ICO.caminhao}<span><b>${esc(dataLonga(p.entrega.data))}</b><small>${p.entrega.janela ? "Período: " + esc(p.entrega.janela) : "Entrega agendada"}</small></span></div>` : ""}
     </div>
     <div class="sec">Itens</div>
-    <div class="cartao"><ul class="itens" style="margin:0">${p.itens.map((i) => `<li><b>${i.qtd}×</b>${esc(i.nome)}</li>`).join("")}</ul>
-      ${p.valor_total ? `<p style="margin-top:10px;display:flex;justify-content:space-between"><span>Total</span><b style="color:var(--txt)">${brl(p.valor_total)}</b></p>` : ""}</div>
-    ${p.endereco ? `<div class="sec">Endereço de entrega</div><div class="cartao"><p style="margin:0">${esc(p.endereco)}</p></div>` : ""}
-    ${p.tentativas.length ? `<div class="sec">Tentativas de entrega</div><div class="cartao"><ul class="itens" style="margin:0">${p.tentativas.map((t) => `<li><b>${t.n}ª</b>${dataBR(t.data)} — ${esc(t.resultado)}</li>`).join("")}</ul></div>` : ""}
+    <div class="cartao vidro"><ul class="itens">${p.itens.map((i) => `<li><b>${i.qtd}×</b>${esc(i.nome)}</li>`).join("")}</ul>
+      ${p.valor_total ? `<div class="total"><span>Total</span><b>${brl(p.valor_total)}</b></div>` : ""}</div>
+    ${p.endereco ? `<div class="sec">Endereço de entrega</div><div class="cartao vidro"><p style="margin:0">${esc(p.endereco)}</p></div>` : ""}
+    ${p.tentativas.length ? `<div class="sec">Tentativas de entrega</div><div class="cartao vidro"><ul class="itens">${p.tentativas.map((t) => `<li><b>${t.n}ª</b>${dataBR(t.data)} — ${esc(t.resultado)}</li>`).join("")}</ul></div>` : ""}
     <p class="nota" style="text-align:left;margin:4px 2px 10px">Pedido feito em ${dataBR(p.criado_em)}/${String(p.criado_em).slice(0, 4)}</p>
-    <button class="btn" id="ajuda">${ICO.chat.replace("<svg", '<svg width="20" height="20"')} Preciso de ajuda com este pedido</button>`;
+    <button class="btn grande" id="ajuda">${ICO.chat} Preciso de ajuda com este pedido</button>`;
   $("#ajuda").onclick = () => { S.aba = "atendimento"; S.tela = null; eu_(`Ajuda com o pedido #${p.numero}`); perguntarAssunto(p.id); render(); };
 }
 
 /* ═══════════ CHAMADOS ═══════════ */
 function telaChamados(m) {
   const cs = S.eu.chamados, visto = ls.get("cli.visto", {});
-  if (!cs.length) { m.innerHTML = `<div class="vazio">${ICO.lista}<b>Nenhum chamado</b>Quando você falar com a central, a conversa fica aqui.<br><br><button class="btn" style="width:auto" id="novo">Falar com a central</button></div>`;
+  if (!cs.length) { m.innerHTML = `<div class="vazio">${A.orbe("mensagem", "var(--ciano)")}<b>Nenhum chamado</b>Quando você falar com a central, a conversa fica aqui.<button class="btn" id="novo" style="margin-top:6px">${ICO.chat} Falar com a central</button></div>`;
     $("#novo").onclick = () => { S.aba = "atendimento"; eu_("Falar com a central"); perguntarAssunto(); render(); }; return; }
   const ab = cs.filter((c) => c.aberto), fe = cs.filter((c) => !c.aberto);
   const cartao = (c) => { const novo = c.resposta_nova_em && c.resposta_nova_em > (visto[c.id] || "");
-    return `<button class="cartao" data-c="${esc(c.id)}"><div class="l1">${novo ? `<span class="ponto" title="Resposta nova"></span>` : ""}<b>${esc(c.assunto)}</b><span class="etq ${TK_COR[c.status] || ""} dir">${esc(c.rotulo)}</span></div>
+    return `<button class="cartao vidro" data-c="${esc(c.id)}"><div class="l1">${novo ? `<span class="ponto" title="Resposta nova"></span>` : ""}<b>${esc(c.assunto)}</b><span class="etq ${TK_COR[c.status] || ""} dir">${esc(c.rotulo)}</span></div>
       ${c.ultima ? `<p>${c.ultima.de === "cliente" ? "Você: " : "Central: "}${esc(c.ultima.texto)}</p>` : `<p>Aberto em ${dataBR(c.criado_em)}</p>`}
-      <p style="font-size:.74rem;color:var(--txt3)">Protocolo ${esc(c.id.slice(0, 6).toUpperCase())} · ${dataBR(c.atualizado_em)} ${hora(c.atualizado_em)}</p></button>`; };
-  m.innerHTML = `<button class="btn" id="novo" style="margin-bottom:16px">${ICO.chat.replace("<svg", '<svg width="20" height="20"')} Novo atendimento</button>
+      <p class="min">Protocolo ${esc(c.id.slice(0, 6).toUpperCase())} · ${dataBR(c.atualizado_em)} ${hora(c.atualizado_em)}</p></button>`; };
+  m.innerHTML = `<button class="btn grande" id="novo" style="margin-bottom:16px">${ICO.chat} Novo atendimento</button>
     ${ab.length ? `<h2 class="tit">Em andamento</h2>${ab.map(cartao).join("")}` : ""}${fe.length ? `<div class="sec">Encerrados</div>${fe.map(cartao).join("")}` : ""}`;
   $("#novo").onclick = () => { S.aba = "atendimento"; eu_("Falar com a central"); perguntarAssunto(); render(); };
   m.querySelectorAll("[data-c]").forEach((b) => (b.onclick = () => abrirChamado(b.dataset.c)));
@@ -395,12 +377,12 @@ function telaChamado(m) {
   let dia = "";
   const bolhas = c.mensagens.map((x) => { const d = String(x.data || "").slice(0, 10), sep = d && d !== dia ? `<div class="dia">${esc(dataLonga(d))}</div>` : ""; dia = d || dia;
     return sep + `<div class="bolha ${x.de === "cliente" ? "cli" : "central"}">${x.de !== "cliente" ? `<span class="quem">${esc(x.autor ? x.autor + " · Central" : "Central")}</span>` : ""}${esc(x.texto)}<small>${hora(x.data)}</small></div>`; }).join("");
-  m.innerHTML = `<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap"><span class="etq ${TK_COR[c.status] || ""}">${esc(c.rotulo)}</span>${c.pedido ? `<span class="etq cinza">Pedido #${esc(c.pedido)}</span>` : ""}</div>
+  m.innerHTML = `<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap"><span class="etq ${TK_COR[c.status] || ""}">${esc(c.rotulo)}</span>${c.pedido ? `<span class="etq azul">Pedido #${esc(c.pedido)}</span>` : ""}</div>
     ${c.status === "aguardando" ? `<div class="aviso">A central está aguardando sua resposta.</div>` : ""}
     <div class="fio" id="fio">${bolhas || `<div class="vazio" style="padding:20px">Este atendimento foi aberto pela nossa central. Se quiser, escreva abaixo.</div>`}
     ${c.status === "aberto" && c.mensagens.every((x) => x.de === "cliente") ? `<div class="bolha bot"><span class="quem">Atendimento automático</span>Recebemos sua mensagem. Um atendente vai responder aqui em breve — você não precisa ficar com o app aberto.</div>` : ""}</div>
     ${c.pode_escrever ? compositor(c.status === "resolvido" ? "Ainda precisa de ajuda? Escreva aqui…" : "Escreva sua mensagem…")
-      : `<div class="aviso" style="margin-top:14px">Este atendimento foi encerrado. Precisa de algo mais? <a href="#" id="novo" style="color:var(--marca);font-weight:600">Abrir novo atendimento</a></div>`}`;
+      : `<div class="aviso" style="margin-top:14px">Este atendimento foi encerrado. Precisa de algo mais? <a href="#" id="novo">Abrir novo atendimento</a></div>`}`;
   const nv = $("#novo"); if (nv) nv.onclick = (e) => { e.preventDefault(); S.chamado = null; S.aba = "atendimento"; eu_("Falar com a central"); perguntarAssunto(); render(); };
   if (c.pode_escrever) ligarCompositor(async (texto) => {
     await api(`/api/cliente/chamado/${encodeURIComponent(c.id)}/mensagem`, { method: "POST", body: { texto } });
@@ -412,7 +394,7 @@ function telaChamado(m) {
 }
 
 /* ═══════════ compositor de mensagem ═══════════ */
-function compositor(ph) { return `<div class="compor"><div><textarea id="txt" rows="1" maxlength="2000" placeholder="${esc(ph)}" aria-label="Mensagem"></textarea><button id="env" aria-label="Enviar" disabled>${ICO.enviar}</button></div></div>`; }
+function compositor(ph) { return `<div class="compor"><div class="caixa vidro vidro-borda-viva"><textarea id="txt" rows="1" maxlength="2000" placeholder="${esc(ph)}" aria-label="Mensagem"></textarea><button class="btn" id="env" aria-label="Enviar" disabled>${ICO.enviar}</button></div></div>`; }
 function ligarCompositor(enviar) {
   const t = $("#txt"), b = $("#env");
   const ajusta = () => { t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 120) + "px"; b.disabled = !t.value.trim(); };
