@@ -85,7 +85,7 @@ import relatorios_publico
 import cliente_app
 import agente
 
-VERSAO = "3.12.0"
+VERSAO = "3.12.1"
 
 BASE = Path(__file__).resolve().parent
 PASTA_MODULOS = BASE / "modulos"
