@@ -37,7 +37,7 @@
 ───────────────────────────────────────────────────────────────────────────────
  Meu dia · Caixa (filas + abas + lote) · Atendimento em 3 colunas
  (conversa · tabulação/andamento/pendências · cliente + PEDIDOS DO ERP) ·
- Abrir chamado por setor · Tickets internos (entre setores) · Gestão · Ajustes.
+ Abrir chamado por setor · Pedidos de ajuda (cada setor vê o seu) · Gestão · Ajustes.
  Diferença para o Concierge: aqui o ERP é o nosso — agendar/reagendar, cancelar
  e gerar troca saem do próprio atendimento, e a baixa com avaria/recusa/ausência
  no ERP abre o ticket sozinha.
@@ -319,7 +319,7 @@ function consultaPalavra() {
 
 /* ══════ CARREGAR ══════ */
 async function carregar() {
-  try { novoEstado(await chamar("/estado", {}, "carregando…")); }
+  try { novoEstado(await chamar("/estado", {}, "carregando…")); carregarAjuda(); }
   catch (e) {
     $("#main").innerHTML = e.message === "sem_banco_tickets" ? `<div class="vazio">${A.orbe("atencao", "var(--rosa)")}<b>Banco não configurado</b>Falta FIRESTORE_CREDS no Render.</div>`
       : `<div class="vazio">${A.orbe("atencao", "var(--rosa)")}<b>Não foi possível carregar</b>${esc(e.message)}</div>`;
@@ -330,6 +330,7 @@ async function carregar() {
 }
 function rota() {
   const h = decodeURIComponent(location.hash.replace(/^#/, ""));
+  if (h === "ajuda") { history.replaceState(null, "", location.pathname + location.search); ir("internos"); return; }
   if (h.startsWith("t=") || h.startsWith("c=")) { S.sec = "caixa"; const id = h.slice(2); if (id.includes("#")) S.solSel = id; S.aberto = cidDe(id); if (!S.abas.includes(S.aberto)) { S.abas.push(S.aberto); salvarAbas(); } }
   render();
 }
@@ -443,14 +444,14 @@ function contagens() {
     hoje: ab.filter((c) => c.sla?.estado === "hoje").length, venc: ab.filter((c) => c.sla?.estado === "venc").length,
     espera: ab.filter((c) => c.status === "aguardando").length, concl: cs.filter((c) => !vivo(c)).length, todos: cs.length,
     alerta: ab.filter((c) => c.nao_visto || c.app_pendente).length, app: ab.filter((c) => c.app_pendente).length,
-    internos: S.e.tickets.filter((t) => ABERTOS.includes(t.status) && (t.pendencias || []).length).length,
+    internos: S.aj ? S.aj.abertos_recebidos : 0,
     atend: ab.filter((c) => c.estado === "atendimento").length, tks: ab.filter((c) => c.estado === "ticket").length,
     sols: S.e.tickets.filter((t) => !t.chat && ABERTOS.includes(t.status)).length,
   };
 }
 function nav() {
   const c = contagens();
-  const itens = [["meudia", "Meu dia"], ["caixa", "Caixa", c.alerta], ["abrir", "Abrir chamado", 0, "abrir"], ["internos", "Tickets internos", c.internos],
+  const itens = [["meudia", "Meu dia"], ["caixa", "Caixa", c.alerta], ["abrir", "Abrir chamado", 0, "abrir"], ["internos", "Pedidos de ajuda", c.internos],
     ["gestao", "Gestão", 0, "gestao"], ["ajustes", "Ajustes", 0, "configurar"]];
   $("#nav").innerHTML = itens.filter((i) => !i[3] || pode(i[3])).map((i) => `<button type="button" data-sec="${i[0]}" class="${S.sec === i[0] ? "ativo" : ""}">${i[1]}${i[2] ? `<em>${i[2]}</em>` : ""}</button>`).join("");
   $("#nav").querySelectorAll("[data-sec]").forEach((b) => (b.onclick = () => ir(b.dataset.sec)));
@@ -463,7 +464,7 @@ function render() {
   const m = $("#main");
   if (S.sec === "caixa" && S.aberto) return telaCliente(m, S.aberto);
   $("#cabCli").innerHTML = ""; S.gradeCli = null; medirCongelado();
-  ({ meudia: telaMeuDia, caixa: telaCaixa, abrir: telaAbrir, internos: telaInternos, gestao: telaGestao, ajustes: telaAjustes }[S.sec] || telaMeuDia)(m);
+  ({ meudia: telaMeuDia, caixa: telaCaixa, abrir: telaAbrir, internos: telaAjuda, gestao: telaGestao, ajustes: telaAjustes }[S.sec] || telaMeuDia)(m);
 }
 const assumirCliente = (cid, alvo) => chamar(`/cliente/${encodeURIComponent(cid)}/dono`, { method: "POST", body: { atribuir: alvo } });
 
@@ -476,7 +477,7 @@ function telaMeuDia(m) {
   const meusAb = cs.filter((x) => x.meu && vivo(x));
   const concl30 = e.tickets.filter((t) => !t.chat && !ABERTOS.includes(t.status) && t.meu).length;
   const prox = cs.filter((x) => vivo(x) && x.sem_dono).sort((a, b) => (b.app_pendente - a.app_pendente) || ((a.sla?.min ?? 1e9) - (b.sla?.min ?? 1e9)))[0];
-  const k = (r, v, s, c2, acao) => `<button type="button" class="kpi" style="--c:${c2}" ${acao ? `data-ir="${acao}"` : ""}><small>${r}</small><b>${v}</b><span>${s}</span></button>`;
+  const k = (r, v, s, c2, acao, secao) => `<button type="button" class="kpi" style="--c:${c2}" ${acao ? `data-ir="${acao}"` : ""}${secao ? ` data-sec-ir="${secao}"` : ""}><small>${r}</small><b>${v}</b><span>${s}</span></button>`;
   m.innerHTML = `<section class="painel vidro">
     <p class="dica" style="text-transform:uppercase;letter-spacing:2px;font-weight:700">${new Date().toLocaleDateString("pt-BR", { weekday: "long" })}</p>
     <h1 style="margin:2px 0 6px;font:700 1.6rem var(--titulo)">${h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite"}, ${esc(me.nome.split(" ")[0])}</h1>
@@ -487,9 +488,10 @@ function telaMeuDia(m) {
     <div class="sec">Seu mês</div>
     <div class="kpis">${k("Solicitações resolvidas", concl30, "nos últimos 30 dias", "var(--verde)")}${k("Abertas por mim", e.tickets.filter((t) => t.aberto_por === me.usuario).length, "solicitações que eu registrei", "var(--violeta)")}</div>
     <div class="sec">A área — o que está rolando de verdade</div>
-    <div class="kpis">${k("Atendimentos agora", c.atend, "chats do app ativos", "var(--ciano)", "atend")}${k("Tickets pendentes", c.tks, `${c.sols} solicitação(ões) dentro`, "var(--txt2)", "equipe")}${k("Sem dono", c.novos, "clientes que ninguém pegou", "var(--ouro)", "novos")}${k("Vencidos", c.venc, "clientes", "var(--rosa)", "venc")}${k("Cliente aguardando no app", c.app, "mandou mensagem", "var(--ciano)", "app")}${k("Pendências entre setores", c.internos, "", "var(--violeta)")}</div>
+    <div class="kpis">${k("Atendimentos agora", c.atend, "chats do app ativos", "var(--ciano)", "atend")}${k("Tickets pendentes", c.tks, `${c.sols} solicitação(ões) dentro`, "var(--txt2)", "equipe")}${k("Sem dono", c.novos, "clientes que ninguém pegou", "var(--ouro)", "novos")}${k("Vencidos", c.venc, "clientes", "var(--rosa)", "venc")}${k("Cliente aguardando no app", c.app, "mandou mensagem", "var(--ciano)", "app")}${k("Pedidos de ajuda ao meu setor", c.internos, "abertos", "var(--violeta)", "", "internos")}</div>
     ${e.banco === "hub" ? `<p class="dica" style="margin-top:14px">Rodando no banco do hub. Para usar os mesmos tickets do Streamlit (bancowendley), crie FIRESTORE_CREDS_TICKETS no Render.</p>` : ""}
   </section>`;
+  m.querySelectorAll("[data-sec-ir]").forEach((b) => (b.onclick = () => ir(b.dataset.secIr)));
   m.querySelectorAll("[data-ir]").forEach((b) => (b.onclick = () => { S.aba = b.dataset.ir; S.fila = ""; S.q = ""; S.pag = 0; ls.set("wd.tk.aba", S.aba); ir("caixa"); }));
   const pg = $("#pegar");
   if (pg) pg.onclick = async (ev) => { ev.preventDefault(); try { await assumirCliente(prox.cid, me.usuario); await carregar(); S.sec = "caixa"; abrirTicket(prox.cid); } catch (er) { falha(er); } };
@@ -826,7 +828,11 @@ function ligarCliente(m, D, sel, chat, abertas) {
   const pm = $("#paraMim"); if (pm) pm.onclick = async () => { try { await assumirCliente(cid, S.e.eu.usuario); ok("O cliente agora está com você."); await recarregarDet(); } catch (e) { falha(e); } };
   const tr = $("#transf"); if (tr) tr.onchange = async () => { if (!tr.value) return; const a2 = tr.value === "__ninguem" ? "" : tr.value; try { await assumirCliente(cid, a2); ok("Cliente transferido."); await recarregarDet(); } catch (e) { falha(e); } };
   const pr = $("#prio"); if (pr) pr.onchange = async () => { try { await chamar(tidUrl(sel.id) + "/alterar", { method: "POST", body: { prioridade: pr.value } }); await recarregarDet(); } catch (e) { falha(e); } };
-  m.querySelectorAll("[data-sol]").forEach((b) => (b.onclick = () => { guardarRascunho(); S.solSel = b.dataset.sol; render(); }));
+  m.querySelectorAll("[data-sol]").forEach((b) => (b.onclick = () => {
+    const s = D.solicitacoes.find((x) => x.id === b.dataset.sol);
+    if (s && !s.chat && !ABERTOS.includes(s.status)) return popupSolicitacao(s, D);   // concluída: abre em popup (fecha e abre outra)
+    guardarRascunho(); S.solSel = b.dataset.sol; render();
+  }));
   m.querySelectorAll("[data-st]").forEach((b) => (b.onclick = async () => {
     const st = b.dataset.st;
     if (st === "cancelado" && !(await A.confirmar("Cancelar esta solicitação?", { perigo: true, rotulo: "Cancelar solicitação" }))) return;
@@ -930,6 +936,24 @@ function ligarCliente(m, D, sel, chat, abertas) {
     try { const r = await chamar(tidUrl(tidErp) + "/erp-troca", { method: "POST", body: { pedido_id: p.id } }); ok(`Troca #${r.pedido.numero} criada no ERP.`); await recarregarDet(); } catch (e) { falha(e); }
   }));
 }
+/* solicitação CONCLUÍDA em popup — leitura rápida: fecha e abre outra, sem descer a tela */
+function popupSolicitacao(s, D) {
+  const rot = (s.motivo_filho || s.assunto || "Solicitação") + (s.erp_pedido_numero ? " #" + s.erp_pedido_numero : "");
+  const desde = String(s.criado_em || "");
+  const reg = [{ tipo: s.origem === "app" && !s.convertido_de_chat ? "app" : "abertura", autor: s.solicitante_nome || nomeU(s.aberto_por) || "Abertura", data: s.criado_em, texto: s.descricao || "" }]
+    .concat((s.comentarios || []).filter((c) => String(c.data || "") >= desde).map((c) => ({ tipo: tipoMsg(c), autor: c.autor, data: c.data, texto: c.texto })));
+  const pend = s.solicitacoes_setor || [], resp = Object.fromEntries(pend.filter((x) => x.tipo === "resposta").map((x) => [x.pedido_id, x]));
+  const peds = pend.filter((x) => x.tipo === "pedido");
+  A.modal({ titulo: rot, icone: "lista", cor: corSol(s.cor), largura: 760,
+    html: `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">${etqSt(s.status)}<span class="dica">${esc(s.motivo_pai || "não classificado")}${s.etapa_atual ? " › " + esc(String(s.etapa_atual).split(" › ").slice(1).join(" › ") || s.etapa_atual) : ""}${s.departamento ? " · " + esc(s.departamento) : ""} · aberta ${dh(s.criado_em)} · atualizada ${dh(s.atualizado_em)}</span></div>
+      <div class="registro" id="popReg" style="--c:${corSol(s.cor)};max-height:52vh;overflow:auto;display:flex;flex-direction:column;gap:6px">${reg.map((x) => `<div class="msg ${CLS_TIPO[x.tipo] || x.tipo}" style="--sol:${corSol(s.cor)}"><span class="q">${ROT_TIPO[x.tipo] ? `<b>${ROT_TIPO[x.tipo]}</b> · ` : ""}${esc(x.autor || "")} · ${dh(x.data)}</span>${esc(x.texto || "")}</div>`).join("")}</div>
+      ${peds.length ? `<div class="sec">Pedidos de ajuda</div>${peds.map((p) => { const r = resp[p.id]; return `<div class="pend-it ${r ? "ok" : ""}"><b>${esc(p.setor_origem)} → ${esc(p.setor_destino)}</b> · ${dh(p.solicitado_em)} · ${esc(p.solicitado_por_nome || "")}<br>${esc(p.mensagem || "")}${r ? `<p class="dica" style="margin-top:4px">✅ ${esc(r.respondido_por_nome || "")} · ${dh(r.respondido_em)}: ${esc(r.resposta || "")}</p>` : ""}</div>`; }).join("")}` : ""}
+      ${(s.historico_etapas || []).length ? `<details style="margin-top:8px"><summary class="dica" style="cursor:pointer">Trilha de etapas (${s.historico_etapas.length})</summary>${s.historico_etapas.slice().reverse().map((h) => `<p class="dica">${dh(h.quando)} · ${esc(h.etapa)} · ${esc(h.por || "")}${h.vermelha ? ` · prazo ${d10(h.data_prevista)}` : ""}</p>`).join("")}</details>` : ""}`,
+    esquerda: pode("atender") ? [{ rotulo: "Reabrir", classe: "btn v", acao: async () => {
+      try { await chamar(tidUrl(s.id) + "/alterar", { method: "POST", body: { status: "em_andamento" } }); ok("Solicitação reaberta."); S.solSel = s.id; await recarregarCliente(); } catch (e) { falha(e); return false; } } }] : [],
+    botoes: [{ rotulo: "Fechar", classe: "btn", principal: true }],
+    aoAbrir: (cx) => { const r = cx.querySelector("#popReg"); if (r) r.scrollTop = r.scrollHeight; } });
+}
 function vincularCliente(t) {
   const md = A.modal({ titulo: "Vincular cliente do ERP", icone: "usuario", largura: 520,
     html: `<input class="entrada" id="vq" placeholder="Nome, telefone, CPF ou código…" autofocus><div id="vres" style="margin-top:10px;display:flex;flex-direction:column;gap:6px"></div>`,
@@ -999,17 +1023,63 @@ function telaAbrir(m) {
   };
 }
 
-/* ══════ TICKETS INTERNOS (entre setores) ══════ */
-function telaInternos(m) {
-  const me = S.e.eu, ab = S.e.tickets.filter((t) => ABERTOS.includes(t.status) && (t.pendencias || []).length);
-  const meuSetor = me.depto ? ab.filter((t) => (t.pendencias || []).some((p) => norm(p) === norm(me.depto))) : [];
-  const porSetor = {}; ab.forEach((t) => t.pendencias.forEach((p) => (porSetor[p] = porSetor[p] || []).push(t)));
-  const linha = (t) => `<tr class="linha" data-t="${esc(t.id)}"><td><b>${curto(t.id)}</b></td><td class="ass"><b>${esc(t.assunto || "")}</b><small>${esc(t.departamento || "—")} pediu a: ${t.pendencias.map(esc).join(", ")}</small></td><td>${esc(t.cliente_nome || "")}</td><td>${t.sem_dono ? "— sem dono —" : esc(nomeU(t.atribuido_para).split(" ")[0])}</td><td>${slaTxt(t.sla)}</td></tr>`;
-  const tab = (l) => l.length ? `<table class="tab"><thead><tr><th>#</th><th>Assunto</th><th>Cliente</th><th>Dono</th><th>SLA</th></tr></thead><tbody>${l.map(linha).join("")}</tbody></table>` : `<p class="dica">Nada aqui.</p>`;
-  m.innerHTML = `<section class="painel vidro"><h2 style="margin:0 0 4px;font:700 1.25rem var(--titulo)">Tickets internos</h2><p class="dica">Pedidos de um setor para outro — ficam no MESMO atendimento, com a pendência visível até o setor responder.</p>
-    ${me.depto ? `<div class="sec">Pediram ao meu setor (${esc(me.depto)}) · ${meuSetor.length}</div>${tab(meuSetor)}` : `<div class="aviso ouro" style="margin-top:10px">Seu usuário está sem setor — defina em Ajustes para ver o que pediram ao seu setor.</div>`}
-    ${Object.entries(porSetor).sort((a, b) => b[1].length - a[1].length).map(([s, l]) => `<div class="sec">${esc(s)} · ${l.length}</div>${tab(l)}`).join("")}</section>`;
-  m.querySelectorAll("tr.linha").forEach((tr) => (tr.onclick = () => { S.sec = "caixa"; abrirTicket(tr.dataset.t); }));
+/* ══════ PEDIDOS DE AJUDA (cada setor vê só o seu) ══════
+   O balão de chat que abre na hora fica em /static/ajuda.js (vale para o hub inteiro).
+   Aqui é a lista para consultar e tratar quando quiser. API: GET /ajuda · POST /ajuda/mensagem */
+async function carregarAjuda(forcarRender) {
+  try {
+    const q = S.ajSetor ? "?setor=" + encodeURIComponent(S.ajSetor) : "";
+    const r = await A.api(API + "/ajuda" + q);
+    const mudou = !S.aj || r.versao !== S.aj.versao || r.setor !== S.aj.setor;
+    S.aj = r; nav();
+    if ((mudou || forcarRender) && S.sec === "internos" && !document.querySelector(".aur-modal-fundo")) render();
+  } catch (_) { }
+}
+function bolhasAjuda(v, me) {
+  return v.conversa.map((x) => { const meu = x.de === me.usuario;
+    return `<div class="msg ${meu ? "resposta" : "cliente"}" style="--sol:${meu ? "var(--azul)" : "var(--violeta)"};${meu ? "margin-left:auto" : ""}"><span class="q"><b>${esc(x.setor || "—")}</b> · ${esc(x.nome || "")} · ${dh(x.em)}${x.encerrou ? " · ✅ encerrou" : ""}</span>${esc(x.texto || "")}</div>`; }).join("");
+}
+function chatAjuda(v) {
+  const me = S.aj.eu, aberto = v.status === "aberto";
+  const md = A.modal({ titulo: `Pedido de ajuda · ${v.setor_origem} → ${v.setor_destino}`, icone: "mensagem", cor: "var(--violeta)", largura: 640,
+    html: `<p class="dica" style="margin-bottom:8px">Cliente <b>${esc(v.cliente_nome || "")}</b> (${esc(v.cliente_codigo || "")}) · ${esc(v.assunto || "")} · pedido por ${esc(v.solicitado_por_nome || "")} em ${dh(v.solicitado_em)}</p>
+      <div class="registro" id="ajConv" style="max-height:46vh;overflow:auto;display:flex;flex-direction:column;gap:6px">${bolhasAjuda(v, me)}</div>
+      ${aberto ? `<textarea class="entrada" id="ajTxt" placeholder="Escreva no chat… (Ctrl+Enter envia)" style="margin-top:10px;min-height:64px" autofocus></textarea>` : `<p class="dica" style="margin-top:8px">✅ Pedido encerrado.</p>`}`,
+    esquerda: [{ rotulo: "Abrir o atendimento", classe: "btn v", acao: () => { S.sec = "caixa"; abrirTicket(v.tid); } }],
+    botoes: aberto ? [{ rotulo: "Responder e encerrar", classe: "btn v", acao: () => enviar(true) }, { rotulo: "Enviar", classe: "btn", principal: true, acao: () => enviar(false) }] : [{ rotulo: "Fechar" }] });
+  const cv = md.el.querySelector("#ajConv"); cv.scrollTop = cv.scrollHeight;
+  async function enviar(encerrar) {
+    const tx = md.el.querySelector("#ajTxt"), texto = tx.value.trim();
+    if (!texto) { A.toast(encerrar ? "Escreva a resposta final antes de encerrar." : "Escreva a mensagem."); return false; }
+    try { await A.api(API + "/ajuda/mensagem", { method: "POST", body: { tid: v.tid, pid: v.id, texto, encerrar } }); ok(encerrar ? "Pedido de ajuda encerrado." : "Mensagem enviada."); }
+    catch (e) { falha(e); return false; }
+    await carregarAjuda(true);
+    if (encerrar) return;
+    const nv = S.aj.pedidos.find((x) => x.id === v.id);   // continua no chat: atualiza a conversa sem fechar o popup
+    if (nv) { v = nv; cv.innerHTML = bolhasAjuda(nv, me); cv.scrollTop = cv.scrollHeight; }
+    tx.value = ""; tx.focus();
+    return false;
+  }
+}
+function telaAjuda(m) {
+  if (!S.aj) { m.innerHTML = `<div class="vazio"><b>Carregando os pedidos de ajuda…</b></div>`; carregarAjuda(true); return; }
+  const aj = S.aj, l = aj.pedidos, f = S.ajFiltro || "recebidos";
+  const grupos = { recebidos: l.filter((v) => v.papel === "recebido" && v.status === "aberto"), enviados: l.filter((v) => v.papel === "enviado" && v.status === "aberto"), resolvidos: l.filter((v) => v.status !== "aberto") };
+  const nomes = { recebidos: "Pediram ao meu setor", enviados: "Meu setor pediu", resolvidos: "Encerrados (30 dias)" };
+  const card = (v) => { const ult = v.conversa[v.conversa.length - 1];
+    return `<button type="button" class="sol-card" data-aj="${esc(v.id)}" style="--c:${v.status === "aberto" ? (v.papel === "recebido" ? "var(--violeta)" : "var(--azul)") : "var(--verde)"};width:100%;text-align:left">
+      <span class="t1"><b>${esc(v.setor_origem)} → ${esc(v.setor_destino)}</b>${etq(v.status === "aberto" ? (v.papel === "recebido" ? "aguardando meu setor" : "aguardando " + v.setor_destino) : "encerrado", v.status === "aberto" ? "#8b5cf6" : "#34d399")}<span class="dica" style="margin-left:auto">${dh(v.ultima_em)}</span></span>
+      <small><b>${esc(v.cliente_nome || "")}</b> · ${esc(v.cliente_codigo || "")} · ${esc(v.assunto || "")} · ${v.conversa.length} mensagem(ns)</small>
+      <small style="display:block;margin-top:3px">💬 ${esc(ult.nome || "")}: ${esc(String(ult.texto || "").slice(0, 160))}</small></button>`; };
+  m.innerHTML = `<section class="painel vidro"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h2 style="margin:0;font:700 1.25rem var(--titulo)">Pedidos de ajuda</h2>
+      ${aj.departamentos.length ? `<select class="entrada" id="ajSetor" style="width:auto;padding:6px 9px"><option value="">Meu setor${aj.eu.depto ? " (" + esc(aj.eu.depto) + ")" : ""}</option>${aj.departamentos.map((d) => `<option${S.ajSetor === d ? " selected" : ""}>${esc(d)}</option>`).join("")}</select>` : ""}</div>
+    <p class="dica" style="margin:4px 0 10px">Cada setor vê só o que pediram a ele e o que ele pediu${aj.setor ? ` — você está vendo <b>${esc(aj.setor)}</b>` : ""}. Quando chega um pedido, abre o balão de chat no hub; aqui você consulta e trata quando quiser.</p>
+    ${!aj.setor ? `<div class="aviso ouro">Seu usuário está sem setor — defina em Ajustes › Usuários e setores para receber os pedidos de ajuda do seu setor. Por enquanto aparecem só os que você mesmo pediu.</div>` : ""}
+    <div class="abas-caixa">${Object.keys(grupos).map((k2) => `<button type="button" data-ajf="${k2}" class="${f === k2 ? "ativo" : ""}">${nomes[k2]}<em>${grupos[k2].length}</em></button>`).join("")}</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">${grupos[f].map(card).join("") || `<div class="vazio">${A.orbe("check", "var(--verde)")}<b>Nada aqui</b></div>`}</div></section>`;
+  m.querySelectorAll("[data-ajf]").forEach((b) => (b.onclick = () => { S.ajFiltro = b.dataset.ajf; render(); }));
+  m.querySelectorAll("[data-aj]").forEach((b) => (b.onclick = () => chatAjuda(l.find((x) => x.id === b.dataset.aj))));
+  const ss = $("#ajSetor"); if (ss) ss.onchange = () => { S.ajSetor = ss.value; S.aj = null; render(); };
 }
 
 /* ══════ GESTÃO ══════ */
@@ -1113,6 +1183,7 @@ carregar();
 /* com um atendimento aberto: se o cliente escreveu pelo app, a conversa atualiza sozinha (sem perder o que você está digitando) */
 setInterval(() => { if (document.visibilityState !== "visible" || !S.aberto || document.querySelector(".aur-modal-fundo") || $("#txt")?.value || $("#txtChat")?.value) return;
   A.api(API + "/estado").then((e) => { if (e.versao !== S.e?.versao) { guardarRascunho(); recarregarCliente(); } }).catch(() => {}); }, 20000);   // busca por trás e só troca o conteúdo — a tela não pisca
+setInterval(() => { if (document.visibilityState === "visible") carregarAjuda(); }, 20000);   // pedidos de ajuda do meu setor (contador da aba + lista)
 setInterval(() => { if (document.visibilityState === "visible" && !S.aberto && !document.querySelector(".aur-modal-fundo")) A.api(API + "/estado").then((e) => { if (e.versao !== S.e?.versao) { novoEstado(e); if (!document.activeElement || !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) render(); } }).catch(() => {}); }, 30000);
 })();
 </script>

@@ -779,10 +779,111 @@ async def pendencia(tid: str, request: Request):
 
         def fn(s):
             s.setdefault("solicitacoes_setor", []).append({
-                "id": _sid(), "tipo": "pedido", "setor_origem": s.get("departamento") or s.get("categoria") or "—",
+                "id": _sid(), "tipo": "pedido",
+                # [ajuda] quem pede é o SETOR DE QUEM PEDIU (antes era o setor do ticket — um CX pedindo num ticket de Compras saía como "Compras")
+                "setor_origem": me.get("depto") or s.get("departamento") or s.get("categoria") or "—",
                 "setor_destino": destino, "mensagem": msg, "solicitado_por": me["usuario"],
-                "solicitado_por_nome": me["nome"], "solicitado_em": agora()})
-            _coment(s, me, f"📨 Solicitação para o setor {destino}: {msg}", tipo="pendencia")
+                "solicitado_por_nome": me["nome"], "solicitado_em": agora(), "mensagens": []})
+            _coment(s, me, f"📨 Pedido de ajuda ao setor {destino}: {msg}", tipo="pendencia")
+    _mutar_sol(tid, fn, me)
+    return {"ok": True}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PEDIDOS DE AJUDA — cada setor vê só o que pediram a ele e o que ele pediu
+# (balão de chat em todo o hub: static/ajuda.js · aba "Pedidos de ajuda" no Atendimento)
+# ══════════════════════════════════════════════════════════════════════════════
+def _papel_ajuda(ped: dict, me: dict, setor: str = "") -> str:
+    """'recebido' = pediram ao setor · 'enviado' = o setor (ou eu) pediu · '' = não é deste setor."""
+    alvo = norm(setor or me.get("depto"))
+    if alvo and norm(ped.get("setor_destino")) == alvo:
+        return "recebido"
+    if (not setor and ped.get("solicitado_por") == me["usuario"]) or (alvo and norm(ped.get("setor_origem")) == alvo):
+        return "enviado"
+    return ""
+
+
+def _ajuda_view(cid: str, s: dict, ped: dict, resp: dict | None, papel: str) -> dict:
+    conversa = [{"de": ped.get("solicitado_por"), "nome": ped.get("solicitado_por_nome"), "setor": ped.get("setor_origem"),
+                 "texto": ped.get("mensagem", ""), "em": ped.get("solicitado_em")}] + list(ped.get("mensagens") or [])
+    if resp:
+        conversa.append({"de": resp.get("respondido_por"), "nome": resp.get("respondido_por_nome"), "setor": ped.get("setor_destino"),
+                         "texto": resp.get("resposta", ""), "em": resp.get("respondido_em"), "encerrou": True})
+    ult = conversa[-1]
+    return {"id": ped.get("id"), "tid": compor(cid, s.get("sid", "legacy")), "cid": cid, "papel": papel,
+            "cliente_codigo": s.get("cliente_codigo"), "cliente_nome": s.get("cliente_nome"),
+            "assunto": s.get("motivo_filho") or s.get("assunto") or "", "setor_origem": ped.get("setor_origem"), "setor_destino": ped.get("setor_destino"),
+            "solicitado_por": ped.get("solicitado_por"), "solicitado_por_nome": ped.get("solicitado_por_nome"), "solicitado_em": ped.get("solicitado_em"),
+            "status": "resolvido" if resp else "aberto", "conversa": conversa, "ultima_em": ult.get("em"), "ultimo_de": ult.get("de")}
+
+
+def pedidos_de_ajuda(me: dict, setor: str = "", dias: int = 30) -> list[dict]:
+    corte = (datetime.now(BRT) - timedelta(days=max(1, min(dias, 400)))).strftime("%Y-%m-%d")
+    saida = []
+    for cid, c in (BASE.cont or {}).items():
+        for s0 in c.get("solicitacoes", []):
+            sols = s0.get("solicitacoes_setor") or []
+            if not sols:
+                continue
+            s = {**s0, "cliente_codigo": s0.get("cliente_codigo") or c.get("cliente_codigo", ""), "cliente_nome": s0.get("cliente_nome") or c.get("cliente_nome", "")}
+            resp = {x.get("pedido_id"): x for x in sols if x.get("tipo") == "resposta"}
+            for ped in sols:
+                if ped.get("tipo") != "pedido":
+                    continue
+                papel = _papel_ajuda(ped, me, setor)
+                if not papel:
+                    continue
+                v = _ajuda_view(cid, s, ped, resp.get(ped.get("id")), papel)
+                if v["status"] == "resolvido" and str(v["ultima_em"] or "")[:10] < corte:
+                    continue
+                saida.append(v)
+    abertos = sorted([v for v in saida if v["status"] == "aberto"], key=lambda v: str(v["ultima_em"] or ""), reverse=True)
+    fechados = sorted([v for v in saida if v["status"] != "aberto"], key=lambda v: str(v["ultima_em"] or ""), reverse=True)
+    return abertos + fechados
+
+
+@router.get("/ajuda")
+def ajuda(request: Request, setor: str = "", dias: int = 30):
+    """Pedidos de ajuda do MEU setor (recebidos e enviados). `setor=` só para quem configura o módulo (ver outro setor)."""
+    u, p, me = _contexto(request)
+    if setor and not p["acoes"].get("configurar"):
+        setor = ""
+    lista = pedidos_de_ajuda(me, setor, dias)
+    return {"eu": me, "setor": setor or me.get("depto", ""), "pedidos": lista, "versao": BASE.ver,
+            "departamentos": departamentos() if p["acoes"].get("configurar") else [],
+            "abertos_recebidos": sum(1 for v in lista if v["status"] == "aberto" and v["papel"] == "recebido")}
+
+
+@router.post("/ajuda/mensagem")
+async def ajuda_mensagem(request: Request):
+    """Conversa do pedido de ajuda (chat). `encerrar=true` responde e fecha o pedido."""
+    u, p, me = _contexto(request)
+    c = await request.json()
+    tid, pid, msg = str(c.get("tid") or ""), str(c.get("pid") or ""), str(c.get("texto") or "").strip()[:2000]
+    if not msg:
+        raise HTTPException(400, "Escreva a mensagem.")
+    cid, sid = decompor(tid)
+    s0 = next((x for x in ((BASE.cont or {}).get(cid) or {}).get("solicitacoes", []) if x.get("sid") == sid), None)
+    ped0 = next((x for x in (s0 or {}).get("solicitacoes_setor", []) if x.get("tipo") == "pedido" and x.get("id") == pid), None)
+    if not ped0:
+        raise HTTPException(404, "Pedido de ajuda não encontrado.")
+    if not (_papel_ajuda(ped0, me) or p["acoes"].get("configurar")):
+        raise HTTPException(403, "Este pedido de ajuda é de outro setor.")
+    encerrar = bool(c.get("encerrar"))
+
+    def fn(s):
+        sols = s.setdefault("solicitacoes_setor", [])
+        ped = next((x for x in sols if x.get("tipo") == "pedido" and x.get("id") == pid), None)
+        if any(x.get("tipo") == "resposta" and x.get("pedido_id") == pid for x in sols):
+            raise HTTPException(409, "Este pedido de ajuda já foi encerrado.")
+        if encerrar:
+            sols.append({"id": _sid(), "tipo": "resposta", "pedido_id": pid, "setor_origem": ped.get("setor_destino"),
+                         "setor_destino": ped.get("setor_origem"), "resposta": msg, "respondido_por": me["usuario"],
+                         "respondido_por_nome": me["nome"], "respondido_em": agora()})
+            _coment(s, me, f"✅ Pedido de ajuda encerrado ({ped.get('setor_origem')} → {ped.get('setor_destino')}): {msg}", tipo="pendencia")
+        else:
+            ped.setdefault("mensagens", []).append({"de": me["usuario"], "nome": me["nome"], "setor": me.get("depto", ""), "texto": msg, "em": agora()})
+            _coment(s, me, f"💬 Ajuda ({ped.get('setor_origem')} → {ped.get('setor_destino')}): {msg}", tipo="pendencia")
     _mutar_sol(tid, fn, me)
     return {"ok": True}
 
