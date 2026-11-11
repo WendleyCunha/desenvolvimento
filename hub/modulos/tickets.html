@@ -649,7 +649,7 @@ async function telaCliente(m, cid) {
   const filhos = Object.entries(arv[sel.motivo_pai] || {}).filter(([, i]) => i.ativo !== false);
   const pend = sel.solicitacoes_setor || [], pedidosAb = pend.filter((x) => x.tipo === "pedido"), resp = Object.fromEntries(pend.filter((x) => x.tipo === "resposta").map((x) => [x.pedido_id, x]));
   const selAberta = ABERTOS.includes(sel.status), caminho = String(sel.etapa_atual || "").split(" › ");
-  const tipoChat = S.tipoChat || "resposta", ehSol = !!(ativa && !ativa.chat), atende = pode("atender");
+  const ehSol = !!(ativa && !ativa.chat), atende = pode("atender");
   const nPend = pedidosAb.filter((p) => !resp[p.id]).length;
   const cartao = (s) => `<button type="button" class="sol-card${ativa && s.id === ativa.id ? " sel" : ""}${s.chat ? " chat" : ""}" data-sol="${esc(s.id)}" style="--c:${corSol(s.cor)}">
       <span class="t1"><b>${esc(rot(s))}</b>${etqSt(s.status)}${s.app_pendente ? etq("📱 respondeu", "#22d3ee") : ""}</span>
@@ -659,9 +659,8 @@ async function telaCliente(m, cid) {
     conversa: `<div class="legenda">${sols.filter((s) => ABERTOS.includes(s.status)).map((s) => `<span class="chip-sol" style="--c:${corSol(s.cor)}">${esc(rot(s))}</span>`).join("")}</div>
       <div class="conversa" id="conversa">${tl.map(balao).join("")}</div>
       ${chat && pode("atender") ? `<div class="resp">
-        <div class="tipos seg"><button type="button" data-tchat="resposta" class="${tipoChat === "resposta" ? "ativo" : ""}" style="--c:var(--azul)">📱 Responder no app</button><button type="button" data-tchat="nota" class="${tipoChat === "nota" ? "ativo" : ""}" style="--c:var(--ouro)">Nota interna</button></div>
-        <textarea class="entrada" id="txtChat" placeholder="Responder ao cliente no chat… (Ctrl+Enter envia)" style="margin-top:8px;min-height:64px"></textarea>
-        <div style="display:flex;gap:6px;margin-top:6px;align-items:center"><button type="button" class="btn p" id="enviarChat">Enviar no chat</button><span class="dica">${tipoChat === "resposta" ? "O cliente vê na aba Atendimento do app." : "Só a equipe vê."}</span></div>
+        <textarea class="entrada" id="txtChat" placeholder="Responder ao cliente no chat… (Ctrl+Enter = Responder no app)" style="min-height:64px"></textarea>
+        <div style="display:flex;gap:6px;margin-top:6px;align-items:center;flex-wrap:wrap"><button type="button" class="btn p" id="respApp" title="O cliente vê na aba Atendimento do app">📱 Responder no app</button><button type="button" class="btn v p" id="notaChat" title="Só a equipe vê — o cliente nunca vê">🔒 Nota interna</button></div>
       </div>` : `<p class="dica">${chat ? "" : "Sem chat ativo. Aqui fica o histórico da conversa com o cliente — o atendimento do ticket é feito em Solicitações."}</p>`}`,
     sols: `${ehSol && atende ? `<div class="barra-sol">
         <span class="qual" title="Os ícones agem na solicitação selecionada">${esc(rot(ativa))}</span><span class="esp"></span>
@@ -838,7 +837,6 @@ function ligarCliente(m, D, sel, chat, abertas) {
     if (st === "cancelado" && !(await A.confirmar("Cancelar esta solicitação?", { perigo: true, rotulo: "Cancelar solicitação" }))) return;
     try { await chamar(tidUrl(sel.id) + "/alterar", { method: "POST", body: { status: st } }); ok("Situação: " + (ST_INFO[st] || [st])[0]); await recarregarDet(); } catch (e) { falha(e); }
   }));
-  m.querySelectorAll("[data-tchat]").forEach((b) => (b.onclick = () => { guardarRascunho(); S.tipoChat = b.dataset.tchat; render(); }));
   const registrar = async (campo, alvoId, tipo, chave, status) => {
     const txt = $("#" + campo).value.trim(); if (!txt) return;
     const body = { texto: txt, tipo }; if (status) body.status = status;
@@ -867,9 +865,10 @@ function ligarCliente(m, D, sel, chat, abertas) {
   const ia = $("#icAjuda"); if (ia) ia.onclick = () => popupPedirAjuda(sel);
   const ip = $("#icPend"); if (ip) ip.onclick = () => popupPendencias(sel);
   const it = $("#icTab"); if (it) it.onclick = () => popupTabulacao(sel);
-  const envC = $("#enviarChat");   // chat: Responder no app ou nota interna
-  if (envC) { const vai = () => registrar("txtChat", chat.id, S.tipoChat || "resposta", cid + ":chat");
-    envC.onclick = vai; $("#txtChat").onkeydown = (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) vai(); }; }
+  const ra = $("#respApp");   // chat: 📱 Responder no app (o cliente vê) · 🔒 Nota interna (só a equipe)
+  if (ra) { const vai = (tipo) => { if (!$("#txtChat").value.trim()) { A.toast("Escreva a mensagem."); $("#txtChat").focus(); return; } registrar("txtChat", chat.id, tipo, cid + ":chat"); };
+    ra.onclick = () => vai("resposta"); $("#notaChat").onclick = () => vai("nota");
+    $("#txtChat").onkeydown = (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) vai("resposta"); }; }
   // concluir o chat: anexar ao chamado OU virar solicitação
   const cc = $("#concluirChat"); if (cc) cc.onclick = () => {
     const md = A.modal({ titulo: "Concluir o chat do app", icone: "check", largura: 560,
