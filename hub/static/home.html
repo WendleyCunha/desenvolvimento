@@ -147,7 +147,7 @@ body.em-modulo .aurora,body.em-modulo .grade-fundo{animation-play-state:paused}
 .btn-mini{width:30px;height:30px;border-radius:10px;display:grid;place-items:center;color:var(--txt3);flex:none;transition:.2s}
 .btn-mini:hover{background:var(--vidro-forte);color:var(--txt)}
 .btn-mini svg{width:16px;height:16px;transition:transform .35s var(--suave)}
-.app.mini .btn-mini svg{transform:rotate(180deg)}
+.app.mini .btn-mini:not(.sair) svg{transform:rotate(180deg)}   /* só o de recolher gira; o de sair fica como está */
 
 .sb-busca{margin:4px 14px 8px;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:13px;color:var(--txt3);font-size:.82rem;
   background:rgba(255,255,255,.035);border:1px solid var(--vidro-borda);transition:.2s}
@@ -401,7 +401,7 @@ kbd{font:600 .64rem var(--sans);color:var(--txt3);border:1px solid var(--vidro-b
   .app.gaveta .sb{transform:none}
   .veu{display:block;position:fixed;inset:0;z-index:39;background:rgba(3,4,8,.55);backdrop-filter:blur(4px);opacity:0;pointer-events:none;transition:opacity .3s}
   .app.gaveta .veu{opacity:1;pointer-events:auto}
-  .btn-mini{display:none}
+  .btn-mini:not(.sair){display:none}   /* no celular some só o "recolher menu"; o Sair (ao lado da hora) fica */
   .app.mini .marca-txt,.app.mini .sb-busca span,.app.mini .sb-grupo,.app.mini .nav-item .rot,.app.mini .sb-rodape .info{display:revert}
   .app.mini .sb-topo{flex-direction:row;padding:18px 14px 14px 16px}
   .app.mini .nav-item{justify-content:flex-start;padding:7px 10px 7px 7px}
@@ -462,8 +462,8 @@ kbd{font:600 .64rem var(--sans);color:var(--txt3);border:1px solid var(--vidro-b
     <div class="sb-rodape">
       <span class="status-pt" title="Servidor online"></span>
       <span class="info"><b id="relogio">--:--</b><span id="versao">hub</span></span>
-      <button class="btn-mini" id="btnSair" title="Sair" aria-label="Sair">
-        <svg viewBox="0 0 24 24" class="i"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l5-5-5-5M15 12H4"/></svg>
+      <button class="btn-mini sair" id="btnSair" title="Sair" aria-label="Sair">
+        <svg viewBox="0 0 24 24" class="i"><path d="M9 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h3"/><path d="M16 17l5-5-5-5M21 12H9"/></svg>
       </button>
     </div>
   </aside>
