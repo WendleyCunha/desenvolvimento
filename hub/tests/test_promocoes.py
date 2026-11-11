@@ -97,3 +97,14 @@ def test_vale_vencido_nao_valida(p):
     r = p.post(f"/api/promo/vale/{v['codigo']}/usar", json={})
     assert r.status_code == 409 and "vencido" in r.json()["detail"]
     time.sleep(0)
+
+
+def test_aceita_corpo_enviado_como_texto(p):
+    """O app chegou a mandar o JSON já convertido em texto (erro 'str'); o servidor tem de aceitar."""
+    import json
+    entrar(p)
+    r = p.post("/api/cliente/push", content=json.dumps(json.dumps({"inscricao": SUB, "avisos": True, "promocoes": True})),
+               headers={"Content-Type": "application/json"})
+    assert r.status_code == 200, r.text
+    r = p.post("/api/cliente/push/preferencias", content=json.dumps(json.dumps({"promocoes": False})), headers={"Content-Type": "application/json"})
+    assert r.status_code == 200 and r.json()["promocoes"] is False

@@ -238,6 +238,19 @@ def _disparar_em_fundo(d: dict):
     threading.Thread(target=_executar, args=(d,), daemon=True).start()
 
 
+async def _json(request: Request) -> dict:
+    """Corpo da requisição como dict (aceita também JSON enviado como texto, por segurança)."""
+    try:
+        c = await request.json()
+        if isinstance(c, str):
+            c = json.loads(c)
+    except Exception:
+        raise HTTPException(400, "Dados inválidos.")
+    if not isinstance(c, dict):
+        raise HTTPException(400, "Dados inválidos.")
+    return c
+
+
 def _gestor(request: Request):
     u, p, me = T._contexto(request)
     if me.get("perfil") != "gestor":
@@ -274,7 +287,7 @@ def vantagens(request: Request):
 async def inscrever(request: Request):
     """O celular aceitou: guarda a inscrição e as duas chaves (avisos / promoções)."""
     cod, cli = _cliente(request)
-    c = await request.json()
+    c = await _json(request)
     sub = c.get("inscricao") or {}
     if not str(sub.get("endpoint") or "").startswith("https://") or not (sub.get("keys") or {}).get("p256dh"):
         raise HTTPException(400, "Inscrição inválida.")
@@ -288,7 +301,7 @@ async def inscrever(request: Request):
 @router.post("/api/cliente/push/preferencias")
 async def preferencias(request: Request):
     cod, cli = _cliente(request)
-    c = await request.json()
+    c = await _json(request)
     atual = copy.deepcopy(inscricoes().get(cod))
     if not atual:
         raise HTTPException(409, "Ative as notificações neste celular primeiro.")
@@ -303,7 +316,7 @@ async def preferencias(request: Request):
 async def aberto(request: Request):
     """O cliente tocou na notificação (conta 'abertos' do disparo, uma vez por cliente)."""
     cod, cli = _cliente(request)
-    did = str((await request.json()).get("disparo") or "")
+    did = str((await _json(request)).get("disparo") or "")
     with _lock:
         d = next((x for x in indice()["lista"] if x["id"] == did), None)
         if d and cod not in d.setdefault("abriram", []):
@@ -319,7 +332,7 @@ async def aberto(request: Request):
 @router.post("/api/promo/publico")
 async def contar_publico(request: Request):
     _gestor(request)
-    c = await request.json()
+    c = await _json(request)
     cat = "avisos" if c.get("tipo") == "aviso" else "promocoes"
     _, conta = _publico(c.get("publico") or {}, cat)
     return conta | {"total_app": len(inscricoes()), "limite_aprovacao": limite_aprovacao()}
@@ -335,7 +348,7 @@ def listar(request: Request):
 @router.post("/api/promo/disparos")
 async def criar(request: Request):
     u, p, me = _gestor(request)
-    c = await request.json()
+    c = await _json(request)
     tipo = str(c.get("tipo") or "")
     if tipo not in TIPOS:
         raise HTTPException(400, "Escolha o tipo: aviso, promoção, cupom ou brinde.")
@@ -425,7 +438,7 @@ def ver_vale(cod: str, request: Request):
 @router.post("/api/promo/vale/{cod}/usar")
 async def usar_vale(cod: str, request: Request):
     u = acesso.exigir_usuario(request)
-    local = str((await request.json()).get("local") or "").strip()[:80]
+    local = str((await _json(request)).get("local") or "").strip()[:80]
     with _lock:
         v = _ler_vale(cod)
         pub = _vale_publico(v)
