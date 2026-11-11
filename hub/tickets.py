@@ -867,7 +867,8 @@ async def ajuda_mensagem(request: Request):
     ped0 = next((x for x in (s0 or {}).get("solicitacoes_setor", []) if x.get("tipo") == "pedido" and x.get("id") == pid), None)
     if not ped0:
         raise HTTPException(404, "Pedido de ajuda não encontrado.")
-    if not (_papel_ajuda(ped0, me) or p["acoes"].get("configurar")):
+    # quem atende o cliente também cobra/conversa (ícone Pendências da solicitação), mesmo sendo de outro setor
+    if not (_papel_ajuda(ped0, me) or p["acoes"].get("configurar") or (p["acoes"].get("atender") and atribuido(s0, me))):
         raise HTTPException(403, "Este pedido de ajuda é de outro setor.")
     encerrar = bool(c.get("encerrar"))
 
