@@ -399,7 +399,7 @@ async function ativarPush(avisos = true, promocoes = true) {
   try {
     const reg = await navigator.serviceWorker.ready, { publica } = await api("/api/cliente/push/chave");
     const sub = (await reg.pushManager.getSubscription()) || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64u(publica) }));
-    await api("/api/cliente/push", { method: "POST", body: JSON.stringify({ inscricao: sub.toJSON(), avisos, promocoes }) });
+    await api("/api/cliente/push", { method: "POST", body: { inscricao: sub.toJSON(), avisos, promocoes } });
     toast("Pronto! Você vai receber os avisos neste celular.", "var(--verde)");
   } catch (e) { toast("Não deu para ativar: " + e.message); }
   await carregarVantagens(); render();
@@ -428,7 +428,7 @@ function telaVantagens(m) {
   if (vs.length) ls.set("cli.vales", vs.reduce((a, x) => (x.criado_em > a ? x.criado_em : a), ""));
   const at = $("#ativar"); if (at) at.onclick = () => ativarPush();
   m.querySelectorAll("[data-pref]").forEach((c) => (c.onchange = async () => {
-    try { const r = await api("/api/cliente/push/preferencias", { method: "POST", body: JSON.stringify({ [c.dataset.pref]: c.checked }) }); Object.assign(S.vant, r); toast(c.checked ? "Ligado." : "Desligado.", "var(--verde)"); }
+    try { const r = await api("/api/cliente/push/preferencias", { method: "POST", body: { [c.dataset.pref]: c.checked } }); Object.assign(S.vant, r); toast(c.checked ? "Ligado." : "Desligado.", "var(--verde)"); }
     catch (e) { c.checked = !c.checked; toast(e.message); } }));
   m.querySelectorAll("[data-vale]").forEach((b) => (b.onclick = () => mostrarVale(vs.find((x) => x.codigo === b.dataset.vale))));
 }
@@ -665,7 +665,7 @@ if ("serviceWorker" in navigator) navigator.serviceWorker.register("/cliente/sw.
   if (q.toString()) history.replaceState(null, "", location.pathname); }
 carregar().then(async () => {
   if (!S.eu) return;
-  if (S.abrirDisparo) { api("/api/cliente/push/aberto", { method: "POST", body: JSON.stringify({ disparo: S.abrirDisparo }) }).catch(() => {}); S.abrirDisparo = null; }
+  if (S.abrirDisparo) { api("/api/cliente/push/aberto", { method: "POST", body: { disparo: S.abrirDisparo } }).catch(() => {}); S.abrirDisparo = null; }
   await carregarVantagens(); if (S.eu) render();
   if (S.abrirVale) { mostrarVale((S.vant?.vales || []).find((x) => x.codigo === S.abrirVale)); S.abrirVale = null; }
 });
