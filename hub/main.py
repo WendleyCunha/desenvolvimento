@@ -83,6 +83,7 @@ import web_proxy
 import atelier
 import relatorios_publico
 import cliente_app
+import promocoes
 import agente
 
 VERSAO = "3.12.1"
@@ -349,6 +350,7 @@ app.include_router(passagens.router)
 app.include_router(erp.router)
 app.include_router(secretaria.router)
 app.include_router(tickets.router)
+app.include_router(promocoes.router)
 app.include_router(pqi_ponte.router)
 app.include_router(web_proxy.router)
 app.include_router(atelier.router)

@@ -3,7 +3,7 @@
    Os dados do cliente NÃO passam por aqui: o próprio app guarda o último
    carregamento e a fila de envios no aparelho (localStorage) e reenvia
    sozinho quando a internet volta. Escopo: só /cliente/. */
-const CACHE = "wd-cli-v2";
+const CACHE = "wd-cli-v3";
 const CASCA = ["/cliente/", "/static/aurora.css?v=3", "/static/claro.css?v=1", "/static/aurora.js?v=3",
   "/static/app/icone-192.png", "/static/app/icone-512.png", "/static/app/icone-180.png"];
 
@@ -28,4 +28,20 @@ self.addEventListener("fetch", (e) => {
       return guardado || rede;
     }));
   }
+});
+
+/* Notificação no celular (cupons, brindes, avisos): mostra e, ao tocar, abre o app no lugar certo */
+self.addEventListener("push", (e) => {
+  let d = {}; try { d = e.data ? e.data.json() : {}; } catch (_) { d = { titulo: "King Star", texto: e.data ? e.data.text() : "" }; }
+  e.waitUntil(self.registration.showNotification(d.titulo || "King Star", {
+    body: d.texto || "", tag: d.tag || undefined, icon: "/static/app/icone-192.png", badge: "/static/app/icone-192.png", data: { url: d.url || "/cliente/" } }));
+});
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || "/cliente/";
+  e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((ws) => {
+    const w = ws.find((x) => new URL(x.url).pathname.startsWith("/cliente"));
+    if (w) { w.postMessage({ tipo: "abrir", url }); return w.focus(); }
+    return self.clients.openWindow(url);
+  }));
 });
