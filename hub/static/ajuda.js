@@ -73,7 +73,7 @@ html[data-claro] .aj-pe textarea{background:rgba(255,255,255,.7)}
   let BTN = null, POP = null, TOAST = null, D = null, SEL = null, primeira = true, desligado = false, ocupado = false;
   const DMS = {};   // conversas diretas já abertas: usuario → {mensagens, ultima_em}
   const ini = n => esc(String(n || '?').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase());
-  const dmNaoLida = c => c.ultimo_de !== D.eu.usuario && String(c.ultima_em || '') > String(lerVisto()['dm:' + c.com] || '');
+  const dmNaoLida = c => !c.finalizada && c.ultimo_de !== D.eu.usuario && String(c.ultima_em || '') > String(lerVisto()['dm:' + c.com] || '');
 
   async function api(url, corpo) {
     const op = { method: corpo ? 'POST' : 'GET', headers: { Accept: 'application/json' }, cache: 'no-store', credentials: 'same-origin' };
@@ -132,18 +132,19 @@ html[data-claro] .aj-pe textarea{background:rgba(255,255,255,.7)}
       const meu = D.eu.depto || '', ord = on.slice().sort((a, b) => (b.depto === meu) - (a.depto === meu));
       POP.innerHTML = cab('Conversar com a equipe', `${on.length} pessoa(s) online · sem vincular cliente`, true)
         + `<div class="aj-corpo">${ord.length ? `<div class="aj-sec">Online agora</div>${ord.map(u => pessoa(u, (u.depto || 'sem setor') + (u.depto && u.depto === meu ? ' · seu setor' : ''))).join('')}` : '<div class="aj-vazio">Ninguém mais online agora.</div>'}
-          ${conv.filter(c => !c.online).length ? `<div class="aj-sec">Conversas recentes</div>${conv.filter(c => !c.online).slice(0, 8).map(c => pessoa(c, 'offline · ' + (c.texto || ''))).join('')}` : ''}</div>`;
+          ${conv.filter(c => !c.online || c.finalizada).length ? `<div class="aj-sec">Conversas recentes</div>${conv.filter(c => !c.online || c.finalizada).slice(0, 8).map(c => pessoa(c, c.finalizada ? '✅ conversa finalizada' : 'offline · ' + (c.texto || ''))).join('')}` : ''}</div>`;
     } else if (SEL && SEL.startsWith('dm:')) {   // chat direto com um colega
       const com = SEL.slice(3), info = on.find(x => x.usuario === com) || conv.find(x => x.com === com) || { nome: com }, dm = DMS[com] || { mensagens: [] }, eu = D.eu.usuario;
-      const ligado = !!on.find(x => x.usuario === com);
+      const ligado = !!on.find(x => x.usuario === com), ultM = dm.mensagens[dm.mensagens.length - 1], fim = !!(ultM && ultM.fim);
       POP.innerHTML = cab(info.nome, `${info.depto || 'sem setor'} · ${ligado ? '● online' : 'offline — recebe quando abrir o hub'}`, true)
-        + `<div class="aj-corpo" id="ajConv">${dm.mensagens.length ? dm.mensagens.map(m => `<div class="aj-m${m.de === eu ? ' eu' : ''}"><span class="q">${esc(m.nome || '')} · ${dh(m.em)}</span>${esc(m.texto)}</div>`).join('') : `<div class="aj-vazio">Comece a conversa com ${esc(String(info.nome).split(' ')[0])}. 👋<br><small>Conversa direta, sem cliente.</small></div>`}</div>
-        <div class="aj-pe"><textarea id="ajTxt" placeholder="Mensagem para ${esc(String(info.nome).split(' ')[0])}… (Enter envia · Shift+Enter quebra a linha)"></textarea><div class="aj-bts"><button type="button" class="aj-b p" data-envdm>Enviar</button></div></div>`;
+        + `<div class="aj-corpo" id="ajConv">${dm.mensagens.length ? dm.mensagens.map(m => `<div class="aj-m${m.de === eu ? ' eu' : ''}${m.fim ? ' fim' : ''}"><span class="q">${esc(m.nome || '')} · ${dh(m.em)}</span>${esc(m.texto)}</div>`).join('') : `<div class="aj-vazio">Comece a conversa com ${esc(String(info.nome).split(' ')[0])}. 👋<br><small>Conversa direta, sem cliente.</small></div>`}</div>
+        <div class="aj-pe">${fim ? '<div class="aj-vazio" style="padding:2px 0 4px">✅ Conversa finalizada — escreva para reabrir.</div>' : ''}<textarea id="ajTxt" placeholder="Mensagem para ${esc(String(info.nome).split(' ')[0])}… (Enter envia · Shift+Enter quebra a linha)"></textarea><div class="aj-bts"><button type="button" class="aj-b p" data-envdm>Enviar</button>${dm.mensagens.length && !fim ? '<button type="button" class="aj-b ok" data-fimdm title="Encerra a conversa para os dois; uma mensagem nova reabre" style="margin-left:auto">✅ Finalizar</button>' : ''}</div></div>`;
       const c = POP.querySelector('#ajConv'); c.scrollTop = c.scrollHeight;
       const ce = conv.find(x => x.com === com); if (ce) { const vs = lerVisto(); vs['dm:' + com] = ce.ultima_em; gravarVisto(vs); contador(); }
       const tx = POP.querySelector('#ajTxt');
       tx.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviarDM(com); } }); setTimeout(() => tx.focus(), 120);
       POP.querySelector('[data-envdm]').onclick = () => enviarDM(com);
+      const fdm = POP.querySelector('[data-fimdm]'); if (fdm) fdm.onclick = () => finalizarDM(com);
     } else if (!v) {
       const ab = D.pedidos.filter(x => x.status === 'aberto'), rec = ab.filter(x => x.papel === 'recebido'), env = ab.filter(x => x.papel === 'enviado');
       const it = x => { const ult = x.conversa[x.conversa.length - 1], cor = x.papel === 'recebido' ? 'var(--violeta,#8b5cf6)' : 'var(--azul,#60a5fa)';
@@ -151,7 +152,7 @@ html[data-claro] .aj-pe textarea{background:rgba(255,255,255,.7)}
           <span class="l2">${esc(x.cliente_nome || '')} · ${esc(x.assunto || '')}</span><span class="l2">💬 ${esc(ult.nome || '')}: ${esc(ult.texto || '')}</span></button>`; };
       const dmBt = `<button type="button" class="aj-ib dm" data-pessoas title="Conversar com quem está online — sem vincular cliente">💬 <span>${on.length}</span></button>`;
       POP.innerHTML = cab('Pedidos de ajuda', D.setor ? `setor ${D.setor} · ${rec.length} para você · ${env.length} pedidos por vocês` : 'seu usuário está sem setor no Atendimento', false, dmBt)
-        + `<div class="aj-corpo">${conv.length ? `<div class="aj-sec">Conversas com a equipe</div>${conv.slice(0, 5).map(c => pessoa(c, (dmNaoLida(c) ? '' : (c.ultimo_de === D.eu.usuario ? 'você: ' : '')) + (c.texto || ''), dmNaoLida(c))).join('')}` : ''}${rec.length ? `<div class="aj-sec">Pediram ao seu setor</div>${rec.map(it).join('')}` : ''}${env.length ? `<div class="aj-sec">Seu setor pediu</div>${env.map(it).join('')}` : ''}
+        + `<div class="aj-corpo">${conv.filter(c => !c.finalizada).length ? `<div class="aj-sec">Conversas com a equipe</div>${conv.filter(c => !c.finalizada).slice(0, 5).map(c => pessoa(c, (dmNaoLida(c) ? '' : (c.ultimo_de === D.eu.usuario ? 'você: ' : '')) + (c.texto || ''), dmNaoLida(c))).join('')}` : ''}${rec.length ? `<div class="aj-sec">Pediram ao seu setor</div>${rec.map(it).join('')}` : ''}${env.length ? `<div class="aj-sec">Seu setor pediu</div>${env.map(it).join('')}` : ''}
           ${!ab.length ? `<div class="aj-vazio">Nenhum pedido de ajuda aberto agora. 🎉${on.length ? `<br><small>${on.length} colega(s) online — toque em 💬 para conversar.</small>` : ''}</div>` : ''}</div>
           <div class="aj-pe"><div class="aj-bts"><button type="button" class="aj-b" data-todos>Ver todos no Atendimento ↗</button></div></div>`;
     } else {
@@ -160,7 +161,7 @@ html[data-claro] .aj-pe textarea{background:rgba(255,255,255,.7)}
         + `<div class="aj-ctx">${esc(v.assunto || 'Atendimento')} · pedido por <b>${esc(v.solicitado_por_nome || '')}</b> em ${dh(v.solicitado_em)}</div>
         <div class="aj-corpo" id="ajConv">${v.conversa.map(m => `<div class="aj-m${m.de === eu ? ' eu' : ''}${m.encerrou ? ' fim' : ''}"><span class="q"><b>${esc(m.setor || '—')}</b> · ${esc(m.nome || '')} · ${dh(m.em)}${m.encerrou ? ' · ✅ encerrou' : ''}</span>${esc(m.texto)}</div>`).join('')}</div>
         <div class="aj-pe">${aberto ? `<textarea id="ajTxt" placeholder="Escreva no chat… (Enter envia · Shift+Enter quebra a linha)"></textarea>` : '<div class="aj-vazio" style="padding:4px">✅ Pedido encerrado.</div>'}
-          <div class="aj-bts">${aberto ? '<button type="button" class="aj-b p" data-env>Enviar</button><button type="button" class="aj-b ok" data-fim title="Manda a resposta final e encerra o pedido">Responder e encerrar</button>' : ''}<button type="button" class="aj-b" data-at style="margin-left:auto">Abrir o atendimento ↗</button></div></div>`;
+          <div class="aj-bts">${aberto ? '<button type="button" class="aj-b p" data-env>Enviar</button><button type="button" class="aj-b ok" data-fim title="Encerra o pedido (o que estiver escrito vai como mensagem final)">✅ Finalizar</button>' : ''}<button type="button" class="aj-b" data-at style="margin-left:auto">Abrir o atendimento ↗</button></div></div>`;
       const c = POP.querySelector('#ajConv'); c.scrollTop = c.scrollHeight;
       marcarVisto(v); contador();
       const tx = POP.querySelector('#ajTxt');
@@ -190,15 +191,22 @@ html[data-claro] .aj-pe textarea{background:rgba(255,255,255,.7)}
     catch (e) { toast('⚠ ' + e.message); }
     finally { ocupado = false; }
   }
+  async function finalizarDM(com) {
+    if (ocupado) return; ocupado = true;
+    try { const r = await api('/conversa/finalizar', { para: com }); (DMS[com] = DMS[com] || { mensagens: [] }).mensagens.push(r.mensagem); DMS[com].ultima_em = r.mensagem.em;
+      toast('Conversa finalizada.'); await atualizar(); SEL = null; render(); }
+    catch (e) { toast('⚠ ' + e.message); }
+    finally { ocupado = false; }
+  }
   /* abre o Atendimento (aba do hub) já no lugar certo */
   function irPara(hash) { try { window.postMessage({ hub: 'abrir', id: 'tickets', hash }, location.origin); } catch (_) {} fechar(); }
 
   async function enviar(v, encerrar) {
     const tx = POP.querySelector('#ajTxt'), texto = tx ? tx.value.trim() : '';
-    if (!texto) { toast(encerrar ? 'Escreva a resposta final antes de encerrar.' : 'Escreva a mensagem.'); return; }
+    if (!texto && !encerrar) { toast('Escreva a mensagem.'); return; }   // finalizar pode ir sem mensagem
     if (ocupado) return; ocupado = true;
     POP.querySelectorAll('.aj-b').forEach(b => (b.disabled = true));
-    try { await api('/ajuda/mensagem', { tid: v.tid, pid: v.id, texto, encerrar }); toast(encerrar ? 'Pedido de ajuda encerrado.' : 'Enviado.'); await atualizar(); if (encerrar) SEL = null; render(); }
+    try { await api('/ajuda/mensagem', { tid: v.tid, pid: v.id, texto, encerrar }); toast(encerrar ? 'Pedido de ajuda finalizado.' : 'Enviado.'); await atualizar(); if (encerrar) SEL = null; render(); }
     catch (e) { toast('⚠ ' + e.message); POP.querySelectorAll('.aj-b').forEach(b => (b.disabled = false)); }
     finally { ocupado = false; }
   }

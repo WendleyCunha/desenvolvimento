@@ -848,7 +848,7 @@ async function telaCliente(m, cid) {
           <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center">
             <button type="button" class="btn p" id="regCli" title="O cliente vê no app e a situação passa a Em andamento">👁 Registrar</button>
             <button type="button" class="btn v p" id="regNota" title="Só a equipe vê — o cliente nunca vê">🔒 Nota interna</button>
-            ${pode("encerrar") ? `<button type="button" class="btn v p" id="concluirSol" style="margin-left:auto">${svg("check")} Concluir</button>` : ""}</div>
+            ${podeConcluir(sel) ? `<button type="button" class="btn v p" id="concluirSol" style="margin-left:auto">${svg("check")} Concluir</button>` : ""}</div>
           <p class="dica" style="margin-top:4px">Registrar: o cliente vê no app · Nota interna: o cliente nunca vê · Concluir: finaliza a solicitação.</p>
         </div>` : ""}`}
       </div>` : ""}
@@ -1112,6 +1112,8 @@ function arvDe(setor) {
 }
 const opcoesPai = (arv, atual) => `<option value="">Escolha…</option>` + Object.keys(arv).map((p) => `<option${p === atual ? " selected" : ""}>${esc(p)}</option>`).join("") + (atual && !arv[atual] ? `<option selected value="${esc(atual)}">${esc(atual)} (fora da lista do setor)</option>` : "");
 const opcoesFilho = (arv, pai, atual) => `<option value="">Escolha…</option>` + Object.entries(arv[pai] || {}).filter(([f, i]) => i.ativo !== false || f === atual).map(([f, i]) => `<option value="${esc(f)}"${f === atual ? " selected" : ""}>${esc(f)}${i.sla != null ? ` · SLA ${i.sla}d` : ""}</option>`).join("");
+/* concluir: quem tem "encerrar"; numa solicitação interna (sem cliente), também o setor de destino e quem pediu */
+const podeConcluir = (s) => pode("encerrar") || (!!s && s.interno && (norm(s.departamento) === norm(S.e.eu.depto) || s.aberto_por === S.e.eu.usuario));
 const ehSolAtiva = (s) => !!s && !s.chat && ABERTOS.includes(s.status);
 /* 🤝 Pedir ajuda: escolhe o setor, escreve e pronto */
 function popupPedirAjuda(sel) {
@@ -1293,11 +1295,11 @@ function chatAjuda(v, buscar) {   // buscar(pid) → visão atualizada (pendênc
       <div class="registro" id="ajConv" style="max-height:46vh;overflow:auto;display:flex;flex-direction:column;gap:6px">${bolhasAjuda(v, me)}</div>
       ${aberto ? `<textarea class="entrada" id="ajTxt" placeholder="Escreva no chat… (Ctrl+Enter envia)" style="margin-top:10px;min-height:64px" autofocus></textarea>` : `<p class="dica" style="margin-top:8px">✅ Pedido encerrado.</p>`}`,
     esquerda: buscar ? [] : [{ rotulo: "Abrir o atendimento", classe: "btn v", acao: () => { S.sec = "caixa"; abrirTicket(v.tid); } }],
-    botoes: aberto ? [{ rotulo: "Responder e encerrar", classe: "btn v", acao: () => enviar(true) }, { rotulo: "Enviar", classe: "btn", principal: true, acao: () => enviar(false) }] : [{ rotulo: "Fechar" }] });
+    botoes: aberto ? [{ rotulo: "✅ Finalizar", classe: "btn v", acao: () => enviar(true) }, { rotulo: "Enviar", classe: "btn", principal: true, acao: () => enviar(false) }] : [{ rotulo: "Fechar" }] });
   const cv = md.el.querySelector("#ajConv"); cv.scrollTop = cv.scrollHeight;
   async function enviar(encerrar) {
     const tx = md.el.querySelector("#ajTxt"), texto = tx.value.trim();
-    if (!texto) { A.toast(encerrar ? "Escreva a resposta final antes de encerrar." : "Escreva a mensagem."); return false; }
+    if (!texto && !encerrar) { A.toast("Escreva a mensagem."); return false; }   // finalizar pode ir sem mensagem
     try { await A.api(API + "/ajuda/mensagem", { method: "POST", body: { tid: v.tid, pid: v.id, texto, encerrar } }); ok(encerrar ? "Pedido de ajuda encerrado." : "Mensagem enviada."); }
     catch (e) { falha(e); return false; }
     let nv;

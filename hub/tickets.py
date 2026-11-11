@@ -698,7 +698,9 @@ async def alterar(tid: str, request: Request):
             if novo not in STATUS:
                 raise HTTPException(400, "Status inválido.")
             if novo in ("resolvido", "finalizado", "cancelado"):
-                _exigir(p, "encerrar", "encerrar atendimentos")
+                # solicitação interna (sem cliente): o setor de destino e quem pediu também finalizam
+                if not (s.get("interno") and (norm(s.get("departamento")) == norm(me.get("depto")) or s.get("aberto_por") == me["usuario"])):
+                    _exigir(p, "encerrar", "encerrar atendimentos")
             else:
                 _exigir(p, "atender", "alterar atendimentos")
             if s.get("status") != novo:
@@ -954,7 +956,8 @@ def conversas_de(usuario: str) -> list:
         if msgs:
             ult = msgs[-1]
             saida.append({"com": com, "nome": usu.get(com, {}).get("nome", com), "depto": usu.get(com, {}).get("depto", ""),
-                          "online": online(com), "ultima_em": ult["em"], "ultimo_de": ult["de"], "texto": ult["texto"][:140]})
+                          "online": online(com), "ultima_em": ult["em"], "ultimo_de": ult["de"], "texto": ult["texto"][:140],
+                          "finalizada": bool(ult.get("fim"))})
     return sorted(saida, key=lambda x: x["ultima_em"], reverse=True)
 
 
@@ -981,7 +984,22 @@ async def conversa_enviar(request: Request):
         raise HTTPException(400, "Escreva a mensagem.")
     if not para or para == me["usuario"] or para not in usuarios():
         raise HTTPException(400, "Escolha um colega da equipe.")
-    msg = {"de": me["usuario"], "nome": me["nome"], "texto": texto, "em": agora()}
+    return {"ok": True, "mensagem": _dm_gravar_msg(me, para, {"de": me["usuario"], "nome": me["nome"], "texto": texto, "em": agora()})}
+
+
+@router.post("/conversa/finalizar")
+async def conversa_finalizar(request: Request):
+    """Finaliza a conversa com o colega (some da lista de abertas dos dois; uma mensagem nova reabre)."""
+    u, p, me = _contexto(request)
+    para = str((await request.json()).get("para") or "").strip()
+    if not para or para == me["usuario"] or para not in usuarios():
+        raise HTTPException(400, "Escolha um colega da equipe.")
+    if not (_dm(me["usuario"]).get("conversas") or {}).get(para):
+        raise HTTPException(404, "Não há conversa com essa pessoa.")
+    return {"ok": True, "mensagem": _dm_gravar_msg(me, para, {"de": me["usuario"], "nome": me["nome"], "texto": f"✅ Conversa finalizada por {me['nome']}.", "em": agora(), "fim": True})}
+
+
+def _dm_gravar_msg(me: dict, para: str, msg: dict) -> dict:
     corte = (datetime.now(BRT) - timedelta(days=DM_DIAS)).strftime("%Y-%m-%d %H:%M:%S")
     with _DM_LOCK:
         for dono, com in ((me["usuario"], para), (para, me["usuario"])):
@@ -989,7 +1007,7 @@ async def conversa_enviar(request: Request):
             lista = [m for m in doc.setdefault("conversas", {}).get(com, []) if m["em"] >= corte] + [msg]
             doc["conversas"][com] = lista[-DM_MAX:]
             _dm_gravar(dono, doc)
-    return {"ok": True, "mensagem": msg}
+    return msg
 
 
 @router.post("/ajuda/mensagem")
@@ -998,6 +1016,8 @@ async def ajuda_mensagem(request: Request):
     u, p, me = _contexto(request)
     c = await request.json()
     tid, pid, msg = str(c.get("tid") or ""), str(c.get("pid") or ""), str(c.get("texto") or "").strip()[:2000]
+    if not msg and c.get("encerrar"):
+        msg = "✅ Finalizado."   # finalizar sem mensagem final
     if not msg:
         raise HTTPException(400, "Escreva a mensagem.")
     cid, sid = decompor(tid)
