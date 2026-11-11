@@ -355,6 +355,32 @@ def eu(u: dict) -> dict:
     return {"usuario": alvo, "nome": info.get("nome") or u.get("nome") or login, "depto": info.get("depto", ""), "hub": login}
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# PERFIL — o que cada um vê (Ajustes › Setor de cada pessoa)
+#   atendente  → só os chats e tickets dele (pega o próximo da fila do setor com um clique)
+#   supervisor → tudo do setor dele + painel da equipe do setor
+#   gestor     → todos os setores + painel geral
+# ══════════════════════════════════════════════════════════════════════════════
+PERFIS = ("atendente", "supervisor", "gestor")
+ONLINE: dict[str, float] = {}
+ONLINE_SEG = 180
+
+
+def perfil_padrao(p: dict) -> str:
+    return "gestor" if p["acoes"].get("equipe") or p["acoes"].get("configurar") else "supervisor"
+
+
+def perfil_de(me: dict, p: dict) -> str:
+    if p["acoes"].get("configurar"):
+        return "gestor"
+    pf = (hub_cfg().get("perfis") or {}).get(me.get("usuario"))
+    return pf if pf in PERFIS else perfil_padrao(p)
+
+
+def online(usuario: str) -> bool:
+    return time.time() - ONLINE.get(usuario, 0) < ONLINE_SEG
+
+
 def _contexto(request: Request):
     u = acesso.exigir_usuario(request)
     esq = acesso.obter_esquema(MOD)
@@ -366,7 +392,10 @@ def _contexto(request: Request):
     if not configurado():
         raise HTTPException(503, "sem_banco_tickets")
     BASE.atualizar()
-    return u, p, eu(u)
+    me = eu(u)
+    me["perfil"] = perfil_de(me, p)
+    ONLINE[me["usuario"]] = time.time()   # presença: quem está com o hub aberto (o hub consulta a cada 15–30 s)
+    return u, p, me
 
 
 def _exigir(p, acao, texto):
@@ -385,12 +414,13 @@ def pend_abertas(t: dict) -> list[dict]:
 
 
 def visivel(t: dict, p: dict, me: dict) -> bool:
-    if p["acoes"].get("equipe"):
+    pf = me.get("perfil") or perfil_de(me, p)
+    if pf == "gestor":
         return True
     if atribuido(t, me) or t.get("aberto_por") == me["usuario"]:
         return True
     if me["depto"]:
-        if norm(t.get("departamento")) == norm(me["depto"]):   # o setor vê os chats e tickets abertos para ele
+        if pf == "supervisor" and norm(t.get("departamento")) == norm(me["depto"]):   # supervisor vê o setor inteiro
             return True
         if any(norm(me["depto"]) in (norm(s.get("setor_destino")), norm(s.get("setor_origem"))) for s in pend_abertas(t)):
             return True
@@ -459,7 +489,7 @@ def estado(request: Request, dias_concluidos: int = 30):
             continue
         lista.append(resumo(t, me, agora_dt))
     usu = usuarios()
-    return {"perm": p, "eu": me, "tickets": lista, "versao": BASE.ver,
+    return {"perm": p, "eu": me, "tickets": lista, "versao": BASE.ver, "fila": fila_sem_dono(me),
             "departamentos": departamentos(), "motivos": motivos(), "motivos_setor": motivos_por_setor(), "status": STATUS, "prioridades": PRIORIDADES,
             "usuarios": [{"usuario": k, "nome": v["nome"], "depto": v["depto"]} for k, v in sorted(usu.items(), key=lambda kv: norm(kv[1]["nome"]))],
             "config": {k: v for k, v in hub_cfg().items() if k != "mapa_usuarios"} | ({"mapa_usuarios": hub_cfg().get("mapa_usuarios")} if p["acoes"].get("configurar") else {}),
@@ -932,6 +962,8 @@ async def salvar_config(request: Request):
             novo["sla_erp_dias"] = max(0.0, min(float(c["sla_erp_dias"]), 60.0))
         except (TypeError, ValueError):
             raise HTTPException(400, "SLA inválido.") from None
+    if "perfis" in c:
+        novo["perfis"] = {str(k): str(v) for k, v in (c["perfis"] or {}).items() if k and v in PERFIS}
     if "setor_usuarios" in c:
         novo["setor_usuarios"] = {str(k): str(v) for k, v in (c["setor_usuarios"] or {}).items() if k}
     if "app_cliente" in c:   # app do cliente (/cliente/) — liga/desliga, nome, saudação, menu da URA, palavra-chave
@@ -1442,6 +1474,10 @@ async def dono_cliente(cid: str, request: Request):
         _exigir(p, "atender", "assumir atendimentos")
     else:
         _exigir(p, "transferir", "transferir atendimentos")
+    return {"ok": True, "feitas": _atribuir_cliente(cid, alvo, me)}
+
+
+def _atribuir_cliente(cid: str, alvo: str, me: dict) -> int:
     nome = usuarios().get(alvo, {}).get("nome", alvo) if alvo else "ninguém"
 
     def mutar(cont):
@@ -1462,7 +1498,84 @@ async def dono_cliente(cid: str, request: Request):
         cont["atualizado_em"] = ag
         return n
     _, n = _transacao(cid, mutar)
-    return {"ok": True, "feitas": n}
+    return n
+
+
+def _candidatos(me: dict, setor: str | None = None) -> list[tuple]:
+    """Clientes com chat/solicitação aberta SEM DONO no setor da pessoa (gestor: qualquer setor).
+    Ordem: cliente esperando no app → chat → menor SLA."""
+    BASE.atualizar()
+    agora_dt, por = datetime.now(BRT), {}
+    filtro = setor if setor is not None else ("" if me.get("perfil") == "gestor" else me.get("depto", ""))
+    for t in BASE.tickets():
+        if t.get("status") not in ABERTOS or t.get("atendentes") or t.get("atribuido_para"):
+            continue
+        if filtro and norm(t.get("departamento")) != norm(filtro):
+            continue
+        sla = sla_info(t, agora_dt).get("min")
+        chave = (0 if t.get("app_pendente") else 1 if eh_chat(t) else 2, sla if sla is not None else 1e9)
+        cid = decompor(t["id"])[0]
+        if cid not in por or chave < por[cid][0]:
+            por[cid] = (chave, eh_chat(t))
+    return sorted(((v[0], cid, v[1]) for cid, v in por.items()), key=lambda x: x[0])
+
+
+def fila_sem_dono(me: dict, setor: str | None = None) -> dict:
+    c = _candidatos(me, setor) if setor or me.get("depto") or me.get("perfil") == "gestor" else []
+    return {"clientes": len(c), "chats": sum(1 for x in c if x[2]), "aguardando_app": sum(1 for x in c if x[0][0] == 0)}
+
+
+@router.post("/proximo")
+def pegar_proximo(request: Request):
+    """Pegar o próximo: o cliente mais urgente sem dono do meu setor vem para mim (sem precisar ver a fila inteira)."""
+    u, p, me = _contexto(request)
+    _exigir(p, "atender", "assumir atendimentos")
+    if not me.get("depto") and me.get("perfil") != "gestor":
+        raise HTTPException(400, "Seu usuário está sem setor — peça para definir em Ajustes.")
+    for _, cid, _chat in _candidatos(me):
+        if _atribuir_cliente(cid, me["usuario"], me):
+            return {"ok": True, "cid": cid}
+    raise HTTPException(404, "Ninguém esperando no seu setor agora. 🎉")
+
+
+@router.get("/equipe")
+def equipe(request: Request, dias: int = 1, setor: str = ""):
+    """Painel da equipe: quem está online e a produtividade no período (hoje / 7 / 30 dias).
+    Atendente vê só a própria linha; supervisor, o setor dele; gestor, todos (ou um setor)."""
+    u, p, me = _contexto(request)
+    pf = me["perfil"]
+    dias = max(1, min(int(dias or 1), 90))
+    corte = (datetime.now(BRT) - timedelta(days=dias - 1)).strftime("%Y-%m-%d")
+    alvo_setor = setor if pf == "gestor" else me.get("depto", "")
+    usu = usuarios()
+    if pf == "atendente":
+        quem = {me["usuario"]}
+    else:
+        quem = {k for k, v in usu.items() if not alvo_setor or norm(v.get("depto")) == norm(alvo_setor)}
+    linhas = {k: {"usuario": k, "nome": usu.get(k, {}).get("nome", k), "depto": usu.get(k, {}).get("depto", ""), "online": online(k),
+                  "visto_em": ONLINE.get(k), "chats_atendidos": 0, "tickets_concluidos": 0, "respostas": 0,
+                  "chats_ativos": 0, "cliente_aguardando": 0, "tickets_pendentes": 0, "vencidos": 0} for k in quem}
+    agora_dt = datetime.now(BRT)
+    for t in BASE.tickets():
+        chat, aberto = eh_chat(t), t.get("status") in ABERTOS
+        if aberto:
+            for k in set(t.get("atendentes") or []) | ({t.get("atribuido_para")} if t.get("atribuido_para") else set()):
+                if k in linhas:
+                    L = linhas[k]
+                    if chat:
+                        L["chats_ativos"] += 1
+                        L["cliente_aguardando"] += bool(t.get("app_pendente"))
+                    else:
+                        L["tickets_pendentes"] += 1
+                        L["vencidos"] += sla_info(t, agora_dt).get("estado") == "venc"
+        elif str(t.get("resolvido_em") or "")[:10] >= corte and t.get("resolvido_por") in linhas:
+            linhas[t["resolvido_por"]]["chats_atendidos" if chat else "tickets_concluidos"] += 1
+        for c in t.get("comentarios") or []:   # o que o cliente viu: resposta no chat + registro de contato
+            if c.get("usuario") in linhas and c.get("tipo") in ("resposta", "contato") and str(c.get("data") or "")[:10] >= corte:
+                linhas[c["usuario"]]["respostas"] += 1
+    pessoas = sorted(linhas.values(), key=lambda x: (not x["online"], -(x["chats_atendidos"] + x["tickets_concluidos"]), norm(x["nome"])))
+    return {"perfil": pf, "dias": dias, "setor": alvo_setor, "pessoas": pessoas, "fila": fila_sem_dono(me, alvo_setor if alvo_setor or pf == "gestor" else None),
+            "departamentos": departamentos() if pf == "gestor" else []}
 
 
 @router.post("/ticket/{tid:path}/concluir-chat")

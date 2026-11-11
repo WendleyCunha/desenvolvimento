@@ -46,6 +46,7 @@ def t(monkeypatch):
     app.include_router(T.router)
     c = TestClient(app)
     c.como = lambda login: quem.__setitem__("login", login)
+    c.quem = lambda: quem["login"]
     return c
 
 
