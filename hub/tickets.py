@@ -420,7 +420,7 @@ def visivel(t: dict, p: dict, me: dict) -> bool:
     if atribuido(t, me) or t.get("aberto_por") == me["usuario"]:
         return True
     if me["depto"]:
-        if pf == "supervisor" and norm(t.get("departamento")) == norm(me["depto"]):   # supervisor vê o setor inteiro
+        if (pf == "supervisor" or t.get("interno")) and norm(t.get("departamento")) == norm(me["depto"]):   # supervisor vê o setor inteiro
             return True
         if any(norm(me["depto"]) in (norm(s.get("setor_destino")), norm(s.get("setor_origem"))) for s in pend_abertas(t)):
             return True
@@ -466,7 +466,7 @@ def resumo(t: dict, me: dict, agora_dt: datetime) -> dict:
     return {"cid": decompor(t.get("id", ""))[0], "chat": eh_chat(t), "cor": cor_de(t)} | {k: t.get(k) for k in ("id", "status", "prioridade", "assunto", "departamento", "motivo_pai", "motivo_filho", "etapa_atual",
                                    "cliente_codigo", "cliente_nome", "cliente_telefone", "atribuido_para", "aberto_por", "solicitante_nome",
                                    "criado_em", "atualizado_em", "origem", "erp_pedido_id", "erp_pedido_numero", "etapa_travada",
-                                   "app_opcao", "app_pendente_desde", "app_tipo")} | {"app_pendente": bool(t.get("app_pendente")),
+                                   "app_opcao", "app_pendente_desde", "app_tipo")} | {"interno": bool(t.get("interno"))} | {"app_pendente": bool(t.get("app_pendente")),
         "atendentes": t.get("atendentes") or [], "sla": sla, "pendencias": [s.get("setor_destino") for s in pend],
         "n_comentarios": len(t.get("comentarios") or []), "nao_visto": nao_visto(t, me), "meu": atribuido(t, me),
         "sem_dono": not (t.get("atendentes") or t.get("atribuido_para")),
@@ -604,6 +604,13 @@ def criar_solicitacao(dados: dict, me: dict, bloquear_duplicado=False) -> str:
     return compor(cid, sid)
 
 
+def exige_codigo(setor: str, pai: str, filho: str) -> bool:
+    """Submotivo marcado em Ajustes como "não exige código" → solicitação INTERNA (ex.: Manutenção › torneira,
+    TI › trocar mouse): não tem cliente, não entra na Caixa, cai só em Pedidos de ajuda do setor."""
+    info = (motivos(setor).get(pai) or {}).get(filho) if pai and filho else None
+    return bool(info.get("exige_codigo", True)) if info else True
+
+
 def _sla_motivo(pai: str, filho: str, setor: str = ""):
     arv = motivos(setor)
     info = (arv.get(pai) or {}).get(filho) if filho else None
@@ -633,9 +640,14 @@ async def abrir(request: Request):
             dados[k] = c[k]
     if c.get("atribuir_a_mim"):
         dados.update(atendentes=[me["usuario"]], atribuido_para=me["usuario"], status="em_andamento")
+    interno = bool(pai and filho and not exige_codigo(dados["departamento"], pai, filho))
+    if interno:
+        dados.update(interno=True, cliente_codigo=f"INTERNO-{me['usuario']}", cliente_nome=me["nome"], cliente_telefone="")
+        for k in ("erp_pedido_id", "erp_pedido_numero", "erp_cliente_id"):
+            dados.pop(k, None)
     havia = chamado_aberto(_id_doc(dados["cliente_codigo"])) if dados.get("cliente_codigo") else 0
-    tid = criar_solicitacao({k: v for k, v in dados.items() if v is not None}, me, bloquear_duplicado=bool(c.get("bloquear_duplicado", True)))
-    return {"ok": True, "id": tid, "cid": decompor(tid)[0], "agrupado": bool(havia), "chamado": dados["cliente_codigo"]}
+    tid = criar_solicitacao({k: v for k, v in dados.items() if v is not None}, me, bloquear_duplicado=bool(c.get("bloquear_duplicado", True)) and not interno)
+    return {"ok": True, "id": tid, "cid": decompor(tid)[0], "agrupado": bool(havia) and not interno, "chamado": dados["cliente_codigo"], "interno": interno}
 
 
 def chamado_aberto(cid: str) -> int:
@@ -1011,7 +1023,7 @@ async def salvar_motivos(request: Request):
                 sla = float(info.get("sla")) if info.get("sla") not in (None, "") else None
             except (TypeError, ValueError):
                 sla = None
-            arv[pai][f] = {"sla": sla, "ativo": bool(info.get("ativo", True)),
+            arv[pai][f] = {"sla": sla, "ativo": bool(info.get("ativo", True)), "exige_codigo": bool(info.get("exige_codigo", True)),
                            "etapas": [str(e).strip()[:80] for e in (info.get("etapas") or []) if str(e).strip()][:30]}
     atual = BASE.config("motivos_central", {})
     setor = str(c.get("setor") or "").strip()
@@ -1459,7 +1471,8 @@ def chamado_do_cliente(cid: str, request: Request):
     c = BASE.cont[cid]
     return {"cid": cid, "cliente": {"codigo": c.get("cliente_codigo") or ref.get("cliente_codigo"), "nome": c.get("cliente_nome") or ref.get("cliente_nome"),
                                     "telefone": next((t.get("cliente_telefone") for t in sols if t.get("cliente_telefone")), "")},
-            "dono": dono_do_chamado(c), "solicitacoes": saida, "erp": erp_do_ticket(junto, u) if _erp_ligado() else None}
+            "dono": dono_do_chamado(c), "solicitacoes": saida, "interno": all(t.get("interno") for t in sols),
+            "erp": erp_do_ticket(junto, u) if _erp_ligado() and not all(t.get("interno") for t in sols) else None}
 
 
 @router.post("/cliente/{cid}/dono")
@@ -1508,7 +1521,7 @@ def _candidatos(me: dict, setor: str | None = None) -> list[tuple]:
     agora_dt, por = datetime.now(BRT), {}
     filtro = setor if setor is not None else ("" if me.get("perfil") == "gestor" else me.get("depto", ""))
     for t in BASE.tickets():
-        if t.get("status") not in ABERTOS or t.get("atendentes") or t.get("atribuido_para"):
+        if t.get("status") not in ABERTOS or t.get("atendentes") or t.get("atribuido_para") or t.get("interno"):
             continue
         if filtro and norm(t.get("departamento")) != norm(filtro):
             continue

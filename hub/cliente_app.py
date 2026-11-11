@@ -471,7 +471,7 @@ def motivos_para_cliente() -> dict:
     """Motivo › Submotivos ativos (a mesma árvore de Ajustes do Atendimento)."""
     saida = {}
     for pai, filhos in T.motivos().items():
-        ativos = [f for f, i in (filhos or {}).items() if (i or {}).get("ativo", True)]
+        ativos = [f for f, i in (filhos or {}).items() if (i or {}).get("ativo", True) and (i or {}).get("exige_codigo", True)]   # interno não aparece pro cliente
         if ativos:
             saida[pai] = ativos
     return saida

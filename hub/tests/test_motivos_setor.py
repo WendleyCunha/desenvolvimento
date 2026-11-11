@@ -20,7 +20,7 @@ def test_arvore_por_setor_e_retabular(t):  # noqa: F811
     t.como("adm")
     salvar(t, LOG, "Logística")
     e = t.get("/api/tickets/estado").json()
-    assert e["motivos_setor"]["Logística"] == LOG and "Entrega" not in e["motivos"]   # a geral continua a mesma
+    assert e["motivos_setor"]["Logística"]["Entrega"]["Atraso"]["exige_codigo"] is True and "Entrega" not in e["motivos"]   # a geral continua a mesma
     t.como("carla")
     r = t.post("/api/tickets/tickets", json={"departamento": "Logística", "cliente_codigo": "C1", "cliente_nome": "Ana", "assunto": "x",
                                              "descricao": "y", "motivo_pai": "Entrega", "motivo_filho": "Atraso"}).json()
@@ -55,3 +55,18 @@ def test_setor_ve_o_que_foi_aberto_para_ele(t, monkeypatch):  # noqa: F811
     assert tid in [x["id"] for x in t.get("/api/tickets/estado").json()["tickets"]]
     t.como("gil")     # Compras: não vê
     assert tid not in [x["id"] for x in t.get("/api/tickets/estado").json()["tickets"]]
+
+
+def test_submotivo_sem_codigo_vira_solicitacao_interna(t):  # noqa: F811
+    t.como("adm")
+    salvar(t, {"Predial": {"Torneira": {"sla": 2, "ativo": True, "etapas": [], "exige_codigo": False}}}, "Manutenção")
+    t.como("carla")
+    r = t.post("/api/tickets/tickets", json={"departamento": "Manutenção", "motivo_pai": "Predial", "motivo_filho": "Torneira",
+                                             "assunto": "Torneira pingando", "descricao": "copa do 2º andar"})
+    assert r.status_code == 200 and r.json()["interno"], r.text      # sem código de cliente e mesmo assim abre
+    x = next(x for x in t.get("/api/tickets/estado").json()["tickets"] if x["id"] == r.json()["id"])
+    assert x["interno"] and x["cliente_codigo"] == "INTERNO-carla" and x["departamento"] == "Manutenção"
+    # não entra na fila da Caixa (pegar o próximo)
+    assert t.get("/api/tickets/estado").json()["fila"]["clientes"] == 0
+    # um submotivo que exige código continua exigindo
+    assert t.post("/api/tickets/tickets", json={"departamento": "Logística", "assunto": "x", "descricao": "y"}).status_code == 400
