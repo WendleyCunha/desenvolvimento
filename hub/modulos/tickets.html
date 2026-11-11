@@ -219,6 +219,20 @@ button.kpi:hover{border-color:color-mix(in srgb,var(--c) 50%,transparent)}
 #gradeCli .wg[data-wg="conversa"] .conversa{flex:1 1 auto;min-height:40px;overflow:auto}
 #gradeCli .wg[data-wg="conversa"] .resp{flex:none}
 #gradeCli #txtChat{min-height:46px!important;height:46px}
+.filtros>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:6px;margin:12px 6px 4px;font-size:.6rem;letter-spacing:1.4px;text-transform:uppercase;font-weight:700;color:var(--txt3)}
+.filtros>summary::-webkit-details-marker{display:none}.filtros>summary::after{content:"▾";margin-left:auto;transition:.2s}.filtros:not([open])>summary::after{transform:rotate(-90deg)}
+.filtros>summary em{font-style:normal;padding:1px 7px;border-radius:9px;background:rgba(var(--ouro-rgb),.15);color:var(--ouro2);letter-spacing:0;text-transform:none}
+.fila-setor{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:16px 18px;border-radius:18px;border:1px solid rgba(var(--ouro-rgb),.35);background:linear-gradient(120deg,rgba(var(--ouro-rgb),.10),rgba(139,92,246,.06))}
+.fila-setor .n{font:700 2.2rem/1 var(--titulo);color:var(--ouro2)}.fila-setor .t{flex:1;min-width:180px}.fila-setor .t b{display:block;font-size:.95rem}.fila-setor .t span{font-size:.75rem;color:var(--txt3)}
+.fila-setor.vazia{border-color:rgba(52,211,153,.3);background:rgba(52,211,153,.05)}.fila-setor.vazia .n{color:var(--verde)}
+.periodo{display:inline-flex;gap:2px;padding:3px;border-radius:11px;border:1px solid var(--vidro-borda);background:rgba(255,255,255,.03)}
+.periodo button{padding:5px 11px;border-radius:8px;font:600 .72rem var(--sans,Inter),sans-serif;color:var(--txt2)}.periodo button.ativo{background:rgba(var(--ouro-rgb),.16);color:var(--ouro2)}
+.eq-cab{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:18px 2px 10px}.eq-cab .sec{margin:0;flex:1}
+.eq td.num{text-align:center;font-variant-numeric:tabular-nums}.eq td.num.zero{color:var(--txt3)}.eq th.num{text-align:center}
+.eq .pess{display:flex;align-items:center;gap:9px}.eq .av{position:relative;width:30px;height:30px;border-radius:10px;display:grid;place-items:center;font:700 .72rem var(--titulo);background:rgba(255,255,255,.06);flex:none}
+.eq .av i{position:absolute;right:-3px;bottom:-3px;width:10px;height:10px;border-radius:50%;background:#6b7183;border:2px solid var(--noite2)}.eq .av i.on{background:var(--verde);box-shadow:0 0 8px var(--verde)}
+.eq .pess small{display:block;font-size:.66rem;color:var(--txt3)}
+.eq .barra-p{height:6px;border-radius:4px;background:rgba(255,255,255,.06);min-width:70px}.eq .barra-p i{display:block;height:100%;border-radius:4px;background:linear-gradient(90deg,var(--verde),var(--ciano))}
 .resumo-real{display:flex;gap:16px;flex-wrap:wrap;font-size:.8rem;color:var(--txt2);margin:0 2px 10px}
 .resumo-real b{font:700 1.05rem var(--titulo);color:var(--txt);margin-right:3px}
 /* abas de atendimento (tipo navegador): app à esquerda (cor), tickets à direita (neutros) */
@@ -379,6 +393,8 @@ function clientes() {
       aberto_por: ts.map((t) => t.aberto_por), criado_em: ts.map((t) => String(t.criado_em || "")).sort()[0], atualizado_em: recente.atualizado_em,
       busca: norm(ts.map((t) => `${t.id} ${curto(t.id)} ${t.assunto} ${t.cliente_nome} ${t.cliente_codigo} ${t.cliente_telefone} ${t.erp_pedido_numero || ""} ${t.motivo_pai} ${t.motivo_filho}`).join(" ")) };
   });
+  // atendente: a Caixa mostra só os clientes dele (pedidos de ajuda ficam na aba Pedidos de ajuda)
+  if (S.e.eu?.perfil === "atendente") S._cli = S._cli.filter((c) => c.todos.some((t) => t.meu || t.aberto_por === S.e.eu.usuario));
   S._cliDe = S.e;
   return S._cli;
 }
@@ -477,6 +493,43 @@ function render() {
 }
 const assumirCliente = (cid, alvo) => chamar(`/cliente/${encodeURIComponent(cid)}/dono`, { method: "POST", body: { atribuir: alvo } });
 
+const perfil = () => (S.e && S.e.eu && S.e.eu.perfil) || "supervisor";
+const ROT_PERFIL = { atendente: "Atendente", supervisor: "Supervisor", gestor: "Gestor" };
+/* ▶ Pegar o próximo: o servidor escolhe o cliente mais urgente sem dono do meu setor e passa para mim */
+async function pegarProximo() {
+  try { const r = await chamar("/proximo", { method: "POST" }, "pegando…"); ok("Cliente agora está com você."); await carregar(); S.sec = "caixa"; abrirTicket(r.cid); }
+  catch (e) { if (e.status === 404 || /Ninguém esperando/.test(e.message)) { A.toast(e.message); await carregar(); } else falha(e); }
+}
+async function carregarEquipe() {
+  const q = `?dias=${S.eqDias || 1}${S.eqSetor ? "&setor=" + encodeURIComponent(S.eqSetor) : ""}`;
+  try { S.eq = await A.api(API + "/equipe" + q); } catch (_) { S.eq = null; }
+  const box = document.getElementById("equipe"); if (box && S.sec === "meudia") desenharEquipe(box);
+}
+function desenharEquipe(box) {
+  const q = S.eq; if (!q) { box.innerHTML = ""; return; }
+  const per = `<span class="periodo">${[[1, "Hoje"], [7, "7 dias"], [30, "30 dias"]].map(([d, r]) => `<button type="button" data-dias="${d}" class="${(S.eqDias || 1) === d ? "ativo" : ""}">${r}</button>`).join("")}</span>`;
+  const k = (r, v, s2, c) => `<div class="kpi" style="--c:${c}"><small>${r}</small><b>${v}</b><span>${s2 || ""}</span></div>`;
+  const P = q.pessoas, soma = (f) => P.reduce((a, x) => a + x[f], 0);
+  if (q.perfil === "atendente") {
+    const x = P[0] || {};
+    box.innerHTML = `<div class="eq-cab"><div class="sec">Sua produtividade</div>${per}</div>
+      <div class="kpis">${k("Chats atendidos", x.chats_atendidos || 0, "concluídos por você", "var(--ciano)")}${k("Tickets concluídos", x.tickets_concluidos || 0, "solicitações finalizadas", "var(--verde)")}${k("Respostas ao cliente", x.respostas || 0, "no chat e nos registros", "var(--azul)")}${k("Comigo agora", (x.chats_ativos || 0) + (x.tickets_pendentes || 0), `${x.chats_ativos || 0} chat(s) · ${x.tickets_pendentes || 0} ticket(s)`, "var(--violeta)")}</div>`;
+  } else {
+    const on = P.filter((x) => x.online).length, max = Math.max(1, ...P.map((x) => x.chats_atendidos + x.tickets_concluidos));
+    const visto = (x) => x.online ? "online agora" : x.visto_em ? "visto " + dh(new Date(x.visto_em * 1000 - new Date().getTimezoneOffset() * 6e4).toISOString()) : "offline";
+    const n = (v, cor) => `<td class="num${v ? "" : " zero"}"${v && cor ? ` style="color:${cor};font-weight:700"` : ""}>${v}</td>`;
+    box.innerHTML = `<div class="eq-cab"><div class="sec">Sua equipe${q.setor ? " · " + esc(q.setor) : " · todos os setores"}</div>
+        ${q.departamentos.length ? `<select class="entrada" id="eqSetor" style="width:auto;padding:5px 9px"><option value="">Todos os setores</option>${q.departamentos.map((d) => `<option${S.eqSetor === d ? " selected" : ""}>${esc(d)}</option>`).join("")}</select>` : ""}${per}</div>
+      <div class="kpis">${k("Online", `${on}<small style="display:inline;font-size:.9rem;color:var(--txt3)"> / ${P.length}</small>`, "com o hub aberto", "var(--verde)")}${k("Chats atendidos", soma("chats_atendidos"), "no período", "var(--ciano)")}${k("Tickets concluídos", soma("tickets_concluidos"), "no período", "var(--verde)")}${k("Chats em andamento", soma("chats_ativos"), `${soma("cliente_aguardando")} cliente(s) esperando resposta`, "var(--azul)")}${k("Tickets pendentes", soma("tickets_pendentes"), `${soma("vencidos")} vencido(s)`, soma("vencidos") ? "var(--rosa)" : "var(--violeta)")}${k("Sem dono", q.fila.clientes, `${q.fila.chats} chat(s) na fila`, "var(--ouro)")}</div>
+      <div class="cartao" style="margin-top:10px;padding:8px 10px;overflow:auto"><table class="tab eq"><thead><tr><th>Pessoa</th><th>Produção</th><th class="num">Chats atendidos</th><th class="num">Tickets concluídos</th><th class="num">Respostas</th><th class="num">Chats agora</th><th class="num">Esperando resposta</th><th class="num">Tickets pendentes</th><th class="num">Vencidos</th></tr></thead><tbody>
+        ${P.map((x) => `<tr><td><div class="pess"><span class="av">${esc((x.nome || "?").split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase())}<i class="${x.online ? "on" : ""}"></i></span><span><b>${esc(x.nome)}</b><small>${esc(visto(x))}${!q.setor && x.depto ? " · " + esc(x.depto) : ""}</small></span></div></td>
+          <td><div class="barra-p" title="${x.chats_atendidos + x.tickets_concluidos} atendimento(s) concluído(s)"><i style="width:${(x.chats_atendidos + x.tickets_concluidos) / max * 100}%"></i></div></td>
+          ${n(x.chats_atendidos)}${n(x.tickets_concluidos)}${n(x.respostas)}${n(x.chats_ativos)}${n(x.cliente_aguardando, "var(--ciano)")}${n(x.tickets_pendentes)}${n(x.vencidos, "var(--rosa)")}</tr>`).join("") || `<tr><td colspan="9" class="dica">Ninguém neste setor. Defina o setor de cada pessoa em Ajustes.</td></tr>`}</tbody></table></div>`;
+  }
+  box.querySelectorAll("[data-dias]").forEach((b) => (b.onclick = () => { S.eqDias = +b.dataset.dias; carregarEquipe(); }));
+  const es = box.querySelector("#eqSetor"); if (es) es.onchange = () => { S.eqSetor = es.value; carregarEquipe(); };
+}
+
 /* ══════ MEU DIA ══════ */
 const FRASES = ["Fazer acontecer é responder “estou verificando” em dois minutos em vez de nada em duas horas.",
   "Ticket que volta é o primeiro atendimento que não resolveu.", "Quem promete data, cumpre data — o prazo da etapa é a palavra dada ao cliente."];
@@ -484,8 +537,7 @@ function telaMeuDia(m) {
   const e = S.e, me = e.eu, c = contagens(), cs = clientes();
   const h = new Date().getHours();
   const meusAb = cs.filter((x) => x.meu && vivo(x));
-  const concl30 = e.tickets.filter((t) => !t.chat && !ABERTOS.includes(t.status) && t.meu).length;
-  const prox = cs.filter((x) => vivo(x) && x.sem_dono).sort((a, b) => (b.app_pendente - a.app_pendente) || ((a.sla?.min ?? 1e9) - (b.sla?.min ?? 1e9)))[0];
+  const pf = perfil(), fila = e.fila || { clientes: 0, chats: 0, aguardando_app: 0 };
   const k = (r, v, s, c2, acao, secao) => `<button type="button" class="kpi" style="--c:${c2}" ${acao ? `data-ir="${acao}"` : ""}${secao ? ` data-sec-ir="${secao}"` : ""}><small>${r}</small><b>${v}</b><span>${s}</span></button>`;
   m.innerHTML = `<section class="painel vidro">
     <p class="dica" style="text-transform:uppercase;letter-spacing:2px;font-weight:700">${new Date().toLocaleDateString("pt-BR", { weekday: "long" })}</p>
@@ -493,17 +545,20 @@ function telaMeuDia(m) {
     <p class="frase">${FRASES[new Date().getDate() % FRASES.length]}</p>
     <div class="sec">O que precisa de você agora</div>
     ${meusAb.length ? `<div class="kpis">${k("Clientes comigo", meusAb.length, `${meusAb.filter((x) => x.estado === "atendimento").length} em atendimento · ${meusAb.filter((x) => x.estado === "ticket").length} tickets`, "var(--azul)", "meus")}${k("Vencem hoje", meusAb.filter((x) => x.sla?.estado === "hoje").length, "dos meus", "var(--ouro)", "hoje")}${k("Vencidos", meusAb.filter((x) => x.sla?.estado === "venc").length, "dos meus", "var(--rosa)", "venc")}${k("Aguardando o cliente", meusAb.filter((x) => x.status === "aguardando").length, "dos meus", "var(--laranja)", "espera")}${k("Cliente respondeu", meusAb.filter((x) => x.app_pendente || x.nao_visto).length, "priorize", "var(--ciano)", "meus")}</div>`
-      : `<div class="aviso ouro">Sua fila está limpa. Nenhum cliente no seu nome agora.${prox && pode("atender") ? ` <a href="#" id="pegar">Pegar o próximo da equipe →</a>` : ""}</div>`}
-    <div class="sec">Seu mês</div>
-    <div class="kpis">${k("Solicitações resolvidas", concl30, "nos últimos 30 dias", "var(--verde)")}${k("Abertas por mim", e.tickets.filter((t) => t.aberto_por === me.usuario).length, "solicitações que eu registrei", "var(--violeta)")}</div>
-    <div class="sec">A área — o que está rolando de verdade</div>
-    <div class="kpis">${k("Atendimentos agora", c.atend, "chats do app ativos", "var(--ciano)", "atend")}${k("Tickets pendentes", c.tks, `${c.sols} solicitação(ões) dentro`, "var(--txt2)", "equipe")}${k("Sem dono", c.novos, "clientes que ninguém pegou", "var(--ouro)", "novos")}${k("Vencidos", c.venc, "clientes", "var(--rosa)", "venc")}${k("Cliente aguardando no app", c.app, "mandou mensagem", "var(--ciano)", "app")}${k("Pedidos de ajuda ao meu setor", c.internos, "abertos", "var(--violeta)", "", "internos")}</div>
+      : `<div class="aviso ouro">Sua fila está limpa. Nenhum cliente no seu nome agora.</div>`}
+    ${pode("atender") && (me.depto || pf === "gestor") ? `<div class="sec">Fila ${pf === "gestor" ? "geral" : "do setor " + esc(me.depto)}</div>
+      <div class="fila-setor${fila.clientes ? "" : " vazia"}"><span class="n">${fila.clientes}</span>
+        <span class="t"><b>${fila.clientes ? (fila.clientes === 1 ? "cliente esperando alguém assumir" : "clientes esperando alguém assumir") : "Ninguém esperando agora 🎉"}</b><span>${fila.clientes ? `${fila.chats} chat(s)${fila.aguardando_app ? ` · ${fila.aguardando_app} já mandou mensagem no app` : ""} · o mais urgente vem primeiro` : "Quando chegar, aparece aqui."}</span></span>
+        ${fila.clientes ? `<button type="button" class="btn" id="pegar">▶ Pegar o próximo</button>` : ""}</div>` : ""}
+    <div id="equipe"></div>
+    ${pf === "atendente" ? "" : `<div class="sec">A área — o que está rolando de verdade</div>
+    <div class="kpis">${k("Atendimentos agora", c.atend, "chats do app ativos", "var(--ciano)", "atend")}${k("Tickets pendentes", c.tks, `${c.sols} solicitação(ões) dentro`, "var(--txt2)", "equipe")}${k("Sem dono", c.novos, "clientes que ninguém pegou", "var(--ouro)", "novos")}${k("Vencidos", c.venc, "clientes", "var(--rosa)", "venc")}${k("Cliente aguardando no app", c.app, "mandou mensagem", "var(--ciano)", "app")}${k("Pedidos de ajuda ao meu setor", c.internos, "abertos", "var(--violeta)", "", "internos")}</div>`}
     ${e.banco === "hub" ? `<p class="dica" style="margin-top:14px">Rodando no banco do hub. Para usar os mesmos tickets do Streamlit (bancowendley), crie FIRESTORE_CREDS_TICKETS no Render.</p>` : ""}
   </section>`;
   m.querySelectorAll("[data-sec-ir]").forEach((b) => (b.onclick = () => ir(b.dataset.secIr)));
   m.querySelectorAll("[data-ir]").forEach((b) => (b.onclick = () => { S.aba = b.dataset.ir; S.fila = ""; S.q = ""; S.pag = 0; ls.set("wd.tk.aba", S.aba); ir("caixa"); }));
-  const pg = $("#pegar");
-  if (pg) pg.onclick = async (ev) => { ev.preventDefault(); try { await assumirCliente(prox.cid, me.usuario); await carregar(); S.sec = "caixa"; abrirTicket(prox.cid); } catch (er) { falha(er); } };
+  const pg = $("#pegar"); if (pg) pg.onclick = pegarProximo;
+  const box = $("#equipe"); if (S.eq) desenharEquipe(box); carregarEquipe();
 }
 
 /* ══════ CAIXA (uma linha por cliente) ══════ */
@@ -544,17 +599,20 @@ function telaCaixa(m) {
   const lista = filtrar(), porPag = 25, pags = Math.max(1, Math.ceil(lista.length / porPag));
   S.pag = Math.min(S.pag, pags - 1);
   const pag = lista.slice(S.pag * porPag, S.pag * porPag + porPag);
-  const abas = [["meus", "Meus", c.meus], ["equipe", "Equipe", c.equipe], ["atend", "📱 Atendimentos", c.atend], ["novos", "Novos", c.novos], ["hoje", "⏰ Vence hoje", c.hoje], ["venc", "🚨 Vencidos", c.venc], ["espera", "Em espera", c.espera], ["app", "Cliente aguardando", c.app], ["concl", "Concluídos", c.concl], ["todos", "Todos", c.todos]];
+  const pf = perfil(), soMeu = pf === "atendente";
+  const abas = [["meus", "Meus", c.meus], ...(soMeu ? [] : [["equipe", "Equipe", c.equipe]]), ["atend", "📱 Atendimentos", c.atend], ...(soMeu ? [] : [["novos", "Novos", c.novos]]), ["hoje", "⏰ Vence hoje", c.hoje], ["venc", "🚨 Vencidos", c.venc], ["espera", "Em espera", c.espera], ["app", "Cliente aguardando", c.app], ["concl", "Concluídos", c.concl], ["todos", soMeu ? "Todos os meus" : "Todos", c.todos]];
+  if (soMeu && ["equipe", "novos"].includes(S.aba)) S.aba = "meus";
+  const filtroAtivo = /^(dep|mot|pend|erp|com):/.test(S.fila || "");
+  const filtros = [grupo("Por setor", "dep", conta((x) => x.departamentos).map(([k, n]) => [k, n, cor(k)])), grupo("Por motivo", "mot", conta((x) => x.motivos).map(([k, n]) => [k, n, cor(k)])),
+    grupo("Pendências com setores", "pend", conta((x) => x.pendencias).map(([k, n]) => [k, n, "var(--violeta)"])),
+    S.e.erp ? grupo("Vindos do ERP", "erp", ab.some((x) => x.erp) ? [["ERP", ab.filter((x) => x.erp).length, "var(--ciano)"]] : []) : "",
+    !soMeu && (pode("equipe") || pode("setor") || pf !== "atendente") ? grupo("Por atendente", "com", [...(c.novos ? [["_ninguem", c.novos, "var(--ouro)"]] : []), ...conta((x) => x.atribuido_para ? [x.atribuido_para] : []).map(([k, n]) => [k, n, cor(k)])]) : ""].join("");
   m.innerHTML = `<div class="caixa">
     <aside class="filas vidro">
       <button type="button" data-fila="" class="${!S.fila ? "ativo" : ""}"><i></i>Todas as filas<em>${ab.length}</em></button>
       ${grupo("App do cliente", "app", [c.atend ? ["atend", c.atend, "var(--ciano)"] : null, c.app ? ["pend", c.app, "var(--ciano)"] : null].filter(Boolean))}
-      ${grupo("Por setor", "dep", conta((x) => x.departamentos).map(([k, n]) => [k, n, cor(k)]))}
-      ${grupo("Caixas por motivo", "mot", conta((x) => x.motivos).map(([k, n]) => [k, n, cor(k)]))}
-      ${grupo("Pendências com setores", "pend", conta((x) => x.pendencias).map(([k, n]) => [k, n, "var(--violeta)"]))}
-      ${S.e.erp ? grupo("Vindos do ERP", "erp", ab.some((x) => x.erp) ? [["ERP", ab.filter((x) => x.erp).length, "var(--ciano)"]] : []) : ""}
-      ${pode("equipe") || pode("setor") ? grupo("Por atendente", "com", [["_ninguem", c.novos, "var(--ouro)"], ...conta((x) => x.atribuido_para ? [x.atribuido_para] : []).map(([k, n]) => [k, n, cor(k)])]) : ""}
-      <p class="dica" style="padding:10px 6px 2px">Cada cliente conta uma vez. Em "Por setor" e "Por motivo" ele aparece em cada fila onde tem solicitação.</p>
+      ${filtros ? `<details class="filtros"${filtroAtivo || S.filtrosAbertos ? " open" : ""}><summary>Filtrar por${filtroAtivo ? " <em>1 ativo</em>" : ""}</summary>${filtros.replace(/<h4>/g, '<h4 style="margin-top:8px">')}</details>` : ""}
+      <p class="dica" style="padding:10px 6px 2px"><b>${ab.length}</b> cliente(s) em aberto${soMeu ? " com você" : ""}. Os filtros mostram esses mesmos clientes por ângulos diferentes — não somam.</p>
     </aside>
     <section class="painel vidro">
       <div class="resumo-real"><span><b style="color:var(--ciano)">${c.atend}</b> em atendimento</span><span><b>${c.tks}</b> ticket(s) pendente(s)</span><span><b>${c.sols}</b> solicitação(ões) dentro deles</span></div>
@@ -566,6 +624,7 @@ function telaCaixa(m) {
         <select class="entrada" id="ord">${[["urgencia", "Urgência (quem respondeu + SLA)"], ["atendente", "Por atendente"], ["antigo", "Mais antigo"], ["recente", "Mais recente"]].map(([v, r]) => `<option value="${v}"${S.ord === v ? " selected" : ""}>${r}</option>`).join("")}</select>
         <div class="dir">
           ${pode("transferir") ? `<span class="dica" id="nSel">${S.sel.size ? S.sel.size + " selecionado(s)" : ""}</span><select class="entrada" id="loteAlvo"><option value="">Transferir selecionados para…</option><option value="__ninguem">— sem responsável —</option>${S.e.usuarios.map((u) => `<option value="${esc(u.usuario)}">${esc(u.nome)}</option>`).join("")}</select>` : ""}
+          ${pode("atender") && S.e.fila?.clientes ? `<button type="button" class="btn v p" id="btProx" title="O cliente mais urgente sem dono do seu setor vem para você">▶ Pegar o próximo <em style="font-style:normal;opacity:.7">${S.e.fila.clientes}</em></button>` : ""}
           ${pode("abrir") ? `<button type="button" class="btn p" id="btNovo">${svg("mais")} Chamado</button>` : ""}
         </div>
       </div>
@@ -582,7 +641,9 @@ function telaCaixa(m) {
       : `<div class="vazio">${A.orbe("check", "var(--verde)")}<b>Nada aqui</b>Nenhum cliente nesta visão.</div>`}
     </section></div>`;
   m.querySelectorAll("[data-aba]").forEach((b) => (b.onclick = () => { S.aba = b.dataset.aba; S.pag = 0; ls.set("wd.tk.aba", S.aba); render(); }));
-  m.querySelectorAll("[data-fila]").forEach((b) => (b.onclick = () => { S.fila = b.dataset.fila; S.pag = 0; if (S.fila && ["meus"].includes(S.aba)) S.aba = "equipe"; render(); }));
+  m.querySelectorAll("[data-fila]").forEach((b) => (b.onclick = () => { S.fila = b.dataset.fila; S.pag = 0; if (S.fila && ["meus"].includes(S.aba)) S.aba = soMeu ? "todos" : "equipe"; render(); }));
+  const fd = m.querySelector(".filtros"); if (fd) fd.ontoggle = () => { S.filtrosAbertos = fd.open; };
+  const px = $("#btProx"); if (px) px.onclick = pegarProximo;
   $("#ord").onchange = (e) => { S.ord = e.target.value; S.ordCol = null; ls.set("wd.tk.ord", S.ord); render(); };
   m.querySelectorAll("th[data-col]").forEach((th) => (th.onclick = () => { const c2 = th.dataset.col; S.ordDir = S.ordCol === c2 ? -(S.ordDir || 1) : 1; S.ordCol = c2; S.pag = 0; render(); }));
   const tq = $("#tiraQ"); if (tq) tq.onclick = (e) => { e.preventDefault(); S.q = ""; $("#qTopo").value = ""; render(); };
@@ -1243,11 +1304,12 @@ function telaAjustes(m) {
         <p class="dica">Assuntos que a URA pergunta (uma vez só) antes de virar chat — cada um define motivo e setor. Na aba Chamados do app, o cliente abre pela árvore de motivos acima.</p>
         <div id="uraLista" style="display:flex;flex-direction:column;gap:5px"></div>
         <div style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="btn v p" id="uraAdd">+ opção</button><button type="button" class="btn p" id="salvarApp">Salvar app do cliente</button></div></div>
-      <div class="cartao"><h3>${svg("usuarios")} Setor de cada pessoa</h3>
-        <p class="dica">Define o que cada um vê em “Pedidos de ajuda”: os chats, tickets e pedidos de ajuda abertos para o setor dele.${e.banco === "hub" ? "" : " (No bancowendley o setor vem do cadastro de usuários do Streamlit.)"}</p>
-        <div style="max-height:320px;overflow:auto;display:flex;flex-direction:column;gap:5px">${e.usuarios.map((u) => `<div class="g2" style="align-items:center"><span style="font-size:.82rem">${esc(u.nome)} <small class="dica">@${esc(u.usuario)}</small></span>
-          <select class="entrada" data-setoru="${esc(u.usuario)}" style="padding:6px 8px"${e.banco === "hub" ? "" : " disabled"}><option value="">—</option>${deps.map((d) => `<option${norm(d) === norm(u.depto) ? " selected" : ""}>${esc(d)}</option>`).join("")}</select></div>`).join("")}</div>
-        ${e.banco === "hub" ? `<button type="button" class="btn p" id="salvarSetores">Salvar setores</button>` : ""}
+      <div class="cartao"><h3>${svg("usuarios")} Setor e perfil de cada pessoa</h3>
+        <p class="dica"><b>Atendente</b>: vê só os chats e tickets dele e pega o próximo da fila com um clique. <b>Supervisor</b>: vê tudo do setor + o painel da equipe no Meu dia. <b>Gestor</b>: todos os setores. <i>Padrão</i> = gestor para quem tem permissão de equipe, senão supervisor.${e.banco === "hub" ? "" : " (No bancowendley o setor vem do cadastro de usuários do Streamlit.)"}</p>
+        <div style="max-height:360px;overflow:auto;display:flex;flex-direction:column;gap:5px">${e.usuarios.map((u) => `<div style="display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) minmax(0,1fr);gap:6px;align-items:center"><span style="font-size:.82rem;overflow:hidden;text-overflow:ellipsis">${esc(u.nome)} <small class="dica">@${esc(u.usuario)}</small></span>
+          <select class="entrada" data-setoru="${esc(u.usuario)}" style="padding:6px 8px"${e.banco === "hub" ? "" : " disabled"}><option value="">—</option>${deps.map((d) => `<option${norm(d) === norm(u.depto) ? " selected" : ""}>${esc(d)}</option>`).join("")}</select>
+          <select class="entrada" data-perfilu="${esc(u.usuario)}" style="padding:6px 8px"><option value="">Padrão</option>${Object.entries(ROT_PERFIL).map(([k2, r]) => `<option value="${k2}"${(cfg.perfis || {})[u.usuario] === k2 ? " selected" : ""}>${r}</option>`).join("")}</select></div>`).join("")}</div>
+        <button type="button" class="btn p" id="salvarSetores">Salvar ${e.banco === "hub" ? "setores e perfis" : "perfis"}</button>
         <button type="button" class="btn v p" id="recarregar">${svg("repetir")} Recarregar tudo do banco</button></div>
     </div></section>`;
   const lerArv = () => {
@@ -1266,8 +1328,10 @@ function telaAjustes(m) {
   const cg = $("#copiarGeral"); if (cg) cg.onclick = (ev) => { ev.preventDefault(); arv = JSON.parse(JSON.stringify(e.motivos)); redesenhar(); };
   $("#salvarErp").onclick = async () => { const auto = {}; m.querySelectorAll("[data-auto]").forEach((c) => (auto[c.dataset.auto] = c.checked));
     try { await chamar("/config", { method: "PUT", body: { auto_erp: auto, depto_erp: $("#dErp").value, motivo_pai_erp: $("#mErp").value, sla_erp_dias: +$("#sErp").value || 0 } }); ok("Salvo."); await carregar(); } catch (er) { falha(er); } };
-  const ss = $("#salvarSetores"); if (ss) ss.onclick = async () => { const mapa = {}; m.querySelectorAll("[data-setoru]").forEach((s2) => { if (s2.value) mapa[s2.dataset.setoru] = s2.value; });
-    try { await chamar("/config", { method: "PUT", body: { setor_usuarios: mapa } }); ok("Setores salvos."); await carregar(); } catch (er) { falha(er); } };
+  const ss = $("#salvarSetores"); if (ss) ss.onclick = async () => { const mapa = {}, perfis = {}; m.querySelectorAll("[data-setoru]").forEach((s2) => { if (s2.value) mapa[s2.dataset.setoru] = s2.value; });
+    m.querySelectorAll("[data-perfilu]").forEach((s2) => { if (s2.value) perfis[s2.dataset.perfilu] = s2.value; });
+    const body = { perfis }; if (e.banco === "hub") body.setor_usuarios = mapa;
+    try { await chamar("/config", { method: "PUT", body }); ok("Setores e perfis salvos."); await carregar(); } catch (er) { falha(er); } };
   const desenhaUra = () => { $("#uraLista").innerHTML = ura.map((o, i) => `<div class="ura-it"><input class="entrada" data-ura="${i}|rotulo" value="${esc(o.rotulo || "")}" placeholder="Opção (ex.: Troca)"><input class="entrada" data-ura="${i}|descricao" value="${esc(o.descricao || "")}" placeholder="Descrição curta">
       <select class="entrada" data-ura="${i}|motivo_pai"><option value="">motivo —</option>${Object.keys(arv).map((p2) => `<option${p2 === o.motivo_pai ? " selected" : ""}>${esc(p2)}</option>`).join("")}</select>
       <select class="entrada" data-ura="${i}|departamento"><option value="">setor —</option>${deps.map((d) => `<option${d === o.departamento ? " selected" : ""}>${esc(d)}</option>`).join("")}</select>
@@ -1290,7 +1354,8 @@ carregar();
 /* com um atendimento aberto: se o cliente escreveu pelo app, a conversa atualiza sozinha (sem perder o que você está digitando) */
 setInterval(() => { if (document.visibilityState !== "visible" || !S.aberto || document.querySelector(".aur-modal-fundo") || $("#txt")?.value || $("#txtChat")?.value) return;
   A.api(API + "/estado").then((e) => { if (e.versao !== S.e?.versao) { guardarRascunho(); recarregarCliente(); } }).catch(() => {}); }, 20000);   // busca por trás e só troca o conteúdo — a tela não pisca
-setInterval(() => { if (document.visibilityState === "visible") carregarAjuda(); }, 20000);   // pedidos de ajuda do meu setor (contador da aba + lista)
+setInterval(() => { if (document.visibilityState === "visible") carregarAjuda(); }, 20000);
+setInterval(() => { if (document.visibilityState === "visible" && S.sec === "meudia" && !S.aberto) carregarEquipe(); }, 30000);   // painel da equipe (online / produtividade)   // pedidos de ajuda do meu setor (contador da aba + lista)
 setInterval(() => { if (document.visibilityState === "visible" && !S.aberto && !document.querySelector(".aur-modal-fundo")) A.api(API + "/estado").then((e) => { if (e.versao !== S.e?.versao) { novoEstado(e); if (!document.activeElement || !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) render(); } }).catch(() => {}); }, 30000);
 })();
 </script>
