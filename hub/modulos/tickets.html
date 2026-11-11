@@ -170,10 +170,12 @@ button.kpi:hover{border-color:color-mix(in srgb,var(--c) 50%,transparent)}
 .cartoes{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px}
 .cartao{border-radius:20px;padding:16px;background:rgba(255,255,255,.03);border:1px solid var(--vidro-borda);display:flex;flex-direction:column;gap:10px}
 .cartao h3{margin:0;font:700 .96rem var(--titulo);display:flex;gap:8px;align-items:center}
+.filho.leg{margin:0 0 2px;font-size:.6rem;letter-spacing:1px;text-transform:uppercase;color:var(--txt3);font-weight:700}
+.chk-cod{font-size:.7rem;color:var(--txt2);display:flex;gap:4px;align-items:center;white-space:nowrap}
 .arvore{max-height:420px;overflow:auto;display:flex;flex-direction:column;gap:6px}
 .pai{border-radius:12px;border:1px solid var(--vidro-borda);padding:8px 10px}
 .pai>b{font-size:.85rem}
-.filho{display:grid;grid-template-columns:minmax(0,1fr) 60px minmax(0,1.6fr) auto;gap:6px;align-items:center;margin-top:5px}
+.filho{display:grid;grid-template-columns:minmax(0,1fr) 60px minmax(0,1.6fr) 92px 28px;gap:6px;align-items:center;margin-top:5px}
 .filho input{padding:6px 8px;font-size:.78rem}
 .oculto{display:none!important}
 /* chamado único: cada solicitação tem sua cor (faixa lateral no balão, chip, cartão) */
@@ -371,7 +373,7 @@ const tipoMsg = (c) => c.tipo || (String(c.texto || "").startsWith("📨") || St
 function clientes() {
   if (S._cliDe === S.e) return S._cli;
   const g = {}, pr = Object.keys(PRIO);
-  for (const t of S.e.tickets) { const c = t.cid || cidDe(t.id); (g[c] = g[c] || []).push(t); }
+  for (const t of S.e.tickets) { if (t.interno) continue; const c = t.cid || cidDe(t.id); (g[c] = g[c] || []).push(t); }   // solicitação interna (sem cliente) não entra na Caixa
   S._cli = Object.entries(g).map(([cid, ts]) => {
     const vivos = ts.filter((t) => ABERTOS.includes(t.status));
     const chat = vivos.find((t) => t.chat) || null;
@@ -753,7 +755,7 @@ async function telaCliente(m, cid) {
   // cabeçalho FINO (fica no bloco congelado, lá em cima)
   $("#cabCli").innerHTML = `
   <section class="cab-cli vidro" style="--c:${estado === "atendimento" ? "var(--ciano)" : "var(--vidro-borda-forte)"}">
-    <b class="num">${estado === "atendimento" ? "📱" : "#"}${esc(D.cliente.codigo || cid)}</b>${etq(ESTADO[estado][0], ESTADO[estado][1])}
+    <b class="num">${D.interno ? "🔧 Interna" : (estado === "atendimento" ? "📱" : "#") + esc(D.cliente.codigo || cid)}</b>${etq(ESTADO[estado][0], ESTADO[estado][1])}
     <b class="nome" title="${esc(D.cliente.nome || "")}">${esc(D.cliente.nome || "Cliente")}</b>
     ${vivoC && sla1 ? `<span>${slaTxt(sla1.sla)}</span>` : ""}
     <span class="dado">${chat ? "chat ativo + " : ""}${abertas.length} solicitação(ões)</span>
@@ -1116,10 +1118,12 @@ function telaAbrir(m) {
   m.innerHTML = `<section class="painel vidro" style="max-width:820px;margin:0 auto">
     <button type="button" class="btn v p" id="trocaSetor">${svg("voltar")} Setores</button>
     <h2 style="margin:10px 0 12px;font:700 1.3rem var(--titulo)">Novo chamado · ${esc(S.setorAbrir)}</h2>
+    <div class="g2"><label class="campo">Motivo<select id="nPai"><option value="">—</option>${Object.keys(arv).map((p) => `<option>${esc(p)}</option>`).join("")}</select></label><label class="campo">Submotivo<select id="nFilho"><option value="">—</option></select></label></div>
+    <div id="nInterno" class="aviso" style="display:none;margin-top:8px;border-color:rgba(139,92,246,.4);background:rgba(139,92,246,.07)">🔧 <b>Solicitação interna</b> — não precisa de cliente. Vai direto para <b>Pedidos de ajuda</b> do setor ${esc(S.setorAbrir)}, sem passar pela Caixa.</div>
+    <div id="nCliBloco" style="margin-top:8px">
     <div class="g2"><label class="campo">Código do cliente *<input id="nCod" placeholder="digite o código ou o nome" autocomplete="off"></label><label class="campo">Nome do cliente *<input id="nNome" autocomplete="off"></label></div>
     <div id="nBusca" style="margin-top:6px"></div>
-    <div class="g2" style="margin-top:8px"><label class="campo">Telefone<input id="nTel"></label><input type="hidden" id="nPrio" value="normal"></div>
-    <div class="g2" style="margin-top:8px"><label class="campo">Motivo<select id="nPai"><option value="">—</option>${Object.keys(arv).map((p) => `<option>${esc(p)}</option>`).join("")}</select></label><label class="campo">Submotivo<select id="nFilho"><option value="">—</option></select></label></div>
+    <div class="g2" style="margin-top:8px"><label class="campo">Telefone<input id="nTel"></label><input type="hidden" id="nPrio" value="normal"></div></div>
     <label class="campo" style="margin-top:8px">Assunto *<input id="nAss"></label>
     <label class="campo" style="margin-top:8px">Descrição *<textarea id="nDesc" rows="5"></textarea></label>
     <div id="nHist" style="margin-top:8px"></div>
@@ -1127,7 +1131,10 @@ function telaAbrir(m) {
       ${pode("atender") ? `<label class="chk"><input type="checkbox" id="nMeu"> já deixar comigo</label>` : ""}</div>
   </section>`;
   $("#trocaSetor").onclick = () => { S.setorAbrir = ""; render(); };
-  $("#nPai").onchange = () => { $("#nFilho").innerHTML = `<option value="">—</option>` + Object.entries(arv[$("#nPai").value] || {}).filter(([, i]) => i.ativo !== false).map(([f, i]) => `<option value="${esc(f)}">${esc(f)}${i.sla != null ? ` · SLA ${i.sla}d` : ""}</option>`).join(""); };
+  const ehInterno = () => ((arv[$("#nPai").value] || {})[$("#nFilho").value] || {}).exige_codigo === false;
+  const modo = () => { const i = ehInterno(); $("#nInterno").style.display = i ? "" : "none"; $("#nCliBloco").style.display = i ? "none" : ""; $("#nHist").style.display = i ? "none" : ""; };
+  $("#nPai").onchange = () => { $("#nFilho").innerHTML = `<option value="">—</option>` + Object.entries(arv[$("#nPai").value] || {}).filter(([, i]) => i.ativo !== false).map(([f, i]) => `<option value="${esc(f)}">${esc(f)}${i.sla != null ? ` · SLA ${i.sla}d` : ""}${i.exige_codigo === false ? " · interno" : ""}</option>`).join(""); modo(); };
+  $("#nFilho").onchange = modo;
   /* digitar o nome ou o código → busca o cliente no ERP; escolhendo, preenche código, nome e telefone e liga o ticket ao cliente */
   let tmB = null, nCli = "";
   const buscarErp = (q) => { clearTimeout(tmB); if (String(q || "").trim().length < 2) { $("#nBusca").innerHTML = ""; return; }
@@ -1151,7 +1158,10 @@ function telaAbrir(m) {
     const body = { departamento: S.setorAbrir, cliente_codigo: $("#nCod").value.trim(), cliente_nome: $("#nNome").value.trim(), cliente_telefone: $("#nTel").value.trim(),
       prioridade: $("#nPrio").value, motivo_pai: $("#nPai").value, motivo_filho: $("#nFilho").value, assunto: $("#nAss").value.trim(), descricao: $("#nDesc").value.trim(), atribuir_a_mim: !!$("#nMeu")?.checked };
     if (nCli) body.erp_cliente_id = nCli;
-    if (!body.cliente_codigo || !body.cliente_nome || !body.assunto || !body.descricao) { A.toast("Preencha código e nome do cliente, assunto e descrição."); return; }
+    const interno = ehInterno();
+    if (interno) { body.cliente_codigo = ""; body.cliente_nome = ""; body.cliente_telefone = ""; delete body.erp_cliente_id; }
+    if (!body.assunto || !body.descricao || (!interno && (!body.cliente_codigo || !body.cliente_nome))) { A.toast(interno ? "Preencha assunto e descrição." : "Preencha código e nome do cliente, assunto e descrição."); return; }
+    if (interno) { try { await chamar("/tickets", { method: "POST", body }); ok(`Solicitação interna aberta para ${S.setorAbrir}.`); S.setorAbrir = ""; S.ajFiltro = "minhas"; await carregar(); ir("internos"); } catch (e) { falha(e); } return; }
     try { const r = await chamar("/tickets", { method: "POST", body }); ok(r.agrupado ? `Agrupado ao chamado nº ${r.chamado} do cliente — virou mais uma solicitação.` : `Chamado nº ${r.chamado} aberto.`); S.setorAbrir = ""; await carregar(); S.sec = "caixa"; abrirTicket(r.id); } catch (e) { falha(e); }
   };
 }
@@ -1196,7 +1206,7 @@ function chatAjuda(v, buscar) {   // buscar(pid) → visão atualizada (pendênc
 }
 /* fila do meu setor: chats e solicitações ABERTOS com departamento = setor */
 function filaSetor(setor) { return setor ? S.e.tickets.filter((t) => ABERTOS.includes(t.status) && norm(t.departamento) === norm(setor)) : []; }
-const assuntoAbertura = (t) => t.chat ? "📱 " + (t.assunto || "Chat do app") : (t.motivo_pai || "— sem motivo —");
+const assuntoAbertura = (t) => t.chat ? "📱 " + (t.assunto || "Chat do app") : (t.interno ? "🔧 " : "") + (t.motivo_pai || "— sem motivo —");
 function telaAjuda(m) {
   if (!S.aj) { m.innerHTML = `<div class="vazio"><b>Carregando…</b></div>`; carregarAjuda(true); return; }
   const aj = S.aj, l = aj.pedidos, f = S.ajFiltro || "setor", setor = aj.setor;
@@ -1206,12 +1216,13 @@ function telaAjuda(m) {
   fila.forEach((t) => (porAss[assuntoAbertura(t)] = porAss[assuntoAbertura(t)] || []).push(t));
   const assuntos = Object.entries(porAss).sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
   const ass = S.ajAss && porAss[S.ajAss] ? S.ajAss : "";
+  const minhas = S.e.tickets.filter((t) => t.interno && t.aberto_por === aj.eu.usuario && ABERTOS.includes(t.status));
   const cor = (x) => { let h = 0; for (const ch of String(x)) h = (h * 31 + ch.charCodeAt(0)) % 360; return `hsl(${h} 70% 62%)`; };
   const bt = (filtro, a, rot, n, c) => `<button type="button" data-ajf="${filtro}" data-ajass="${esc(a)}" class="${f === filtro && (filtro !== "setor" || ass === a) ? "ativo" : ""}" style="--c:${c || "var(--txt3)"}"><i></i>${esc(rot)}<em>${n}</em></button>`;
   const ordSla = (a, b) => (b.app_pendente - a.app_pendente) || ((a.sla?.min ?? 1e9) - (b.sla?.min ?? 1e9));
   const linha = (t) => `<tr class="linha${t.chat ? " app" : ""}${t.app_pendente ? " alerta" : ""}" data-tk="${esc(t.id)}">
-      <td>${t.app_pendente ? `<span class="pisca" title="Cliente respondeu"></span>` : ""}<b>${t.chat ? "📱" : "#"}${esc(t.cliente_codigo || "")}</b></td>
-      <td class="ass"><b>${esc(t.cliente_nome || "(sem nome)")}</b><br><small class="dica">${t.chat ? "chat do app" : esc(t.motivo_filho || t.assunto || "")}${t.erp_pedido_numero ? " · pedido #" + esc(t.erp_pedido_numero) : ""}</small></td>
+      <td>${t.app_pendente ? `<span class="pisca" title="Cliente respondeu"></span>` : ""}<b>${t.interno ? "🔧 interna" : (t.chat ? "📱" : "#") + esc(t.cliente_codigo || "")}</b></td>
+      <td class="ass"><b>${esc(t.interno ? (nomeU(t.aberto_por) || t.cliente_nome || "") : t.cliente_nome || "(sem nome)")}</b>${t.interno ? ` <small class="dica">· ${esc(t.assunto || "")}</small>` : ""}<br><small class="dica">${t.chat ? "chat do app" : esc(t.motivo_filho || t.assunto || "")}${t.erp_pedido_numero ? " · pedido #" + esc(t.erp_pedido_numero) : ""}</small></td>
       <td class="so-largo">${dh(t.criado_em)}</td>
       <td>${t.sem_dono ? `<span class="dica">— sem dono —</span>` : esc(nomeU(t.atribuido_para).split(" ")[0])}</td>
       <td>${slaTxt(t.sla)}<br>${etqSt(t.status)}</td></tr>`;
@@ -1227,13 +1238,15 @@ function telaAjuda(m) {
       <h4>Aberto no setor${setor ? " · " + esc(setor) : ""}</h4>
       ${bt("setor", "", "Tudo aberto no setor", fila.length, "var(--ouro)")}
       ${assuntos.length ? `<h4>Por assunto de abertura</h4>${assuntos.map(([a, ts]) => bt("setor", a, a, ts.length, cor(a))).join("")}` : ""}
+      ${minhas.length || f === "minhas" ? `<h4>Solicitações internas</h4>${bt("minhas", "", "Que eu abri", minhas.length, "var(--violeta)")}` : ""}
       <h4>Pedidos de ajuda</h4>
       ${Object.keys(grupos).map((k2) => bt(k2, "", nomes[k2], grupos[k2].length, k2 === "recebidos" ? "var(--violeta)" : k2 === "enviados" ? "var(--azul)" : "var(--verde)")).join("")}
       <p class="dica" style="padding:10px 6px 2px">Chats e tickets abertos para o seu setor, agrupados pelo assunto com que foram abertos. Os pedidos de ajuda também chegam num balão de chat no topo do hub.</p>
     </aside>
     <section class="painel vidro">
       ${!setor ? `<div class="aviso ouro">Seu usuário está sem setor — defina em Ajustes › Setor de cada pessoa para ver os chats, tickets e pedidos de ajuda do seu setor.</div>` : ""}
-      ${f === "setor" ? `<div class="resumo-real"><span><b style="color:var(--ciano)">${fila.filter((t) => t.chat).length}</b> chat(s)</span><span><b>${fila.filter((t) => !t.chat).length}</b> ticket(s)</span><span><b style="color:var(--ouro)">${fila.filter((t) => t.sem_dono).length}</b> sem dono</span>${ass ? `<span>assunto: <b>${esc(ass)}</b></span>` : ""}</div>
+      ${f === "minhas" ? `<h3 style="margin:0 0 10px">Solicitações internas que eu abri</h3>${minhas.length ? `<table class="tab"><thead><tr><th>Chamado</th><th>Quem / assunto</th><th class="so-largo">Desde</th><th>Dono</th><th>SLA / situação</th></tr></thead><tbody>${minhas.map(linha).join("")}</tbody></table>` : `<div class="vazio">${A.orbe("check", "var(--verde)")}<b>Nenhuma aberta</b></div>`}`
+      : f === "setor" ? `<div class="resumo-real"><span><b style="color:var(--ciano)">${fila.filter((t) => t.chat).length}</b> chat(s)</span><span><b>${fila.filter((t) => !t.chat && !t.interno).length}</b> ticket(s)</span>${fila.some((t) => t.interno) ? `<span><b style="color:var(--violeta)">${fila.filter((t) => t.interno).length}</b> interna(s)</span>` : ""}<span><b style="color:var(--ouro)">${fila.filter((t) => t.sem_dono).length}</b> sem dono</span>${ass ? `<span>assunto: <b>${esc(ass)}</b></span>` : ""}</div>
         ${fila.length ? `<table class="tab" style="margin-top:8px"><thead><tr><th>Chamado</th><th>Cliente</th><th class="so-largo">Desde</th><th>Dono</th><th>SLA / situação</th></tr></thead><tbody>${blocos}</tbody></table>` : `<div class="vazio">${A.orbe("check", "var(--verde)")}<b>Nada aberto no setor</b></div>`}`
       : `<h3 style="margin:0 0 10px">${nomes[f]}</h3><div style="display:flex;flex-direction:column;gap:8px">${grupos[f].map(card).join("") || `<div class="vazio">${A.orbe("check", "var(--verde)")}<b>Nada aqui</b></div>`}</div>`}
     </section></div>`;
@@ -1273,15 +1286,17 @@ function telaAjustes(m) {
   let arv = JSON.parse(JSON.stringify(arvSetor ? (kProp ? proprias[kProp] : {}) : e.motivos));
   const ap = e.app_cliente || {}, ura = JSON.parse(JSON.stringify(ap.ura || []));
   const pais = () => Object.entries(arv).map(([p, fs]) => `<div class="pai"><b>${esc(p)}</b> <button type="button" class="btn-ic p" data-delpai="${esc(p)}" title="Tirar motivo">${svg("lixo")}</button>
-    ${Object.entries(fs).map(([f, i]) => `<div class="filho"><input class="entrada" value="${esc(f)}" disabled><input class="entrada" type="number" min="0" step="0.5" data-sla="${esc(p)}|${esc(f)}" value="${i.sla ?? ""}" title="SLA em dias"><input class="entrada" data-et="${esc(p)}|${esc(f)}" value="${esc((i.etapas || []).join(", "))}" title="Etapas separadas por vírgula"><label class="chk" title="Ativo"><input type="checkbox" data-at="${esc(p)}|${esc(f)}"${i.ativo === false ? "" : " checked"}></label></div>`).join("")}
-    <div class="filho"><input class="entrada" data-novofilho="${esc(p)}" placeholder="+ submotivo"><span></span><span></span><span></span></div></div>`).join("");
+    ${Object.entries(fs).map(([f, i]) => `<div class="filho"><input class="entrada" value="${esc(f)}" disabled><input class="entrada" type="number" min="0" step="0.5" data-sla="${esc(p)}|${esc(f)}" value="${i.sla ?? ""}" title="SLA em dias"><input class="entrada" data-et="${esc(p)}|${esc(f)}" value="${esc((i.etapas || []).join(", "))}" title="Etapas separadas por vírgula"><label class="chk-cod" title="Desmarcado = solicitação interna (sem cliente): não entra na Caixa, cai só em Pedidos de ajuda do setor"><input type="checkbox" data-cod="${esc(p)}|${esc(f)}"${i.exige_codigo === false ? "" : " checked"}> exige código</label><label class="chk" title="Ativo"><input type="checkbox" data-at="${esc(p)}|${esc(f)}"${i.ativo === false ? "" : " checked"}></label></div>`).join("")}
+    <div class="filho"><input class="entrada" data-novofilho="${esc(p)}" placeholder="+ submotivo"><span></span><span></span><span></span><span></span></div></div>`).join("");
   m.innerHTML = `<section class="painel vidro"><h2 style="margin:0 0 12px;font:700 1.25rem var(--titulo)">Ajustes</h2>
     <p class="dica">Banco em uso: <b>${e.banco === "hub" ? "banco do hub" : "bancowendley (mesmos tickets do Streamlit)"}</b> · leituras desde que o servidor ligou: ${e.sync.leituras}</p>
     <div class="cartoes" style="margin-top:12px">
       <div class="cartao" style="grid-column:1/-1"><h3>${svg("lista")} Motivos, submotivos, SLA (dias) e etapas</h3>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><label class="campo" style="min-width:260px">Árvore de<select id="arvSetor"><option value="">Geral — app do cliente e setores sem árvore própria</option>${deps.map((d) => `<option value="${esc(d)}"${norm(d) === norm(arvSetor) ? " selected" : ""}>${esc(d)}${Object.keys(proprias).some((x) => norm(x) === norm(d)) ? " ✓ própria" : ""}</option>`).join("")}</select></label>
           ${arvSetor && !kProp ? `<span class="dica">${esc(arvSetor)} ainda usa a árvore geral. Monte a dele abaixo ou <a href="#" id="copiarGeral">comece copiando a geral</a>.</span>` : arvSetor ? `<span class="dica">Ao abrir chamado para <b>${esc(arvSetor)}</b>, só aparecem estes motivos. Apagar todos = volta a usar a geral.</span>` : ""}</div>
+        <div class="filho leg"><span>Submotivo</span><span>SLA (dias)</span><span>Etapas (separadas por vírgula)</span><span>Código cliente</span><span>Ativo</span></div>
         <div class="arvore" id="arv">${pais()}</div>
+        <p class="dica" style="margin-top:-4px">Sem “exige código” = <b>solicitação interna</b> (ex.: Manutenção › torneira, TI › trocar mouse): abre sem cliente, não entra na Caixa e cai só em Pedidos de ajuda do setor.</p>
         <div style="display:flex;gap:6px"><input class="entrada" id="novoPai" placeholder="+ novo motivo (ex.: Pedido)"><button type="button" class="btn v p" id="addPai">Adicionar</button></div>
         <label class="campo">Setores (para abrir chamado e pedir ajuda) — separados por vírgula<input id="deps" value="${esc(deps.join(", "))}"></label>
         <button type="button" class="btn p" id="salvarArv">Salvar ${arvSetor ? "motivos de " + esc(arvSetor) + " e setores" : "motivos e setores"}</button></div>
@@ -1316,7 +1331,8 @@ function telaAjustes(m) {
     m.querySelectorAll("[data-sla]").forEach((i) => { const [p, f] = i.dataset.sla.split("|"); arv[p][f].sla = i.value === "" ? null : +i.value; });
     m.querySelectorAll("[data-et]").forEach((i) => { const [p, f] = i.dataset.et.split("|"); arv[p][f].etapas = i.value.split(",").map((x) => x.trim()).filter(Boolean); });
     m.querySelectorAll("[data-at]").forEach((i) => { const [p, f] = i.dataset.at.split("|"); arv[p][f].ativo = i.checked; });
-    m.querySelectorAll("[data-novofilho]").forEach((i) => { const v = i.value.trim(); if (v) arv[i.dataset.novofilho][v] = { sla: 2, ativo: true, etapas: ["Apurar"] }; });
+    m.querySelectorAll("[data-cod]").forEach((i) => { const [p, f] = i.dataset.cod.split("|"); arv[p][f].exige_codigo = i.checked; });
+    m.querySelectorAll("[data-novofilho]").forEach((i) => { const v = i.value.trim(); if (v) arv[i.dataset.novofilho][v] = { sla: 2, ativo: true, etapas: ["Apurar"], exige_codigo: true }; });
   };
   const redesenhar = () => { $("#arv").innerHTML = pais(); ligarArv(); };
   const ligarArv = () => m.querySelectorAll("[data-delpai]").forEach((b) => (b.onclick = () => { lerArv(); delete arv[b.dataset.delpai]; redesenhar(); }));
