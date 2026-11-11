@@ -8,7 +8,7 @@
 <meta name="hub-cor" content="#e8b33d">
 <meta name="hub-grupo" content="Operação">
 <meta name="hub-ordem" content="2">
-<meta name="hub-descricao" content="Concierge do hub: caixa, atendimento, tabulação com SLA, pendências entre setores e os pedidos do ERP no mesmo lugar.">
+<meta name="hub-descricao" content="Atendimento do HUB: caixa, atendimento, tabulação com SLA, pendências entre setores e os pedidos do ERP no mesmo lugar.">
 <script type="application/json" id="hub-permissoes">
 {
   "acoes": {
@@ -237,6 +237,27 @@ button.kpi:hover{border-color:color-mix(in srgb,var(--c) 50%,transparent)}
 .ordem{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:11px 13px;border-radius:14px;border:1px solid var(--vidro-borda);background:rgba(255,255,255,.03);color:var(--txt);cursor:pointer;font:inherit;transition:.15s}
 .ordem i{width:10px;height:10px;border-radius:50%;background:var(--c);flex:none}.ordem span{flex:1}.ordem b{display:block;font-size:.88rem}.ordem small{font-size:.72rem;color:var(--txt3)}
 .ordem:hover{border-color:var(--c)}.ordem.on{border-color:var(--c);background:color-mix(in srgb,var(--c) 16%,transparent)}.ordem em{font-style:normal;color:var(--c);font-weight:700}
+.seg-d{display:inline-flex;gap:2px;padding:3px;border-radius:12px;border:1px solid var(--vidro-borda);margin-bottom:12px}
+.seg-d button{padding:7px 14px;border-radius:9px;font:600 .78rem var(--sans,Inter),sans-serif;color:var(--txt2)}.seg-d button.on{background:rgba(139,92,246,.18);color:var(--txt)}
+.d-grid{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:20px}@media(max-width:720px){.d-grid{grid-template-columns:1fr}}
+.d-h{margin:14px 0 8px;font-size:.62rem;letter-spacing:1.4px;text-transform:uppercase;color:var(--txt3);font-weight:700}.d-grid>div>.d-h:first-child{margin-top:0}
+.d-op{display:flex;flex-direction:column;gap:6px}.d-op .ordem{padding:8px 11px}.d-op .ordem:disabled{opacity:.45;cursor:not-allowed}
+.d-conta{margin-top:10px;padding:10px 12px;border-radius:12px;background:rgba(52,211,153,.07);border:1px solid rgba(52,211,153,.25);font-size:.84rem}
+.d-cel{border-radius:26px;padding:16px 12px;background:linear-gradient(160deg,#1b2033,#0d1020);border:1px solid var(--vidro-borda);display:flex;flex-direction:column;gap:10px;min-height:260px}
+.d-notif{display:flex;gap:10px;padding:10px 12px;border-radius:16px;background:rgba(255,255,255,.1);backdrop-filter:blur(10px);color:#fff}
+.d-notif .d-ic{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;background:linear-gradient(135deg,var(--ouro),var(--ouro2));color:#111;font:800 .7rem var(--titulo);flex:none}
+.d-notif b{display:block;font-size:.84rem}.d-notif small{font-size:.76rem;opacity:.85;display:block;white-space:pre-wrap;word-break:break-word}
+.d-vale{border-radius:16px;padding:12px;background:rgba(255,255,255,.05);border-left:4px solid var(--c);color:#fff;display:flex;flex-direction:column;gap:3px}
+.d-vale small{font-size:.62rem;letter-spacing:1px;opacity:.7}.d-vale b{font:800 1.3rem var(--titulo);color:var(--c)}.d-vale .d-qr{font-size:.74rem;opacity:.85}
+.d-item{border:1px solid var(--vidro-borda);border-left:4px solid var(--c);border-radius:14px;padding:10px 12px;margin-bottom:8px;background:rgba(255,255,255,.02)}
+.d-item .l1{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.d-item .etq{color:var(--c);border-color:var(--c)}
+.d-nums{display:flex;gap:18px;margin-top:8px;flex-wrap:wrap}.d-n b{display:block;font:700 1.1rem var(--titulo)}.d-n small{font-size:.66rem;color:var(--txt3)}
+.v-cam{position:relative;border-radius:18px;overflow:hidden;background:#000;aspect-ratio:4/3}.v-cam video{width:100%;height:100%;object-fit:cover;display:block}
+.v-cam .v-mira{position:absolute;inset:18% 22%;border:3px solid rgba(255,255,255,.85);border-radius:18px;box-shadow:0 0 0 999px rgba(0,0,0,.35)}
+.v-cam p{position:absolute;left:0;right:0;bottom:8px;text-align:center;color:#fff;margin:0}.v-cam.sem{aspect-ratio:auto;padding:30px 10px}.v-cam.sem .v-mira,.v-cam.sem video{display:none}.v-cam.sem p{position:static}
+.v-res{display:flex;flex-direction:column;gap:4px;align-items:center;text-align:center;padding:18px;border-radius:18px;border:2px solid}
+.v-res.bom{border-color:var(--verde);background:rgba(52,211,153,.08)}.v-res.mau{border-color:var(--rosa);background:rgba(244,114,182,.08)}
+.v-res .big{font:800 1.8rem var(--titulo)}.v-res .st{font-size:1rem;margin-top:6px}.v-res.bom .st{color:var(--verde)}.v-res.mau .st{color:var(--rosa)}
 .tclis{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .tlista{max-height:min(50vh,440px);overflow:auto;display:flex;flex-direction:column;gap:6px}
 .tpes{display:flex;align-items:center;gap:11px;width:100%;text-align:left;padding:9px 11px;border-radius:12px;border:1px solid var(--vidro-borda);background:rgba(255,255,255,.03);color:var(--txt);cursor:pointer;font:inherit;transition:.15s}
@@ -290,10 +311,12 @@ button.kpi:hover{border-color:color-mix(in srgb,var(--c) 50%,transparent)}
 <div class="app">
   <div class="congelado" id="congelado">
   <header class="topo vidro vidro-borda-viva">
-    <div class="marca"><span id="logo"></span><span><b>Atendimento</b><small>Concierge · hub</small></span></div>
+    <div class="marca"><span id="logo"></span><span><b>Atendimento</b><small>HUB</small></span></div>
     <nav class="nav" id="nav"></nav>
     <form class="busca-topo" id="fBusca"><input class="entrada" id="qTopo" placeholder="Nº, cliente, pedido…"><button class="btn-ic" type="submit" title="Buscar" id="btBusca"></button></form>
     <button type="button" class="btn-ic oculto" id="btPalavra" title="Palavra-chave dos pedidos (app do cliente)"></button>
+    <button type="button" class="btn-ic" id="btQR" title="Validar cupom ou brinde (QR code)">⌗</button>
+    <button type="button" class="btn-ic oculto" id="btDisparo" title="Disparos no app do cliente (cupons, brindes, avisos)">📣</button>
     <span class="sync" id="sync"><i></i><span>…</span></span>
   </header>
   <div class="abas-tk" id="abasTk"></div>
@@ -372,6 +395,8 @@ async function carregar() {
     return;
   }
   const bp = $("#btPalavra"); bp.classList.toggle("oculto", !pode("palavra_chave")); bp.innerHTML = svg("cadeado"); bp.onclick = consultaPalavra;
+  $("#btQR").onclick = popupValidar;
+  const bd = $("#btDisparo"); bd.classList.toggle("oculto", perfil() !== "gestor"); bd.onclick = () => popupDisparos();
   rota();
 }
 function rota() {
@@ -664,6 +689,160 @@ function popupOrdenar() {
     esquerda: [{ rotulo: "Limpar", classe: "btn v", acao: () => aplica("urgencia") }],   // volta ao padrão e fecha
     botoes: [{ rotulo: "Cancelar" }] });
   md.el.querySelectorAll("[data-o]").forEach((b) => (b.onclick = () => { md.fechar(); aplica(b.dataset.o); }));
+}
+/* ══════ 📣 DISPAROS NO APP DO CLIENTE (só Gestor) ══════
+   Notificação no celular de quem tem o app e aceitou. Cupom/brinde vira vale com QR (uso único) na carteira do app. */
+const TIPOS_D = [["aviso", "Aviso", "🔔", "var(--azul)"], ["promocao", "Promoção", "📢", "var(--violeta)"], ["cupom", "Cupom", "🏷", "var(--ouro)"], ["brinde", "Brinde", "🎁", "var(--rosa)"]];
+const ST_D = { na_fila: ["na fila", "var(--txt3)"], enviando: ["enviando…", "var(--azul)"], enviado: ["enviado", "var(--verde)"], aguardando_aprovacao: ["aguardando aprovação", "var(--ouro)"], cancelado: ["cancelado", "var(--rosa)"] };
+function popupDisparos(aba = "novo") {
+  const marcados = [...S.sel];
+  const f = { tipo: "cupom", titulo: "", texto: "", percentual: 10, beneficio: "", validade: new Date(Date.now() + 15 * 864e5).toISOString().slice(0, 10), modo: marcados.length ? "marcados" : "todos", colados: "" };
+  let lista = null, conta = null, t0 = 0;
+  const md = A.modal({ titulo: "Disparos no app do cliente", icone: "mensagem", cor: "var(--violeta)", largura: 780,
+    html: `<div class="seg-d"><button type="button" data-ab="novo">Novo disparo</button><button type="button" data-ab="ant">Disparos anteriores</button></div><div id="dCorpo"></div>`,
+    botoes: [{ rotulo: "Fechar" }] });
+  const corpo = md.el.querySelector("#dCorpo");
+  const codigos = () => f.modo === "marcados" ? marcados : f.modo === "colar" ? f.colados.split(/[\s,;]+/).map((x) => x.trim().toUpperCase()).filter(Boolean) : [];
+  const publico = () => f.modo === "todos" ? { modo: "todos" } : { modo: "codigos", codigos: codigos() };
+  async function contar() {
+    const meu = ++t0; conta = null; pintaConta();
+    try { const r = await A.api(API.replace("/api/tickets", "") + "/api/promo/publico", { method: "POST", body: { tipo: f.tipo, publico: publico() } }); if (meu === t0) { conta = r; pintaConta(); } } catch (_) {}
+  }
+  function pintaConta() {
+    const el = corpo.querySelector("#dConta"); if (!el) return;
+    if (!conta) { el.innerHTML = `<span class="dica">contando…</span>`; return; }
+    const cat = f.tipo === "aviso" ? "avisos do pedido" : "promoções";
+    el.innerHTML = `<b style="font-size:1.4rem;color:var(--verde)">${conta.aceitam}</b> <span>vão receber</span><span class="dica"> · ${conta.com_app} com o app${conta.desligaram ? ` · ${conta.desligaram} desligaram ${cat}` : ""}${conta.sem_app ? ` · ${conta.sem_app} sem o app (não recebem)` : ""}</span>`;
+    const av = corpo.querySelector("#dAprov"); if (av) av.style.display = f.tipo === "cupom" && +f.percentual > conta.limite_aprovacao ? "" : "none";
+    if (av) av.querySelector("b").textContent = conta.limite_aprovacao + "%";
+  }
+  function novo() {
+    const tp = TIPOS_D.find((x) => x[0] === f.tipo);
+    corpo.innerHTML = `<div class="d-grid"><div>
+      <h4 class="d-h">1 · Quem recebe</h4>
+      <div class="d-op">${[["todos", "Todos com o app", "quem instalou e aceitou receber"], ["marcados", `Marcados na Caixa (${marcados.length})`, marcados.length ? "os clientes que você marcou na tabela" : "marque clientes na tabela da Caixa"], ["colar", "Colar códigos", "códigos de clientes separados por vírgula ou linha"]]
+        .map(([v, r, d]) => `<button type="button" class="ordem${f.modo === v ? " on" : ""}" data-modo="${v}" style="--c:var(--azul)"${v === "marcados" && !marcados.length ? " disabled" : ""}><i></i><span><b>${r}</b><small>${d}</small></span></button>`).join("")}</div>
+      ${f.modo === "colar" ? `<textarea class="entrada" id="dCol" placeholder="ABC123, X9K2LM…" style="min-height:60px;margin-top:6px">${esc(f.colados)}</textarea>` : ""}
+      <div class="d-conta" id="dConta"></div>
+      <h4 class="d-h">2 · O que recebe</h4>
+      <div class="fchips">${TIPOS_D.map(([v, r, ic, c]) => `<button type="button" class="fchip${f.tipo === v ? " on" : ""}" data-tipo="${v}" style="--c:${c}"><i></i>${ic} ${r}</button>`).join("")}</div>
+      ${f.tipo === "cupom" ? `<div class="g2" style="margin-top:10px"><label class="campo">Desconto (%)<input class="entrada" id="dPct" type="number" min="1" max="100" value="${f.percentual}"></label><label class="campo">Validade<input class="entrada" id="dVal" type="date" value="${f.validade}"></label></div>
+        <label class="campo" style="margin-top:8px">Vale em quê? <small class="dica">(opcional)</small><input class="entrada" id="dBen" maxlength="80" placeholder="ex.: em qualquer colchão de molas" value="${esc(f.beneficio)}"></label>
+        <div class="aviso ouro" id="dAprov" style="display:none;margin-top:8px">Acima de <b>50%</b>: o disparo fica aguardando a aprovação de <b>outro gestor</b> antes de sair.</div>` : ""}
+      ${f.tipo === "brinde" ? `<div class="g2" style="margin-top:10px"><label class="campo">Qual brinde<input class="entrada" id="dBen" maxlength="120" placeholder="ex.: 1 travesseiro de fibra" value="${esc(f.beneficio)}"></label><label class="campo">Validade<input class="entrada" id="dVal" type="date" value="${f.validade}"></label></div>` : ""}
+      <label class="campo" style="margin-top:10px">Título da notificação<input class="entrada" id="dTit" maxlength="60" placeholder="ex.: Presente para você 🎁" value="${esc(f.titulo)}"></label>
+      <label class="campo" style="margin-top:8px">Texto<textarea class="entrada" id="dTxt" maxlength="240" style="min-height:64px" placeholder="ex.: Seu cupom de 15% já está na carteira do app. Mostre o QR code na loja.">${esc(f.texto)}</textarea></label>
+    </div><div>
+      <h4 class="d-h">Como chega no celular</h4>
+      <div class="d-cel"><div class="d-notif"><span class="d-ic">KS</span><span><b id="pvT">${esc(f.titulo || "Título da notificação")}</b><small id="pvX">${esc(f.texto || "O texto aparece aqui.")}</small></span></div>
+        ${["cupom", "brinde"].includes(f.tipo) ? `<div class="d-vale" style="--c:${tp[3]}"><small>NA CARTEIRA DO APP</small><b id="pvV">${f.tipo === "cupom" ? esc(f.percentual + "% OFF") : esc(f.beneficio || "Brinde")}</b><span class="d-qr">▦ QR code · uso único</span><small>válido até ${esc(d10(f.validade))}</small></div>` : ""}</div>
+      <p class="dica" style="margin-top:10px">Cada cliente recebe um <b>código próprio</b>. A loja valida no ⌗ (câmera ou código) — qualquer lugar com o hub aberto.</p>
+    </div></div>
+    <div style="display:flex;justify-content:flex-end;margin-top:14px"><button type="button" class="btn" id="dRev">3 · Revisar e enviar →</button></div>`;
+    pintaConta();
+    corpo.querySelectorAll("[data-modo]").forEach((b) => (b.onclick = () => { f.modo = b.dataset.modo; novo(); contar(); }));
+    corpo.querySelectorAll("[data-tipo]").forEach((b) => (b.onclick = () => { ler(); f.tipo = b.dataset.tipo; novo(); contar(); }));
+    const liga = (id, k, cb) => { const e = corpo.querySelector(id); if (e) e.oninput = () => { f[k] = e.value; cb && cb(); }; };
+    liga("#dTit", "titulo", () => (corpo.querySelector("#pvT").textContent = f.titulo || "Título da notificação"));
+    liga("#dTxt", "texto", () => (corpo.querySelector("#pvX").textContent = f.texto || "O texto aparece aqui."));
+    liga("#dPct", "percentual", () => { corpo.querySelector("#pvV").textContent = f.percentual + "% OFF"; pintaConta(); });
+    liga("#dBen", "beneficio", () => { if (f.tipo === "brinde") corpo.querySelector("#pvV").textContent = f.beneficio || "Brinde"; });
+    liga("#dVal", "validade");
+    const col = corpo.querySelector("#dCol"); if (col) col.oninput = () => { f.colados = col.value; clearTimeout(col._t); col._t = setTimeout(contar, 500); };
+    corpo.querySelector("#dRev").onclick = revisar;
+  }
+  function ler() { corpo.querySelectorAll("#dTit,#dTxt,#dPct,#dBen,#dVal").forEach((e) => { const k = { dTit: "titulo", dTxt: "texto", dPct: "percentual", dBen: "beneficio", dVal: "validade" }[e.id]; f[k] = e.value; }); }
+  async function revisar() {
+    ler();
+    if (!f.titulo.trim() || !f.texto.trim()) { A.toast("Escreva o título e o texto."); return; }
+    if (!conta || !conta.aceitam) { A.toast("Ninguém desse público vai receber."); return; }
+    const tp = TIPOS_D.find((x) => x[0] === f.tipo), aprov = f.tipo === "cupom" && +f.percentual > conta.limite_aprovacao;
+    const ok = await A.confirmar(`<b>${tp[2]} ${tp[1]}</b> para <b>${conta.aceitam}</b> cliente(s).<br>${esc(f.titulo)}${f.tipo === "cupom" ? `<br><b>${f.percentual}% de desconto</b>, válido até ${d10(f.validade)}` : f.tipo === "brinde" ? `<br><b>${esc(f.beneficio)}</b>, válido até ${d10(f.validade)}` : ""}${aprov ? `<br><br>Vai aguardar a aprovação de outro gestor.` : ""}`, { rotulo: aprov ? "Mandar para aprovação" : "Enviar agora" });
+    if (!ok) return;
+    try {
+      const body = { tipo: f.tipo, titulo: f.titulo, texto: f.texto, publico: publico(), percentual: +f.percentual, beneficio: f.beneficio, validade: f.validade };
+      const r = await A.api("/api/promo/disparos", { method: "POST", body });
+      ok_(r.disparo.status === "aguardando_aprovacao" ? "Disparo aguardando a aprovação de outro gestor." : "Disparo saiu! Acompanhe em Disparos anteriores.");
+      lista = null; trocar("ant");
+    } catch (e) { falha(e); }
+  }
+  const ok_ = (t) => ok(t);
+  async function anteriores() {
+    if (!lista) { corpo.innerHTML = `<p class="dica" style="padding:20px;text-align:center">Carregando…</p>`; try { lista = await A.api("/api/promo/disparos"); } catch (e) { corpo.innerHTML = `<div class="aviso">${esc(e.message)}</div>`; return; } }
+    const ds = lista.disparos;
+    corpo.innerHTML = `<p class="dica" style="margin:4px 2px 10px"><b>${lista.total_app}</b> cliente(s) com o app e notificações ativas.</p>` + (ds.length ? ds.map((d) => { const tp = TIPOS_D.find((x) => x[0] === d.tipo) || TIPOS_D[0], st = ST_D[d.status] || [d.status, "var(--txt3)"];
+      const n = (r, v, c) => `<span class="d-n"><b style="color:${c || "var(--txt)"}">${v ?? 0}</b><small>${r}</small></span>`;
+      return `<div class="d-item" style="--c:${tp[3]}"><div class="l1"><b>${tp[2]} ${esc(d.titulo)}</b><span class="etq" style="--c:${st[1]}">${st[0]}</span><span class="dica" style="margin-left:auto">${dh(d.criado_em)} · ${esc(d.criado_por_nome || "")}</span></div>
+        <small class="dica">${esc(d.texto)}${d.beneficio ? ` · <b>${esc(d.beneficio)}</b>` : ""}${d.validade ? ` · até ${d10(d.validade)}` : ""}${d.aprovado_por_nome ? ` · aprovado por ${esc(d.aprovado_por_nome)}` : ""}</small>
+        <div class="d-nums">${n("previstos", d.previsto)}${n("enviados", d.enviados, "var(--verde)")}${d.falhas ? n("falharam", d.falhas, "var(--rosa)") : ""}${n("abriram", d.abertos, "var(--azul)")}${["cupom", "brinde"].includes(d.tipo) ? n("usados", d.usados, "var(--ouro2)") : ""}</div>
+        ${d.status === "aguardando_aprovacao" ? `<div style="display:flex;gap:6px;margin-top:8px">${d.criado_por !== lista.eu ? `<button type="button" class="btn p" data-aprovar="${d.id}">✅ Aprovar e enviar</button>` : `<span class="dica">Outro gestor precisa aprovar.</span>`}<button type="button" class="btn v p" data-cancelar="${d.id}">Cancelar</button></div>` : ""}</div>`; }).join("")
+      : `<div class="vazio">${A.orbe("mensagem", "var(--violeta)")}<b>Nenhum disparo ainda</b></div>`);
+    corpo.querySelectorAll("[data-aprovar]").forEach((b) => (b.onclick = async () => { if (!(await A.confirmar("Aprovar e enviar este disparo agora?", { rotulo: "Aprovar" }))) return; try { await A.api(`/api/promo/disparos/${b.dataset.aprovar}/aprovar`, { method: "POST", body: {} }); ok("Aprovado — saindo."); lista = null; anteriores(); } catch (e) { falha(e); } }));
+    corpo.querySelectorAll("[data-cancelar]").forEach((b) => (b.onclick = async () => { try { await A.api(`/api/promo/disparos/${b.dataset.cancelar}/cancelar`, { method: "POST", body: {} }); ok("Disparo cancelado."); lista = null; anteriores(); } catch (e) { falha(e); } }));
+    if (ds.some((d) => ["na_fila", "enviando"].includes(d.status))) setTimeout(() => { if (md.el.isConnected && aba === "ant") { lista = null; anteriores(); } }, 3000);
+  }
+  function trocar(a) { aba = a; md.el.querySelectorAll("[data-ab]").forEach((b) => b.classList.toggle("on", b.dataset.ab === a)); a === "novo" ? (novo(), contar()) : anteriores(); }
+  md.el.querySelectorAll("[data-ab]").forEach((b) => (b.onclick = () => trocar(b.dataset.ab)));
+  trocar(aba);
+}
+
+/* ══════ ⌗ VALIDAR CUPOM / BRINDE (QR code ou código) — qualquer pessoa do hub, em qualquer lugar ══════ */
+function popupValidar() {
+  let stream = null, timer = null, detector = null, lendo = false;
+  const md = A.modal({ titulo: "Validar cupom ou brinde", icone: "check", cor: "var(--verde)", largura: 520,
+    html: `<div id="vCorpo"></div>`, botoes: [{ rotulo: "Fechar" }], aoFechar: parar });
+  const corpo = md.el.querySelector("#vCorpo");
+  function parar() { clearInterval(timer); timer = null; if (stream) stream.getTracks().forEach((t) => t.stop()); stream = null; }
+  const codigoDe = (txt) => { const m2 = String(txt || "").trim().match(/\/v\/([A-Za-z0-9-]+)\s*$/); return (m2 ? m2[1] : String(txt || "")).trim().toUpperCase(); };
+  function inicio() {
+    corpo.innerHTML = `<div class="v-cam"><video id="vVid" playsinline muted></video><div class="v-mira"></div><p class="dica" id="vMsg">Aponte a câmera para o QR code do cliente.</p></div>
+      <form id="vForm" style="display:flex;gap:6px;margin-top:10px"><input class="entrada" id="vCod" placeholder="ou digite o código (ex.: K7MA-Q9PX)" autocomplete="off" style="flex:1;text-transform:uppercase"><button class="btn" type="submit">Conferir</button></form>`;
+    corpo.querySelector("#vForm").onsubmit = (e) => { e.preventDefault(); const c = codigoDe(corpo.querySelector("#vCod").value); if (c) conferir(c); };
+    camera();
+  }
+  async function camera() {
+    const msg = corpo.querySelector("#vMsg"), vid = corpo.querySelector("#vVid");
+    try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false }); }
+    catch (_) { if (msg) msg.textContent = "Sem acesso à câmera aqui — digite o código abaixo."; corpo.querySelector(".v-cam").classList.add("sem"); return; }
+    vid.srcObject = stream; await vid.play().catch(() => {});
+    if ("BarcodeDetector" in window) { try { detector = new BarcodeDetector({ formats: ["qr_code"] }); } catch (_) {} }
+    if (!detector && !window.jsQR) await new Promise((ok2) => { const sc = document.createElement("script"); sc.src = "/static/vendor/jsQR.js"; sc.onload = ok2; sc.onerror = ok2; document.head.appendChild(sc); });
+    const cv = document.createElement("canvas"), cx = cv.getContext("2d", { willReadFrequently: true });
+    timer = setInterval(async () => {
+      if (lendo || !vid.videoWidth) return; lendo = true;
+      try {
+        let txt = "";
+        if (detector) { const r = await detector.detect(vid); txt = r[0]?.rawValue || ""; }
+        else if (window.jsQR) { cv.width = vid.videoWidth; cv.height = vid.videoHeight; cx.drawImage(vid, 0, 0); const img = cx.getImageData(0, 0, cv.width, cv.height); txt = window.jsQR(img.data, img.width, img.height)?.data || ""; }
+        if (txt) { parar(); conferir(codigoDe(txt)); }
+      } catch (_) {}
+      lendo = false;
+    }, 300);
+  }
+  async function conferir(cod) {
+    parar();
+    corpo.innerHTML = `<p class="dica" style="text-align:center;padding:24px">Conferindo ${esc(cod)}…</p>`;
+    let v;
+    try { v = await A.api("/api/promo/vale/" + encodeURIComponent(cod)); }
+    catch (e) { corpo.innerHTML = `<div class="v-res mau"><b>✕ ${esc(e.message)}</b></div><button type="button" class="btn" id="vDe" style="margin-top:10px">Ler outro</button>`; corpo.querySelector("#vDe").onclick = inicio; return; }
+    const cor = v.status === "valido" ? "bom" : "mau", local = ls.get("wd.tk.local", "");
+    corpo.innerHTML = `<div class="v-res ${cor}"><small>${v.tipo === "brinde" ? "🎁 BRINDE" : "🏷 CUPOM"} · ${esc(v.codigo)}</small><b class="big">${esc(v.tipo === "cupom" ? v.percentual + "% OFF" : v.beneficio)}</b>
+        <span>${esc(v.titulo)}${v.tipo === "cupom" && v.beneficio ? " · " + esc(v.beneficio) : ""}</span><span>Cliente: <b>${esc(v.cliente_nome || "—")}</b> · válido até ${d10(v.validade)}</span>
+        <b class="st">${v.status === "valido" ? "✓ VÁLIDO" : v.status === "usado" ? `✕ JÁ USADO em ${dh(v.usado_em)}${v.usado_local ? " · " + esc(v.usado_local) : ""}` : "✕ VENCIDO"}</b></div>
+      ${v.status === "valido" ? `<label class="campo" style="margin-top:10px">Onde está sendo usado<input class="entrada" id="vLocal" placeholder="ex.: Loja Tatuapé, site, venda externa" value="${esc(local)}"></label>
+        <button type="button" class="btn grande" id="vUsar" style="margin-top:10px;width:100%">✅ Validar e marcar como usado</button>` : ""}
+      <button type="button" class="btn v" id="vDe" style="margin-top:8px;width:100%">Ler outro</button>`;
+    corpo.querySelector("#vDe").onclick = inicio;
+    const u = corpo.querySelector("#vUsar");
+    if (u) u.onclick = async () => {
+      const lc = corpo.querySelector("#vLocal").value.trim(); ls.set("wd.tk.local", lc);
+      try { await A.api(`/api/promo/vale/${encodeURIComponent(v.codigo)}/usar`, { method: "POST", body: { local: lc } }); ok("Vale validado e marcado como usado.");
+        corpo.innerHTML = `<div class="v-res bom"><b class="big">✓ VALIDADO</b><span>${esc(v.tipo === "cupom" ? v.percentual + "% OFF" : v.beneficio)} · ${esc(v.cliente_nome || "")}</span><span>Uso registrado agora${lc ? " em " + esc(lc) : ""}. Não vale de novo.</span></div><button type="button" class="btn" id="vDe" style="margin-top:10px;width:100%">Ler outro</button>`;
+        corpo.querySelector("#vDe").onclick = inicio; }
+      catch (e) { falha(e); conferir(v.codigo); }
+    };
+  }
+  inicio();
 }
 /* ⇄ Transferir: escolhe a pessoa num popup (online primeiro, setor de cada um) */
 function popupTransferir(cids, depois) {

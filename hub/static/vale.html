@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Validar vale · HUB</title>
+<link rel="stylesheet" href="/static/aurora.css?v=3">
+<style>
+/* vale.html — o QR code do cupom/brinde abre aqui (câmera do celular). Precisa do login do hub. */
+body{margin:0;min-height:100vh;background:var(--noite);color:var(--txt);font-family:var(--sans,Inter),sans-serif;display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box}
+.caixa{width:100%;max-width:420px;border-radius:24px;padding:22px 18px;display:flex;flex-direction:column;gap:12px}
+h1{font:700 1.1rem var(--titulo);margin:0}.dica{color:var(--txt3);font-size:.8rem;margin:0}
+.res{display:flex;flex-direction:column;gap:4px;align-items:center;text-align:center;padding:18px;border-radius:18px;border:2px solid}
+.res.bom{border-color:var(--verde);background:rgba(52,211,153,.08)}.res.mau{border-color:var(--rosa);background:rgba(244,114,182,.08)}
+.res .big{font:800 1.9rem var(--titulo)}.res .st{font-size:1rem;margin-top:6px}.res.bom .st{color:var(--verde)}.res.mau .st{color:var(--rosa)}
+.entrada{width:100%;box-sizing:border-box}.btn{width:100%;justify-content:center}
+</style>
+</head>
+<body>
+<main class="caixa vidro vidro-borda-viva" id="m"><p class="dica">Conferindo…</p></main>
+<script src="/static/aurora.js?v=3"></script>
+<script>
+(() => {
+  const A = Aurora, esc = A.esc, m = document.getElementById("m");
+  const cod = decodeURIComponent(location.pathname.split("/").pop() || "").toUpperCase();
+  const d10 = (s) => { s = String(s || ""); return s.length >= 10 ? `${s.slice(8, 10)}/${s.slice(5, 7)}/${s.slice(0, 4)}` : "—"; };
+  const ls = { get: (k, d) => { try { return localStorage.getItem(k) ?? d; } catch (_) { return d; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch (_) {} } };
+  async function req(url, op = {}) {
+    const r = await fetch(url, { credentials: "same-origin", headers: { "Content-Type": "application/json" }, ...op });
+    if (r.status === 401) { location.href = "/login?volta=" + encodeURIComponent(location.pathname); throw new Error("login"); }
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.detail || "Erro " + r.status);
+    return j;
+  }
+  async function ver() {
+    let v;
+    try { v = await req("/api/promo/vale/" + encodeURIComponent(cod)); }
+    catch (e) { if (e.message !== "login") m.innerHTML = `<h1>Validar vale</h1><div class="res mau"><b class="st">✕ ${esc(e.message)}</b></div>`; return; }
+    const ok = v.status === "valido";
+    m.innerHTML = `<h1>Validar ${v.tipo === "brinde" ? "brinde" : "cupom"}</h1>
+      <div class="res ${ok ? "bom" : "mau"}"><span class="dica">${esc(v.codigo)}</span><b class="big">${esc(v.tipo === "cupom" ? v.percentual + "% OFF" : v.beneficio)}</b>
+        <span>${esc(v.titulo)}</span><span>Cliente: <b>${esc(v.cliente_nome || "—")}</b> · válido até ${d10(v.validade)}</span>
+        <b class="st">${ok ? "✓ VÁLIDO" : v.status === "usado" ? "✕ JÁ USADO" + (v.usado_local ? " · " + esc(v.usado_local) : "") : "✕ VENCIDO"}</b></div>
+      ${ok ? `<label class="campo">Onde está sendo usado<input class="entrada" id="local" placeholder="ex.: Loja Tatuapé, site, venda externa" value="${esc(ls.get("wd.tk.local", ""))}"></label>
+        <button class="btn grande" id="usar">✅ Validar e marcar como usado</button>` : ""}
+      <p class="dica">Uso único: depois de validado, o vale não vale de novo.</p>`;
+    const u = document.getElementById("usar");
+    if (u) u.onclick = async () => {
+      const local = document.getElementById("local").value.trim(); ls.set("wd.tk.local", local); u.disabled = true;
+      try { await req(`/api/promo/vale/${encodeURIComponent(v.codigo)}/usar`, { method: "POST", body: JSON.stringify({ local }) });
+        m.innerHTML = `<h1>Pronto</h1><div class="res bom"><b class="big">✓ VALIDADO</b><span>${esc(v.tipo === "cupom" ? v.percentual + "% OFF" : v.beneficio)} · ${esc(v.cliente_nome || "")}</span><span>Uso registrado${local ? " em " + esc(local) : ""}.</span></div>`; }
+      catch (e) { u.disabled = false; A.toast(esc(e.message)); ver(); }
+    };
+  }
+  ver();
+})();
+</script>
+</body>
+</html>
