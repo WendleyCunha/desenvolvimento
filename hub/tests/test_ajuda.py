@@ -127,3 +127,35 @@ def test_conversa_com_a_equipe_sem_cliente(t):
     t.como("lucas")
     assert len(t.get("/api/tickets/conversa/carla").json()["mensagens"]) == 2
     assert not T.BASE.cont   # nada de cliente/ticket criado
+
+
+def test_finalizar_nos_tres_cenarios(t, monkeypatch):
+    # 1) pedido de ajuda (com código): finaliza mesmo sem mensagem final
+    tid = abrir_e_pedir(t, "Logística")
+    t.como("lucas")
+    v = t.get("/api/tickets/ajuda").json()["pedidos"][0]
+    assert t.post("/api/tickets/ajuda/mensagem", json={"tid": tid, "pid": v["id"], "texto": "", "encerrar": True}).status_code == 200
+    assert t.get("/api/tickets/ajuda").json()["pedidos"][0]["status"] == "resolvido"
+    # 2) conversa com a equipe (sem código): finaliza para os dois; mensagem nova reabre
+    T._DM.clear()
+    t.post("/api/tickets/conversa", json={"para": "carla", "texto": "oi"})
+    assert t.post("/api/tickets/conversa/finalizar", json={"para": "carla"}).status_code == 200
+    t.como("carla")
+    assert t.get("/api/tickets/ajuda").json()["conversas"][0]["finalizada"] is True
+    t.post("/api/tickets/conversa", json={"para": "lucas", "texto": "mais uma"})
+    assert t.get("/api/tickets/ajuda").json()["conversas"][0]["finalizada"] is False
+    assert t.post("/api/tickets/conversa/finalizar", json={"para": "gil"}).status_code == 404   # sem conversa
+    # 3) solicitação interna (sem código): o setor de destino finaliza mesmo sem a permissão "encerrar"
+    import acesso
+    t.como("adm")
+    assert t.put("/api/tickets/config/motivos", json={"setor": "Logística", "motivos": {"Predial": {"Torneira": {"sla": 1, "ativo": True, "etapas": [], "exige_codigo": False}}}}).status_code == 200
+    T.BASE.t_cfg = time.time() + 3600
+    t.como("carla")
+    r = t.post("/api/tickets/tickets", json={"departamento": "Logística", "motivo_pai": "Predial", "motivo_filho": "Torneira", "assunto": "pingando", "descricao": "copa"}).json()
+    sem_encerrar = lambda u, slug, esq: {"acoes": {k: True for k in ("acessar", "atender", "abrir")}, "campos": {}}  # noqa: E731
+    monkeypatch.setattr(acesso, "permissoes", sem_encerrar)
+    u = "/api/tickets/ticket/" + quote(r["id"], safe="") + "/alterar"
+    t.como("gil")      # Compras não é o setor nem quem pediu
+    assert t.post(u, json={"status": "finalizado"}).status_code in (403, 404)
+    t.como("lucas")    # Logística: finaliza
+    assert t.post(u, json={"status": "finalizado"}).status_code == 200
