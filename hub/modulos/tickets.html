@@ -189,6 +189,15 @@ button.kpi:hover{border-color:color-mix(in srgb,var(--c) 50%,transparent)}
 .sol-card.chat{--c:var(--ciano)}
 .sol-card .t1{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.sol-card .t1 b{font-size:.84rem}
 .sol-card small{color:var(--txt3);font-size:.7rem}
+.barra-sol{position:sticky;top:-2px;z-index:3;display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:6px 0 8px;margin-bottom:4px;border-bottom:1px solid var(--vidro-borda);background:color-mix(in srgb,var(--noite2) 88%,transparent);backdrop-filter:blur(8px)}
+.barra-sol .qual{font-size:.72rem;color:var(--txt3);max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.barra-sol .esp{flex:1}
+.ic-sol{position:relative;display:inline-flex;align-items:center;gap:5px;height:30px;padding:0 10px;border-radius:10px;border:1px solid var(--vidro-borda);background:rgba(255,255,255,.04);color:var(--txt);font:600 .74rem var(--sans,Inter),sans-serif;cursor:pointer;transition:.15s}
+.ic-sol:hover{border-color:var(--violeta);background:rgba(139,92,246,.1)}
+.ic-sol.tem{border-color:rgba(139,92,246,.6);box-shadow:0 0 12px -4px rgba(139,92,246,.8)}
+.ic-sol b{min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:var(--violeta);color:#fff;font-size:.66rem;display:inline-flex;align-items:center;justify-content:center}
+.setores{display:flex;flex-wrap:wrap;gap:6px}.setores label{cursor:pointer}.setores input{display:none}
+.setores span{display:inline-block;padding:6px 11px;border-radius:20px;border:1px solid var(--vidro-borda);font-size:.78rem;transition:.15s}
+.setores input:checked+span{background:var(--violeta);border-color:var(--violeta);color:#fff}
 .painel-sol{display:flex;flex-direction:column;gap:9px;margin-top:6px;padding:12px;border-radius:14px;border:1px solid color-mix(in srgb,var(--c) 40%,transparent);background:color-mix(in srgb,var(--c) 5%,transparent)}
 .at-cab{border-left:4px solid var(--c,transparent)}
 .tab tr.linha.app td:first-child{box-shadow:inset 3px 0 0 var(--ciano)}
@@ -271,7 +280,7 @@ const PRIO = { urgente: ["Urgente", "#fb7185"], alta: ["Alta", "#fb923c"], norma
 const ERP_ST = { rascunho: ["Rascunho", "#94a3b8"], confirmado: ["Confirmado", "#60a5fa"], agendado: ["Agendado", "#8b5cf6"], em_carga: ["Em carga", "#22d3ee"], em_rota: ["Em rota", "#22d3ee"], reagendar: ["Reagendar", "#fb923c"], entregue: ["Entregue", "#34d399"], cancelado: ["Cancelado", "#6b7183"], recusado: ["Recusado", "#fb7185"] };
 const ABERTOS = ["aberto", "em_andamento", "aguardando"];
 const ls = { get(k, d) { try { return localStorage.getItem(k) ?? d; } catch (_) { return d; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (_) {} } };
-const S = { e: null, sec: ls.get("wd.tk.sec", "meudia"), aba: ls.get("wd.tk.aba", "meus"), fila: "", ord: ls.get("wd.tk.ord", "urgencia"),
+const S = { e: null, sec: ls.get("wd.tk.sec", "meudia"), aba: ls.get("wd.tk.aba", "meus"), fila: "", ord: ls.get("wd.tk.ord", "urgencia") === "prioridade" ? "urgencia" : ls.get("wd.tk.ord", "urgencia"),
   q: "", pag: 0, sel: new Set(), atend: "", aberto: null, det: null, setorAbrir: "" };
 const pode = (a) => !!S.e?.perm?.acoes?.[a];
 S.abas = (() => { try { return JSON.parse(ls.get("wd.tk.abas", "[]")) || []; } catch (_) { return []; } })();
@@ -554,7 +563,7 @@ function telaCaixa(m) {
         ${S.q ? `<span class="mini c" style="--c:var(--ouro)">busca: ${esc(S.q)} <a href="#" id="tiraQ">✕</a></span>` : ""}
         ${S.fila ? `<span class="mini c" style="--c:var(--violeta)">fila: ${esc(S.fila.split(":")[1] === "_ninguem" ? "sem dono" : nomeU(S.fila.split(":")[1]) || S.fila.split(":")[1])}</span>` : ""}
         <span class="dica">Ordenar</span>
-        <select class="entrada" id="ord">${[["urgencia", "Urgência (quem respondeu + SLA)"], ["prioridade", "Prioridade"], ["atendente", "Por atendente"], ["antigo", "Mais antigo"], ["recente", "Mais recente"]].map(([v, r]) => `<option value="${v}"${S.ord === v ? " selected" : ""}>${r}</option>`).join("")}</select>
+        <select class="entrada" id="ord">${[["urgencia", "Urgência (quem respondeu + SLA)"], ["atendente", "Por atendente"], ["antigo", "Mais antigo"], ["recente", "Mais recente"]].map(([v, r]) => `<option value="${v}"${S.ord === v ? " selected" : ""}>${r}</option>`).join("")}</select>
         <div class="dir">
           ${pode("transferir") ? `<span class="dica" id="nSel">${S.sel.size ? S.sel.size + " selecionado(s)" : ""}</span><select class="entrada" id="loteAlvo"><option value="">Transferir selecionados para…</option><option value="__ninguem">— sem responsável —</option>${S.e.usuarios.map((u) => `<option value="${esc(u.usuario)}">${esc(u.nome)}</option>`).join("")}</select>` : ""}
           ${pode("abrir") ? `<button type="button" class="btn p" id="btNovo">${svg("mais")} Chamado</button>` : ""}
@@ -565,7 +574,7 @@ function telaCaixa(m) {
           ${pode("transferir") ? `<td><input type="checkbox" data-sel="${esc(x.cid)}"${S.sel.has(x.cid) ? " checked" : ""}></td>` : ""}
           <td>${x.app_pendente || x.nao_visto ? `<span class="pisca" title="Cliente respondeu"></span>` : ""}<b>${x.estado === "atendimento" ? "📱" : "#"}${esc(x.cliente_codigo || x.cid)}</b></td>
           <td class="ass"><b>${esc(x.cliente_nome || "(sem nome)")}</b>
-            <span style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px">${chipsSol(x)}${x.prioridade !== "normal" ? etq(PRIO[x.prioridade]?.[0] || x.prioridade, PRIO[x.prioridade]?.[1] || "#888") : ""}${x.pendencias.map((p) => etq("aguarda " + p, "#8b5cf6")).join("")}</span></td>
+            <span style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px">${chipsSol(x)}${x.pendencias.map((p) => etq("aguarda " + p, "#8b5cf6")).join("")}</span></td>
           <td class="so-largo">${dh(x.criado_em)}</td>
           <td>${x.sem_dono ? `<span class="dica">— sem dono —</span>` : esc(nomeU(x.atribuido_para).split(" ")[0])}</td>
           <td>${vivo(x) ? slaTxt(x.sla) + "<br>" : ""}${etqEstado(x)}${x.estado === "atendimento" && x.solsAb.length ? `<br><small class="dica">+ ticket com ${x.solsAb.length} solicitação(ões)</small>` : ""}</td></tr>`).join("")}</tbody></table>
@@ -618,8 +627,9 @@ async function telaCliente(m, cid) {
   const D = S.det, me = S.e.eu, arv = S.e.motivos, sols = D.solicitacoes;
   const chat = sols.find((s) => s.chat && ABERTOS.includes(s.status)) || null;
   const probs = sols.filter((s) => !s.chat), abertas = probs.filter((s) => ABERTOS.includes(s.status)), fechadas = sols.filter((s) => !ABERTOS.includes(s.status));
-  const sel = sols.find((s) => s.id === S.solSel) || abertas[0] || chat || probs[0] || sols[0];
-  S.solSel = sel.id;
+  const ativa = sols.find((s) => s.id === S.solSel && ABERTOS.includes(s.status)) || abertas[0] || chat || null;
+  const sel = ativa || probs[0] || sols[0];   // sem nada aberto: só para o bloco do ERP
+  S.solSel = ativa ? ativa.id : null;
   const estado = chat ? "atendimento" : abertas.length ? "ticket" : "concluido";
   const comigo = D.dono.includes(me.usuario), temDono = D.dono.length > 0, vivoC = estado !== "concluido";
   const rot = (s) => s.chat ? "📱 Chat" + (ABERTOS.includes(s.status) ? "" : " (concluído)") : (s.motivo_filho || s.assunto || "Solicitação") + (s.erp_pedido_numero ? " #" + s.erp_pedido_numero : "");
@@ -639,8 +649,9 @@ async function telaCliente(m, cid) {
   const filhos = Object.entries(arv[sel.motivo_pai] || {}).filter(([, i]) => i.ativo !== false);
   const pend = sel.solicitacoes_setor || [], pedidosAb = pend.filter((x) => x.tipo === "pedido"), resp = Object.fromEntries(pend.filter((x) => x.tipo === "resposta").map((x) => [x.pedido_id, x]));
   const selAberta = ABERTOS.includes(sel.status), caminho = String(sel.etapa_atual || "").split(" › ");
-  const tipoSol = S.tipoSol || "contato", tipoChat = S.tipoChat || "resposta";
-  const cartao = (s) => `<button type="button" class="sol-card${s.id === sel.id ? " sel" : ""}${s.chat ? " chat" : ""}" data-sol="${esc(s.id)}" style="--c:${corSol(s.cor)}">
+  const tipoChat = S.tipoChat || "resposta", ehSol = !!(ativa && !ativa.chat), atende = pode("atender");
+  const nPend = pedidosAb.filter((p) => !resp[p.id]).length;
+  const cartao = (s) => `<button type="button" class="sol-card${ativa && s.id === ativa.id ? " sel" : ""}${s.chat ? " chat" : ""}" data-sol="${esc(s.id)}" style="--c:${corSol(s.cor)}">
       <span class="t1"><b>${esc(rot(s))}</b>${etqSt(s.status)}${s.app_pendente ? etq("📱 respondeu", "#22d3ee") : ""}</span>
       <small>${s.chat ? esc(s.assunto || "") : esc(s.motivo_pai || "não classificado")}${s.departamento ? " · " + esc(s.departamento) : ""}${ABERTOS.includes(s.status) ? " · " + slaTxt(s.sla) : ""}${(s.pend_abertas || []).length ? ` · ${s.pend_abertas.length} pendência(s)` : ""}</small></button>`;
   if (S.convAberta == null || S.convAbertaDe !== cid) { S.convAberta = !!chat; S.convAbertaDe = cid; }   // sem chat ativo, a conversa abre MINIMIZADA
@@ -652,41 +663,30 @@ async function telaCliente(m, cid) {
         <textarea class="entrada" id="txtChat" placeholder="Responder ao cliente no chat… (Ctrl+Enter envia)" style="margin-top:8px;min-height:64px"></textarea>
         <div style="display:flex;gap:6px;margin-top:6px;align-items:center"><button type="button" class="btn p" id="enviarChat">Enviar no chat</button><span class="dica">${tipoChat === "resposta" ? "O cliente vê na aba Atendimento do app." : "Só a equipe vê."}</span></div>
       </div>` : `<p class="dica">${chat ? "" : "Sem chat ativo. Aqui fica o histórico da conversa com o cliente — o atendimento do ticket é feito em Solicitações."}</p>`}`,
-    sols: `${chat ? cartao(chat) : ""}
+    sols: `${ehSol && atende ? `<div class="barra-sol">
+        <span class="qual" title="Os ícones agem na solicitação selecionada">${esc(rot(ativa))}</span><span class="esp"></span>
+        <button type="button" class="ic-sol" id="icAjuda" title="Pedir ajuda a outro setor">🤝 Ajuda</button>
+        <button type="button" class="ic-sol${nPend ? " tem" : ""}" id="icPend" title="Pendências com outros setores — ver, conversar e cobrar">📌 Pendências${nPend ? `<b>${nPend}</b>` : pedidosAb.length ? ` <small class="dica">${pedidosAb.length}</small>` : ""}</button>
+        <button type="button" class="ic-sol${ativa.motivo_filho ? "" : " tem"}" id="icTab" title="Motivo, submotivo, SLA e etapa${sel.etapa_atual ? " · atual: " + esc(caminho.slice(1).join(" › ")) : ""}">🏷 Tabulação</button>
+      </div>` : ""}
+      ${chat ? cartao(chat) : ""}
       ${abertas.map(cartao).join("") || (!chat ? `<p class="dica">Nenhuma solicitação aberta.</p>` : "")}
-      ${fechadas.length ? `<details${fechadas.some((s) => s.id === sel.id) ? " open" : ""}><summary class="dica" style="cursor:pointer">Concluídas (${fechadas.length})</summary><div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">${fechadas.map(cartao).join("")}</div></details>` : ""}
-      <div class="painel-sol" style="--c:${corSol(sel.cor)}">
-        <div class="sec" style="margin-top:2px;color:${corSol(sel.cor)}">${esc(rot(sel))} ${!sel.chat ? `<small class="dica" style="margin-left:6px;letter-spacing:0;text-transform:none">o cliente acompanha em Chamados no app</small>` : ""}</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap">
-          ${pode("atender") && !sel.chat ? `<select class="entrada" id="prio" style="width:auto;padding:6px 9px">${Object.entries(PRIO).map(([k2, [r]]) => `<option value="${k2}"${(sel.prioridade || "normal") === k2 ? " selected" : ""}>Prioridade: ${r}</option>`).join("")}</select>` : ""}
-          ${selAberta && pode("atender") ? `<button type="button" class="btn v p" data-st="${sel.status === "aguardando" ? "em_andamento" : "aguardando"}">${sel.status === "aguardando" ? "Retomar" : "Aguardar o cliente"}</button>` : ""}
-          ${selAberta && pode("encerrar") ? (sel.chat ? `<button type="button" class="btn p" id="concluirChat">${svg("check")} Concluir chat</button>` : `<button type="button" class="btn p" data-st="resolvido">${svg("check")} Concluir</button><button type="button" class="btn perigo p" data-st="cancelado">Cancelar</button>`) : ""}
-          ${!selAberta && pode("atender") && !sel.chat ? `<button type="button" class="btn v p" data-st="em_andamento">Reabrir</button>` : ""}
-          ${sel.status === "resolvido" && pode("encerrar") && !sel.chat ? `<button type="button" class="btn v p" data-st="finalizado">Finalizar</button>` : ""}
-        </div>
-        ${sel.chat ? `<p class="dica">Chat do app (${esc(sel.assunto || "")}) — responda no painel Conversa. Ao concluir, você escolhe: anexar ao chamado ou transformar numa solicitação.</p>` : `
+      ${ativa ? `<div class="painel-sol" style="--c:${corSol(sel.cor)}">
+        ${sel.chat ? `<p class="dica">Chat do app (${esc(sel.assunto || "")}) — responda no painel Conversa. Ao concluir, você escolhe: anexar ao chamado ou transformar numa solicitação.</p>
+          ${pode("encerrar") ? `<div><button type="button" class="btn p" id="concluirChat">${svg("check")} Concluir chat</button></div>` : ""}` : `
+        <div class="sec" style="margin-top:2px;color:${corSol(sel.cor)}">${esc(rot(sel))} <small class="dica" style="margin-left:6px;letter-spacing:0;text-transform:none">${esc(sel.motivo_pai || "não classificado")}${sel.etapa_atual ? " › " + esc(caminho.slice(1).join(" › ")) : ""} · ${slaTxt(sel.sla)}</small></div>
+        ${sel.etapa_travada ? `<div class="trava">🔒 Prazo combinado: <b>${d10(sel.etapa_data_prevista)}</b> · ${esc(sel.etapa_atual || "")}</div>` : ""}
         <div class="registro">${registro.map((x) => `<div class="msg ${CLS_TIPO[x.tipo] || x.tipo}" style="--sol:${corSol(sel.cor)}"><span class="q">${ROT_TIPO[x.tipo] ? `<b>${ROT_TIPO[x.tipo]}</b> · ` : ""}${esc(x.autor || "")} · ${dh(x.data)}</span>${esc(x.texto || "")}</div>`).join("")}</div>
-        ${pode("atender") ? `<div class="resp">
-          <div class="tipos seg"><button type="button" data-tsol="contato" class="${tipoSol === "contato" ? "ativo" : ""}" style="--c:var(--verde)">Registrar contato / atualização</button><button type="button" data-tsol="nota" class="${tipoSol === "nota" ? "ativo" : ""}" style="--c:var(--ouro)">Nota interna</button></div>
-          <textarea class="entrada" id="txt" placeholder="${tipoSol === "contato" ? "O que foi definido / falado com o cliente… (ele vê no app, em Chamados)" : "Anotação só da equipe…"}" style="margin-top:8px;min-height:70px"></textarea>
-          <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center"><button type="button" class="btn p" id="enviar">Registrar</button>
-            ${selAberta ? `<select class="entrada" id="stDepois" style="width:auto;padding:6px 9px"><option value="">e manter situação</option><option value="aguardando">e aguardar o cliente</option>${pode("encerrar") ? `<option value="resolvido">e concluir</option>` : ""}</select>` : ""}
-            <span class="dica">${tipoSol === "contato" ? "👁 O cliente vê no app, em Chamados." : "Só a equipe vê."}</span></div>
-        </div>` : ""}
-        ${sel.etapa_travada ? `<div class="trava">🔒 <b>${esc(sel.motivo_pai || "")} › ${esc(sel.etapa_atual || "")}</b><br>Prazo combinado: <b>${d10(sel.etapa_data_prevista)}</b> · travado por ${esc(sel.etapa_definida_por || "")} em ${dh(sel.etapa_definida_em)}.</div>`
-        : pode("atender") ? `<details${sel.motivo_filho ? "" : " open"}><summary class="dica" style="cursor:pointer">Tabulação e etapa${sel.etapa_atual ? " · atual: " + esc(caminho.slice(1).join(" › ") || "—") : ""}</summary>
-          <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
-          <label class="campo">Motivo<select id="mPai"><option value="">Escolha…</option>${Object.keys(arv).map((p) => `<option${p === sel.motivo_pai ? " selected" : ""}>${esc(p)}</option>`).join("")}</select></label>
-          <label class="campo">Submotivo<select id="mFilho"><option value="">Escolha…</option>${filhos.map(([f, i]) => `<option value="${esc(f)}"${f === sel.motivo_filho ? " selected" : ""}>${esc(f)}${i.sla != null ? ` · SLA ${i.sla}d` : ""}</option>`).join("")}</select></label>
-          <label class="campo">Etapa<select id="mEtapa"></select></label>
-          <label class="campo">Prazo combinado com o cliente <small class="dica">(opcional — trava a trilha; o cliente vê)</small><input type="date" id="mData"></label>
-          <button type="button" class="btn p" id="classificar">Salvar etapa</button></div></details>` : `<p class="dica">${esc(sel.motivo_pai || "não classificado")} ${sel.etapa_atual ? "› " + esc(sel.etapa_atual) : ""}</p>`}
-        ${(sel.historico_etapas || []).length ? `<details><summary class="dica" style="cursor:pointer">Trilha de etapas (${sel.historico_etapas.length})</summary>${sel.historico_etapas.slice().reverse().map((h) => `<p class="dica">${dh(h.quando)} · ${esc(h.etapa)} · ${esc(h.por || "")}${h.vermelha ? ` · prazo ${d10(h.data_prevista)}` : ""}</p>`).join("")}</details>` : ""}
-        <div class="sec">Pendências com outros setores</div>
-        ${pedidosAb.length ? pedidosAb.map((p) => { const r = resp[p.id]; return `<div class="pend-it ${r ? "ok" : ""}"><b>${esc(p.setor_origem)} → ${esc(p.setor_destino)}</b> · ${dh(p.solicitado_em)} · ${esc(p.solicitado_por_nome || "")}<br>${esc(p.mensagem || "")}
-          ${r ? `<p class="dica" style="margin-top:4px">✅ ${esc(r.respondido_por_nome || "")} · ${dh(r.respondido_em)}: ${esc(r.resposta || "")}</p>` : pode("atender") ? `<div style="display:flex;gap:6px;margin-top:6px"><input class="entrada" data-resp="${esc(p.id)}" placeholder="Responder pelo setor ${esc(p.setor_destino)}…" style="padding:6px 9px"><button type="button" class="btn v p" data-respbt="${esc(p.id)}">Responder</button></div>` : ""}</div>`; }).join("") : `<p class="dica">Nenhuma pendência.</p>`}
-        ${selAberta && pode("atender") ? `<div class="g2"><select class="entrada" id="pSetor"><option value="">Pedir ajuda a…</option>${S.e.departamentos.map((d) => `<option>${esc(d)}</option>`).join("")}</select><input class="entrada" id="pMsg" placeholder="O que precisa do setor?"></div><button type="button" class="btn v p" id="pedir">Pedir ajuda</button>` : ""}`}
-      </div>`,
+        ${atende ? `<div class="resp">
+          <textarea class="entrada" id="txt" placeholder="Escreva o andamento… (Ctrl+Enter = Registrar)" style="min-height:70px"></textarea>
+          <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center">
+            <button type="button" class="btn p" id="regCli" title="O cliente vê no app e a situação passa a Em andamento">👁 Registrar</button>
+            <button type="button" class="btn v p" id="regNota" title="Só a equipe vê — o cliente nunca vê">🔒 Nota interna</button>
+            ${pode("encerrar") ? `<button type="button" class="btn v p" id="concluirSol" style="margin-left:auto">${svg("check")} Concluir</button>` : ""}</div>
+          <p class="dica" style="margin-top:4px">Registrar: o cliente vê no app · Nota interna: o cliente nunca vê · Concluir: finaliza a solicitação.</p>
+        </div>` : ""}`}
+      </div>` : ""}
+      ${fechadas.length ? `<details style="margin-top:6px"><summary class="dica" style="cursor:pointer">Concluídas (${fechadas.length})</summary><div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">${fechadas.map(cartao).join("")}</div></details>` : ""}`,
     cli: `<dl class="ficha"><dt>Nome</dt><dd>${esc(D.cliente.nome || "—")}</dd><dt>Chamado</dt><dd>nº ${esc(D.cliente.codigo || "—")}</dd><dt>Telefone</dt><dd>${esc(D.cliente.telefone || "não informado")}</dd><dt>Dono</dt><dd>${temDono ? esc(nomeU(D.dono[0])) : "ninguém"}</dd></dl>
       ${erpBloco(sel, D.erp)}`,
   };
@@ -830,7 +830,7 @@ function ligarCliente(m, D, sel, chat, abertas) {
   const pr = $("#prio"); if (pr) pr.onchange = async () => { try { await chamar(tidUrl(sel.id) + "/alterar", { method: "POST", body: { prioridade: pr.value } }); await recarregarDet(); } catch (e) { falha(e); } };
   m.querySelectorAll("[data-sol]").forEach((b) => (b.onclick = () => {
     const s = D.solicitacoes.find((x) => x.id === b.dataset.sol);
-    if (s && !s.chat && !ABERTOS.includes(s.status)) return popupSolicitacao(s, D);   // concluída: abre em popup (fecha e abre outra)
+    if (s && !ABERTOS.includes(s.status)) return popupSolicitacao(s, D);   // concluída (solicitação ou chat): abre em popup — fecha e abre outra
     guardarRascunho(); S.solSel = b.dataset.sol; render();
   }));
   m.querySelectorAll("[data-st]").forEach((b) => (b.onclick = async () => {
@@ -838,37 +838,38 @@ function ligarCliente(m, D, sel, chat, abertas) {
     if (st === "cancelado" && !(await A.confirmar("Cancelar esta solicitação?", { perigo: true, rotulo: "Cancelar solicitação" }))) return;
     try { await chamar(tidUrl(sel.id) + "/alterar", { method: "POST", body: { status: st } }); ok("Situação: " + (ST_INFO[st] || [st])[0]); await recarregarDet(); } catch (e) { falha(e); }
   }));
-  m.querySelectorAll("[data-tsol]").forEach((b) => (b.onclick = () => { guardarRascunho(); S.tipoSol = b.dataset.tsol; render(); }));
   m.querySelectorAll("[data-tchat]").forEach((b) => (b.onclick = () => { guardarRascunho(); S.tipoChat = b.dataset.tchat; render(); }));
   const registrar = async (campo, alvoId, tipo, chave, status) => {
     const txt = $("#" + campo).value.trim(); if (!txt) return;
     const body = { texto: txt, tipo }; if (status) body.status = status;
     try { await chamar(tidUrl(alvoId) + "/comentar", { method: "POST", body }); delete S.rasc[chave]; await recarregarDet(); } catch (e) { falha(e); }
   };
-  const env = $("#enviar");   // solicitação: Registrar contato (o cliente vê no app) ou nota interna
-  if (env) { const vai = () => registrar("txt", sel.id, S.tipoSol || "contato", cid, $("#stDepois")?.value);
-    env.onclick = vai; $("#txt").onkeydown = (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) vai(); }; }
+  // solicitação: 👁 Registrar (o cliente vê; a situação vai para "Em andamento") · 🔒 Nota interna (nunca vê) · ✅ Concluir (finaliza)
+  const tx = $("#txt");
+  if (tx && ehSolAtiva(sel)) {
+    const reg = async (tipo) => {
+      const t = tx.value.trim(); if (!t) { A.toast("Escreva o registro."); tx.focus(); return; }
+      const body = { texto: t, tipo }; if (tipo === "contato" && ["aberto", "aguardando"].includes(sel.status)) body.status = "em_andamento";
+      try { await chamar(tidUrl(sel.id) + "/comentar", { method: "POST", body }); delete S.rasc[cid]; ok(tipo === "contato" ? "Registrado — o cliente já vê no app." : "Nota interna registrada."); await recarregarDet(); } catch (e) { falha(e); }
+    };
+    $("#regCli").onclick = () => reg("contato"); $("#regNota").onclick = () => reg("nota");
+    tx.onkeydown = (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) reg("contato"); };
+    const cs = $("#concluirSol"); if (cs) cs.onclick = async () => {
+      const t = tx.value.trim();
+      if (!(await A.confirmar(`Concluir e finalizar <b>${esc(sel.motivo_filho || sel.assunto || "esta solicitação")}</b>?${t ? "<br>O texto escrito vai junto como registro (o cliente vê)." : ""}`, { rotulo: "Concluir" }))) return;
+      try {
+        if (t) await chamar(tidUrl(sel.id) + "/comentar", { method: "POST", body: { texto: t, tipo: "contato" } });
+        await chamar(tidUrl(sel.id) + "/alterar", { method: "POST", body: { status: "finalizado" } });
+        delete S.rasc[cid]; S.solSel = null; ok("Solicitação concluída."); await recarregarDet();
+      } catch (e) { falha(e); }
+    };
+  }
+  const ia = $("#icAjuda"); if (ia) ia.onclick = () => popupPedirAjuda(sel);
+  const ip = $("#icPend"); if (ip) ip.onclick = () => popupPendencias(sel);
+  const it = $("#icTab"); if (it) it.onclick = () => popupTabulacao(sel);
   const envC = $("#enviarChat");   // chat: Responder no app ou nota interna
   if (envC) { const vai = () => registrar("txtChat", chat.id, S.tipoChat || "resposta", cid + ":chat");
     envC.onclick = vai; $("#txtChat").onkeydown = (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) vai(); }; }
-  // tabulação da solicitação selecionada
-  const mp = $("#mPai"), mf = $("#mFilho"), me2 = $("#mEtapa");
-  if (mp) {
-    const arv = S.e.motivos, atual = String(sel.etapa_atual || "").split(" › ")[1] || "";
-    const etapas = () => { const info = (arv[mp.value] || {})[mf.value] || {}; me2.innerHTML = `<option value="">— sem etapa —</option>` + (info.etapas || []).map((x) => `<option${x === atual ? " selected" : ""}>${esc(x)}</option>`).join(""); };
-    mp.onchange = () => { mf.innerHTML = `<option value="">Escolha…</option>` + Object.entries(arv[mp.value] || {}).filter(([, i]) => i.ativo !== false).map(([f, i]) => `<option value="${esc(f)}">${esc(f)}${i.sla != null ? ` · SLA ${i.sla}d` : ""}</option>`).join(""); etapas(); };
-    mf.onchange = etapas; etapas();
-    $("#classificar").onclick = async () => {
-      if (!mp.value || !mf.value) { A.toast("Escolha motivo e submotivo."); return; }
-      const data = $("#mData").value;
-      if (data && !(await A.confirmar(`Travar a trilha com prazo em <b>${d10(data)}</b>? Depois disso ela não pode mais ser mudada.`, { rotulo: "Travar prazo" }))) return;
-      try { await chamar(tidUrl(sel.id) + "/classificar", { method: "POST", body: { motivo_pai: mp.value, motivo_filho: mf.value, etapa: me2.value, data_prevista: data } }); ok("Etapa salva."); await recarregarDet(); } catch (e) { falha(e); }
-    };
-  }
-  const pd = $("#pedir"); if (pd) pd.onclick = async () => { const setor = $("#pSetor").value, msg = $("#pMsg").value.trim(); if (!setor || !msg) { A.toast("Escolha o setor e escreva o pedido."); return; }
-    try { await chamar(tidUrl(sel.id) + "/pendencia", { method: "POST", body: { setor, mensagem: msg } }); ok("Pedido enviado ao setor " + setor + "."); await recarregarDet(); } catch (e) { falha(e); } };
-  m.querySelectorAll("[data-respbt]").forEach((b) => (b.onclick = async () => { const v = m.querySelector(`[data-resp="${CSS.escape(b.dataset.respbt)}"]`).value.trim(); if (!v) return;
-    try { await chamar(tidUrl(sel.id) + "/pendencia", { method: "POST", body: { responder: b.dataset.respbt, mensagem: v } }); await recarregarDet(); } catch (e) { falha(e); } }));
   // concluir o chat: anexar ao chamado OU virar solicitação
   const cc = $("#concluirChat"); if (cc) cc.onclick = () => {
     const md = A.modal({ titulo: "Concluir o chat do app", icone: "check", largura: 560,
@@ -936,11 +937,72 @@ function ligarCliente(m, D, sel, chat, abertas) {
     try { const r = await chamar(tidUrl(tidErp) + "/erp-troca", { method: "POST", body: { pedido_id: p.id } }); ok(`Troca #${r.pedido.numero} criada no ERP.`); await recarregarDet(); } catch (e) { falha(e); }
   }));
 }
+const ehSolAtiva = (s) => !!s && !s.chat && ABERTOS.includes(s.status);
+/* 🤝 Pedir ajuda: escolhe o setor, escreve e pronto */
+function popupPedirAjuda(sel) {
+  const meu = S.e.eu.depto || "", deps = S.e.departamentos.filter((d) => d !== meu);
+  A.modal({ titulo: "Pedir ajuda", icone: "mensagem", cor: "var(--violeta)", largura: 480,
+    html: `<p class="dica" style="margin-bottom:8px">${esc(sel.motivo_filho || sel.assunto || "Solicitação")} · o setor recebe na hora, num balão de chat.</p>
+      <div class="setores">${deps.map((d, i) => `<label><input type="radio" name="ajSetor" value="${esc(d)}"${i === 0 && deps.length === 1 ? " checked" : ""}><span>${esc(d)}</span></label>`).join("")}</div>
+      <textarea class="entrada" id="ajPed" placeholder="O que você precisa do setor?" style="margin-top:10px;min-height:80px"></textarea>`,
+    botoes: [{ rotulo: "Cancelar" }, { rotulo: "🤝 Ajuda", classe: "btn", principal: true, acao: async () => {
+      const setor = document.querySelector('input[name="ajSetor"]:checked')?.value, msg = $("#ajPed").value.trim();
+      if (!setor || !msg) { A.toast("Escolha o setor e escreva o pedido."); return false; }
+      try { await chamar(tidUrl(sel.id) + "/pendencia", { method: "POST", body: { setor, mensagem: msg } }); ok("Pedido enviado ao setor " + setor + "."); carregarAjuda(); await recarregarCliente(); }
+      catch (e) { falha(e); return false; } } }],
+    aoAbrir: (cx) => setTimeout(() => cx.querySelector("#ajPed")?.focus(), 80) });
+}
+/* um pedido de ajuda da solicitação no formato do chat (igual ao /ajuda do servidor) */
+function viewPend(s, p, D) {
+  const r = (s.solicitacoes_setor || []).find((x) => x.tipo === "resposta" && x.pedido_id === p.id);
+  const conversa = [{ de: p.solicitado_por, nome: p.solicitado_por_nome, setor: p.setor_origem, texto: p.mensagem || "", em: p.solicitado_em }].concat(p.mensagens || []);
+  if (r) conversa.push({ de: r.respondido_por, nome: r.respondido_por_nome, setor: p.setor_destino, texto: r.resposta || "", em: r.respondido_em, encerrou: true });
+  return { id: p.id, tid: s.id, cid: D.cid, cliente_codigo: D.cliente.codigo, cliente_nome: D.cliente.nome, assunto: s.motivo_filho || s.assunto || "",
+    setor_origem: p.setor_origem, setor_destino: p.setor_destino, solicitado_por_nome: p.solicitado_por_nome, solicitado_em: p.solicitado_em, status: r ? "resolvido" : "aberto", conversa };
+}
+/* 📌 Pendências com outros setores: lista → abre o chat do pedido (conversar / cobrar / encerrar) */
+function popupPendencias(sel) {
+  const D = S.det, peds = (sel.solicitacoes_setor || []).filter((x) => x.tipo === "pedido").map((p) => viewPend(sel, p, D))
+    .sort((a, b) => (a.status === "aberto" ? 0 : 1) - (b.status === "aberto" ? 0 : 1) || String(b.solicitado_em).localeCompare(String(a.solicitado_em)));
+  const buscar = async (pid) => { await recarregarCliente(); carregarAjuda(); const s2 = (S.det?.solicitacoes || []).find((x) => x.id === sel.id), p2 = (s2?.solicitacoes_setor || []).find((x) => x.tipo === "pedido" && x.id === pid); return p2 ? viewPend(s2, p2, S.det) : null; };
+  if (peds.length === 1) return chatAjuda(peds[0], buscar);
+  const md = A.modal({ titulo: "Pendências com outros setores", icone: "lista", cor: "var(--violeta)", largura: 560,
+    html: peds.length ? `<div style="display:flex;flex-direction:column;gap:6px">${peds.map((v, i) => { const ult = v.conversa[v.conversa.length - 1];
+      return `<button type="button" class="pend-it ${v.status === "aberto" ? "" : "ok"}" data-pi="${i}" style="text-align:left;cursor:pointer;color:var(--txt)"><b>${esc(v.setor_origem)} → ${esc(v.setor_destino)}</b> · ${v.status === "aberto" ? "⏳ aberto" : "✅ encerrado"} · ${dh(v.solicitado_em)}<br><span class="dica">💬 ${esc(ult.nome || "")}: ${esc(ult.texto || "")}</span></button>`; }).join("")}</div>`
+      : `<p class="dica">Nenhuma pendência nesta solicitação. Use 🤝 Ajuda para pedir a outro setor.</p>`,
+    botoes: [{ rotulo: "Fechar", classe: "btn", principal: true }] });
+  md.el.querySelectorAll("[data-pi]").forEach((b) => (b.onclick = () => { md.fechar(); chatAjuda(peds[+b.dataset.pi], buscar); }));
+}
+/* 🏷 Tabulação: motivo › submotivo (SLA) › etapa, prazo e trilha */
+function popupTabulacao(sel) {
+  const arv = S.e.motivos, atual = String(sel.etapa_atual || "").split(" › ")[1] || "";
+  const filhos = Object.entries(arv[sel.motivo_pai] || {}).filter(([, i]) => i.ativo !== false);
+  const trilha = (sel.historico_etapas || []).length ? `<details style="margin-top:10px"><summary class="dica" style="cursor:pointer">Trilha de etapas (${sel.historico_etapas.length})</summary>${sel.historico_etapas.slice().reverse().map((h) => `<p class="dica">${dh(h.quando)} · ${esc(h.etapa)} · ${esc(h.por || "")}${h.vermelha ? ` · prazo ${d10(h.data_prevista)}` : ""}</p>`).join("")}</details>` : "";
+  if (sel.etapa_travada) return A.modal({ titulo: "Tabulação", icone: "lista", largura: 520,
+    html: `<div class="trava">🔒 <b>${esc(sel.motivo_pai || "")} › ${esc(sel.etapa_atual || "")}</b><br>Prazo combinado: <b>${d10(sel.etapa_data_prevista)}</b> · travado por ${esc(sel.etapa_definida_por || "")} em ${dh(sel.etapa_definida_em)}.</div>${trilha}`,
+    botoes: [{ rotulo: "Fechar", classe: "btn", principal: true }] });
+  const md = A.modal({ titulo: "Tabulação · " + (sel.motivo_filho || sel.assunto || "Solicitação"), icone: "lista", largura: 520,
+    html: `<div style="display:flex;flex-direction:column;gap:8px">
+      <label class="campo">Motivo<select id="mPai"><option value="">Escolha…</option>${Object.keys(arv).map((p) => `<option${p === sel.motivo_pai ? " selected" : ""}>${esc(p)}</option>`).join("")}</select></label>
+      <label class="campo">Submotivo<select id="mFilho"><option value="">Escolha…</option>${filhos.map(([f, i]) => `<option value="${esc(f)}"${f === sel.motivo_filho ? " selected" : ""}>${esc(f)}${i.sla != null ? ` · SLA ${i.sla}d` : ""}</option>`).join("")}</select></label>
+      <label class="campo">Etapa<select id="mEtapa"></select></label>
+      <label class="campo">Prazo combinado com o cliente <small class="dica">(opcional — trava a trilha; o cliente vê)</small><input type="date" id="mData"></label></div>${trilha}`,
+    botoes: [{ rotulo: "Cancelar" }, { rotulo: "Salvar", classe: "btn", principal: true, acao: async () => {
+      const mp = $("#mPai"), mf = $("#mFilho"), data = $("#mData").value;
+      if (!mp.value || !mf.value) { A.toast("Escolha motivo e submotivo."); return false; }
+      if (data && !(await A.confirmar(`Travar a trilha com prazo em <b>${d10(data)}</b>? Depois disso ela não pode mais ser mudada.`, { rotulo: "Travar prazo" }))) return false;
+      try { await chamar(tidUrl(sel.id) + "/classificar", { method: "POST", body: { motivo_pai: mp.value, motivo_filho: mf.value, etapa: $("#mEtapa").value, data_prevista: data } }); ok("Tabulação salva."); await recarregarCliente(); }
+      catch (e) { falha(e); return false; } } }] });
+  const mp = md.el.querySelector("#mPai"), mf = md.el.querySelector("#mFilho"), me2 = md.el.querySelector("#mEtapa");
+  const etapas = () => { const info = (arv[mp.value] || {})[mf.value] || {}; me2.innerHTML = `<option value="">— sem etapa —</option>` + (info.etapas || []).map((x) => `<option${x === atual ? " selected" : ""}>${esc(x)}</option>`).join(""); };
+  mp.onchange = () => { mf.innerHTML = `<option value="">Escolha…</option>` + Object.entries(arv[mp.value] || {}).filter(([, i]) => i.ativo !== false).map(([f, i]) => `<option value="${esc(f)}">${esc(f)}${i.sla != null ? ` · SLA ${i.sla}d` : ""}</option>`).join(""); etapas(); };
+  mf.onchange = etapas; etapas();
+}
 /* solicitação CONCLUÍDA em popup — leitura rápida: fecha e abre outra, sem descer a tela */
 function popupSolicitacao(s, D) {
-  const rot = (s.motivo_filho || s.assunto || "Solicitação") + (s.erp_pedido_numero ? " #" + s.erp_pedido_numero : "");
-  const desde = String(s.criado_em || "");
-  const reg = [{ tipo: s.origem === "app" && !s.convertido_de_chat ? "app" : "abertura", autor: s.solicitante_nome || nomeU(s.aberto_por) || "Abertura", data: s.criado_em, texto: s.descricao || "" }]
+  const rot = s.chat ? "📱 Chat do app" + (s.assunto ? " · " + s.assunto : "") : (s.motivo_filho || s.assunto || "Solicitação") + (s.erp_pedido_numero ? " #" + s.erp_pedido_numero : "");
+  const desde = s.chat ? "" : String(s.criado_em || "");   // chat: a conversa inteira
+  const reg = [{ tipo: s.chat || (s.origem === "app" && !s.convertido_de_chat) ? "app" : "abertura", autor: s.solicitante_nome || nomeU(s.aberto_por) || (s.chat ? "Cliente" : "Abertura"), data: s.chat ? (s.chat_iniciado_em || s.criado_em) : s.criado_em, texto: s.descricao || "" }]
     .concat((s.comentarios || []).filter((c) => String(c.data || "") >= desde).map((c) => ({ tipo: tipoMsg(c), autor: c.autor, data: c.data, texto: c.texto })));
   const pend = s.solicitacoes_setor || [], resp = Object.fromEntries(pend.filter((x) => x.tipo === "resposta").map((x) => [x.pedido_id, x]));
   const peds = pend.filter((x) => x.tipo === "pedido");
@@ -949,7 +1011,7 @@ function popupSolicitacao(s, D) {
       <div class="registro" id="popReg" style="--c:${corSol(s.cor)};max-height:52vh;overflow:auto;display:flex;flex-direction:column;gap:6px">${reg.map((x) => `<div class="msg ${CLS_TIPO[x.tipo] || x.tipo}" style="--sol:${corSol(s.cor)}"><span class="q">${ROT_TIPO[x.tipo] ? `<b>${ROT_TIPO[x.tipo]}</b> · ` : ""}${esc(x.autor || "")} · ${dh(x.data)}</span>${esc(x.texto || "")}</div>`).join("")}</div>
       ${peds.length ? `<div class="sec">Pedidos de ajuda</div>${peds.map((p) => { const r = resp[p.id]; return `<div class="pend-it ${r ? "ok" : ""}"><b>${esc(p.setor_origem)} → ${esc(p.setor_destino)}</b> · ${dh(p.solicitado_em)} · ${esc(p.solicitado_por_nome || "")}<br>${esc(p.mensagem || "")}${r ? `<p class="dica" style="margin-top:4px">✅ ${esc(r.respondido_por_nome || "")} · ${dh(r.respondido_em)}: ${esc(r.resposta || "")}</p>` : ""}</div>`; }).join("")}` : ""}
       ${(s.historico_etapas || []).length ? `<details style="margin-top:8px"><summary class="dica" style="cursor:pointer">Trilha de etapas (${s.historico_etapas.length})</summary>${s.historico_etapas.slice().reverse().map((h) => `<p class="dica">${dh(h.quando)} · ${esc(h.etapa)} · ${esc(h.por || "")}${h.vermelha ? ` · prazo ${d10(h.data_prevista)}` : ""}</p>`).join("")}</details>` : ""}`,
-    esquerda: pode("atender") ? [{ rotulo: "Reabrir", classe: "btn v", acao: async () => {
+    esquerda: pode("atender") && !s.chat ? [{ rotulo: "Reabrir", classe: "btn v", acao: async () => {
       try { await chamar(tidUrl(s.id) + "/alterar", { method: "POST", body: { status: "em_andamento" } }); ok("Solicitação reaberta."); S.solSel = s.id; await recarregarCliente(); } catch (e) { falha(e); return false; } } }] : [],
     botoes: [{ rotulo: "Fechar", classe: "btn", principal: true }],
     aoAbrir: (cx) => { const r = cx.querySelector("#popReg"); if (r) r.scrollTop = r.scrollHeight; } });
@@ -985,7 +1047,7 @@ function telaAbrir(m) {
     <h2 style="margin:10px 0 12px;font:700 1.3rem var(--titulo)">Novo chamado · ${esc(S.setorAbrir)}</h2>
     <div class="g2"><label class="campo">Código do cliente *<input id="nCod" placeholder="digite o código ou o nome" autocomplete="off"></label><label class="campo">Nome do cliente *<input id="nNome" autocomplete="off"></label></div>
     <div id="nBusca" style="margin-top:6px"></div>
-    <div class="g2" style="margin-top:8px"><label class="campo">Telefone<input id="nTel"></label><label class="campo">Prioridade<select id="nPrio">${Object.entries(PRIO).map(([k, [r]]) => `<option value="${k}"${k === "normal" ? " selected" : ""}>${r}</option>`).join("")}</select></label></div>
+    <div class="g2" style="margin-top:8px"><label class="campo">Telefone<input id="nTel"></label><input type="hidden" id="nPrio" value="normal"></div>
     <div class="g2" style="margin-top:8px"><label class="campo">Motivo<select id="nPai"><option value="">—</option>${Object.keys(arv).map((p) => `<option>${esc(p)}</option>`).join("")}</select></label><label class="campo">Submotivo<select id="nFilho"><option value="">—</option></select></label></div>
     <label class="campo" style="margin-top:8px">Assunto *<input id="nAss"></label>
     <label class="campo" style="margin-top:8px">Descrição *<textarea id="nDesc" rows="5"></textarea></label>
@@ -1039,13 +1101,13 @@ function bolhasAjuda(v, me) {
   return v.conversa.map((x) => { const meu = x.de === me.usuario;
     return `<div class="msg ${meu ? "resposta" : "cliente"}" style="--sol:${meu ? "var(--azul)" : "var(--violeta)"};${meu ? "margin-left:auto" : ""}"><span class="q"><b>${esc(x.setor || "—")}</b> · ${esc(x.nome || "")} · ${dh(x.em)}${x.encerrou ? " · ✅ encerrou" : ""}</span>${esc(x.texto || "")}</div>`; }).join("");
 }
-function chatAjuda(v) {
-  const me = S.aj.eu, aberto = v.status === "aberto";
+function chatAjuda(v, buscar) {   // buscar(pid) → visão atualizada (pendências da solicitação); sem ele usa a lista do /ajuda
+  const me = (S.aj && S.aj.eu) || S.e.eu, aberto = v.status === "aberto";
   const md = A.modal({ titulo: `Pedido de ajuda · ${v.setor_origem} → ${v.setor_destino}`, icone: "mensagem", cor: "var(--violeta)", largura: 640,
     html: `<p class="dica" style="margin-bottom:8px">Cliente <b>${esc(v.cliente_nome || "")}</b> (${esc(v.cliente_codigo || "")}) · ${esc(v.assunto || "")} · pedido por ${esc(v.solicitado_por_nome || "")} em ${dh(v.solicitado_em)}</p>
       <div class="registro" id="ajConv" style="max-height:46vh;overflow:auto;display:flex;flex-direction:column;gap:6px">${bolhasAjuda(v, me)}</div>
       ${aberto ? `<textarea class="entrada" id="ajTxt" placeholder="Escreva no chat… (Ctrl+Enter envia)" style="margin-top:10px;min-height:64px" autofocus></textarea>` : `<p class="dica" style="margin-top:8px">✅ Pedido encerrado.</p>`}`,
-    esquerda: [{ rotulo: "Abrir o atendimento", classe: "btn v", acao: () => { S.sec = "caixa"; abrirTicket(v.tid); } }],
+    esquerda: buscar ? [] : [{ rotulo: "Abrir o atendimento", classe: "btn v", acao: () => { S.sec = "caixa"; abrirTicket(v.tid); } }],
     botoes: aberto ? [{ rotulo: "Responder e encerrar", classe: "btn v", acao: () => enviar(true) }, { rotulo: "Enviar", classe: "btn", principal: true, acao: () => enviar(false) }] : [{ rotulo: "Fechar" }] });
   const cv = md.el.querySelector("#ajConv"); cv.scrollTop = cv.scrollHeight;
   async function enviar(encerrar) {
@@ -1053,9 +1115,9 @@ function chatAjuda(v) {
     if (!texto) { A.toast(encerrar ? "Escreva a resposta final antes de encerrar." : "Escreva a mensagem."); return false; }
     try { await A.api(API + "/ajuda/mensagem", { method: "POST", body: { tid: v.tid, pid: v.id, texto, encerrar } }); ok(encerrar ? "Pedido de ajuda encerrado." : "Mensagem enviada."); }
     catch (e) { falha(e); return false; }
-    await carregarAjuda(true);
-    if (encerrar) return;
-    const nv = S.aj.pedidos.find((x) => x.id === v.id);   // continua no chat: atualiza a conversa sem fechar o popup
+    let nv;
+    if (buscar) nv = await buscar(v.id); else { await carregarAjuda(true); nv = S.aj.pedidos.find((x) => x.id === v.id); }
+    if (encerrar) return;   // continua no chat: atualiza a conversa sem fechar o popup
     if (nv) { v = nv; cv.innerHTML = bolhasAjuda(nv, me); cv.scrollTop = cv.scrollHeight; }
     tx.value = ""; tx.focus();
     return false;
