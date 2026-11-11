@@ -317,7 +317,17 @@ def hub_cfg() -> dict:
     return {**CONFIG_PADRAO, **BASE.config("tickets_hub", {})}
 
 
-def motivos() -> dict:
+def motivos_por_setor() -> dict:
+    """Árvores próprias de cada setor (Ajustes › escolher o setor). Setor sem árvore usa a geral."""
+    return {k: v for k, v in (BASE.config("motivos_central", {}).get("por_setor") or {}).items() if v}
+
+
+def motivos(setor: str = "") -> dict:
+    if setor:
+        ps = motivos_por_setor()
+        for k, v in ps.items():
+            if norm(k) == norm(setor):
+                return v
     m = BASE.config("motivos_central", {}).get("ticket", {})
     return m or ({} if banco_proprio() else MOTIVOS_PADRAO)
 
@@ -380,7 +390,7 @@ def visivel(t: dict, p: dict, me: dict) -> bool:
     if atribuido(t, me) or t.get("aberto_por") == me["usuario"]:
         return True
     if me["depto"]:
-        if p["acoes"].get("setor") and norm(t.get("departamento")) == norm(me["depto"]):
+        if norm(t.get("departamento")) == norm(me["depto"]):   # o setor vê os chats e tickets abertos para ele
             return True
         if any(norm(me["depto"]) in (norm(s.get("setor_destino")), norm(s.get("setor_origem"))) for s in pend_abertas(t)):
             return True
@@ -450,7 +460,7 @@ def estado(request: Request, dias_concluidos: int = 30):
         lista.append(resumo(t, me, agora_dt))
     usu = usuarios()
     return {"perm": p, "eu": me, "tickets": lista, "versao": BASE.ver,
-            "departamentos": departamentos(), "motivos": motivos(), "status": STATUS, "prioridades": PRIORIDADES,
+            "departamentos": departamentos(), "motivos": motivos(), "motivos_setor": motivos_por_setor(), "status": STATUS, "prioridades": PRIORIDADES,
             "usuarios": [{"usuario": k, "nome": v["nome"], "depto": v["depto"]} for k, v in sorted(usu.items(), key=lambda kv: norm(kv[1]["nome"]))],
             "config": {k: v for k, v in hub_cfg().items() if k != "mapa_usuarios"} | ({"mapa_usuarios": hub_cfg().get("mapa_usuarios")} if p["acoes"].get("configurar") else {}),
             "sync": {"leituras": BASE.leituras, "completa": BASE.t_completa}, "erp": _erp_ligado(),
@@ -564,11 +574,12 @@ def criar_solicitacao(dados: dict, me: dict, bloquear_duplicado=False) -> str:
     return compor(cid, sid)
 
 
-def _sla_motivo(pai: str, filho: str):
-    info = (motivos().get(pai) or {}).get(filho) if filho else None
+def _sla_motivo(pai: str, filho: str, setor: str = ""):
+    arv = motivos(setor)
+    info = (arv.get(pai) or {}).get(filho) if filho else None
     if info and info.get("sla") not in (None, ""):
         return info.get("sla")
-    filhos = motivos().get(pai) or {}
+    filhos = arv.get(pai) or {}
     slas = [f.get("sla") for f in filhos.values() if f.get("ativo", True) and f.get("sla") not in (None, "")]
     return min(slas) if slas else None
 
@@ -584,7 +595,7 @@ async def abrir(request: Request):
     pai, filho = str(c.get("motivo_pai") or ""), str(c.get("motivo_filho") or "")
     dados = {"assunto": assunto[:200], "descricao": desc[:5000], "departamento": str(c.get("departamento") or ""),
              "categoria": str(c.get("departamento") or ""), "motivo_pai": pai, "motivo_pai_id": pai, "motivo_filho": filho,
-             "sla1_prazo_dias": _sla_motivo(pai, filho), "prioridade": c.get("prioridade") if c.get("prioridade") in PRIORIDADES else "normal",
+             "sla1_prazo_dias": _sla_motivo(pai, filho, str(c.get("departamento") or "")), "prioridade": c.get("prioridade") if c.get("prioridade") in PRIORIDADES else "normal",
              "cliente_nome": str(c.get("cliente_nome") or "").strip(), "cliente_telefone": str(c.get("cliente_telefone") or "").strip(),
              "solicitante_nome": me["nome"], "aberto_por": me["usuario"], "cliente_codigo": str(c.get("cliente_codigo") or "").strip()}
     for k in ("erp_pedido_id", "erp_pedido_numero", "erp_cliente_id"):
@@ -711,20 +722,22 @@ async def classificar(tid: str, request: Request):
     u, p, me = _contexto(request)
     _exigir(p, "atender", "classificar atendimentos")
     t = _ticket(tid, p, me)
-    if t.get("etapa_travada"):
-        raise HTTPException(409, "Esta trilha já foi travada com prazo — não pode mais ser alterada.")
     c = await request.json()
+    setor = str(c.get("departamento") or t.get("departamento") or "").strip()
+    if setor and setor not in departamentos() and setor != t.get("departamento"):
+        raise HTTPException(400, "Setor inválido.")
     pai = str(c.get("motivo_pai") or t.get("motivo_pai") or "")
     filho, etapa = str(c.get("motivo_filho") or ""), str(c.get("etapa") or "")
-    arv = motivos()
+    travada = bool(t.get("etapa_travada"))
+    arv = motivos(setor)
     if pai not in arv or filho not in arv[pai]:
         raise HTTPException(400, "Escolha um Motivo e um Submotivo válidos.")
     etapas = arv[pai][filho].get("etapas") or []
     if etapas and etapa not in etapas:
         raise HTTPException(400, "Escolha uma etapa da lista.")
-    data = str(c.get("data_prevista") or "")
-    vermelha = bool(data)
-    if vermelha:
+    data = "" if travada else str(c.get("data_prevista") or "")   # trilha travada: o prazo combinado não muda
+    vermelha = bool(data) or travada
+    if data:
         try:
             if datetime.fromisoformat(data).date() < datetime.now(BRT).date():
                 raise HTTPException(400, "A data prevista precisa ser hoje ou depois.")
@@ -734,19 +747,31 @@ async def classificar(tid: str, request: Request):
 
     def fn(s):
         ag = agora()
+        mudou = []
+        if setor and setor != s.get("departamento"):
+            mudou.append(f"setor {s.get('departamento') or '—'} → {setor}")
+            s["departamento"] = s["categoria"] = setor
+        if (pai, filho) != (s.get("motivo_pai"), s.get("motivo_filho")) and s.get("motivo_filho"):
+            mudou.append(f"tabulação {s.get('motivo_pai') or '—'} › {s.get('motivo_filho') or '—'} → {pai} › {filho}")
         if pai != s.get("motivo_pai"):
             s["motivo_pai"] = s["motivo_pai_id"] = pai
+        if filho != s.get("motivo_filho"):   # o SLA acompanha o submotivo novo
+            novo_sla = _sla_motivo(pai, filho, setor)
+            if novo_sla is not None:
+                s["sla1_prazo_dias"] = novo_sla
         s.update(motivo_filho=filho, etapa_atual=caminho, etapa_vermelha=vermelha)
+        if mudou:
+            _coment(s, me, "Tabulação ajustada: " + " · ".join(mudou), tipo="sistema")
         if not s.get("sla1_definido"):
             lim, _ = deadline({**s, "etapa_vermelha": False, "etapa_data_prevista": None})
             s.update(sla1_definido=True, sla1_cumprido=(datetime.now(BRT) <= lim) if lim else True, sla1_definido_em=ag)
-        if vermelha:
+        if data:
             s.update(etapa_data_prevista=data, etapa_definida_em=ag, etapa_definida_por=me["nome"], etapa_travada=True)
         s.setdefault("historico_etapas", []).append({"etapa": caminho, "quando": ag, "por": me["nome"], "vermelha": vermelha,
-                                                    "data_prevista": data or None})
+                                                    "data_prevista": data or s.get("etapa_data_prevista") if vermelha else None})
         if s.get("status") == "aberto":
             s["status"] = "em_andamento"
-        _coment(s, me, f"Classificado: {pai} › {caminho}" + (f" · prazo {data[8:10]}/{data[5:7]} (travado)" if vermelha else ""), tipo="sistema")
+        _coment(s, me, f"Classificado: {pai} › {caminho}" + (f" · prazo {data[8:10]}/{data[5:7]} (travado)" if data else ""), tipo="sistema")
     _mutar_sol(tid, fn, me)
     return {"ok": True}
 
@@ -957,7 +982,16 @@ async def salvar_motivos(request: Request):
             arv[pai][f] = {"sla": sla, "ativo": bool(info.get("ativo", True)),
                            "etapas": [str(e).strip()[:80] for e in (info.get("etapas") or []) if str(e).strip()][:30]}
     atual = BASE.config("motivos_central", {})
-    doc_cfg("motivos_central").set({**atual, "ticket": arv}, timeout=banco.TIMEOUT)
+    setor = str(c.get("setor") or "").strip()
+    if setor:   # árvore própria do setor (vazia = volta a usar a geral)
+        ps = {k: v for k, v in (atual.get("por_setor") or {}).items() if norm(k) != norm(setor)}
+        if arv:
+            ps[setor] = arv
+        novo = {**atual, "por_setor": ps}
+    else:
+        novo = {**atual, "ticket": arv}
+    doc_cfg("motivos_central").set(novo, timeout=banco.TIMEOUT)
+    BASE.cfg_cache["motivos_central"] = novo
     deps = [str(d).strip()[:60] for d in (c.get("departamentos") or []) if str(d).strip()]
     if deps:
         doc_cfg("departamentos").set({"lista": deps}, timeout=banco.TIMEOUT)
@@ -1444,7 +1478,8 @@ async def concluir_chat(tid: str, request: Request):
     modo = c.get("modo")
     if modo == "solicitacao":
         pai, filho = str(c.get("motivo_pai") or ""), str(c.get("motivo_filho") or "")
-        arv = motivos()
+        setor_chat = str(c.get("departamento") or t.get("departamento") or "")
+        arv = motivos(setor_chat)
         if pai not in arv or filho not in arv[pai]:
             raise HTTPException(400, "Escolha o motivo e o submotivo da solicitação.")
         ped = None
@@ -1463,7 +1498,7 @@ async def concluir_chat(tid: str, request: Request):
         def fn(s):
             s["chat_iniciado_em"] = s.get("chat_iniciado_em") or s.get("criado_em")   # a conversa continua no lugar certo da linha do tempo
             s.update(app_tipo="chamado", convertido_de_chat=True, motivo_pai=pai, motivo_pai_id=pai, motivo_filho=filho,
-                     assunto=filho + (f" · pedido #{ped.get('numero')}" if ped else ""), sla1_prazo_dias=_sla_motivo(pai, filho),
+                     assunto=filho + (f" · pedido #{ped.get('numero')}" if ped else ""), sla1_prazo_dias=_sla_motivo(pai, filho, setor_chat),
                      criado_em=agora())   # o prazo da solicitação conta a partir de agora
             if ped:
                 s.update(erp_pedido_id=str(c["pedido_id"]), erp_pedido_numero=ped.get("numero"))

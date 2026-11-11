@@ -453,7 +453,7 @@ function contagens() {
     hoje: ab.filter((c) => c.sla?.estado === "hoje").length, venc: ab.filter((c) => c.sla?.estado === "venc").length,
     espera: ab.filter((c) => c.status === "aguardando").length, concl: cs.filter((c) => !vivo(c)).length, todos: cs.length,
     alerta: ab.filter((c) => c.nao_visto || c.app_pendente).length, app: ab.filter((c) => c.app_pendente).length,
-    internos: S.aj ? S.aj.abertos_recebidos : 0,
+    internos: S.aj ? S.aj.abertos_recebidos + filaSetor(S.aj.setor).filter((t) => t.sem_dono).length : 0,
     atend: ab.filter((c) => c.estado === "atendimento").length, tks: ab.filter((c) => c.estado === "ticket").length,
     sols: S.e.tickets.filter((t) => !t.chat && ABERTOS.includes(t.status)).length,
   };
@@ -802,15 +802,15 @@ function erpBloco(t, erp) {
 }
 
 /* modal: motivo › submotivo (+ pedido) — usado em "Nova solicitação" e em "Concluir chat → virar solicitação" */
-function camposMotivo(prefixo, D, extra = "") {
-  const arv = S.e.motivos, peds = (D.erp?.pedidos || []).filter((p) => p.status !== "rascunho");
+function camposMotivo(prefixo, D, extra = "", setor = "") {
+  const arv = arvDe(setor), peds = (D.erp?.pedidos || []).filter((p) => p.status !== "rascunho");
   return `<div class="g2"><label class="campo">Motivo<select id="${prefixo}Pai"><option value="">Escolha…</option>${Object.keys(arv).map((p) => `<option>${esc(p)}</option>`).join("")}</select></label>
     <label class="campo">Submotivo<select id="${prefixo}Filho"><option value="">Escolha o motivo</option></select></label></div>
     ${peds.length ? `<label class="campo" style="margin-top:8px">Pedido (opcional)<select id="${prefixo}Ped"><option value="">Não é sobre um pedido</option>${peds.map((p) => `<option value="${esc(p.id)}" data-num="${esc(p.numero)}">Pedido #${p.numero} · ${esc((ERP_ST[p.status] || [p.status])[0])}</option>`).join("")}</select></label>` : ""}${extra}`;
 }
-function ligarMotivo(prefixo) {
-  const arv = S.e.motivos, mp = $("#" + prefixo + "Pai"), mf = $("#" + prefixo + "Filho");
-  mp.onchange = () => { mf.innerHTML = `<option value="">Escolha…</option>` + Object.entries(arv[mp.value] || {}).filter(([, i]) => i.ativo !== false).map(([f, i]) => `<option value="${esc(f)}">${esc(f)}${i.sla != null ? ` · SLA ${i.sla}d` : ""}</option>`).join(""); };
+function ligarMotivo(prefixo, setorDe = () => "") {
+  const mp = $("#" + prefixo + "Pai"), mf = $("#" + prefixo + "Filho");
+  mp.onchange = () => { mf.innerHTML = opcoesFilho(arvDe(setorDe()), mp.value, ""); };
 }
 
 async function recarregarCliente() {
@@ -876,21 +876,21 @@ function ligarCliente(m, D, sel, chat, abertas) {
       html: `<p class="dica" style="margin-bottom:10px">Só a central encerra. O cliente vê o chat encerrado e passa a acompanhar tudo pelo chamado nº <b>${esc(D.cliente.codigo || cid)}</b>.</p>
         <label class="chk"><input type="radio" name="modo" value="anexar" checked> <b>Anexar a conversa ao chamado</b> — fica no histórico, sem abrir solicitação</label>
         <label class="chk" style="margin-top:6px"><input type="radio" name="modo" value="solicitacao"> <b>Transformar em solicitação</b> — vira mais um problema do chamado, com motivo e SLA</label>
-        <div id="ccSol" class="oculto" style="margin-top:10px">${camposMotivo("cc", D)}</div>`,
+        <div id="ccSol" class="oculto" style="margin-top:10px">${camposMotivo("cc", D, "", chat.departamento)}</div>`,
       botoes: [{ rotulo: "Voltar" }, { rotulo: "Concluir chat", classe: "btn", principal: true, acao: async () => {
         const modo = document.querySelector('input[name="modo"]:checked').value, body = { modo };
-        if (modo === "solicitacao") { body.motivo_pai = $("#ccPai").value; body.motivo_filho = $("#ccFilho").value; body.pedido_id = $("#ccPed")?.value || ""; if (!body.motivo_pai || !body.motivo_filho) { A.toast("Escolha motivo e submotivo."); return false; } }
+        if (modo === "solicitacao") { body.departamento = chat.departamento || ""; body.motivo_pai = $("#ccPai").value; body.motivo_filho = $("#ccFilho").value; body.pedido_id = $("#ccPed")?.value || ""; if (!body.motivo_pai || !body.motivo_filho) { A.toast("Escolha motivo e submotivo."); return false; } }
         try { await chamar(tidUrl(chat.id) + "/concluir-chat", { method: "POST", body }); ok(modo === "anexar" ? "Chat concluído e anexado ao chamado." : "Chat virou solicitação do chamado."); S.solSel = modo === "solicitacao" ? chat.id : null; await recarregarDet(); }
         catch (e) { falha(e); return false; } } }] });
     document.querySelectorAll('input[name="modo"]').forEach((r) => (r.onchange = () => $("#ccSol").classList.toggle("oculto", document.querySelector('input[name="modo"]:checked').value !== "solicitacao")));
-    ligarMotivo("cc");
+    ligarMotivo("cc", () => chat.departamento);
   };
   // nova solicitação no MESMO chamado
   const ns = $("#novaSol"); if (ns) ns.onclick = () => {
     A.modal({ titulo: `Nova solicitação · chamado nº ${D.cliente.codigo || cid}`, icone: "mais", largura: 600,
       html: `<p class="dica" style="margin-bottom:10px">Entra no chamado do cliente (não abre outro). Mesmo motivo + mesmo pedido já aberto não é permitido.</p>
         <label class="campo">Setor<select id="nsDep">${S.e.departamentos.map((d) => `<option>${esc(d)}</option>`).join("")}</select></label>
-        <div style="margin-top:8px">${camposMotivo("ns", D)}</div>
+        <div style="margin-top:8px" id="nsMot">${camposMotivo("ns", D, "", S.e.departamentos[0])}</div>
         <label class="campo" style="margin-top:8px">Descrição<textarea id="nsDesc" rows="4"></textarea></label>`,
       botoes: [{ rotulo: "Cancelar" }, { rotulo: "Adicionar ao chamado", classe: "btn", principal: true, acao: async () => {
         const pai = $("#nsPai").value, filho = $("#nsFilho").value, desc = $("#nsDesc").value.trim(), pedSel = $("#nsPed");
@@ -900,7 +900,9 @@ function ligarCliente(m, D, sel, chat, abertas) {
         if (pedSel && pedSel.value) { body.erp_pedido_id = pedSel.value; body.erp_pedido_numero = +pedSel.selectedOptions[0].dataset.num || pedSel.selectedOptions[0].dataset.num; body.assunto += " · pedido #" + body.erp_pedido_numero; }
         try { const r = await chamar("/tickets", { method: "POST", body }); ok("Solicitação adicionada ao chamado nº " + (r.chamado || D.cliente.codigo) + "."); S.solSel = r.id; await recarregarDet(); }
         catch (e) { falha(e); return false; } } }] });
-    ligarMotivo("ns");
+    const nsSetor = () => $("#nsDep").value;
+    ligarMotivo("ns", nsSetor);
+    $("#nsDep").onchange = () => { $("#nsPai").innerHTML = opcoesPai(arvDe(nsSetor()), ""); $("#nsFilho").innerHTML = `<option value="">Escolha o motivo</option>`; };
   };
   // ERP (ações registradas na solicitação selecionada — ou na primeira aberta)
   const tidErp = (!sel.chat && ABERTOS.includes(sel.status) ? sel : abertas[0] || sel).id;
@@ -937,6 +939,13 @@ function ligarCliente(m, D, sel, chat, abertas) {
     try { const r = await chamar(tidUrl(tidErp) + "/erp-troca", { method: "POST", body: { pedido_id: p.id } }); ok(`Troca #${r.pedido.numero} criada no ERP.`); await recarregarDet(); } catch (e) { falha(e); }
   }));
 }
+/* Motivos › submotivos (SLA) › etapas: cada setor pode ter a sua árvore (Ajustes); sem árvore própria usa a geral */
+function arvDe(setor) {
+  const ps = S.e.motivos_setor || {}, k = Object.keys(ps).find((x) => norm(x) === norm(setor || ""));
+  return k && Object.keys(ps[k] || {}).length ? ps[k] : S.e.motivos;
+}
+const opcoesPai = (arv, atual) => `<option value="">Escolha…</option>` + Object.keys(arv).map((p) => `<option${p === atual ? " selected" : ""}>${esc(p)}</option>`).join("") + (atual && !arv[atual] ? `<option selected value="${esc(atual)}">${esc(atual)} (fora da lista do setor)</option>` : "");
+const opcoesFilho = (arv, pai, atual) => `<option value="">Escolha…</option>` + Object.entries(arv[pai] || {}).filter(([f, i]) => i.ativo !== false || f === atual).map(([f, i]) => `<option value="${esc(f)}"${f === atual ? " selected" : ""}>${esc(f)}${i.sla != null ? ` · SLA ${i.sla}d` : ""}</option>`).join("");
 const ehSolAtiva = (s) => !!s && !s.chat && ABERTOS.includes(s.status);
 /* 🤝 Pedir ajuda: escolhe o setor, escreve e pronto */
 function popupPedirAjuda(sel) {
@@ -973,30 +982,32 @@ function popupPendencias(sel) {
     botoes: [{ rotulo: "Fechar", classe: "btn", principal: true }] });
   md.el.querySelectorAll("[data-pi]").forEach((b) => (b.onclick = () => { md.fechar(); chatAjuda(peds[+b.dataset.pi], buscar); }));
 }
-/* 🏷 Tabulação: motivo › submotivo (SLA) › etapa, prazo e trilha */
+/* 🏷 Tabulação: setor › motivo › submotivo (SLA) › etapa — dá para corrigir a tabulação original, pela árvore de Ajustes */
 function popupTabulacao(sel) {
-  const arv = S.e.motivos, atual = String(sel.etapa_atual || "").split(" › ")[1] || "";
-  const filhos = Object.entries(arv[sel.motivo_pai] || {}).filter(([, i]) => i.ativo !== false);
+  const atual = String(sel.etapa_atual || "").split(" › ")[1] || "", trav = !!sel.etapa_travada;
   const trilha = (sel.historico_etapas || []).length ? `<details style="margin-top:10px"><summary class="dica" style="cursor:pointer">Trilha de etapas (${sel.historico_etapas.length})</summary>${sel.historico_etapas.slice().reverse().map((h) => `<p class="dica">${dh(h.quando)} · ${esc(h.etapa)} · ${esc(h.por || "")}${h.vermelha ? ` · prazo ${d10(h.data_prevista)}` : ""}</p>`).join("")}</details>` : "";
-  if (sel.etapa_travada) return A.modal({ titulo: "Tabulação", icone: "lista", largura: 520,
-    html: `<div class="trava">🔒 <b>${esc(sel.motivo_pai || "")} › ${esc(sel.etapa_atual || "")}</b><br>Prazo combinado: <b>${d10(sel.etapa_data_prevista)}</b> · travado por ${esc(sel.etapa_definida_por || "")} em ${dh(sel.etapa_definida_em)}.</div>${trilha}`,
-    botoes: [{ rotulo: "Fechar", classe: "btn", principal: true }] });
-  const md = A.modal({ titulo: "Tabulação · " + (sel.motivo_filho || sel.assunto || "Solicitação"), icone: "lista", largura: 520,
-    html: `<div style="display:flex;flex-direction:column;gap:8px">
-      <label class="campo">Motivo<select id="mPai"><option value="">Escolha…</option>${Object.keys(arv).map((p) => `<option${p === sel.motivo_pai ? " selected" : ""}>${esc(p)}</option>`).join("")}</select></label>
-      <label class="campo">Submotivo<select id="mFilho"><option value="">Escolha…</option>${filhos.map(([f, i]) => `<option value="${esc(f)}"${f === sel.motivo_filho ? " selected" : ""}>${esc(f)}${i.sla != null ? ` · SLA ${i.sla}d` : ""}</option>`).join("")}</select></label>
+  const deps = S.e.departamentos.slice(); if (sel.departamento && !deps.includes(sel.departamento)) deps.unshift(sel.departamento);
+  const md = A.modal({ titulo: "Tabulação · " + (sel.motivo_filho || sel.assunto || "Solicitação"), icone: "lista", largura: 540,
+    html: `<p class="dica" style="margin-bottom:8px">Original: <b>${esc(sel.departamento || "—")}</b> › ${esc(sel.motivo_pai || "não classificado")}${sel.motivo_filho ? " › " + esc(sel.motivo_filho) : ""}. As opções vêm de Ajustes › Motivos do setor.</p>
+      ${trav ? `<div class="trava" style="margin-bottom:8px">🔒 Prazo combinado com o cliente: <b>${d10(sel.etapa_data_prevista)}</b> — continua valendo; dá para corrigir setor, motivo, submotivo e etapa.</div>` : ""}
+      <div style="display:flex;flex-direction:column;gap:8px">
+      <label class="campo">Setor<select id="mSetor">${deps.map((d) => `<option${d === sel.departamento ? " selected" : ""}>${esc(d)}</option>`).join("")}</select></label>
+      <label class="campo">Motivo<select id="mPai"></select></label>
+      <label class="campo">Submotivo<select id="mFilho"></select></label>
       <label class="campo">Etapa<select id="mEtapa"></select></label>
-      <label class="campo">Prazo combinado com o cliente <small class="dica">(opcional — trava a trilha; o cliente vê)</small><input type="date" id="mData"></label></div>${trilha}`,
+      ${trav ? "" : `<label class="campo">Prazo combinado com o cliente <small class="dica">(opcional — trava o prazo; o cliente vê)</small><input type="date" id="mData"></label>`}</div>${trilha}`,
     botoes: [{ rotulo: "Cancelar" }, { rotulo: "Salvar", classe: "btn", principal: true, acao: async () => {
-      const mp = $("#mPai"), mf = $("#mFilho"), data = $("#mData").value;
+      const data = trav ? "" : $("#mData").value;
       if (!mp.value || !mf.value) { A.toast("Escolha motivo e submotivo."); return false; }
-      if (data && !(await A.confirmar(`Travar a trilha com prazo em <b>${d10(data)}</b>? Depois disso ela não pode mais ser mudada.`, { rotulo: "Travar prazo" }))) return false;
-      try { await chamar(tidUrl(sel.id) + "/classificar", { method: "POST", body: { motivo_pai: mp.value, motivo_filho: mf.value, etapa: $("#mEtapa").value, data_prevista: data } }); ok("Tabulação salva."); await recarregarCliente(); }
+      if (data && !(await A.confirmar(`Travar o prazo em <b>${d10(data)}</b>? Depois disso ele não pode mais ser mudado.`, { rotulo: "Travar prazo" }))) return false;
+      try { await chamar(tidUrl(sel.id) + "/classificar", { method: "POST", body: { departamento: ms.value, motivo_pai: mp.value, motivo_filho: mf.value, etapa: me2.value, data_prevista: data } }); ok("Tabulação salva."); await recarregarCliente(); }
       catch (e) { falha(e); return false; } } }] });
-  const mp = md.el.querySelector("#mPai"), mf = md.el.querySelector("#mFilho"), me2 = md.el.querySelector("#mEtapa");
-  const etapas = () => { const info = (arv[mp.value] || {})[mf.value] || {}; me2.innerHTML = `<option value="">— sem etapa —</option>` + (info.etapas || []).map((x) => `<option${x === atual ? " selected" : ""}>${esc(x)}</option>`).join(""); };
-  mp.onchange = () => { mf.innerHTML = `<option value="">Escolha…</option>` + Object.entries(arv[mp.value] || {}).filter(([, i]) => i.ativo !== false).map(([f, i]) => `<option value="${esc(f)}">${esc(f)}${i.sla != null ? ` · SLA ${i.sla}d` : ""}</option>`).join(""); etapas(); };
-  mf.onchange = etapas; etapas();
+  const ms = md.el.querySelector("#mSetor"), mp = md.el.querySelector("#mPai"), mf = md.el.querySelector("#mFilho"), me2 = md.el.querySelector("#mEtapa");
+  const etapas = () => { const info = (arvDe(ms.value)[mp.value] || {})[mf.value] || {}; me2.innerHTML = `<option value="">— sem etapa —</option>` + (info.etapas || []).map((x) => `<option${x === atual ? " selected" : ""}>${esc(x)}</option>`).join(""); };
+  const filhos = (f) => { mf.innerHTML = opcoesFilho(arvDe(ms.value), mp.value, f); etapas(); };
+  const pais = (p, f) => { mp.innerHTML = opcoesPai(arvDe(ms.value), p); filhos(f); };
+  ms.onchange = () => pais("", ""); mp.onchange = () => filhos(""); mf.onchange = etapas;
+  pais(sel.motivo_pai || "", sel.motivo_filho || "");
 }
 /* solicitação CONCLUÍDA em popup — leitura rápida: fecha e abre outra, sem descer a tela */
 function popupSolicitacao(s, D) {
@@ -1041,7 +1052,7 @@ function telaAbrir(m) {
     m.querySelectorAll("[data-setor]").forEach((b) => (b.onclick = () => { S.setorAbrir = b.dataset.setor; render(); }));
     return;
   }
-  const arv = S.e.motivos;
+  const arv = arvDe(S.setorAbrir);
   m.innerHTML = `<section class="painel vidro" style="max-width:820px;margin:0 auto">
     <button type="button" class="btn v p" id="trocaSetor">${svg("voltar")} Setores</button>
     <h2 style="margin:10px 0 12px;font:700 1.3rem var(--titulo)">Novo chamado · ${esc(S.setorAbrir)}</h2>
@@ -1123,25 +1134,53 @@ function chatAjuda(v, buscar) {   // buscar(pid) → visão atualizada (pendênc
     return false;
   }
 }
+/* fila do meu setor: chats e solicitações ABERTOS com departamento = setor */
+function filaSetor(setor) { return setor ? S.e.tickets.filter((t) => ABERTOS.includes(t.status) && norm(t.departamento) === norm(setor)) : []; }
+const assuntoAbertura = (t) => t.chat ? "📱 " + (t.assunto || "Chat do app") : (t.motivo_pai || "— sem motivo —");
 function telaAjuda(m) {
-  if (!S.aj) { m.innerHTML = `<div class="vazio"><b>Carregando os pedidos de ajuda…</b></div>`; carregarAjuda(true); return; }
-  const aj = S.aj, l = aj.pedidos, f = S.ajFiltro || "recebidos";
+  if (!S.aj) { m.innerHTML = `<div class="vazio"><b>Carregando…</b></div>`; carregarAjuda(true); return; }
+  const aj = S.aj, l = aj.pedidos, f = S.ajFiltro || "setor", setor = aj.setor;
   const grupos = { recebidos: l.filter((v) => v.papel === "recebido" && v.status === "aberto"), enviados: l.filter((v) => v.papel === "enviado" && v.status === "aberto"), resolvidos: l.filter((v) => v.status !== "aberto") };
   const nomes = { recebidos: "Pediram ao meu setor", enviados: "Meu setor pediu", resolvidos: "Encerrados (30 dias)" };
+  const fila = filaSetor(setor), porAss = {};
+  fila.forEach((t) => (porAss[assuntoAbertura(t)] = porAss[assuntoAbertura(t)] || []).push(t));
+  const assuntos = Object.entries(porAss).sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
+  const ass = S.ajAss && porAss[S.ajAss] ? S.ajAss : "";
+  const cor = (x) => { let h = 0; for (const ch of String(x)) h = (h * 31 + ch.charCodeAt(0)) % 360; return `hsl(${h} 70% 62%)`; };
+  const bt = (filtro, a, rot, n, c) => `<button type="button" data-ajf="${filtro}" data-ajass="${esc(a)}" class="${f === filtro && (filtro !== "setor" || ass === a) ? "ativo" : ""}" style="--c:${c || "var(--txt3)"}"><i></i>${esc(rot)}<em>${n}</em></button>`;
+  const ordSla = (a, b) => (b.app_pendente - a.app_pendente) || ((a.sla?.min ?? 1e9) - (b.sla?.min ?? 1e9));
+  const linha = (t) => `<tr class="linha${t.chat ? " app" : ""}${t.app_pendente ? " alerta" : ""}" data-tk="${esc(t.id)}">
+      <td>${t.app_pendente ? `<span class="pisca" title="Cliente respondeu"></span>` : ""}<b>${t.chat ? "📱" : "#"}${esc(t.cliente_codigo || "")}</b></td>
+      <td class="ass"><b>${esc(t.cliente_nome || "(sem nome)")}</b><br><small class="dica">${t.chat ? "chat do app" : esc(t.motivo_filho || t.assunto || "")}${t.erp_pedido_numero ? " · pedido #" + esc(t.erp_pedido_numero) : ""}</small></td>
+      <td class="so-largo">${dh(t.criado_em)}</td>
+      <td>${t.sem_dono ? `<span class="dica">— sem dono —</span>` : esc(nomeU(t.atribuido_para).split(" ")[0])}</td>
+      <td>${slaTxt(t.sla)}<br>${etqSt(t.status)}</td></tr>`;
+  const blocos = (ass ? [[ass, porAss[ass]]] : assuntos).map(([a, ts]) => `<tr><td colspan="5" style="padding:12px 8px 6px;border-bottom:1px solid var(--vidro-borda)"><b style="color:${cor(a)}">${esc(a)}</b> <span class="dica">${ts.length}</span></td></tr>${ts.slice().sort(ordSla).map(linha).join("")}`).join("");
   const card = (v) => { const ult = v.conversa[v.conversa.length - 1];
     return `<button type="button" class="sol-card" data-aj="${esc(v.id)}" style="--c:${v.status === "aberto" ? (v.papel === "recebido" ? "var(--violeta)" : "var(--azul)") : "var(--verde)"};width:100%;text-align:left">
       <span class="t1"><b>${esc(v.setor_origem)} → ${esc(v.setor_destino)}</b>${etq(v.status === "aberto" ? (v.papel === "recebido" ? "aguardando meu setor" : "aguardando " + v.setor_destino) : "encerrado", v.status === "aberto" ? "#8b5cf6" : "#34d399")}<span class="dica" style="margin-left:auto">${dh(v.ultima_em)}</span></span>
       <small><b>${esc(v.cliente_nome || "")}</b> · ${esc(v.cliente_codigo || "")} · ${esc(v.assunto || "")} · ${v.conversa.length} mensagem(ns)</small>
       <small style="display:block;margin-top:3px">💬 ${esc(ult.nome || "")}: ${esc(String(ult.texto || "").slice(0, 160))}</small></button>`; };
-  m.innerHTML = `<section class="painel vidro"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h2 style="margin:0;font:700 1.25rem var(--titulo)">Pedidos de ajuda</h2>
-      ${aj.departamentos.length ? `<select class="entrada" id="ajSetor" style="width:auto;padding:6px 9px"><option value="">Meu setor${aj.eu.depto ? " (" + esc(aj.eu.depto) + ")" : ""}</option>${aj.departamentos.map((d) => `<option${S.ajSetor === d ? " selected" : ""}>${esc(d)}</option>`).join("")}</select>` : ""}</div>
-    <p class="dica" style="margin:4px 0 10px">Cada setor vê só o que pediram a ele e o que ele pediu${aj.setor ? ` — você está vendo <b>${esc(aj.setor)}</b>` : ""}. Quando chega um pedido, abre o balão de chat no hub; aqui você consulta e trata quando quiser.</p>
-    ${!aj.setor ? `<div class="aviso ouro">Seu usuário está sem setor — defina em Ajustes › Usuários e setores para receber os pedidos de ajuda do seu setor. Por enquanto aparecem só os que você mesmo pediu.</div>` : ""}
-    <div class="abas-caixa">${Object.keys(grupos).map((k2) => `<button type="button" data-ajf="${k2}" class="${f === k2 ? "ativo" : ""}">${nomes[k2]}<em>${grupos[k2].length}</em></button>`).join("")}</div>
-    <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">${grupos[f].map(card).join("") || `<div class="vazio">${A.orbe("check", "var(--verde)")}<b>Nada aqui</b></div>`}</div></section>`;
-  m.querySelectorAll("[data-ajf]").forEach((b) => (b.onclick = () => { S.ajFiltro = b.dataset.ajf; render(); }));
+  m.innerHTML = `<div class="caixa">
+    <aside class="filas vidro">
+      ${aj.departamentos.length ? `<select class="entrada" id="ajSetor" style="width:100%;padding:6px 9px;margin-bottom:6px"><option value="">Meu setor${aj.eu.depto ? " (" + esc(aj.eu.depto) + ")" : ""}</option>${aj.departamentos.map((d) => `<option${S.ajSetor === d ? " selected" : ""}>${esc(d)}</option>`).join("")}</select>` : ""}
+      <h4>Aberto no setor${setor ? " · " + esc(setor) : ""}</h4>
+      ${bt("setor", "", "Tudo aberto no setor", fila.length, "var(--ouro)")}
+      ${assuntos.length ? `<h4>Por assunto de abertura</h4>${assuntos.map(([a, ts]) => bt("setor", a, a, ts.length, cor(a))).join("")}` : ""}
+      <h4>Pedidos de ajuda</h4>
+      ${Object.keys(grupos).map((k2) => bt(k2, "", nomes[k2], grupos[k2].length, k2 === "recebidos" ? "var(--violeta)" : k2 === "enviados" ? "var(--azul)" : "var(--verde)")).join("")}
+      <p class="dica" style="padding:10px 6px 2px">Chats e tickets abertos para o seu setor, agrupados pelo assunto com que foram abertos. Os pedidos de ajuda também chegam num balão de chat no topo do hub.</p>
+    </aside>
+    <section class="painel vidro">
+      ${!setor ? `<div class="aviso ouro">Seu usuário está sem setor — defina em Ajustes › Setor de cada pessoa para ver os chats, tickets e pedidos de ajuda do seu setor.</div>` : ""}
+      ${f === "setor" ? `<div class="resumo-real"><span><b style="color:var(--ciano)">${fila.filter((t) => t.chat).length}</b> chat(s)</span><span><b>${fila.filter((t) => !t.chat).length}</b> ticket(s)</span><span><b style="color:var(--ouro)">${fila.filter((t) => t.sem_dono).length}</b> sem dono</span>${ass ? `<span>assunto: <b>${esc(ass)}</b></span>` : ""}</div>
+        ${fila.length ? `<table class="tab" style="margin-top:8px"><thead><tr><th>Chamado</th><th>Cliente</th><th class="so-largo">Desde</th><th>Dono</th><th>SLA / situação</th></tr></thead><tbody>${blocos}</tbody></table>` : `<div class="vazio">${A.orbe("check", "var(--verde)")}<b>Nada aberto no setor</b></div>`}`
+      : `<h3 style="margin:0 0 10px">${nomes[f]}</h3><div style="display:flex;flex-direction:column;gap:8px">${grupos[f].map(card).join("") || `<div class="vazio">${A.orbe("check", "var(--verde)")}<b>Nada aqui</b></div>`}</div>`}
+    </section></div>`;
+  m.querySelectorAll("[data-ajf]").forEach((b) => (b.onclick = () => { S.ajFiltro = b.dataset.ajf; S.ajAss = b.dataset.ajass || ""; render(); }));
   m.querySelectorAll("[data-aj]").forEach((b) => (b.onclick = () => chatAjuda(l.find((x) => x.id === b.dataset.aj))));
-  const ss = $("#ajSetor"); if (ss) ss.onchange = () => { S.ajSetor = ss.value; S.aj = null; render(); };
+  m.querySelectorAll("[data-tk]").forEach((r) => (r.onclick = () => { S.sec = "caixa"; abrirTicket(r.dataset.tk); }));
+  const ss = $("#ajSetor"); if (ss) ss.onchange = () => { S.ajSetor = ss.value; S.ajAss = ""; S.aj = null; render(); };
 }
 
 /* ══════ GESTÃO ══════ */
@@ -1168,7 +1207,10 @@ function telaGestao(m) {
 
 /* ══════ AJUSTES ══════ */
 function telaAjustes(m) {
-  const e = S.e, cfg = e.config, arv = JSON.parse(JSON.stringify(e.motivos)), deps = e.departamentos.slice();
+  const e = S.e, cfg = e.config, deps = e.departamentos.slice();
+  const arvSetor = S.arvSetor || "", proprias = e.motivos_setor || {};
+  const kProp = Object.keys(proprias).find((x) => norm(x) === norm(arvSetor));
+  let arv = JSON.parse(JSON.stringify(arvSetor ? (kProp ? proprias[kProp] : {}) : e.motivos));
   const ap = e.app_cliente || {}, ura = JSON.parse(JSON.stringify(ap.ura || []));
   const pais = () => Object.entries(arv).map(([p, fs]) => `<div class="pai"><b>${esc(p)}</b> <button type="button" class="btn-ic p" data-delpai="${esc(p)}" title="Tirar motivo">${svg("lixo")}</button>
     ${Object.entries(fs).map(([f, i]) => `<div class="filho"><input class="entrada" value="${esc(f)}" disabled><input class="entrada" type="number" min="0" step="0.5" data-sla="${esc(p)}|${esc(f)}" value="${i.sla ?? ""}" title="SLA em dias"><input class="entrada" data-et="${esc(p)}|${esc(f)}" value="${esc((i.etapas || []).join(", "))}" title="Etapas separadas por vírgula"><label class="chk" title="Ativo"><input type="checkbox" data-at="${esc(p)}|${esc(f)}"${i.ativo === false ? "" : " checked"}></label></div>`).join("")}
@@ -1177,10 +1219,12 @@ function telaAjustes(m) {
     <p class="dica">Banco em uso: <b>${e.banco === "hub" ? "banco do hub" : "bancowendley (mesmos tickets do Streamlit)"}</b> · leituras desde que o servidor ligou: ${e.sync.leituras}</p>
     <div class="cartoes" style="margin-top:12px">
       <div class="cartao" style="grid-column:1/-1"><h3>${svg("lista")} Motivos, submotivos, SLA (dias) e etapas</h3>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><label class="campo" style="min-width:260px">Árvore de<select id="arvSetor"><option value="">Geral — app do cliente e setores sem árvore própria</option>${deps.map((d) => `<option value="${esc(d)}"${norm(d) === norm(arvSetor) ? " selected" : ""}>${esc(d)}${Object.keys(proprias).some((x) => norm(x) === norm(d)) ? " ✓ própria" : ""}</option>`).join("")}</select></label>
+          ${arvSetor && !kProp ? `<span class="dica">${esc(arvSetor)} ainda usa a árvore geral. Monte a dele abaixo ou <a href="#" id="copiarGeral">comece copiando a geral</a>.</span>` : arvSetor ? `<span class="dica">Ao abrir chamado para <b>${esc(arvSetor)}</b>, só aparecem estes motivos. Apagar todos = volta a usar a geral.</span>` : ""}</div>
         <div class="arvore" id="arv">${pais()}</div>
         <div style="display:flex;gap:6px"><input class="entrada" id="novoPai" placeholder="+ novo motivo (ex.: Pedido)"><button type="button" class="btn v p" id="addPai">Adicionar</button></div>
         <label class="campo">Setores (para abrir chamado e pedir ajuda) — separados por vírgula<input id="deps" value="${esc(deps.join(", "))}"></label>
-        <button type="button" class="btn p" id="salvarArv">Salvar motivos e setores</button></div>
+        <button type="button" class="btn p" id="salvarArv">Salvar ${arvSetor ? "motivos de " + esc(arvSetor) + " e setores" : "motivos e setores"}</button></div>
       <div class="cartao"><h3>${svg("caixa")} Ligação com o ERP</h3>
         <p class="dica">Quando a baixa da entrega no ERP for…</p>
         ${[["avaria", "Avaria"], ["recusado", "Recusa"], ["ausente", "Cliente ausente"]].map(([k2, r]) => `<label class="chk"><input type="checkbox" data-auto="${k2}"${cfg.auto_erp?.[k2] ? " checked" : ""}> ${r} → abrir ticket sozinho</label>`).join("")}
@@ -1201,7 +1245,7 @@ function telaAjustes(m) {
         <div id="uraLista" style="display:flex;flex-direction:column;gap:5px"></div>
         <div style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="btn v p" id="uraAdd">+ opção</button><button type="button" class="btn p" id="salvarApp">Salvar app do cliente</button></div></div>
       <div class="cartao"><h3>${svg("usuarios")} Setor de cada pessoa</h3>
-        <p class="dica">Define o que cada um vê em “Tickets internos” e quem tem permissão de “ver o próprio setor”.${e.banco === "hub" ? "" : " (No bancowendley o setor vem do cadastro de usuários do Streamlit.)"}</p>
+        <p class="dica">Define o que cada um vê em “Pedidos de ajuda”: os chats, tickets e pedidos de ajuda abertos para o setor dele.${e.banco === "hub" ? "" : " (No bancowendley o setor vem do cadastro de usuários do Streamlit.)"}</p>
         <div style="max-height:320px;overflow:auto;display:flex;flex-direction:column;gap:5px">${e.usuarios.map((u) => `<div class="g2" style="align-items:center"><span style="font-size:.82rem">${esc(u.nome)} <small class="dica">@${esc(u.usuario)}</small></span>
           <select class="entrada" data-setoru="${esc(u.usuario)}" style="padding:6px 8px"${e.banco === "hub" ? "" : " disabled"}><option value="">—</option>${deps.map((d) => `<option${norm(d) === norm(u.depto) ? " selected" : ""}>${esc(d)}</option>`).join("")}</select></div>`).join("")}</div>
         ${e.banco === "hub" ? `<button type="button" class="btn p" id="salvarSetores">Salvar setores</button>` : ""}
@@ -1218,7 +1262,9 @@ function telaAjustes(m) {
   ligarArv();
   $("#addPai").onclick = () => { lerArv(); const v = $("#novoPai").value.trim(); if (v && !arv[v]) arv[v] = {}; $("#novoPai").value = ""; redesenhar(); };
   m.querySelectorAll("[data-novofilho]").forEach((i) => (i.onkeydown = (ev) => { if (ev.key === "Enter") { lerArv(); redesenhar(); } }));
-  $("#salvarArv").onclick = async () => { lerArv(); try { await chamar("/config/motivos", { method: "PUT", body: { motivos: arv, departamentos: $("#deps").value.split(",").map((x) => x.trim()).filter(Boolean) } }); ok("Motivos e setores salvos."); await carregar(); } catch (er) { falha(er); } };
+  $("#salvarArv").onclick = async () => { lerArv(); try { await chamar("/config/motivos", { method: "PUT", body: { motivos: arv, setor: arvSetor, departamentos: $("#deps").value.split(",").map((x) => x.trim()).filter(Boolean) } }); ok(arvSetor ? `Motivos de ${arvSetor} salvos.` : "Motivos e setores salvos."); await carregar(); } catch (er) { falha(er); } };
+  $("#arvSetor").onchange = (ev) => { S.arvSetor = ev.target.value; render(); };
+  const cg = $("#copiarGeral"); if (cg) cg.onclick = (ev) => { ev.preventDefault(); arv = JSON.parse(JSON.stringify(e.motivos)); redesenhar(); };
   $("#salvarErp").onclick = async () => { const auto = {}; m.querySelectorAll("[data-auto]").forEach((c) => (auto[c.dataset.auto] = c.checked));
     try { await chamar("/config", { method: "PUT", body: { auto_erp: auto, depto_erp: $("#dErp").value, motivo_pai_erp: $("#mErp").value, sla_erp_dias: +$("#sErp").value || 0 } }); ok("Salvo."); await carregar(); } catch (er) { falha(er); } };
   const ss = $("#salvarSetores"); if (ss) ss.onclick = async () => { const mapa = {}; m.querySelectorAll("[data-setoru]").forEach((s2) => { if (s2.value) mapa[s2.dataset.setoru] = s2.value; });
