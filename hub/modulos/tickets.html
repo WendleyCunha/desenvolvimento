@@ -189,7 +189,7 @@ button.kpi:hover{border-color:color-mix(in srgb,var(--c) 50%,transparent)}
 .sol-card:hover{background:rgba(255,255,255,.06)}
 .sol-card.sel{background:color-mix(in srgb,var(--c) 12%,transparent);border-color:color-mix(in srgb,var(--c) 55%,transparent);border-left-color:var(--c)}
 .sol-card.chat{--c:var(--ciano)}
-.sol-card .t1{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.sol-card .t1 b{font-size:.84rem}
+.sol-card .t1{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.sol-card .fim{margin-left:auto;font-size:.68rem;font-weight:600;color:var(--txt3);white-space:nowrap;font-variant-numeric:tabular-nums}.sol-card .t1 b{font-size:.84rem}
 .sol-card small{color:var(--txt3);font-size:.7rem}
 .barra-sol{position:sticky;top:-2px;z-index:3;display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:6px 0 8px;margin-bottom:4px;border-bottom:1px solid var(--vidro-borda);background:color-mix(in srgb,var(--noite2) 88%,transparent);backdrop-filter:blur(8px)}
 .barra-sol .qual{font-size:.72rem;color:var(--txt3);max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.barra-sol .esp{flex:1}
@@ -796,8 +796,9 @@ async function telaCliente(m, cid) {
   const selAberta = ABERTOS.includes(sel.status), caminho = String(sel.etapa_atual || "").split(" › ");
   const ehSol = !!(ativa && !ativa.chat), atende = pode("atender");
   const nPend = pedidosAb.filter((p) => !resp[p.id]).length;
+  const fimDe = (s) => String(s.resolvido_em || s.cancelado_em || s.atualizado_em || "");   // quando foi concluída (cancelada: última mudança)
   const cartao = (s) => `<button type="button" class="sol-card${ativa && s.id === ativa.id ? " sel" : ""}${s.chat ? " chat" : ""}" data-sol="${esc(s.id)}" style="--c:${corSol(s.cor)}">
-      <span class="t1"><b>${esc(rot(s))}</b>${etqSt(s.status)}${s.app_pendente ? etq("📱 respondeu", "#22d3ee") : ""}</span>
+      <span class="t1"><b>${esc(rot(s))}</b>${etqSt(s.status)}${s.app_pendente ? etq("📱 respondeu", "#22d3ee") : ""}${!ABERTOS.includes(s.status) && fimDe(s) ? `<span class="fim" title="${s.status === "cancelado" ? "Cancelada em" : "Concluída em"}">${s.status === "cancelado" ? "✕" : "✓"} ${d10(fimDe(s))} · ${fimDe(s).slice(11, 16)}</span>` : ""}</span>
       <small>${s.chat ? esc(s.assunto || "") : esc(s.motivo_pai || "não classificado")}${s.departamento ? " · " + esc(s.departamento) : ""}${ABERTOS.includes(s.status) ? " · " + slaTxt(s.sla) : ""}${(s.pend_abertas || []).length ? ` · ${s.pend_abertas.length} pendência(s)` : ""}</small></button>`;
   if (S.convAberta == null || S.convAbertaDe !== cid) { S.convAberta = !!chat; S.convAbertaDe = cid; }   // sem chat ativo, a conversa abre MINIMIZADA
   const corpo = {
@@ -830,7 +831,7 @@ async function telaCliente(m, cid) {
           <p class="dica" style="margin-top:4px">Registrar: o cliente vê no app · Nota interna: o cliente nunca vê · Concluir: finaliza a solicitação.</p>
         </div>` : ""}`}
       </div>` : ""}
-      ${fechadas.length ? `<details style="margin-top:6px"><summary class="dica" style="cursor:pointer">Concluídas (${fechadas.length})</summary><div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">${fechadas.map(cartao).join("")}</div></details>` : ""}`,
+      ${fechadas.length ? `<details style="margin-top:6px"><summary class="dica" style="cursor:pointer">Concluídas (${fechadas.length})</summary><div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">${fechadas.slice().sort((a, b) => fimDe(b).localeCompare(fimDe(a))).map(cartao).join("")}</div></details>` : ""}`,
     cli: `<dl class="ficha"><dt>Nome</dt><dd>${esc(D.cliente.nome || "—")}</dd><dt>Chamado</dt><dd>nº ${esc(D.cliente.codigo || "—")}</dd><dt>Telefone</dt><dd>${esc(D.cliente.telefone || "não informado")}</dd><dt>Dono</dt><dd>${temDono ? esc(nomeU(D.dono[0])) : "ninguém"}</dd></dl>
       ${erpBloco(sel, D.erp)}`,
   };
