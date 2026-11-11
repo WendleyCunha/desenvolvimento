@@ -233,6 +233,10 @@ button.kpi:hover{border-color:color-mix(in srgb,var(--c) 50%,transparent)}
 .fchip i{width:8px;height:8px;border-radius:50%;background:var(--c)}.fchip em{font-style:normal;font-size:.68rem;color:var(--txt3);font-variant-numeric:tabular-nums}
 .fchip:hover{border-color:var(--c)}.fchip.on{background:color-mix(in srgb,var(--c) 22%,transparent);border-color:var(--c);color:var(--txt)}.fchip.on em{color:var(--txt)}
 .fpai-cab .fchip{font-weight:700}
+.ordens{display:flex;flex-direction:column;gap:8px}
+.ordem{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:11px 13px;border-radius:14px;border:1px solid var(--vidro-borda);background:rgba(255,255,255,.03);color:var(--txt);cursor:pointer;font:inherit;transition:.15s}
+.ordem i{width:10px;height:10px;border-radius:50%;background:var(--c);flex:none}.ordem span{flex:1}.ordem b{display:block;font-size:.88rem}.ordem small{font-size:.72rem;color:var(--txt3)}
+.ordem:hover{border-color:var(--c)}.ordem.on{border-color:var(--c);background:color-mix(in srgb,var(--c) 16%,transparent)}.ordem em{font-style:normal;color:var(--c);font-weight:700}
 .tclis{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .tlista{max-height:min(50vh,440px);overflow:auto;display:flex;flex-direction:column;gap:6px}
 .tpes{display:flex;align-items:center;gap:11px;width:100%;text-align:left;padding:9px 11px;border-radius:12px;border:1px solid var(--vidro-borda);background:rgba(255,255,255,.03);color:var(--txt);cursor:pointer;font:inherit;transition:.15s}
@@ -630,7 +634,7 @@ function popupFiltro() {
   const chip = (g, v, n) => `<button type="button" class="fchip${sel[g].includes(v) ? " on" : ""}" data-g="${g}" data-v="${esc(v)}" style="--c:${corDe(v)}"><i></i>${esc(v)}<em>${n}</em></button>`;
   const md = A.modal({ titulo: pai + " · submotivo e etapa", icone: "filtro", cor: "var(--violeta)", largura: 640,
     html: `<p class="dica" style="margin-bottom:6px">${base.length} cliente(s) na caixa <b>${esc(pai)}</b>. Marque um ou mais submotivos e, se quiser, a etapa.</p><div id="fCorpo" class="fcorpo"></div>`,
-    esquerda: [{ rotulo: "Limpar", classe: "btn v", acao: () => { sel.filhos = []; sel.etapas = []; desenhar(); return false; } }],
+    esquerda: [{ rotulo: "Limpar", classe: "btn v", acao: () => { S.flt = {}; S.pag = 0; render(); } }],   // desfaz e fecha: a caixa volta inteira
     botoes: [{ rotulo: "Cancelar" }, { rotulo: "Mostrar", classe: "btn", principal: true, acao: () => { S.flt = sel; S.pag = 0; render(); } }] });
   function desenhar() {
     const filhos = conta("filho", () => true);
@@ -643,6 +647,23 @@ function popupFiltro() {
     md.el.querySelectorAll(".fchip").forEach((c2) => (c2.onclick = () => { const l = sel[c2.dataset.g], v = c2.dataset.v, i = l.indexOf(v); i >= 0 ? l.splice(i, 1) : l.push(v); desenhar(); }));
   }
   desenhar();
+}
+/* ⇅ ORDENAR (popup, mesmo estilo do filtro) — clicar numa opção já ordena e fecha */
+const ORDENS = [["urgencia", "Urgência", "quem respondeu no app primeiro, depois o SLA mais apertado", "var(--rosa)"],
+  ["antigo", "Mais antigo", "o que chegou primeiro no topo", "var(--ouro)"],
+  ["recente", "Mais recente", "o que mexeu por último no topo", "var(--ciano)"],
+  ["atendente", "Por atendente", "agrupado pelo dono, em ordem alfabética", "var(--violeta)"]];
+const COLS_ROT = { codigo: "Chamado", nome: "Cliente", desde: "Desde", dono: "Dono", sla: "SLA" };
+const rotuloOrdem = () => S.ordCol ? `${COLS_ROT[S.ordCol] || S.ordCol} ${S.ordDir === -1 ? "Z-A" : "A-Z"}` : (ORDENS.find((o) => o[0] === S.ord) || ORDENS[0])[1];
+function popupOrdenar() {
+  const atual = S.ordCol ? "" : S.ord || "urgencia";
+  const aplica = (v) => { S.ord = v; S.ordCol = null; S.pag = 0; ls.set("wd.tk.ord", v); render(); };
+  const md = A.modal({ titulo: "Ordenar", icone: "lista", cor: "var(--violeta)", largura: 520,
+    html: `<div class="fcorpo"><section class="fgrupo"><div class="ordens">${ORDENS.map(([v, r, d, c]) => `<button type="button" class="ordem${v === atual ? " on" : ""}" data-o="${v}" style="--c:${c}"><i></i><span><b>${r}</b><small>${d}</small></span>${v === atual ? "<em>✓</em>" : ""}</button>`).join("")}</div>
+      ${S.ordCol ? `<p class="dica" style="margin-top:10px">Agora está por coluna: <b>${esc(rotuloOrdem())}</b> (clique no cabeçalho da tabela).</p>` : ""}</section></div>`,
+    esquerda: [{ rotulo: "Limpar", classe: "btn v", acao: () => aplica("urgencia") }],   // volta ao padrão e fecha
+    botoes: [{ rotulo: "Cancelar" }] });
+  md.el.querySelectorAll("[data-o]").forEach((b) => (b.onclick = () => { md.fechar(); aplica(b.dataset.o); }));
 }
 /* ⇄ Transferir: escolhe a pessoa num popup (online primeiro, setor de cada um) */
 function popupTransferir(cids, depois) {
@@ -710,7 +731,7 @@ function telaCaixa(m) {
         ${paiFiltro() ? `<button type="button" class="ic-sol${nFiltros() ? " tem" : ""}" id="btFiltro" title="Filtrar ${esc(paiFiltro())} por submotivo e etapa">⚲ Submotivo e etapa${nFiltros() ? `<b>${nFiltros()}</b>` : ""}</button>
           ${["filhos", "etapas"].flatMap((g) => (S.flt[g] || []).map((v) => `<span class="mini c" style="--c:${corDe(v)}">${esc(v)} <a href="#" data-tira-f="${g}|${esc(v)}">✕</a></span>`)).join("")}` : ""}
         <span class="dica">Ordenar</span>
-        <select class="entrada" id="ord">${[["urgencia", "Urgência (quem respondeu + SLA)"], ["atendente", "Por atendente"], ["antigo", "Mais antigo"], ["recente", "Mais recente"]].map(([v, r]) => `<option value="${v}"${S.ord === v ? " selected" : ""}>${r}</option>`).join("")}</select>
+        <button type="button" class="ic-sol${S.ordCol || (S.ord && S.ord !== "urgencia") ? " tem" : ""}" id="btOrd" title="Ordenar a lista">⇅ ${esc(rotuloOrdem())}</button>
         <div class="dir">
           ${pode("transferir") ? `<button type="button" class="ic-sol${S.sel.size ? " tem" : ""}" id="btTransf" title="Marque os clientes na tabela e escolha para quem">⇄ Transferir${S.sel.size ? `<b>${S.sel.size}</b>` : ""}</button>` : ""}
           ${pode("atender") && S.e.fila?.clientes ? `<button type="button" class="btn v p" id="btProx" title="O cliente mais urgente sem dono do seu setor vem para você">▶ Pegar o próximo <em style="font-style:normal;opacity:.7">${S.e.fila.clientes}</em></button>` : ""}
@@ -733,7 +754,7 @@ function telaCaixa(m) {
   m.querySelectorAll("[data-fila]").forEach((b) => (b.onclick = () => { if (b.dataset.fila !== S.fila) S.flt = {}; S.fila = b.dataset.fila; S.pag = 0; if (S.fila && ["meus"].includes(S.aba)) S.aba = soMeu ? "todos" : "equipe"; render(); }));
   const fd = m.querySelector(".filtros"); if (fd) fd.ontoggle = () => { S.filtrosAbertos = fd.open; };
   const px = $("#btProx"); if (px) px.onclick = pegarProximo;
-  $("#ord").onchange = (e) => { S.ord = e.target.value; S.ordCol = null; ls.set("wd.tk.ord", S.ord); render(); };
+  $("#btOrd").onclick = popupOrdenar;
   const bf = $("#btFiltro"); if (bf) bf.onclick = popupFiltro;
   m.querySelectorAll("[data-tira-f]").forEach((a) => (a.onclick = (e) => { e.preventDefault(); const [g, ...v] = a.dataset.tiraF.split("|"); S.flt[g] = (S.flt[g] || []).filter((x) => x !== v.join("|")); S.pag = 0; render(); }));
   const btT = $("#btTransf"); if (btT) btT.onclick = () => { if (!S.sel.size) { A.toast("Marque os clientes na tabela primeiro."); return; } popupTransferir([...S.sel], async () => { S.sel.clear(); await carregar(); }); };
