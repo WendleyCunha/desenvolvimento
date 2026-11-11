@@ -106,3 +106,24 @@ def test_quem_configura_escolhe_o_setor(t):
     assert len(t.get("/api/tickets/ajuda?setor=Logística").json()["pedidos"]) == 1     # escolheu ver a Logística
     t.como("carla")
     assert t.get("/api/tickets/ajuda?setor=Logística").json()["setor"] == "CX"          # quem não configura ignora o parâmetro
+
+
+def test_conversa_com_a_equipe_sem_cliente(t):
+    T._DM.clear()
+    T.ONLINE.clear()
+    t.como("carla")
+    t.get("/api/tickets/ajuda")
+    t.como("lucas")
+    on = t.get("/api/tickets/ajuda").json()["online"]
+    assert [x["usuario"] for x in on] == ["carla"]                      # quem está com o hub aberto (menos eu)
+    assert t.post("/api/tickets/conversa", json={"para": "carla", "texto": "Oi Carla, a carga saiu?"}).status_code == 200
+    assert t.post("/api/tickets/conversa", json={"para": "lucas", "texto": "eu mesmo"}).status_code == 400
+    t.como("carla")
+    cv = t.get("/api/tickets/ajuda").json()["conversas"]
+    assert cv[0]["com"] == "lucas" and cv[0]["ultimo_de"] == "lucas"
+    t.post("/api/tickets/conversa", json={"para": "lucas", "texto": "Saiu sim!"})
+    assert [m["texto"] for m in t.get("/api/tickets/conversa/lucas").json()["mensagens"]] == ["Oi Carla, a carga saiu?", "Saiu sim!"]
+    T._DM.clear()   # relê do banco: ficou gravado
+    t.como("lucas")
+    assert len(t.get("/api/tickets/conversa/carla").json()["mensagens"]) == 2
+    assert not T.BASE.cont   # nada de cliente/ticket criado

@@ -42,6 +42,7 @@ cada 30 min. Toda escrita é transação no container (igual ao Streamlit).
 """
 from __future__ import annotations
 
+import copy
 import os
 import re
 import threading
@@ -918,7 +919,77 @@ def ajuda(request: Request, setor: str = "", dias: int = 30):
     lista = pedidos_de_ajuda(me, setor, dias)
     return {"eu": me, "setor": setor or me.get("depto", ""), "pedidos": lista, "versao": BASE.ver,
             "departamentos": departamentos() if p["acoes"].get("configurar") else [],
-            "abertos_recebidos": sum(1 for v in lista if v["status"] == "aberto" and v["papel"] == "recebido")}
+            "abertos_recebidos": sum(1 for v in lista if v["status"] == "aberto" and v["papel"] == "recebido"),
+            "conversas": conversas_de(me["usuario"]), "online": equipe_online(me["usuario"])}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CONVERSA COM A EQUIPE — chat direto entre colegas, sem cliente (balão 🤝 › 💬)
+#   Cada pessoa tem 1 documento (hub_conversas_equipe/{usuario}) com as conversas dela; a mensagem é gravada
+#   nos dois lados. Cache em memória: o balão consulta a cada 15 s sem gastar leitura do banco.
+# ══════════════════════════════════════════════════════════════════════════════
+COL_DM, DM_MAX, DM_DIAS = "hub_conversas_equipe", 200, 60
+_DM: dict[str, dict] = {}
+_DM_LOCK = threading.Lock()
+
+
+def _dm(usuario: str) -> dict:
+    if usuario not in _DM:
+        try:
+            snap = db().collection(COL_DM).document(usuario).get(timeout=banco.TIMEOUT)
+            _DM[usuario] = (snap.to_dict() if snap.exists else None) or {"conversas": {}}
+        except Exception:
+            return {"conversas": {}}   # banco fora: não guarda em cache, tenta de novo depois
+    return _DM[usuario]
+
+
+def _dm_gravar(usuario: str, doc: dict):
+    _DM[usuario] = doc
+    db().collection(COL_DM).document(usuario).set(doc, timeout=banco.TIMEOUT)
+
+
+def conversas_de(usuario: str) -> list:
+    usu, saida = usuarios(), []
+    for com, msgs in (_dm(usuario).get("conversas") or {}).items():
+        if msgs:
+            ult = msgs[-1]
+            saida.append({"com": com, "nome": usu.get(com, {}).get("nome", com), "depto": usu.get(com, {}).get("depto", ""),
+                          "online": online(com), "ultima_em": ult["em"], "ultimo_de": ult["de"], "texto": ult["texto"][:140]})
+    return sorted(saida, key=lambda x: x["ultima_em"], reverse=True)
+
+
+def equipe_online(eu_usuario: str) -> list:
+    usu = usuarios()
+    return sorted(({"usuario": k, "nome": v.get("nome", k), "depto": v.get("depto", "")} for k, v in usu.items() if k != eu_usuario and online(k)),
+                  key=lambda x: norm(x["nome"]))
+
+
+@router.get("/conversa/{com}")
+def conversa(com: str, request: Request):
+    u, p, me = _contexto(request)
+    usu = usuarios()
+    return {"com": com, "nome": usu.get(com, {}).get("nome", com), "depto": usu.get(com, {}).get("depto", ""), "online": online(com),
+            "mensagens": (_dm(me["usuario"]).get("conversas") or {}).get(com, [])}
+
+
+@router.post("/conversa")
+async def conversa_enviar(request: Request):
+    u, p, me = _contexto(request)
+    c = await request.json()
+    para, texto = str(c.get("para") or "").strip(), str(c.get("texto") or "").strip()[:4000]
+    if not texto:
+        raise HTTPException(400, "Escreva a mensagem.")
+    if not para or para == me["usuario"] or para not in usuarios():
+        raise HTTPException(400, "Escolha um colega da equipe.")
+    msg = {"de": me["usuario"], "nome": me["nome"], "texto": texto, "em": agora()}
+    corte = (datetime.now(BRT) - timedelta(days=DM_DIAS)).strftime("%Y-%m-%d %H:%M:%S")
+    with _DM_LOCK:
+        for dono, com in ((me["usuario"], para), (para, me["usuario"])):
+            doc = copy.deepcopy(_dm(dono))
+            lista = [m for m in doc.setdefault("conversas", {}).get(com, []) if m["em"] >= corte] + [msg]
+            doc["conversas"][com] = lista[-DM_MAX:]
+            _dm_gravar(dono, doc)
+    return {"ok": True, "mensagem": msg}
 
 
 @router.post("/ajuda/mensagem")
