@@ -239,7 +239,7 @@ button.kpi:hover{border-color:color-mix(in srgb,var(--c) 50%,transparent)}
 .ordem:hover{border-color:var(--c)}.ordem.on{border-color:var(--c);background:color-mix(in srgb,var(--c) 16%,transparent)}.ordem em{font-style:normal;color:var(--c);font-weight:700}
 .seg-d{display:inline-flex;gap:2px;padding:3px;border-radius:12px;border:1px solid var(--vidro-borda);margin-bottom:12px}
 .seg-d button{padding:7px 14px;border-radius:9px;font:600 .78rem var(--sans,Inter),sans-serif;color:var(--txt2)}.seg-d button.on{background:rgba(139,92,246,.18);color:var(--txt)}
-.d-grid{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:20px}@media(max-width:720px){.d-grid{grid-template-columns:1fr}}
+.d-grid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(320px,1fr);gap:28px;max-width:1200px}@media(max-width:720px){.d-grid{grid-template-columns:1fr}}
 .d-h{margin:14px 0 8px;font-size:.62rem;letter-spacing:1.4px;text-transform:uppercase;color:var(--txt3);font-weight:700}.d-grid>div>.d-h:first-child{margin-top:0}
 .d-op{display:flex;flex-direction:column;gap:6px}.d-op .ordem{padding:8px 11px}.d-op .ordem:disabled{opacity:.45;cursor:not-allowed}
 .d-conta{margin-top:10px;padding:10px 12px;border-radius:12px;background:rgba(52,211,153,.07);border:1px solid rgba(52,211,153,.25);font-size:.84rem}
@@ -249,6 +249,12 @@ button.kpi:hover{border-color:color-mix(in srgb,var(--c) 50%,transparent)}
 .d-notif b{display:block;font-size:.84rem}.d-notif small{font-size:.76rem;opacity:.85;display:block;white-space:pre-wrap;word-break:break-word}
 .d-vale{border-radius:16px;padding:12px;background:rgba(255,255,255,.05);border-left:4px solid var(--c);color:#fff;display:flex;flex-direction:column;gap:3px}
 .d-vale small{font-size:.62rem;letter-spacing:1px;opacity:.7}.d-vale b{font:800 1.3rem var(--titulo);color:var(--c)}.d-vale .d-qr{font-size:.74rem;opacity:.85}
+.aur-modal.tela-cheia{width:calc(100vw - 32px)!important;max-width:none;min-height:calc(100vh - 32px);margin:0!important;display:flex;flex-direction:column}
+.aur-modal.tela-cheia .aur-modal-corpo{flex:1}.tela-cheia-fundo{padding:16px!important}
+.d-topo{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.d-kpis{display:flex;gap:28px;flex-wrap:wrap;padding:12px 16px;border-radius:14px;border:1px solid var(--vidro-borda);background:rgba(255,255,255,.02);margin-bottom:12px}
+.d-kpis b{display:block;font:700 1.5rem var(--titulo)}.d-kpis small{font-size:.7rem;color:var(--txt3)}
+.d-tab{overflow:auto;border:1px solid var(--vidro-borda);border-radius:14px}.d-tab table{width:100%}.d-tab code{font-size:.8rem;letter-spacing:1px}
 .d-item{border:1px solid var(--vidro-borda);border-left:4px solid var(--c);border-radius:14px;padding:10px 12px;margin-bottom:8px;background:rgba(255,255,255,.02)}
 .d-item .l1{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.d-item .etq{color:var(--c);border-color:var(--c)}
 .d-nums{display:flex;gap:18px;margin-top:8px;flex-wrap:wrap}.d-n b{display:block;font:700 1.1rem var(--titulo)}.d-n small{font-size:.66rem;color:var(--txt3)}
@@ -698,9 +704,15 @@ function popupDisparos(aba = "novo") {
   const marcados = [...S.sel];
   const f = { tipo: "cupom", titulo: "", texto: "", percentual: 10, beneficio: "", validade: new Date(Date.now() + 15 * 864e5).toISOString().slice(0, 10), modo: marcados.length ? "marcados" : "todos", colados: "" };
   let lista = null, conta = null, t0 = 0;
-  const md = A.modal({ titulo: "Disparos no app do cliente", icone: "mensagem", cor: "var(--violeta)", largura: 780,
-    html: `<div class="seg-d"><button type="button" data-ab="novo">Novo disparo</button><button type="button" data-ab="ant">Disparos anteriores</button></div><div id="dCorpo"></div>`,
+  const md = A.modal({ titulo: "Disparos no app do cliente", icone: "mensagem", cor: "var(--violeta)", largura: 1400,
+    html: `<div class="seg-d"><button type="button" data-ab="novo">Novo disparo</button><button type="button" data-ab="ant">Disparos anteriores</button><button type="button" data-ab="cli">Clientes</button></div><div id="dCorpo"></div>`,
     botoes: [{ rotulo: "Fechar" }] });
+  { const caixa = md.el.classList.contains("aur-modal") ? md.el : md.el.querySelector(".aur-modal") || md.el.closest(".aur-modal");   // quase a tela inteira
+    if (caixa) { caixa.classList.add("tela-cheia"); caixa.parentElement && caixa.parentElement.classList.add("tela-cheia-fundo"); } }
+  const PER = [[1, "Hoje"], [7, "7 dias"], [30, "30 dias"], [90, "90 dias"], [0, "Tudo"]];
+  let dias = 30, fcli = { tipo: "", sit: "", q: "" }, rec = null;
+  const periodo = () => `<span class="periodo">${PER.map(([d, r]) => `<button type="button" data-dias="${d}" class="${dias === d ? "ativo" : ""}">${r}</button>`).join("")}</span>`;
+  const ligaPeriodo = (fn) => corpo.querySelectorAll("[data-dias]").forEach((b) => (b.onclick = () => { dias = +b.dataset.dias; lista = null; rec = null; fn(); }));
   const corpo = md.el.querySelector("#dCorpo");
   const codigos = () => f.modo === "marcados" ? marcados : f.modo === "colar" ? f.colados.split(/[\s,;]+/).map((x) => x.trim().toUpperCase()).filter(Boolean) : [];
   const publico = () => f.modo === "todos" ? { modo: "todos" } : { modo: "codigos", codigos: codigos() };
@@ -768,9 +780,10 @@ function popupDisparos(aba = "novo") {
   }
   const ok_ = (t) => ok(t);
   async function anteriores() {
-    if (!lista) { corpo.innerHTML = `<p class="dica" style="padding:20px;text-align:center">Carregando…</p>`; try { lista = await A.api("/api/promo/disparos"); } catch (e) { corpo.innerHTML = `<div class="aviso">${esc(e.message)}</div>`; return; } }
-    const ds = lista.disparos;
-    corpo.innerHTML = `<p class="dica" style="margin:4px 2px 10px"><b>${lista.total_app}</b> cliente(s) com o app e notificações ativas.</p>` + (ds.length ? ds.map((d) => { const tp = TIPOS_D.find((x) => x[0] === d.tipo) || TIPOS_D[0], st = ST_D[d.status] || [d.status, "var(--txt3)"];
+    if (!lista) { corpo.innerHTML = `<p class="dica" style="padding:20px;text-align:center">Carregando…</p>`; try { lista = await A.api("/api/promo/disparos?dias=" + dias); } catch (e) { corpo.innerHTML = `<div class="aviso">${esc(e.message)}</div>`; return; } }
+    const ds = lista.disparos, soma = (k) => ds.reduce((a, d) => a + (d[k] || 0), 0);
+    corpo.innerHTML = `<div class="d-topo">${periodo()}<span class="dica"><b>${lista.total_app}</b> cliente(s) com o app e notificações ativas</span></div>
+      <div class="d-kpis"><span><b>${ds.length}</b><small>disparos</small></span><span><b style="color:var(--verde)">${soma("enviados")}</b><small>entregues</small></span><span><b style="color:var(--azul)">${soma("abertos")}</b><small>abriram</small></span><span><b style="color:var(--ouro2)">${soma("usados")}</b><small>vales usados</small></span>${soma("falhas") ? `<span><b style="color:var(--rosa)">${soma("falhas")}</b><small>falharam</small></span>` : ""}</div>` + (ds.length ? ds.map((d) => { const tp = TIPOS_D.find((x) => x[0] === d.tipo) || TIPOS_D[0], st = ST_D[d.status] || [d.status, "var(--txt3)"];
       const n = (r, v, c) => `<span class="d-n"><b style="color:${c || "var(--txt)"}">${v ?? 0}</b><small>${r}</small></span>`;
       return `<div class="d-item" style="--c:${tp[3]}"><div class="l1"><b>${tp[2]} ${esc(d.titulo)}</b><span class="etq" style="--c:${st[1]}">${st[0]}</span><span class="dica" style="margin-left:auto">${dh(d.criado_em)} · ${esc(d.criado_por_nome || "")}</span></div>
         <small class="dica">${esc(d.texto)}${d.beneficio ? ` · <b>${esc(d.beneficio)}</b>` : ""}${d.validade ? ` · até ${d10(d.validade)}` : ""}${d.aprovado_por_nome ? ` · aprovado por ${esc(d.aprovado_por_nome)}` : ""}</small>
@@ -779,9 +792,48 @@ function popupDisparos(aba = "novo") {
       : `<div class="vazio">${A.orbe("mensagem", "var(--violeta)")}<b>Nenhum disparo ainda</b></div>`);
     corpo.querySelectorAll("[data-aprovar]").forEach((b) => (b.onclick = async () => { if (!(await A.confirmar("Aprovar e enviar este disparo agora?", { rotulo: "Aprovar" }))) return; try { await A.api(`/api/promo/disparos/${b.dataset.aprovar}/aprovar`, { method: "POST", body: {} }); ok("Aprovado — saindo."); lista = null; anteriores(); } catch (e) { falha(e); } }));
     corpo.querySelectorAll("[data-cancelar]").forEach((b) => (b.onclick = async () => { try { await A.api(`/api/promo/disparos/${b.dataset.cancelar}/cancelar`, { method: "POST", body: {} }); ok("Disparo cancelado."); lista = null; anteriores(); } catch (e) { falha(e); } }));
+    ligaPeriodo(anteriores);
     if (ds.some((d) => ["na_fila", "enviando"].includes(d.status))) setTimeout(() => { if (md.el.isConnected && aba === "ant") { lista = null; anteriores(); } }, 3000);
   }
-  function trocar(a) { aba = a; md.el.querySelectorAll("[data-ab]").forEach((b) => b.classList.toggle("on", b.dataset.ab === a)); a === "novo" ? (novo(), contar()) : anteriores(); }
+  /* Clientes: cada cliente que recebeu, o quê, quando, se chegou, se abriu e se usou o vale */
+  const SIT = [["", "Todos"], ["nao_abriu", "Não abriu"], ["abriu", "Abriu"], ["usou", "Usou o vale"], ["falhou", "Não chegou"]];
+  const SIT_ROT = { entregue: ["chegou", "var(--txt2)"], abriu: ["abriu", "var(--azul)"], usou: ["usou", "var(--ouro2)"], falhou: ["não chegou", "var(--rosa)"] };
+  async function clientesTab() {
+    if (!rec) {
+      corpo.innerHTML = `<p class="dica" style="padding:20px;text-align:center">Carregando…</p>`;
+      try { rec = await A.api(`/api/promo/recebimentos?dias=${dias}&tipo=${fcli.tipo}&situacao=${fcli.sit}&q=${encodeURIComponent(fcli.q)}`); }
+      catch (e) { corpo.innerHTML = `<div class="aviso">${esc(e.message)}</div>`; return; }
+    }
+    const L = rec.linhas, ps = rec.por_situacao, tot = rec.total || 0, pct = (n) => tot ? Math.round(n / tot * 100) + "%" : "—";
+    const tp = (t) => TIPOS_D.find((x) => x[0] === t) || TIPOS_D[0];
+    corpo.innerHTML = `<div class="d-topo">${periodo()}
+        <span class="fchips">${[["", "Todos os tipos"], ...TIPOS_D.map((x) => [x[0], x[2] + " " + x[1]])].map(([v, r]) => `<button type="button" class="fchip${fcli.tipo === v ? " on" : ""}" data-ftipo="${v}" style="--c:var(--violeta)">${r}</button>`).join("")}</span>
+        <input class="entrada" id="dBusca" placeholder="Procurar cliente, código ou vale…" value="${esc(fcli.q)}" style="flex:1;min-width:200px">
+        <button type="button" class="btn v p" id="dCsv">Baixar planilha</button></div>
+      <div class="d-kpis"><span><b>${rec.clientes}</b><small>clientes</small></span><span><b>${tot}</b><small>mensagens</small></span>
+        <span><b style="color:var(--azul)">${L.filter((x) => x.aberto_em).length}</b><small>abriram · ${pct(L.filter((x) => x.aberto_em).length)}</small></span>
+        <span><b style="color:var(--ouro2)">${ps.usou || 0}</b><small>usaram o vale · ${pct(ps.usou || 0)}</small></span>${ps.falhou ? `<span><b style="color:var(--rosa)">${ps.falhou}</b><small>não chegou</small></span>` : ""}</div>
+      <div class="fchips" style="margin:2px 0 10px">${SIT.map(([v, r]) => `<button type="button" class="fchip${fcli.sit === v ? " on" : ""}" data-fsit="${v}" style="--c:var(--azul)">${r}</button>`).join("")}</div>
+      ${L.length ? `<div class="d-tab"><table class="tab"><thead><tr><th>Enviado</th><th>Cliente</th><th>Mensagem</th><th>Vale</th><th>Situação</th><th>Abriu</th><th>Usou</th></tr></thead><tbody>
+        ${L.map((x) => { const t = tp(x.tipo), st = SIT_ROT[x.situacao] || ["", ""];
+          return `<tr><td>${dh(x.em)}</td><td><b>${esc(x.nome || "—")}</b><br><small class="dica">#${esc(x.cliente)}</small></td>
+            <td><span style="color:${t[3]}">${t[2]} ${t[1]}</span><br><small>${esc(x.titulo)}${x.beneficio ? " · " + esc(x.beneficio) : ""}</small></td>
+            <td>${x.vale ? `<code>${esc(x.vale)}</code>` : "—"}</td><td><span class="etq" style="--c:${st[1]};color:${st[1]};border-color:${st[1]}">${st[0]}</span></td>
+            <td>${x.aberto_em ? dh(x.aberto_em) : "—"}</td><td>${x.usado_em ? `${dh(x.usado_em)}${x.usado_local ? `<br><small class="dica">${esc(x.usado_local)}</small>` : ""}` : "—"}</td></tr>`; }).join("")}</tbody></table></div>
+        ${rec.total > L.length ? `<p class="dica">Mostrando ${L.length} de ${rec.total}. Use o período ou a busca para afinar.</p>` : ""}`
+      : `<div class="vazio">${A.orbe("usuarios", "var(--azul)")}<b>Ninguém neste filtro</b></div>`}`;
+    ligaPeriodo(clientesTab);
+    corpo.querySelectorAll("[data-ftipo]").forEach((b) => (b.onclick = () => { fcli.tipo = b.dataset.ftipo; rec = null; clientesTab(); }));
+    corpo.querySelectorAll("[data-fsit]").forEach((b) => (b.onclick = () => { fcli.sit = b.dataset.fsit; rec = null; clientesTab(); }));
+    const bu = corpo.querySelector("#dBusca"); bu.oninput = () => { clearTimeout(bu._t); bu._t = setTimeout(() => { fcli.q = bu.value; rec = null; clientesTab().then(() => { const n = corpo.querySelector("#dBusca"); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }); }, 400); };
+    corpo.querySelector("#dCsv").onclick = () => {
+      const cab = ["Enviado", "Código", "Cliente", "Tipo", "Título", "Benefício", "Vale", "Situação", "Abriu em", "Usou em", "Onde usou"];
+      const q = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+      const csv = [cab.map(q).join(";"), ...L.map((x) => [x.em, x.cliente, x.nome, tp(x.tipo)[1], x.titulo, x.beneficio, x.vale, (SIT_ROT[x.situacao] || [x.situacao])[0], x.aberto_em, x.usado_em, x.usado_local].map(q).join(";"))].join("\n");
+      const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["\ufeff" + csv], { type: "text/csv" })); a.download = `disparos-clientes-${new Date().toISOString().slice(0, 10)}.csv`; a.click();
+    };
+  }
+  function trocar(a) { aba = a; md.el.querySelectorAll("[data-ab]").forEach((b) => b.classList.toggle("on", b.dataset.ab === a)); a === "novo" ? (novo(), contar()) : a === "cli" ? clientesTab() : anteriores(); }
   md.el.querySelectorAll("[data-ab]").forEach((b) => (b.onclick = () => trocar(b.dataset.ab)));
   trocar(aba);
 }

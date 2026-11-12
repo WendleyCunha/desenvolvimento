@@ -130,7 +130,21 @@ button.cartao:hover{transform:translateY(-2px);border-color:rgba(var(--ouro-rgb)
 .itens li b{color:var(--ouro2);min-width:26px}
 .total{display:flex;justify-content:space-between;margin-top:8px;padding-top:10px;border-top:1px solid var(--vidro-borda);font-size:.9rem;color:var(--txt2)}
 .total b{font:700 1rem var(--titulo);color:var(--txt)}
-.notif{display:flex;flex-direction:column;gap:10px}
+.notif{display:flex;flex-direction:column;gap:12px}
+.pref{position:relative;display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:18px 14px 14px;border-radius:18px;font:inherit;color:var(--txt);transition:.35s var(--suave)}
+.pref .ic{font-size:1.5rem;flex:none}.pref .tx{flex:1}.pref b{display:block;font-size:.95rem}.pref small{display:block;font-size:.76rem;color:var(--txt2);margin-top:2px}
+.pref.on,.pref.fixo{background:linear-gradient(135deg,rgba(96,165,250,.22),rgba(139,92,246,.14));border:1px solid rgba(96,165,250,.55);box-shadow:0 0 28px -10px rgba(96,165,250,.9),inset 0 1px 0 rgba(255,255,255,.08)}
+.pref.on{animation:prefBrilho 3.2s ease-in-out infinite}
+@keyframes prefBrilho{0%,100%{box-shadow:0 0 26px -12px rgba(96,165,250,.9),inset 0 1px 0 rgba(255,255,255,.08)}50%{box-shadow:0 0 34px -6px rgba(96,165,250,.95),inset 0 1px 0 rgba(255,255,255,.12)}}
+.pref.off{background:rgba(244,63,94,.08);border:1px solid rgba(244,63,94,.42)}.pref.off small{color:#fda4af}.pref.off .ic{filter:grayscale(.4)}
+.pref .selo{position:absolute;top:-9px;left:14px;padding:2px 10px;border-radius:20px;font:800 .6rem var(--sans);letter-spacing:1.4px}
+.selo.on{background:linear-gradient(135deg,#60a5fa,#8b5cf6);color:#fff;box-shadow:0 0 12px rgba(96,165,250,.7)}.selo.off{background:#f43f5e;color:#fff;box-shadow:0 0 12px rgba(244,63,94,.5)}
+html[data-claro] .pref.off small{color:#be123c}
+.instalar{display:flex;align-items:center;gap:12px;padding:14px;border-radius:18px;margin-bottom:16px;border:1px solid rgba(var(--ouro-rgb),.45);background:linear-gradient(135deg,rgba(var(--ouro-rgb),.16),rgba(var(--ouro-rgb),.04))}
+.instalar .ic{font-size:1.6rem}.instalar .tx{flex:1}.instalar b{display:block}.instalar small{font-size:.76rem;color:var(--txt2)}
+.instalado{font-size:.76rem;color:var(--verde);margin:0 2px 14px;font-weight:600}
+.btn-ic.inst{font-size:1.05rem}
+.passos{display:flex;flex-direction:column;gap:10px}.passo{display:flex;gap:12px;align-items:flex-start}.passo span{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:var(--grad-ouro);color:#111;font-weight:800;flex:none}.passo p{margin:3px 0 0}
 .chave{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:14px;border:1px solid var(--vidro-borda);background:rgba(255,255,255,.03)}
 .chave span{flex:1}.chave b{display:block;font-size:.9rem}.chave small{font-size:.74rem;color:var(--txt3)}
 .chave input{appearance:none;width:44px;height:26px;border-radius:13px;background:rgba(255,255,255,.15);position:relative;cursor:pointer;transition:.2s;flex:none}
@@ -360,6 +374,7 @@ function render() {
     <header class="topo vidro vidro-borda-viva">
       ${sub ? `<button class="btn-ic" id="voltar" aria-label="Voltar">${ICO.voltar}</button>` : A.atomo(38, { mini: true })}
       <span class="tx"><b>${esc(titulo)}</b><small>${esc(linha)}</small></span>
+      ${!sub && !estaInstalado() ? `<button class="btn-ic inst" data-instalar title="Instalar o app" aria-label="Instalar o app">📲</button>` : ""}
       ${!sub ? `<button class="btn-ic" id="sair" title="Sair" aria-label="Sair">${ICO.sair}</button>` : ""}
     </header>
     ${S.offline || pend ? `<div class="faixa">${ICO.onda}<span>${S.offline ? "Sem internet — mostrando o que já foi carregado." : ""}${pend ? ` ${pend} envio(s) na fila: vão sozinhos quando a conexão voltar.` : ""}</span></div>` : ""}
@@ -373,6 +388,7 @@ function render() {
   app.querySelectorAll("[data-aba]").forEach((b) => (b.onclick = () => ir(b.dataset.aba)));
   const v = $("#voltar"); if (v) v.onclick = () => ir(S.aba);
   const s = $("#sair"); if (s) s.onclick = sair;
+  ligarInstalar(app.querySelector(".topo"));
   const m = $("#main");
   if (S.aba === "pedidos") sub?.tela === "pedido" ? telaPedido(m, sub.id) : telaPedidos(m);
   else if (S.aba === "chamados") sub?.tela === "chamado" ? telaThread(m, sub.id) : sub?.tela === "novo" ? telaNovoChamado(m) : telaChamados(m);
@@ -389,6 +405,31 @@ async function sair() {
 /* ═══════════ VANTAGENS: notificações no celular + carteira de cupons e brindes (QR) ═══════════ */
 const pushOk = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
 const ehIOS = /iphone|ipad|ipod/i.test(navigator.userAgent), instalado = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+/* ── Instalar o app: Android/Chrome com o pedido do próprio navegador; iPhone com o passo a passo ── */
+let pedidoInstalar = null;
+addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); pedidoInstalar = e; if (S.eu) render(); });
+addEventListener("appinstalled", () => { pedidoInstalar = null; ls.set("cli.instalado", 1); toast("App instalado! 🎉", "var(--verde)"); if (pushOk() && Notification.permission === "default") ativarPush(); });
+const estaInstalado = () => instalado || !!ls.get("cli.instalado", 0);
+function cartaoInstalar() {
+  if (estaInstalado()) return `<div class="instalado">✓ App instalado neste celular</div>`;
+  return `<div class="instalar vidro"><span class="ic">📲</span><span class="tx"><b>Instale o app</b><small>Fica na tela inicial, abre mais rápido e recebe cupons exclusivos.</small></span><button type="button" class="btn" data-instalar>Instalar</button></div>`;
+}
+function ligarInstalar(r) { r.querySelectorAll("[data-instalar]").forEach((b) => (b.onclick = instalarApp)); }
+async function instalarApp() {
+  if (pedidoInstalar) {
+    pedidoInstalar.prompt();
+    const { outcome } = await pedidoInstalar.userChoice.catch(() => ({}));
+    pedidoInstalar = null;
+    if (outcome === "accepted") { ls.set("cli.instalado", 1); if (pushOk() && Notification.permission === "default") await ativarPush(); render(); }
+    return;
+  }
+  const passos = ehIOS
+    ? [["1", "Toque em <b>Compartilhar</b> <span style='font-size:1.2em'>⬆️</span>, na barra do Safari."], ["2", "Escolha <b>Adicionar à Tela de Início</b>."], ["3", "Toque em <b>Adicionar</b>."], ["4", "Abra o app pelo novo ícone e toque em <b>Ativar notificações</b> em Vantagens."]]
+    : [["1", "Abra o menu do navegador <b>⋮</b> (canto de cima)."], ["2", "Toque em <b>Instalar app</b> ou <b>Adicionar à tela inicial</b>."], ["3", "Confirme. O app aparece na sua tela inicial."]];
+  A.modal({ titulo: "Instalar o app", icone: "estrela", cor: "var(--ouro)", largura: 420,
+    html: `<div class="passos">${passos.map(([n, t]) => `<div class="passo"><span>${n}</span><p>${t}</p></div>`).join("")}</div>${ehIOS ? `<p class="min" style="margin-top:10px">No iPhone, use o <b>Safari</b>. As notificações só funcionam com o app instalado.</p>` : ""}`,
+    botoes: [{ rotulo: "Entendi", principal: true }] });
+}
 function valesNovos() { const vs = (S.vant && S.vant.vales) || [], visto = ls.get("cli.vales", ""); return vs.filter((v) => v.status === "valido" && v.criado_em > visto).length; }
 async function carregarVantagens() { try { S.vant = await api("/api/cliente/vantagens"); cache.salvarVant && cache.salvarVant(S.vant); } catch (_) {} }
 const b64u = (s) => { const p = "=".repeat((4 - (s.length % 4)) % 4), b = atob((s + p).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from([...b].map((c) => c.charCodeAt(0))); };
@@ -399,7 +440,7 @@ async function ativarPush(avisos = true, promocoes = true) {
   try {
     const reg = await navigator.serviceWorker.ready, { publica } = await api("/api/cliente/push/chave");
     const sub = (await reg.pushManager.getSubscription()) || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64u(publica) }));
-    await api("/api/cliente/push", { method: "POST", body: { inscricao: sub.toJSON(), avisos, promocoes } });
+    await api("/api/cliente/push", { method: "POST", body: { inscricao: sub.toJSON(), avisos: true, promocoes } });
     toast("Pronto! Você vai receber os avisos neste celular.", "var(--verde)");
   } catch (e) { toast("Não deu para ativar: " + e.message); }
   await carregarVantagens(); render();
@@ -410,26 +451,31 @@ function telaVantagens(m) {
   const perm = pushOk() ? Notification.permission : "indisponivel";
   const ativo = v.inscrito && perm === "granted";
   const notif = ativo ? `<div class="notif">
-      <label class="chave"><span><b>Avisos do meu pedido</b><small>entrega, agendamento, atendimento</small></span><input type="checkbox" data-pref="avisos"${v.avisos ? " checked" : ""}></label>
-      <label class="chave"><span><b>Promoções e cupons</b><small>descontos, brindes e novidades da loja</small></span><input type="checkbox" data-pref="promocoes"${v.promocoes ? " checked" : ""}></label></div>`
-    : perm === "indisponivel" ? `<div class="aviso">${ehIOS && !instalado ? "No iPhone, as notificações funcionam com o app na Tela de Início: toque em <b>Compartilhar › Adicionar à Tela de Início</b> e abra por lá." : "Este navegador não recebe notificações. Seus cupons continuam guardados aqui."}</div>`
+      <div class="pref fixo"><span class="selo on">ATIVADO</span><span class="ic">🔔</span><span class="tx"><b>Avisos do meu pedido</b><small>entrega, agendamento e atendimento · sempre ativo</small></span></div>
+      <button type="button" class="pref ${v.promocoes ? "on" : "off"}" id="prefPromo"><span class="selo ${v.promocoes ? "on" : "off"}">${v.promocoes ? "ATIVADO" : "DESATIVADO"}</span><span class="ic">${v.promocoes ? "🎁" : "🔕"}</span>
+        <span class="tx"><b>Promoções e cupons</b><small>${v.promocoes ? "Você recebe cupons, brindes e ofertas exclusivas. 🎉" : "Você está deixando de receber cupons e brindes exclusivos. Toque para reativar."}</small></span></button></div>`
+    : perm === "indisponivel" ? `<div class="aviso">${ehIOS && !instalado ? "No iPhone, as notificações funcionam com o app instalado na Tela de Início. Toque em <b>Instalar app</b> acima para ver como." : "Este navegador não recebe notificações. Seus cupons continuam guardados aqui."}</div>`
     : perm === "denied" ? `<div class="aviso">As notificações estão bloqueadas neste celular. Libere nas configurações do navegador para receber cupons e avisos.</div>`
-    : `<button class="btn grande" id="ativar">${ICO.sino} Ativar notificações</button><p class="min" style="margin:8px 2px 0">Receba avisos do seu pedido e cupons exclusivos. Você escolhe o que quer receber e pode desligar quando quiser.</p>`;
+    : `<button class="btn grande" id="ativar">${ICO.sino} Ativar notificações</button><p class="min" style="margin:8px 2px 0">Receba os avisos do seu pedido e cupons exclusivos neste celular.</p>`;
   const cor = { cupom: "var(--ouro)", brinde: "var(--rosa)" };
   const card = (x) => `<button class="cartao vidro vale ${x.status}" data-vale="${esc(x.codigo)}" style="--c:${cor[x.tipo] || "var(--ciano)"}">
       <div class="l1"><b>${esc(x.titulo)}</b><span class="etq dir">${x.status === "usado" ? "usado" : x.status === "vencido" ? "vencido" : x.tipo === "brinde" ? "🎁 brinde" : "🏷 cupom"}</span></div>
       <div class="big">${esc(x.tipo === "cupom" ? x.percentual + "% OFF" : x.beneficio)}</div>
       <p class="min">${x.status === "usado" ? "Usado em " + dataBR(x.usado_em) + (x.usado_local ? " · " + esc(x.usado_local) : "") : "Válido até " + esc(dataLonga(x.validade)) + " · toque para mostrar o QR code"}</p></button>`;
   const vs = v.vales || [], ok = vs.filter((x) => x.status === "valido"), out = vs.filter((x) => x.status !== "valido");
-  m.innerHTML = `<h2 class="tit">Notificações neste celular</h2>${notif}
+  m.innerHTML = `${cartaoInstalar()}<h2 class="tit">Notificações neste celular</h2>${notif}
     <div class="sec">Minha carteira</div>
     ${ok.length ? ok.map(card).join("") : `<div class="vazio" style="padding:22px 10px">${A.orbe("estrela", "var(--ouro)")}<b>Nenhum cupom por enquanto</b>Quando a loja mandar um cupom ou brinde, ele fica guardado aqui.</div>`}
     ${out.length ? `<div class="sec">Usados e vencidos</div>${out.map(card).join("")}` : ""}`;
   if (vs.length) ls.set("cli.vales", vs.reduce((a, x) => (x.criado_em > a ? x.criado_em : a), ""));
   const at = $("#ativar"); if (at) at.onclick = () => ativarPush();
-  m.querySelectorAll("[data-pref]").forEach((c) => (c.onchange = async () => {
-    try { const r = await api("/api/cliente/push/preferencias", { method: "POST", body: { [c.dataset.pref]: c.checked } }); Object.assign(S.vant, r); toast(c.checked ? "Ligado." : "Desligado.", "var(--verde)"); }
-    catch (e) { c.checked = !c.checked; toast(e.message); } }));
+  ligarInstalar(m);
+  const pp = $("#prefPromo"); if (pp) pp.onclick = async () => {
+    const novo = !v.promocoes;
+    if (!novo && !(await A.confirmar("Desativar promoções e cupons? Você deixa de receber <b>cupons, brindes e ofertas exclusivas</b>.", { perigo: true, rotulo: "Desativar" }))) return;
+    try { const r = await api("/api/cliente/push/preferencias", { method: "POST", body: { promocoes: novo } }); Object.assign(S.vant, r); toast(novo ? "Promoções ativadas! 🎉" : "Promoções desativadas.", novo ? "var(--verde)" : "var(--rosa)"); render(); }
+    catch (e) { toast(e.message); }
+  };
   m.querySelectorAll("[data-vale]").forEach((b) => (b.onclick = () => mostrarVale(vs.find((x) => x.codigo === b.dataset.vale))));
 }
 function mostrarVale(x) {

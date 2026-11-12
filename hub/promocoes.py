@@ -41,7 +41,7 @@ import tickets as T
 
 router = APIRouter()
 PASTA = Path(__file__).parent / "static"
-COL_INSC, COL_CART, COL_VALE, COL_CFG = "hub_push_inscricoes", "hub_carteira", "hub_vales", "hub_promocoes"
+COL_INSC, COL_CART, COL_VALE, COL_CFG, COL_DEST = "hub_push_inscricoes", "hub_carteira", "hub_vales", "hub_promocoes", "hub_disparo_dest"
 GAVETAS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 TIPOS = {"aviso": "Aviso", "promocao": "Promoção", "cupom": "Cupom", "brinde": "Brinde"}
 LIMITE_PADRAO = 50
@@ -51,6 +51,32 @@ _insc: dict[str, dict] | None = None      # código do cliente → {"subs": [...
 _cart: dict[str, dict] = {}
 _idx: dict | None = None
 _vapid: dict | None = None
+_dest: dict[str, dict] = {}               # disparo → {código do cliente: {nome, ok, em, vale, aberto_em, usado_em, usado_local}}
+
+
+def destinatarios(did: str) -> dict:
+    """Quem recebeu cada disparo (1 documento por disparo, com cache)."""
+    with _lock:
+        if did not in _dest:
+            try:
+                snap = db().collection(COL_DEST).document(did).get(timeout=T.banco.TIMEOUT)
+                _dest[did] = (snap.to_dict() if snap.exists else None) or {}
+            except Exception:
+                return {}
+        return _dest[did]
+
+
+def _gravar_dest(did: str):
+    with _lock:
+        db().collection(COL_DEST).document(did).set(_dest.get(did, {}), timeout=T.banco.TIMEOUT)
+
+
+def _marcar_dest(did: str, cod: str, **campos):
+    with _lock:
+        dd = destinatarios(did)
+        if cod in dd:
+            dd[cod].update(campos)
+            _gravar_dest(did)
 
 
 def db():
@@ -205,6 +231,8 @@ def _executar(d: dict):
     d.update(status="enviando", inicio_em=agora(), total=len(cods), enviados=0, falhas=0)
     _gravar_indice()
     ins = inscricoes()
+    with _lock:
+        _dest[d["id"]] = dest = {}
     for i, cod in enumerate(cods):
         vale = None
         if d["tipo"] in ("cupom", "brinde"):
@@ -228,10 +256,14 @@ def _executar(d: dict):
         if len(vivas) != len(ins.get(cod, {}).get("subs", [])):
             _gravar_insc(cod, {**ins[cod], "subs": vivas} if vivas else None)
         d["enviados" if ok else "falhas"] += 1
+        dest[cod] = {"nome": ins.get(cod, {}).get("nome", ""), "ok": ok, "em": agora(), "vale": vale["codigo"] if vale else None,
+                     "aberto_em": None, "usado_em": None, "usado_local": ""}
         if i % 25 == 24:
             _gravar_indice()
+            _gravar_dest(d["id"])
     d.update(status="enviado", fim_em=agora())
     _gravar_indice()
+    _gravar_dest(d["id"])
 
 
 def _disparar_em_fundo(d: dict):
@@ -293,7 +325,7 @@ async def inscrever(request: Request):
         raise HTTPException(400, "Inscrição inválida.")
     atual = copy.deepcopy(inscricoes().get(cod) or {"subs": []})
     subs = [s for s in atual.get("subs", []) if s.get("endpoint") != sub["endpoint"]] + [{"endpoint": sub["endpoint"], "keys": sub["keys"]}]
-    atual.update(subs=subs[-5:], nome=cli.get("nome", ""), avisos=bool(c.get("avisos", True)), promocoes=bool(c.get("promocoes", True)), em=agora())
+    atual.update(subs=subs[-5:], nome=cli.get("nome", ""), avisos=True, promocoes=bool(c.get("promocoes", atual.get("promocoes", True))), em=agora())   # avisos do pedido: sempre
     _gravar_insc(cod, atual)
     return {"ok": True}
 
@@ -305,9 +337,9 @@ async def preferencias(request: Request):
     atual = copy.deepcopy(inscricoes().get(cod))
     if not atual:
         raise HTTPException(409, "Ative as notificações neste celular primeiro.")
-    for k in ("avisos", "promocoes"):
-        if k in c:
-            atual[k] = bool(c[k])
+    if "promocoes" in c:   # avisos do pedido ficam sempre ativos; só promoções o cliente desliga
+        atual["promocoes"] = bool(c["promocoes"])
+    atual["avisos"] = True
     _gravar_insc(cod, atual)
     return {"ok": True, "avisos": atual["avisos"], "promocoes": atual["promocoes"]}
 
@@ -323,6 +355,7 @@ async def aberto(request: Request):
             d["abriram"].append(cod)
             d["abertos"] = len(d["abriram"])
             _gravar_indice()
+            _marcar_dest(did, cod, aberto_em=agora())
     return {"ok": True}
 
 
@@ -338,11 +371,38 @@ async def contar_publico(request: Request):
     return conta | {"total_app": len(inscricoes()), "limite_aprovacao": limite_aprovacao()}
 
 
+def _corte(dias: int) -> str:
+    return (datetime.now(T.BRT) - timedelta(days=max(1, dias) - 1)).strftime("%Y-%m-%d") if dias else ""
+
+
 @router.get("/api/promo/disparos")
-def listar(request: Request):
+def listar(request: Request, dias: int = 0):
     u, p, me = _gestor(request)
-    return {"disparos": [{k: v for k, v in d.items() if k != "abriram"} for d in indice()["lista"]], "eu": me["usuario"],
+    corte = _corte(dias)
+    return {"disparos": [{k: v for k, v in d.items() if k != "abriram"} for d in indice()["lista"] if str(d.get("criado_em", ""))[:10] >= corte], "eu": me["usuario"],
             "limite_aprovacao": limite_aprovacao(), "total_app": len(inscricoes())}
+
+
+@router.get("/api/promo/recebimentos")
+def recebimentos(request: Request, dias: int = 30, tipo: str = "", situacao: str = "", q: str = ""):
+    """Cliente a cliente: quem recebeu o quê, quando, se chegou, se abriu e se usou o vale (onde e quando)."""
+    _gestor(request)
+    corte, busca, linhas = _corte(dias), T.norm(q), []
+    for d in indice()["lista"]:
+        if str(d.get("criado_em", ""))[:10] < corte or (tipo and d["tipo"] != tipo) or d["status"] not in ("enviando", "enviado"):
+            continue
+        for cod, r in destinatarios(d["id"]).items():
+            sit = "usou" if r.get("usado_em") else "abriu" if r.get("aberto_em") else "entregue" if r.get("ok") else "falhou"
+            if situacao and situacao != sit and not (situacao == "nao_abriu" and sit in ("entregue",)):
+                continue
+            if busca and busca not in T.norm(f"{cod} {r.get('nome', '')} {r.get('vale') or ''}"):
+                continue
+            linhas.append({"disparo": d["id"], "tipo": d["tipo"], "titulo": d["titulo"], "beneficio": d.get("beneficio", ""), "cliente": cod,
+                           "nome": r.get("nome", ""), "em": r.get("em"), "ok": r.get("ok"), "vale": r.get("vale"), "aberto_em": r.get("aberto_em"),
+                           "usado_em": r.get("usado_em"), "usado_local": r.get("usado_local", ""), "usado_por": r.get("usado_por", ""), "situacao": sit})
+    linhas.sort(key=lambda x: str(x["em"] or ""), reverse=True)
+    tot = {k: sum(1 for x in linhas if x["situacao"] == k) for k in ("falhou", "entregue", "abriu", "usou")}
+    return {"linhas": linhas[:3000], "total": len(linhas), "por_situacao": tot, "clientes": len({x["cliente"] for x in linhas})}
 
 
 @router.post("/api/promo/disparos")
@@ -456,6 +516,7 @@ async def usar_vale(cod: str, request: Request):
         if d:
             d["usados"] = d.get("usados", 0) + 1
             _gravar_indice()
+            _marcar_dest(d["id"], v["cliente"], usado_em=v["usado_em"], usado_local=v.get("usado_local", ""), usado_por=v.get("usado_por_nome", ""))
     return {"ok": True, "vale": _vale_publico(v)}
 
 

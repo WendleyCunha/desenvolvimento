@@ -21,6 +21,7 @@ SUB = {"endpoint": "https://push.exemplo/abc", "keys": {"p256dh": "BPchave", "au
 def p(t, monkeypatch):  # noqa: F811
     P._insc, P._idx, P._vapid = None, None, None
     P._cart.clear()
+    P._dest.clear()
     t.app.include_router(P.router)
     enviados = []
     monkeypatch.setattr(P, "enviar_push", lambda sub, dados: enviados.append((sub["endpoint"], dados)) or "ok")
@@ -108,3 +109,24 @@ def test_aceita_corpo_enviado_como_texto(p):
     assert r.status_code == 200, r.text
     r = p.post("/api/cliente/push/preferencias", content=json.dumps(json.dumps({"promocoes": False})), headers={"Content-Type": "application/json"})
     assert r.status_code == 200 and r.json()["promocoes"] is False
+
+
+def test_recebimentos_cliente_a_cliente_e_avisos_sempre_ativos(p):
+    from test_cliente_app import CPF_BIA
+    ana = inscrever(p, avisos=False)                      # o app não deixa desligar avisos do pedido
+    assert P.inscricoes()[ana]["avisos"] is True
+    entrar(p)
+    assert p.post("/api/cliente/push/preferencias", json={"avisos": False}).json()["avisos"] is True
+    inscrever(p, cpf=CPF_BIA)
+    d = p.post("/api/promo/disparos", json={"tipo": "cupom", "titulo": "10%", "texto": "x", "percentual": 10, "validade": "2099-12-31"}).json()["disparo"]
+    entrar(p)
+    p.post("/api/cliente/push/aberto", json={"disparo": d["id"]})
+    vale = p.get("/api/cliente/vantagens").json()["vales"][0]["codigo"]
+    p.post(f"/api/promo/vale/{vale}/usar", json={"local": "Loja Centro"})
+    r = p.get("/api/promo/recebimentos?dias=30").json()
+    assert r["total"] == 2 and r["clientes"] == 2 and r["por_situacao"]["usou"] == 1 and r["por_situacao"]["entregue"] == 1
+    usou = next(x for x in r["linhas"] if x["situacao"] == "usou")
+    assert usou["cliente"] == ana and usou["usado_local"] == "Loja Centro" and usou["aberto_em"] and usou["vale"] == vale
+    assert p.get("/api/promo/recebimentos?situacao=nao_abriu").json()["total"] == 1
+    assert p.get("/api/promo/recebimentos?q=bia").json()["total"] == 1
+    assert len(p.get("/api/promo/disparos?dias=1").json()["disparos"]) == 1
