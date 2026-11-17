@@ -3,8 +3,8 @@
    Os dados do cliente NÃO passam por aqui: o próprio app guarda o último
    carregamento e a fila de envios no aparelho (localStorage) e reenvia
    sozinho quando a internet volta. Escopo: só /cliente/. */
-const CACHE = "wd-cli-v4";
-const CASCA = ["/cliente/", "/static/aurora.css?v=4", "/static/claro.css?v=1", "/static/retro.css?v=1", "/static/aurora.js?v=4",
+const CACHE = "wd-cli-v5";
+const CASCA = ["/cliente/", "/static/aurora.css?v=5", "/static/claro.css?v=1", "/static/retro.css?v=1", "/static/aurora.js?v=5",
   "/static/app/icone-192.png", "/static/app/icone-512.png", "/static/app/icone-180.png"];
 
 self.addEventListener("install", (e) => {

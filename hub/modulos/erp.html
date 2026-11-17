@@ -36,7 +36,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/aurora.css?v=4">
+<link rel="stylesheet" href="/static/aurora.css?v=5">
 <!--
 ═══════════════════════════════════════════════════════════════════════════════
  erp.html — ERP · módulo do hub Wendley Desenvolvimento (kit Aurora Glass)
@@ -172,6 +172,16 @@ table.t .baixo{color:#fda4af;font-weight:700}
 .linha-it{display:grid;grid-template-columns:minmax(0,3fr) 80px 110px 34px;gap:8px;align-items:center;margin-bottom:7px}
 .linha-it select,.linha-it input{padding:8px 10px}
 .linha-it small{grid-column:1/-1;margin-top:-4px;font-size:.68rem;color:var(--txt3)}
+.linha-it .preco-fixo{font:600 .9rem var(--titulo);text-align:right;color:var(--txt2);white-space:nowrap}
+/* busca (cliente / item) dentro do pedido */
+.res-busca{display:grid;gap:4px;margin-top:6px;max-height:320px;overflow:auto}
+.res-busca:empty{display:none}
+.res-busca button{display:flex;justify-content:space-between;align-items:center;gap:12px;text-align:left;width:100%;padding:9px 12px;border-radius:10px;border:1px solid var(--vidro-borda);background:rgba(255,255,255,.03);color:var(--txt);cursor:pointer;font:inherit}
+.res-busca button:hover,.res-busca button:focus-visible{border-color:rgba(var(--ouro-rgb),.55);background:rgba(var(--ouro-rgb),.08)}
+.res-busca small{display:block;color:var(--txt3);font-size:.74rem}
+.res-busca .vz{padding:8px 4px;color:var(--txt3);font-size:.8rem}
+.cli-esc{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;border:1px solid rgba(var(--ouro-rgb),.45);background:rgba(var(--ouro-rgb),.07);margin-top:6px}
+.cli-esc small{display:block;color:var(--txt2);font-size:.78rem}
 .sep{margin-top:14px;padding-top:12px;border-top:1px solid var(--vidro-borda)}
 .sep>h4{margin:0 0 10px;font-size:.64rem;letter-spacing:1.4px;text-transform:uppercase;color:var(--txt3)}
 .dica{font-size:.74rem;color:var(--txt3);line-height:1.5;margin:6px 0 0}
@@ -221,7 +231,7 @@ fieldset:disabled{opacity:.85}
   <main id="main"></main>
 </div>
 
-<script src="/static/aurora.js?v=4"></script>
+<script src="/static/aurora.js?v=5"></script>
 <script>
 (() => {
 "use strict";
@@ -242,7 +252,7 @@ document.querySelector('link[rel="icon"]').href = A.ATOMO_SVG;
 const API = "/api/erp";
 const COLS = ["produtos", "parceiros", "saldos", "pedidos", "cargas", "movimentos"];
 const S = { produtos: {}, parceiros: {}, saldos: {}, pedidos: {}, cargas: {}, movimentos: {}, config: {}, perm: { acoes: {}, campos: {} }, locais: [], destinos: [], hoje: "" };
-const V = { aba: ls("wd.erp.aba", "painel"), periodo: +ls("wd.erp.per", "30"), fPed: "abertos", bPed: "", dia: "", cadTipo: "cliente", bProd: "", bEst: "", bCad: "", sel: new Set(), pDe: "", pAte: "", pJan: "", pBusca: "", pSemAg: false, pData: "", geo: {}, geoPedido: new Set() };
+const V = { aba: ls("wd.erp.aba", "painel"), periodo: +ls("wd.erp.per", "30"), fPed: "abertos", bPed: "", dia: "", cadTipo: "cliente", bProd: "", bEst: "", bCad: "", bAg: "", sel: new Set(), pDe: "", pAte: "", pJan: "", pBusca: "", pSemAg: false, pData: "", geo: {}, geoPedido: new Set() };
 function ls(k, d) { try { return localStorage.getItem(k) ?? d; } catch (_) { return d; } }
 function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (_) {} }
 const $ = (s, r = document) => r.querySelector(s);
@@ -489,32 +499,67 @@ function opcoesProdutos(sel) {
   lista("produtos").filter((p) => p.ativo !== false || p.id === sel).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")).forEach((p) => (cats[p.categoria || "Geral"] ||= []).push(p));
   return `<option value="">Selecione o produto…</option>` + Object.entries(cats).map(([c, ps]) => `<optgroup label="${esc(c)}">${ps.map((p) => `<option value="${p.id}"${p.id === sel ? " selected" : ""}>${esc(p.sku)} · ${esc(p.nome)} — disp. ${saldo(p.id).disponivel || 0}</option>`).join("")}</optgroup>`).join("");
 }
+// o preço unitário vem do cadastro do produto e não se edita no pedido (item que já estava mantém o preço da venda)
+const precoLinha = (l) => { const pid = $('[data-k="produto_id"]', l).value; return l.dataset.pid === pid && l.dataset.pr !== "" ? +l.dataset.pr : +(S.produtos[pid]?.preco || 0); };
 function linhaItem(it = {}, { preco = true, tipo = "it" } = {}) {
-  return `<div class="linha-it" data-li="${tipo}"><select class="entrada" data-k="produto_id">${opcoesProdutos(it.produto_id)}</select>
+  return `<div class="linha-it" data-li="${tipo}" data-pid="${esc(it.produto_id || "")}" data-pr="${it.preco ?? ""}"><select class="entrada" data-k="produto_id">${opcoesProdutos(it.produto_id)}</select>
     <input class="entrada" type="number" min="1" step="1" data-k="qtd" value="${it.qtd || 1}" title="Quantidade">
-    ${preco && vis("preco") ? `<input class="entrada preco" type="number" min="0" step="0.01" data-k="preco" value="${it.preco ?? ""}" placeholder="preço un." ${edita("preco") ? "" : "disabled"}>` : `<span></span>`}
+    ${preco && vis("preco") ? `<span class="preco-fixo" data-preco title="Preço do cadastro do produto">—</span>` : `<span></span>`}
     <button type="button" class="btn-ic p" data-rm title="Remover">${svg("lixo")}</button><small data-info></small></div>`;
 }
 function lerItens(cx, tipo) {
-  return $$(`[data-li="${tipo}"]`, cx).map((l) => { const pr = $('[data-k="preco"]', l); return { produto_id: $('[data-k="produto_id"]', l).value, qtd: +$('[data-k="qtd"]', l).value, ...(pr ? { preco: +pr.value } : {}) }; }).filter((i) => i.produto_id && i.qtd > 0);
+  return $$(`[data-li="${tipo}"]`, cx).map((l) => ({ produto_id: $('[data-k="produto_id"]', l).value, qtd: +$('[data-k="qtd"]', l).value, preco: precoLinha(l) })).filter((i) => i.produto_id && i.qtd > 0);
 }
 function ligarItens(cx, tipo, aoMudar) {
   const at = () => {
     $$(`[data-li="${tipo}"]`, cx).forEach((l) => {
-      const pid = $('[data-k="produto_id"]', l).value, q = +$('[data-k="qtd"]', l).value || 0, pr = $('[data-k="preco"]', l), info = $("[data-info]", l);
-      if (pr && pid && pr.value === "" && S.produtos[pid]?.preco != null) pr.value = S.produtos[pid].preco;
+      const pid = $('[data-k="produto_id"]', l).value, q = +$('[data-k="qtd"]', l).value || 0, pr = $("[data-preco]", l), info = $("[data-info]", l);
+      if (pr) pr.textContent = pid ? brl(precoLinha(l)) : "—";
       if (info) info.innerHTML = !pid ? "" : tipo === "it" ? `Disponível: <b style="color:${(saldo(pid).disponivel || 0) >= q ? "#34d399" : "#fb7185"}">${saldo(pid).disponivel || 0}</b> · ${prod(pid).volumes || 1} volume(s) por unidade` : `Na entrega, entra em ${esc(rot("triagem"))}.`;
     });
     aoMudar && aoMudar();
   };
   cx.addEventListener("input", (e) => { if (e.target.closest(`[data-li="${tipo}"]`)) at(); });
-  cx.addEventListener("change", (e) => { const l = e.target.closest(`[data-li="${tipo}"]`); if (l) { if (e.target.dataset.k === "produto_id" && $('[data-k="preco"]', l)) $('[data-k="preco"]', l).value = ""; at(); } });
+  cx.addEventListener("change", (e) => { const l = e.target.closest(`[data-li="${tipo}"]`); if (l) at(); });
+  cx.addEventListener("aurora:itens", at);
   cx.addEventListener("click", (e) => { const b = e.target.closest("[data-rm]"); if (b && b.closest(`[data-li="${tipo}"]`)) { b.closest("[data-li]").remove(); at(); } });
   at();
 }
 function opcoesParceiros(tipo, sel, vazio = "Selecione…") {
   return `<option value="">${vazio}</option>` + lista("parceiros").filter((p) => p.tipo === tipo && (p.ativo !== false || p.id === sel)).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"))
     .map((p) => `<option value="${p.id}"${p.id === sel ? " selected" : ""}>${esc(p.nome)}${p.endereco?.bairro ? " — " + esc(p.endereco.bairro) : ""}${p.capacidade ? ` (${p.capacidade} vol.)` : ""}</option>`).join("");
+}
+/* ── BUSCAS do pedido: cliente já cadastrado e item numa lista grande ── */
+const norm = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+function buscarClientes(q) {
+  const t = norm(q).trim(), dig = t.replace(/\D/g, ""); if (t.length < 2) return [];
+  return lista("parceiros").filter((c) => c.tipo === "cliente" && c.ativo !== false).map((c) => {
+    const txt = norm(`${c.nome} ${c.codigo || ""} ${c.endereco?.bairro || ""} ${c.endereco?.cidade || ""} ${c.email || ""}`), nums = `${c.telefone || ""}${c.doc || ""}${c.endereco?.cep || ""}`.replace(/\D/g, "");
+    const ok = t.split(/\s+/).every((w) => txt.includes(w)) || (dig.length >= 3 && nums.includes(dig)) || norm(c.codigo) === t;
+    return ok ? { c, peso: norm(c.codigo) === t ? 0 : norm(c.nome).startsWith(t) ? 1 : 2 } : null;
+  }).filter(Boolean).sort((a, b) => a.peso - b.peso || a.c.nome.localeCompare(b.c.nome, "pt-BR")).slice(0, 12).map((x) => x.c);
+}
+function buscarProdutos(q) {
+  const t = norm(q).trim(); if (t.length < 2) return [];
+  return lista("produtos").filter((p) => p.ativo !== false).filter((p) => { const txt = norm(`${p.nome} ${p.sku} ${p.ean || ""} ${p.categoria || ""}`); return t.split(/\s+/).every((w) => txt.includes(w)); })
+    .sort((a, b) => (norm(a.sku) === t ? -1 : 0) - (norm(b.sku) === t ? -1 : 0) || a.nome.localeCompare(b.nome, "pt-BR")).slice(0, 15);
+}
+function ligarBuscaItens(cx, { input, res, lista: box, tipo, preco = true }) {
+  const inp = $(input, cx), r = $(res, cx); if (!inp) return;
+  const desenhar = () => { const ps = buscarProdutos(inp.value);
+    r.innerHTML = !inp.value.trim() ? "" : ps.length ? ps.map((p) => `<button type="button" data-addp="${p.id}"><span><b>${esc(p.nome)}</b><small>${esc(p.sku)}${p.ean ? " · EAN " + esc(p.ean) : ""}${p.categoria ? " · " + esc(p.categoria) : ""}</small></span>
+      <span style="text-align:right;white-space:nowrap">${vis("preco") && preco ? `<b>${brl(p.preco || 0)}</b>` : ""}<small>disp. ${saldo(p.id).disponivel || 0}</small></span></button>`).join("") : `<div class="vz">Nenhum produto com “${esc(inp.value)}”.</div>`; };
+  inp.addEventListener("input", desenhar);
+  inp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); const b = $("[data-addp]", r); if (b) b.click(); } });
+  r.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-addp]"); if (!b) return;
+    const pid = b.dataset.addp, linhas = $$(`[data-li="${tipo}"]`, cx);
+    const ja = linhas.find((l) => $('[data-k="produto_id"]', l).value === pid);
+    if (ja) { const q = $('[data-k="qtd"]', ja); q.value = (+q.value || 0) + 1; }
+    else { linhas.filter((l) => !$('[data-k="produto_id"]', l).value).forEach((l) => l.remove()); $(box, cx).insertAdjacentHTML("beforeend", linhaItem({ produto_id: pid, qtd: 1 }, { preco, tipo })); }
+    cx.dispatchEvent(new Event("aurora:itens"));
+    inp.value = ""; r.innerHTML = ""; inp.focus();
+  });
 }
 function editarPedido(id, pre = {}) {
   const p = id ? S.pedidos[id] : null;
@@ -523,14 +568,21 @@ function editarPedido(id, pre = {}) {
   const itens = p ? p.itens : pre.itens || [{}];
   const recolher = p ? p.recolher || [] : pre.recolher || (tipo === "troca" ? [{}] : []);
   A.modal({
-    titulo: p ? `Alterar ${tipo === "troca" ? "troca" : "pedido"} #${p.numero}` : tipo === "troca" ? "Nova troca" : "Novo pedido", icone: tipo === "troca" ? "repetir" : "pedido", cor: tipo === "troca" ? "#f472b6" : "#60a5fa", largura: 780,
-    html: `<div class="g2" style="align-items:end"><label class="campo">Cliente *<select id="pCli">${opcoesParceiros("cliente", p?.cliente_id || pre.cliente_id)}</select></label>
+    titulo: p ? `Alterar ${tipo === "troca" ? "troca" : "pedido"} #${p.numero}` : tipo === "troca" ? "Nova troca" : "Novo pedido", icone: tipo === "troca" ? "repetir" : "pedido", cor: tipo === "troca" ? "#f472b6" : "#60a5fa", largura: 1100,
+    html: `<input type="hidden" id="pCli" value="${esc(p?.cliente_id || pre.cliente_id || "")}">
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:end"><label class="campo">Cliente * <small style="font-weight:400;color:var(--txt3)">busque por nome, código, telefone, CPF/CNPJ, CEP ou bairro</small>
+        <input class="entrada" id="pCliBusca" placeholder="Digite para buscar um cliente cadastrado…" autocomplete="off"></label>
         <div>${pode("cadastros") ? `<button type="button" class="btn v p" id="pNovoCli">${svg("mais")}Cliente novo</button>` : ""}</div></div>
-      <div id="pEnd" class="dica"></div>
+      <div id="pResCli" class="res-busca"></div>
+      <div id="pEnd"></div>
       ${tipo === "troca" ? `<label class="campo" style="margin-top:10px">Motivo da troca<select id="pMot">${(S.config.motivos_troca || []).map((m) => `<option${(p?.motivo_troca || pre.motivo_troca) === m ? " selected" : ""}>${esc(m)}</option>`).join("")}</select></label>` : ""}
-      <div class="sep${travaItens ? " travado" : ""}"><h4>${tipo === "troca" ? "Enviar ao cliente (sai do estoque)" : "Itens"}</h4><div id="pItens">${itens.map((i) => linhaItem(i)).join("")}</div>
+      <div class="sep${travaItens ? " travado" : ""}"><h4>${tipo === "troca" ? "Enviar ao cliente (sai do estoque)" : "Itens"}</h4>
+        ${!travaItens ? `<input class="entrada" id="pBuscaIt" placeholder="🔎 Buscar item por nome, SKU, EAN ou categoria — Enter adiciona o primeiro" autocomplete="off"><div id="pResIt" class="res-busca" style="margin-bottom:10px"></div>` : ""}
+        <div id="pItens">${itens.map((i) => linhaItem(i)).join("")}</div>
         <button type="button" class="btn v p" id="pAdd">${svg("mais")}Adicionar item</button></div>
-      ${tipo === "troca" ? `<div class="sep${travaItens ? " travado" : ""}"><h4>Recolher do cliente (volta para a triagem)</h4><div id="pRec">${recolher.map((i) => linhaItem(i, { preco: false, tipo: "rec" })).join("")}</div>
+      ${tipo === "troca" ? `<div class="sep${travaItens ? " travado" : ""}"><h4>Recolher do cliente (volta para a triagem)</h4>
+        ${!travaItens ? `<input class="entrada" id="pBuscaRec" placeholder="🔎 Buscar peça a recolher…" autocomplete="off"><div id="pResRec" class="res-busca" style="margin-bottom:10px"></div>` : ""}
+        <div id="pRec">${recolher.map((i) => linhaItem(i, { preco: false, tipo: "rec" })).join("")}</div>
         <button type="button" class="btn v p" id="pAddR">${svg("mais")}Adicionar peça a recolher</button></div>` : ""}
       ${travaItens ? `<div class="aviso at">Este pedido já teve tentativa de entrega: os itens não mudam mais. Para trocar produto, use <b>Gerar troca</b> depois da entrega.</div>` : ""}
       ${vis("preco") ? `<div class="g3 sep" style="align-items:end"><label class="campo">Frete (R$)<input type="number" id="pFrete" min="0" step="0.01" value="${p?.frete || 0}" ${edita("preco") ? "" : "disabled"}></label>
@@ -550,15 +602,27 @@ function editarPedido(id, pre = {}) {
       } catch (e) { falha(e); return false; }
     } }],
     aoAbrir(cx) {
-      const cli = $("#pCli", cx);
-      const end = () => { const c = parc(cli.value); $("#pEnd", cx).innerHTML = c ? `${svg("mapa")} ${esc(endTxt(c.endereco) || "sem endereço cadastrado")}${vis("contato") && c.telefone ? " · " + esc(c.telefone) : ""}` : ""; };
-      cli.onchange = end; end();
+      const cli = $("#pCli", cx), busca = $("#pCliBusca", cx), resC = $("#pResCli", cx);
+      const end = () => { const c = parc(cli.value);
+        busca.closest(".campo").parentElement.style.display = c ? "none" : "";
+        $("#pEnd", cx).innerHTML = c ? `<div class="cli-esc"><span><b>${esc(c.nome)}</b>${c.codigo ? ` <span class="mini">${esc(c.codigo)}</span>` : ""}<small>${svg("mapa")} ${esc(endTxt(c.endereco) || "sem endereço cadastrado")}${vis("contato") && c.telefone ? " · " + esc(c.telefone) : ""}</small></span>
+          <button type="button" class="btn v p" id="pTrocaCli">Trocar cliente</button></div>` : "";
+        $("#pTrocaCli", cx)?.addEventListener("click", () => { cli.value = ""; end(); busca.value = ""; busca.focus(); }); };
+      const escolher = (id) => { cli.value = id; resC.innerHTML = ""; end(); setTimeout(() => $("#pBuscaIt", cx)?.focus(), 30); };
+      busca.addEventListener("input", () => { const cs = buscarClientes(busca.value);
+        resC.innerHTML = !busca.value.trim() ? "" : cs.length ? cs.map((c) => `<button type="button" data-cli="${c.id}"><span><b>${esc(c.nome)}</b><small>${esc([c.codigo, bairro({ endereco: c.endereco }), vis("contato") ? c.telefone : ""].filter(Boolean).join(" · "))}</small></span><span class="mini">${lista("pedidos").filter((x) => x.cliente_id === c.id).length} ped.</span></button>`).join("")
+          : `<div class="vz">Nenhum cliente com “${esc(busca.value)}”.${pode("cadastros") ? " Use “Cliente novo”." : ""}</div>`; });
+      busca.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); const b = $("[data-cli]", resC); if (b) escolher(b.dataset.cli); } });
+      resC.addEventListener("click", (e) => { const b = e.target.closest("[data-cli]"); if (b) escolher(b.dataset.cli); });
+      end(); if (!cli.value) setTimeout(() => busca.focus(), 60);
+      ligarBuscaItens(cx, { input: "#pBuscaIt", res: "#pResIt", lista: "#pItens", tipo: "it" });
+      if (tipo === "troca") ligarBuscaItens(cx, { input: "#pBuscaRec", res: "#pResRec", lista: "#pRec", tipo: "rec", preco: false });
       const tot = () => { if (!$("#pTot", cx)) return; const sub = lerItens(cx, "it").reduce((s, i) => s + (i.preco || 0) * i.qtd, 0); $("#pTot", cx).innerHTML = `<span>Itens ${brl(sub)}</span><span>Total <b>${brl(sub + (+$("#pFrete", cx).value || 0) - (+$("#pDesc", cx).value || 0))}</b></span>`; };
       ligarItens(cx, "it", tot); if (tipo === "troca") ligarItens(cx, "rec");
       cx.addEventListener("input", (e) => { if (["pFrete", "pDesc"].includes(e.target.id)) tot(); });
       $("#pAdd", cx).onclick = () => { $("#pItens", cx).insertAdjacentHTML("beforeend", linhaItem()); tot(); };
       $("#pAddR", cx)?.addEventListener("click", () => $("#pRec", cx).insertAdjacentHTML("beforeend", linhaItem({}, { preco: false, tipo: "rec" })));
-      $("#pNovoCli", cx)?.addEventListener("click", () => editarParceiro(null, "cliente", (novo) => { cli.innerHTML = opcoesParceiros("cliente", novo.id); end(); }));
+      $("#pNovoCli", cx)?.addEventListener("click", () => editarParceiro(null, "cliente", (novo) => escolher(novo.id)));
     },
   });
 }
@@ -642,10 +706,11 @@ function agendar(ids) {
   const ps = ids.map((i) => S.pedidos[i]).filter(Boolean);
   const sug = ps[0]?.agendamento?.data && ps[0].agendamento.data >= S.hoje ? ps[0].agendamento.data : addDia(S.hoje, 1);
   A.modal({
-    titulo: ps.length > 1 ? `Agendar ${ps.length} pedidos` : `Agendar pedido #${ps[0].numero}`, icone: "calendario", cor: "#8b5cf6", largura: 520,
-    html: `<div class="g2"><label class="campo">Data da entrega<input type="date" id="aData" value="${sug}" min="${S.hoje}"></label>
-      <label class="campo">Janela<select id="aJan">${(S.config.janelas || []).map((j) => `<option>${esc(j)}</option>`).join("")}</select></label></div>
-      <label class="campo" style="margin-top:10px">Observação para a entrega<input id="aObs" placeholder="ex.: ligar antes, portaria, subir escada…"></label>
+    titulo: ps.length > 1 ? `Agendar ${ps.length} pedidos` : `${ps[0].agendamento?.data ? "Reagendar" : "Agendar"} pedido #${ps[0].numero} · ${ps[0].cliente_nome}`, icone: "calendario", cor: "#8b5cf6", largura: 520,
+    html: `${ps.length === 1 && ps[0].agendamento?.data ? `<div class="aviso at" style="margin-bottom:12px">Hoje agendado para <b>${dBR(ps[0].agendamento.data)}</b>${ps[0].agendamento.janela ? " · " + esc(ps[0].agendamento.janela) : ""}. Escolha a nova data — o cliente vê a mudança no app e no ticket.</div>` : ""}
+      <div class="g2"><label class="campo">Data da entrega<input type="date" id="aData" value="${sug}" min="${S.hoje}"></label>
+      <label class="campo">Janela<select id="aJan">${(S.config.janelas || []).map((j) => `<option${ps.length === 1 && ps[0].agendamento?.janela === j ? " selected" : ""}>${esc(j)}</option>`).join("")}</select></label></div>
+      <label class="campo" style="margin-top:10px">Observação para a entrega<input id="aObs" value="${ps.length === 1 ? esc(ps[0].agendamento?.obs || "") : ""}" placeholder="ex.: ligar antes, portaria, subir escada…"></label>
       <div class="dica" id="aCarga"></div>`,
     botoes: [{ rotulo: "Cancelar" }, { rotulo: "Agendar", classe: "btn", icone: "check", principal: true, acao: async (cx) => {
       const body = { acao: "agendar", data: $("#aData", cx).value, janela: $("#aJan", cx).value, obs: $("#aObs", cx).value };
@@ -663,16 +728,30 @@ function rAgenda() {
   const peds = lista("pedidos");
   const aAg = peds.filter((p) => ["confirmado", "reagendar"].includes(p.status)).sort((a, b) => (b.status === "reagendar") - (a.status === "reagendar") || a.numero - b.numero);
   const dias = Array.from({ length: 14 }, (_, i) => addDia(S.hoje, i - 1));
+  if (V.dia && !dias.includes(V.dia)) { dias.push(V.dia); dias.sort(); }   // dia vindo da busca, fora da faixa: aparece também
   const doDia = peds.filter((p) => p.agendamento?.data === V.dia && ["agendado", "em_carga", "em_rota"].includes(p.status)).sort((a, b) => a.numero - b.numero);
   const livres = doDia.filter((p) => p.status === "agendado");
   const selec = [...V.sel].filter((id) => livres.some((p) => p.id === id));
+  // BUSCA em todos os dias: nome, código do cliente, nº do pedido, telefone, CPF/CNPJ, bairro
+  const bq = norm(V.bAg).trim();
+  const achados = !bq ? [] : peds.filter((p) => !["cancelado"].includes(p.status) && (p.agendamento?.data || ["confirmado", "reagendar"].includes(p.status))).filter((p) => {
+    const c = parc(p.cliente_id) || {}, num = bq.replace(/^#/, "");
+    if (/^\d+$/.test(num) && String(p.numero) === num) return true;
+    const txt = norm(`${p.cliente_nome} ${c.codigo || ""} ${p.endereco?.bairro || ""} ${p.endereco?.cidade || ""}`), dig = bq.replace(/\D/g, "");
+    return bq.split(/\s+/).every((w) => txt.includes(w)) || (dig.length >= 4 && `${c.telefone || ""}${c.doc || ""}`.replace(/\D/g, "").includes(dig));
+  }).sort((a, b) => (b.agendamento?.data || "").localeCompare(a.agendamento?.data || "") || b.numero - a.numero).slice(0, 40);
+  const botaoReag = (p) => pode("agendar") && ["agendado", "confirmado", "reagendar"].includes(p.status) && (p.reservado || !(p.pendentes || []).length)
+    ? `<br><button type="button" class="btn v p" data-ag="${p.id}" style="margin-top:6px">${svg("calendario")}${p.status === "agendado" ? "Reagendar" : "Agendar"}</button>` : "";
   $("#main").innerHTML = `<section class="painel vidro vidro-borda-viva">
     <div class="cab">${A.orbe("calendario", "#8b5cf6")}<div><h2>Agenda de entregas</h2><p>Agende os confirmados e os que voltaram (ausentes e reposições). Depois selecione e monte a carga do dia.</p></div></div>
+    <div class="barra-ferr" style="margin-bottom:12px"><input class="entrada" id="bAg" value="${esc(V.bAg)}" placeholder="🔎 Buscar cliente em todos os dias: nome, código, nº do pedido, telefone ou CPF/CNPJ" style="flex:1;min-width:260px" autocomplete="off">${V.bAg ? `<button type="button" class="btn v p" id="bAgLimpa">Limpar</button>` : ""}</div>
+    ${bq ? `<div class="bloco" style="margin-bottom:14px"><h3>${svg("filtro")} ${achados.length} resultado(s) para “${esc(V.bAg)}” <small>todos os dias</small></h3>
+      ${achados.length ? `<div class="lst">${achados.map((p) => cardPed(p, { extra: (p.agendamento?.data ? `<br><button type="button" class="btn v p" data-irdia="${p.agendamento.data}" style="margin-top:6px">${svg("calendario")}Ver o dia ${dBR(p.agendamento.data)}</button>` : `<br><span class="mini c" style="--c:#60a5fa">a agendar</span>`) + botaoReag(p) })).join("")}</div>` : `<p class="dica">Nenhum pedido encontrado.</p>`}</div>` : ""}
     <div class="dias">${dias.map((d) => { const ps = peds.filter((p) => p.agendamento?.data === d && ["agendado", "em_carga", "em_rota"].includes(p.status)); const dt = new Date(d + "T12:00:00");
       return `<button type="button" class="dia${d === V.dia ? " ativo" : ""}${d === S.hoje ? " hoje" : ""}" data-dia="${d}"><small>${d === S.hoje ? "hoje" : SEM[dt.getDay()]}</small><b>${dBR(d)}</b><span>${ps.length} ped. · ${ps.reduce((s, p) => s + volumes(p), 0)} vol.</span></button>`; }).join("")}</div>
     <div class="grade2">
       <div class="bloco"><h3>${svg("caminhao")} ${dBR(V.dia)} · ${doDia.length} pedido(s) <small>${livres.length} sem carga</small></h3>
-        ${doDia.length ? `<div class="lst">${doDia.map((p) => cardPed(p, { check: p.status === "agendado" && pode("cargas") })).join("")}</div>` : `<p class="dica">Nenhum pedido agendado nesse dia.</p>`}
+        ${doDia.length ? `<div class="lst">${doDia.map((p) => cardPed(p, { check: p.status === "agendado" && pode("cargas"), extra: botaoReag(p) })).join("")}</div>` : `<p class="dica">Nenhum pedido agendado nesse dia.</p>`}
         ${pode("cargas") && livres.length ? `<div class="sep chips"><button type="button" class="btn v p" id="selTodos">Selecionar todos sem carga</button>
           <button type="button" class="btn" id="btMontar" ${selec.length ? "" : "disabled"}>${svg("caminhao")}Montar carga · ${selec.length} pedido(s) · ${selec.reduce((s, id) => s + volumes(S.pedidos[id]), 0)} vol.</button></div>` : ""}
       </div>
@@ -681,6 +760,9 @@ function rAgenda() {
       </div>
     </div></section>`;
   $$("[data-dia]").forEach((b) => (b.onclick = () => { V.dia = b.dataset.dia; V.sel.clear(); rAgenda(); }));
+  buscaViva("bAg", "bAg", rAgenda);
+  $("#bAgLimpa")?.addEventListener("click", () => { V.bAg = ""; rAgenda(); });
+  $$("[data-irdia]").forEach((b) => (b.onclick = () => { V.dia = b.dataset.irdia; V.bAg = ""; V.sel.clear(); rAgenda(); $(".dia.ativo")?.scrollIntoView({ block: "nearest", inline: "center" }); }));
   $$("[data-ag]").forEach((b) => (b.onclick = () => agendar([b.dataset.ag])));
   $("#selTodos")?.addEventListener("click", () => { livres.forEach((p) => V.sel.add(p.id)); rAgenda(); });
   $("#btMontar")?.addEventListener("click", () => montarCarga(selec, null));
