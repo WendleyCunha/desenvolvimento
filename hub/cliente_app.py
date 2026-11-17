@@ -364,7 +364,7 @@ def _rota_do_pedido(pid: str) -> dict | None:
     me = next((x for x in a["pedidos"] if x["pid"] == pid), {})
     return {"fase": a["fase"], "km": me.get("km"), "km_cor": me.get("km_cor"), "km_aprox": me.get("km_aprox"), "pos_ha_seg": a.get("pos_ha_seg"),
             "chegou": me.get("chegou"), "desfecho": me.get("desfecho"), "vizinho": me.get("vizinho"), "pode_vizinho": a.get("pode_vizinho"),
-            "link": f"/entrega/{a['token']}" if a.get("token") else ""}
+            "mapa": bool(a.get("mapa")), "link": f"/entrega/{a['token']}" if a.get("token") else ""}
 
 
 def tickets_do_cliente(cid: str, cli: dict) -> list[dict]:

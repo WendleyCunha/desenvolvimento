@@ -56,7 +56,7 @@ COL_APP, DOC_APP, COL_FOTOS = "wrouter", "app", "wrouter_fotos"
 FOTO_MAX = 450_000
 DESFAZER_MIN = 15
 TRILHA_SEG = 180
-KM_LARANJA, KM_VERMELHO = 7.0, 2.0
+KM_LARANJA, KM_VERMELHO = 7.0, 2.0   # padrão; o valor do dia fica em WROUTER › Motoristas e app (cfg)
 LINK_DIAS = 7
 FROTA_MOTIVO = "Contato da frota"
 CHAT_MAX = 300
@@ -127,7 +127,18 @@ def cfg() -> dict:
     return {"tentativas": int(c.get("tentativas") or 5), "chat_minutos": int(c.get("chat_minutos") or 15),
             "raio_chegada_m": max(50, min(int(c.get("raio_chegada_m") or 250), 2000)),
             "motivos": [m for m in (c.get("motivos") or MOTIVOS_PADRAO) if m.get("motivo")],
-            "palavra": dict(c.get("palavra") or {})}
+            "palavra": dict(c.get("palavra") or {}),
+            # faixas de distância (km): laranja = "se aproximando" (e, a partir dela, o cliente vê o mapa); vermelho = "bem perto"
+            "km_laranja": _km(c.get("km_laranja"), KM_LARANJA), "km_vermelho": min(_km(c.get("km_vermelho"), KM_VERMELHO), _km(c.get("km_laranja"), KM_LARANJA)),
+            "mapa_cliente": c.get("mapa_cliente") is not False}
+
+
+def _km(v, padrao: float) -> float:
+    try:
+        v = float(v)
+    except (TypeError, ValueError):
+        return padrao
+    return round(min(max(v, 0.1), 100.0), 1) if v > 0 else padrao
 
 
 def motivos() -> list:
@@ -356,7 +367,23 @@ def posicao_atual(car: dict) -> dict | None:
 
 
 def cor_km(km) -> str:
-    return "" if km is None else "vermelho" if km < KM_VERMELHO else "laranja" if km < KM_LARANJA else "normal"
+    c = cfg()
+    return "" if km is None else "vermelho" if km < c["km_vermelho"] else "laranja" if km < c["km_laranja"] else "normal"
+
+
+def rumo(car: dict, pos: dict | None) -> float | None:
+    """Direção do caminhão (graus, 0 = norte) pelos dois últimos pontos conhecidos — gira o triângulo no mapa."""
+    pts = [(t[0], t[1]) for t in ((car.get("rota") or {}).get("trilha") or [])[-3:]]
+    if pos:
+        pts.append((pos["lat"], pos["lng"]))
+    for i in range(len(pts) - 1, 0, -1):
+        (a1, b1), (a2, b2) = pts[i - 1], pts[i]
+        if distancia_m(a1, b1, a2, b2) >= 15:
+            f1, f2, dl = math.radians(a1), math.radians(a2), math.radians(b2 - b1)
+            y = math.sin(dl) * math.cos(f2)
+            x = math.cos(f1) * math.sin(f2) - math.sin(f1) * math.cos(f2) * math.cos(dl)
+            return round((math.degrees(math.atan2(y, x)) + 360) % 360)
+    return None
 
 
 def dist_pedido(car: dict, pid: str, pos: dict | None) -> dict:
@@ -559,7 +586,8 @@ def carga_app(cid: str, car: dict) -> dict:
     c = cfg()
     return {"id": cid, "numero": car.get("numero"), "data": car.get("data"), "status": car.get("status"), "motorista": m["nome"],
             "saida": r.get("saida"), "chegada": r.get("chegada"), "pedidos": peds, "total": len(todos), "feitos": sum(1 for p in todos if p["desfecho"]),
-            "palavra_ligada": palavra_ligada(m["id"]), "tentativas_max": c["tentativas"], "motivos": motivos(), "raio_chegada_m": c["raio_chegada_m"]}
+            "palavra_ligada": palavra_ligada(m["id"]), "tentativas_max": c["tentativas"], "motivos": motivos(), "raio_chegada_m": c["raio_chegada_m"],
+            "km_laranja": c["km_laranja"]}   # perto do cliente o app manda a posição mais vezes (o cliente acompanha no mapa)
 
 
 @router.get("/api/wrouter/app/cargas")
@@ -1072,7 +1100,7 @@ def carga_viva(cid: str, car: dict) -> dict:
     fase = "chegou" if r.get("chegada") else ("rua" if r.get("saida") or car.get("status") == "em_rota" else "aguardando")
     return {"id": cid, "numero": car.get("numero"), "data": car.get("data"), "placa": placa_da_carga(car), "veiculo": v.get("nome"),
             "motorista": m["nome"], "motorista_id": m["id"], "palavra_ligada": palavra_ligada(m["id"]), "status": car.get("status"), "fase": fase,
-            "saida": r.get("saida"), "chegada": r.get("chegada"), "pos": pos, "sinal": sinal_pub(car) if fase == "rua" else None,
+            "saida": r.get("saida"), "chegada": r.get("chegada"), "pos": {**pos, "rumo": rumo(car, pos)} if pos else None, "sinal": sinal_pub(car) if fase == "rua" else None,
             "trilha": [t[:3] for t in r.get("trilha") or []], "pedidos": peds, "hist": (r.get("hist") or [])[-40:],
             "cont": {"total": len(peds), "entregue": sum(1 for p in peds if p["desfecho"] == "entregue"), "retorno": sum(1 for p in peds if p["desfecho"] == "retorno"),
                      "parcial": sum(1 for p in peds if p["desfecho"] == "parcial"), "pendente": sum(1 for p in peds if not p["desfecho"]),
@@ -1115,7 +1143,7 @@ def ao_vivo(request: Request, data: str = ""):
         lista = [carga_viva(cid, E.ST.dados["cargas"][cid]) for cid, _ in cs]
     soma = lambda k: sum(x["cont"][k] for x in lista)
     return {"data": dia, "servidor": agora(), "pode_tratar": bool(p["acoes"].get("tratar")), "eu": q, "motivos": motivos(), "motivo_frota": FROTA_MOTIVO,
-            "km_laranja": KM_LARANJA, "km_vermelho": KM_VERMELHO,
+            "km_laranja": cfg()["km_laranja"], "km_vermelho": cfg()["km_vermelho"],
             "kpi": {"na_rua": sum(1 for x in lista if x["fase"] == "rua"), "aguardando_saida": sum(1 for x in lista if x["fase"] == "aguardando"),
                     "chegaram": sum(1 for x in lista if x["fase"] == "chegou"), "entregues": soma("entregue"), "retornos": soma("retorno") + soma("parcial"),
                     "pendentes": soma("pendente"), "liberacoes": soma("liberacoes"), "pecas_a_receber": max(0, soma("pecas_esperadas") - soma("pecas_recebidas")),
@@ -1376,6 +1404,14 @@ async def salvar_cfg(request: Request):
             d["chat_minutos"] = max(1, min(E._int(c["chat_minutos"]), 240))
         if "raio_chegada_m" in c:
             d["raio_chegada_m"] = max(50, min(E._int(c["raio_chegada_m"]), 2000))
+        if "km_laranja" in c or "km_vermelho" in c:
+            la = _km(c.get("km_laranja", d.get("km_laranja")), KM_LARANJA)
+            vm = _km(c.get("km_vermelho", d.get("km_vermelho")), KM_VERMELHO)
+            if vm >= la:
+                raise HTTPException(400, "O vermelho (bem perto) precisa ser menor que o laranja (se aproximando).")
+            d["km_laranja"], d["km_vermelho"] = la, vm
+        if "mapa_cliente" in c:
+            d["mapa_cliente"] = bool(c["mapa_cliente"])
         if "motivos" in c:
             ms = [{"motivo": str(m.get("motivo") or "").strip()[:60], "tipo": m.get("tipo") if m.get("tipo") in TIPO_ERP else "ausente"}
                   for m in c["motivos"] or [] if str(m.get("motivo") or "").strip()]
@@ -1441,7 +1477,18 @@ def entrega_pub(car: dict, pids: list) -> dict:
     km = min(kms) if kms else None
     p0 = E.ST.dados["pedidos"].get(pids[0]) or {}
     end = p0.get("endereco") or {}
-    return {"nome": str(p0.get("cliente_nome") or "").split(" ")[0].title(), "empresa": E.ST.config.get("empresa") or "",
+    c = cfg()
+    # MAPA DO CLIENTE: só na rua, com entrega pendente e o caminhão DENTRO da faixa laranja (antes disso, só "a caminho")
+    mapa = None
+    perto = [x for x in pend if x["km"] is not None and not x["chegou"]]
+    if fase == "rua" and c["mapa_cliente"] and perto and pos and min(x["km"] for x in perto) < c["km_laranja"]:
+        alvo = min(perto, key=lambda x: x["km"])
+        dest = destino(car, alvo["pid"])
+        if dest:
+            mapa = {"destino": {"lat": dest["lat"], "lng": dest["lng"]},
+                    "motorista": {"lat": pos["lat"], "lng": pos["lng"], "aprox": bool(pos.get("aprox")), "rumo": rumo(car, pos)},
+                    "dist_m": int(distancia_m(pos["lat"], pos["lng"], dest["lat"], dest["lng"]))}
+    return {"km_laranja": c["km_laranja"], "km_vermelho": c["km_vermelho"], "mapa": mapa,"nome": str(p0.get("cliente_nome") or "").split(" ")[0].title(), "empresa": E.ST.config.get("empresa") or "",
             "endereco": ", ".join(x for x in (" ".join(y for y in (end.get("logradouro"), end.get("numero")) if y), end.get("complemento"), end.get("bairro"), end.get("cidade")) if x),
             "cep": end.get("cep") or "", "data": car.get("data"), "fase": fase, "exige_palavra": exige,
             "km": km if fase == "rua" else None, "km_cor": cor_km(km) if fase == "rua" else "", "km_aprox": bool(pos and pos.get("aprox")) and km is not None,

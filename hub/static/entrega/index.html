@@ -50,11 +50,24 @@ button{font:inherit;cursor:pointer;border:1px solid var(--rule);background:var(-
 .msg{font-size:14px;font-weight:600;min-height:1em;color:var(--bad);margin:0}
 .viz{background:var(--steel-soft);color:var(--steel);border-radius:12px;padding:12px;display:grid;gap:4px}
 .erro{text-align:center;padding:40px 16px}
+/* mapa (só quando o motorista entra na faixa de aproximação) */
+.mapa-card{padding:0;overflow:hidden}
+#mapa{height:300px;background:#e9ecef}
+.mapa-leg{display:flex;gap:14px;flex-wrap:wrap;align-items:center;font-size:13px;color:var(--ink-2);padding:10px 14px}
+.mapa-leg span{display:inline-flex;gap:6px;align-items:center}
+.ic-cam{width:34px;height:34px}.ic-cam svg{width:34px;height:34px;transition:transform .6s ease;filter:drop-shadow(0 2px 3px rgba(0,0,0,.45))}
+.ic-bal svg{width:30px;height:40px;filter:drop-shadow(0 3px 3px rgba(0,0,0,.4))}
+.leaflet-div-icon{background:transparent;border:0}
 </style>
 </head>
 <body>
 <div class="bar"><span id="emp"></span><b id="empSep" hidden> · </b><b>Sua entrega</b></div>
-<main id="app"><div class="card"><p class="cap">Carregando…</p></div></main>
+<main id="app"><div id="topo"><div class="card"><p class="cap">Carregando…</p></div></div>
+  <div class="card mapa-card" id="mapaCard" hidden><div id="mapa"></div>
+    <div class="mapa-leg"><span><svg width="16" height="16" viewBox="0 0 24 24"><path d="M12 2 21 21 12 16 3 21Z" fill="#f59e0b" stroke="#111" stroke-width="1.6" stroke-linejoin="round"/></svg>Motorista</span>
+      <span><svg width="13" height="17" viewBox="0 0 30 40"><path d="M15 39C15 39 2 23 2 14a13 13 0 0 1 26 0c0 9-13 25-13 25Z" fill="#111" stroke="#fff" stroke-width="2.5"/><circle cx="15" cy="14" r="5" fill="#fff"/></svg>Seu endereço</span>
+      <span id="mapaAtu" style="margin-left:auto"></span></div></div>
+  <div id="resto"></div></main>
 <script>
 "use strict";
 /* [v6.6] Página do link de acompanhamento: /entrega/<código> → /api/entrega/<código> (pública; o código é a chave). */
@@ -64,6 +77,7 @@ const TOKEN = decodeURIComponent(location.pathname.split("/").filter(Boolean).po
 const hora = iso => iso ? String(iso).slice(11, 16) : "";
 const dataBR = iso => iso ? iso.slice(8, 10) + "/" + iso.slice(5, 7) : "";
 const kmTxt = k => k < 1 ? `${Math.round(k * 1000)} m` : `${k.toFixed(1).replace(".", ",")} km`;
+const mTxt = m => m < 1000 ? `${Math.max(0, Math.round(m / 10) * 10)} m` : `${(m / 1000).toFixed(1).replace(".", ",")} km`;
 const haQuanto = s => s == null ? "" : s < 90 ? "agora há pouco" : s < 3600 ? `há ${Math.round(s / 60)} min` : `há ${Math.round(s / 3600)} h`;
 const S = { d: null, form: false, erro: "", enviando: false };
 
@@ -75,9 +89,9 @@ async function api(url, corpo) {
 }
 async function carregar() {
   try { S.d = await api(`/api/entrega/${encodeURIComponent(TOKEN)}`); }
-  catch (e) { if (!S.d || e.status === 404 || e.status === 410) { $("#app").innerHTML = `<div class="card erro"><h2>${e.status === 410 ? "Link expirado" : e.status === 404 ? "Link não encontrado" : "Sem conexão"}</h2><p class="cap">${esc(e.message)}</p></div>`; return; } }
+  catch (e) { if (!S.d || e.status === 404 || e.status === 410) { $("#mapaCard").hidden = true; $("#resto").innerHTML = ""; $("#topo").innerHTML = `<div class="card erro"><h2>${e.status === 410 ? "Link expirado" : e.status === 404 ? "Link não encontrado" : "Sem conexão"}</h2><p class="cap">${esc(e.message)}</p></div>`; return; } }
   if (S.d && S.d.empresa) { $("#emp").textContent = S.d.empresa; $("#empSep").hidden = false; document.title = "Sua entrega · " + S.d.empresa; }
-  if (!S.form) render();
+  if (!S.form) render(); else mapa(S.d && S.d.mapa);
 }
 const DESF = { entregue: ["Entregue", "p-ok"], retorno: ["Não entregue", "p-bad"], parcial: ["Entregue em parte", "p-warn"] };
 function render() {
@@ -88,14 +102,15 @@ function render() {
   let situ = "";
   if (!pend.length) situ = `<div class="fase"><i>✅</i><span>Entrega concluída.</span></div>`;
   else if (chegou) situ = `<div class="km vermelho"><b>📍</b><span>O motorista chegou ao seu endereço às ${hora(chegou.chegou)}.</span></div>`;
-  else if (d.fase === "rua" && d.km != null) situ = `<div class="km ${d.km_cor === "normal" ? "" : esc(d.km_cor)}"><b>${kmTxt(d.km)}</b>
+  else if (d.fase === "rua" && d.km != null) situ = `<div class="km ${d.km_cor === "normal" ? "" : esc(d.km_cor)}"><b id="kmNum">${d.mapa ? mTxt(d.mapa.dist_m) : kmTxt(d.km)}</b>
       <span>${d.km_cor === "vermelho" ? "O motorista está bem perto!" : d.km_cor === "laranja" ? "O motorista está se aproximando." : "Distância do motorista até o seu endereço"}</span>
       <small class="cap" style="color:inherit;opacity:.85">em linha reta${d.km_aprox ? " · aproximada" : ""}${d.pos_ha_seg != null ? " · atualizado " + haQuanto(d.pos_ha_seg) : ""}</small></div>`;
   else if (d.fase === "rua") situ = `<div class="fase"><i>🚚</i><span>Sua entrega saiu para a rota. A distância aparece aqui assim que tivermos a localização do motorista.</span></div>`;
   else situ = `<div class="fase"><i>📦</i><span>Sua entrega${d.data ? ` de ${dataBR(d.data)}` : ""} está sendo preparada. A distância aparece quando o motorista iniciar a rota.</span></div>`;
-  $("#app").innerHTML = `<div class="card"><h1 style="font-size:26px">Olá${d.nome ? ", " + esc(d.nome) : ""}!</h1>
-      <p class="cap">${esc(d.endereco)}${d.cep ? " · CEP " + esc(d.cep) : ""}</p>${situ}</div>
-    ${pend.length && palavras.length ? `<div class="palavra"><span class="cap" style="color:var(--ink-2)">Sua palavra-chave — diga ao motorista na entrega</span>${palavras.map(w => `<b>${esc(w)}</b>`).join("")}<span class="cap">Não compartilhe com ninguém além do motorista.</span></div>` : ""}
+  $("#topo").innerHTML = `<div class="card"><h1 style="font-size:26px">Olá${d.nome ? ", " + esc(d.nome) : ""}!</h1>
+      <p class="cap">${esc(d.endereco)}${d.cep ? " · CEP " + esc(d.cep) : ""}</p>${situ}</div>`;
+  mapa(chegou ? null : d.mapa);
+  $("#resto").innerHTML = `${pend.length && palavras.length ? `<div class="palavra"><span class="cap" style="color:var(--ink-2)">Sua palavra-chave — diga ao motorista na entrega</span>${palavras.map(w => `<b>${esc(w)}</b>`).join("")}<span class="cap">Não compartilhe com ninguém além do motorista.</span></div>` : ""}
     ${pend.length && viz ? `<div class="viz"><b>🏠 Entrega ao vizinho</b><span>Casa/apto <b>${esc(viz.numero)}</b>${viz.tel ? " · tel. " + esc(viz.tel) : ""}</span>
         <span>${viz.nome ? `O vizinho <b>${esc(viz.nome)}</b> deve dizer o próprio nome ao motorista.` : "Sem palavra-chave: o motorista entrega ao vizinho sem pedir palavra."}</span>
         ${d.pode_vizinho ? `<button type="button" class="ghost" id="vzCanc" style="justify-self:start">Cancelar — vou receber eu mesmo</button>` : ""}</div>` : ""}
@@ -127,8 +142,53 @@ async function enviar(corpo) {
     if (corpo.cancelar || !S.form) { alert(e.message); return; }
     const m = $("#vzMsg"); if (m) m.textContent = e.message; }   // mantém o que o cliente digitou
 }
-carregar();
-setInterval(() => { if (document.visibilityState === "visible") carregar(); }, 30000);
+/* ── MAPA: triângulo = motorista (aponta para onde vai), balão preto = endereço do cliente ── */
+const M = { L: null, map: null, cam: null, bal: null, anim: null, ajustado: false, mexeu: false };
+const SVG_CAM = '<svg viewBox="0 0 24 24"><path d="M12 2 21 21 12 16 3 21Z" fill="#f59e0b" stroke="#111" stroke-width="1.6" stroke-linejoin="round"/></svg>';
+const SVG_BAL = '<svg viewBox="0 0 30 40"><path d="M15 39C15 39 2 23 2 14a13 13 0 0 1 26 0c0 9-13 25-13 25Z" fill="#111"/><circle cx="15" cy="14" r="5" fill="#fff"/></svg>';
+function leaflet() {
+  if (window.L) return Promise.resolve();
+  return new Promise((ok, er) => {
+    const c = document.createElement("link"); c.rel = "stylesheet"; c.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"; document.head.appendChild(c);
+    const s = document.createElement("script"); s.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"; s.onload = ok; s.onerror = er; document.head.appendChild(s);
+  });
+}
+function deslizar(marker, para, ms = 1800) {   // o triângulo anda até a nova posição (sem pular)
+  cancelAnimationFrame(M.anim);
+  const de = marker.getLatLng(), t0 = performance.now();
+  const passo = (t) => { const k = Math.min(1, (t - t0) / ms), e = k * (2 - k);
+    marker.setLatLng([de.lat + (para[0] - de.lat) * e, de.lng + (para[1] - de.lng) * e]); if (k < 1) M.anim = requestAnimationFrame(passo); };
+  M.anim = requestAnimationFrame(passo);
+}
+async function mapa(m) {
+  const card = $("#mapaCard");
+  if (!m) { card.hidden = true; return; }
+  try { await leaflet(); } catch (_) { card.hidden = true; return; }
+  card.hidden = false;
+  const cam = [m.motorista.lat, m.motorista.lng], dest = [m.destino.lat, m.destino.lng];
+  if (!M.map) {
+    M.map = L.map("mapa", { zoomControl: true, attributionControl: true });
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OpenStreetMap", maxZoom: 19 }).addTo(M.map);
+    M.bal = L.marker(dest, { icon: L.divIcon({ className: "ic-bal", html: SVG_BAL, iconSize: [30, 40], iconAnchor: [15, 39] }), keyboard: false }).addTo(M.map).bindTooltip("Seu endereço");
+    M.cam = L.marker(cam, { icon: L.divIcon({ className: "ic-cam", html: SVG_CAM, iconSize: [34, 34], iconAnchor: [17, 17] }), keyboard: false, zIndexOffset: 500 }).addTo(M.map).bindTooltip("Motorista");
+    M.map.on("dragstart", () => { M.mexeu = true; });   // o cliente arrastou: para de recentralizar sozinho
+  } else {
+    M.bal.setLatLng(dest);
+    deslizar(M.cam, cam);
+  }
+  const svg = M.cam.getElement() && M.cam.getElement().querySelector("svg");
+  if (svg) svg.style.transform = `rotate(${m.motorista.rumo ?? 0}deg)`;
+  setTimeout(() => M.map.invalidateSize(), 50);
+  if (!M.mexeu) { M.map.fitBounds([cam, dest], { padding: [40, 40], maxZoom: 17 }); M.ajustado = true; }
+  $("#mapaAtu").textContent = m.motorista.aprox ? "posição aproximada" : "ao vivo";
+}
+
+/* atualiza sozinha: a cada 10 s com o mapa aberto (motorista perto), senão a cada 30 s */
+async function ciclo() {
+  if (document.visibilityState === "visible") await carregar();
+  setTimeout(ciclo, S.d && S.d.mapa ? 10000 : 30000);
+}
+ciclo();
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") carregar(); });
 </script>
 </body>

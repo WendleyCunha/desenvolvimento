@@ -114,6 +114,11 @@ table.t tr.sel td{background:rgba(167,139,250,.1)}
 /* mapa claro do OpenStreetMap escurecido nos temas escuros; nos claros (Retrô, Areia…) fica como é */
 html:not([data-claro]) .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.9) contrast(.9)}
 html[data-claro] .leaflet-container{background:#e9ecef}
+/* ícones do mapa: triângulo = motorista (aponta para onde vai) · balão preto = endereço do cliente */
+.leaflet-div-icon.ic-mapa{background:transparent;border:0}
+.ic-mapa svg{display:block;filter:drop-shadow(0 2px 3px rgba(0,0,0,.45))}
+.leg-mapa{display:flex;gap:16px;flex-wrap:wrap;align-items:center;font-size:12.5px;color:var(--txt2);margin-top:8px}
+.leg-mapa span{display:inline-flex;gap:6px;align-items:center}
 @media (max-width:1100px){.grade2{grid-template-columns:1fr}}
 @media (max-width:820px){.topo{position:relative;top:0}.nav{order:3;width:100%;overflow-x:auto;flex-wrap:nowrap;margin:0}}
 @media (max-width:560px){body{padding:8px}.painel{padding:13px}.nav button span{display:none}.dl{grid-template-columns:1fr}}
@@ -222,12 +227,12 @@ async function rAoVivo(silencioso) {
     ${vals.length ? `<section class="bloco mal"><h3>🔑 Entrega feita SEM SINAL — a palavra não conferiu (${vals.length})</h3><span class="sub">Confira com o cliente: valide a entrega ou reabra para o motorista registrar de novo (a baixa no ERP é desfeita).</span>
       ${vals.map(({ g, p }) => `<div class="linha"><span><b>${esc(p.nome)}</b> · pedido #${p.numero} · carga ${g.numero} · ${esc(g.motorista)}<span class="sub">digitou “${esc(p.validar_palavra.digitada || "—")}” · palavra certa <span class="palavra">${esc(p.palavra || "—")}</span> · sem sinal às ${esc(String(p.validar_palavra.offline_em || "").slice(11, 16))}</span></span>
         ${trata ? `<span class="chips"><button type="button" class="btn p" data-vpal="${g.id}|${p.pid}|aceitar">${svg("check")}Validar entrega</button><button type="button" class="btn perigo p" data-vpal="${g.id}|${p.pid}|reabrir">Reabrir</button></span>` : ""}</div>`).join("")}</section>` : ""}
-    ${perto.length ? `<section class="bloco alerta"><h3>🚨 Chegando — entregas a menos de ${d.km_laranja} km (${perto.length})</h3><span class="sub">Distância em linha reta do caminhão até o endereço. Laranja: menos de ${d.km_laranja} km · vermelho: menos de ${d.km_vermelho} km.</span>
+    ${perto.length ? `<section class="bloco alerta"><h3>🚨 Chegando — entregas a menos de ${String(d.km_laranja).replace(".", ",")} km (${perto.length})</h3><span class="sub">Distância em linha reta do caminhão até o endereço. Laranja: menos de ${String(d.km_laranja).replace(".", ",")} km · vermelho: menos de ${String(d.km_vermelho).replace(".", ",")} km.</span>
       ${perto.map(({ g, p }) => `<div class="linha"><span>${KM(p)} ${VIZ(p.vizinho)} <b>${esc(p.nome)}</b> · pedido #${p.numero} · ${esc(p.bairro || "")} · carga ${g.numero} · ${esc(g.motorista)}</span><span class="chips">${BTLINK(p)}<button type="button" class="btn v p" data-cli="${g.id}|${p.pid}">Ver cliente</button></span></div>`).join("")}</section>` : ""}
     ${chats.length ? `<section class="bloco alerta"><h3>💬 Chat com motorista (${chats.length} aberto(s))</h3>${chats.map(({ g, p }) => `<div class="linha"><span><span class="motivo-gde">${esc(p.chat.motivo)}</span> ${relogio(p.chat)} ${p.chat.nao_lidas ? etq(p.chat.nao_lidas + " nova(s)", "#fb7185") : ""}<br><b>${esc(p.nome)}</b> · pedido #${p.numero} · carga ${g.numero} · ${esc(g.placa)} · ${esc(g.motorista)}<span class="sub">${esc(p.chat.ult_txt || "")} · ${hora(p.chat.ult_em)}${p.chat.assumido ? " · com " + esc(p.chat.assumido.por) : ""}</span></span><button type="button" class="btn p" data-cli="${g.id}|${p.pid}">Abrir conversa</button></div>`).join("")}</section>` : ""}
     ${libs.length ? `<section class="bloco mal"><h3>Motorista esperando liberação sem palavra</h3>${libs.map(({ g, p }) => `<div class="linha"><span><b>${esc(p.nome)}</b> · pedido #${p.numero} · carga ${g.numero} · ${esc(g.motorista)}<span class="sub">${esc(p.liberacao.motivo || "")} · pediu às ${hora(p.liberacao.pedido_em)} · ${p.tentativas} tentativa(s) errada(s) · palavra certa <b>${esc(p.palavra || "—")}</b></span></span>
       ${trata ? `<span class="chips"><button type="button" class="btn p" data-lib="${g.id}|${p.pid}|liberar">Liberar sem palavra</button><button type="button" class="btn perigo p" data-lib="${g.id}|${p.pid}|negar">Negar</button></span>` : ""}</div>`).join("")}</section>` : ""}
-    <section class="grade2"><div class="bloco" style="padding:0;overflow:hidden"><div id="mapa" class="mapa"></div><p class="sub" style="margin:6px 12px 10px">Caminhão = última posição (GPS, rede ou estimada). Pontos = clientes.</p></div>
+    <section class="grade2"><div class="bloco" style="padding:0;overflow:hidden"><div id="mapa" class="mapa"></div><div class="leg-mapa" style="margin:6px 12px 10px"><span><svg width="14" height="14" viewBox="0 0 24 24"><path d="M12 2 21 21 12 16 3 21Z" fill="#f59e0b" stroke="#111" stroke-width="1.6"/></svg>Motorista (GPS, rede ou estimada · aponta para onde vai)</span><span><svg width="11" height="15" viewBox="0 0 30 40"><path d="M15 39C15 39 2 23 2 14a13 13 0 0 1 26 0c0 9-13 25-13 25Z" fill="#111"/><circle cx="15" cy="14" r="5" fill="#fff"/></svg>Cliente (contorno laranja/vermelho = perto; cinza = atendido)</span></div></div>
       <div class="bloco"><h3>${svg("relogio")} Últimos registros</h3><div class="feed">${feed(d)}</div></div></section>
     <section class="painel vidro"><div class="barra-ferr"><input type="search" class="entrada" id="avBusca" value="${esc(V.busca)}" placeholder="🔎 Carga, pedido, cliente, placa, motorista, palavra, bairro…">
       <span class="chips">${[["todas", "Todas"], ["rua", "Na rua"], ["aguardando", "Aguardando saída"], ["chegou", "No CD"]].map(([k, r]) => `<button type="button" class="chip${V.filtro === k ? " ativo" : ""}" data-avf="${k}">${r}</button>`).join("")}</span></div>
@@ -297,6 +302,13 @@ function ligarAcoes(c) {
   $$("[data-foto]", c).forEach((b) => (b.onclick = (ev) => { ev.stopPropagation(); window.open(`${API}/foto/${b.dataset.foto}`, "_blank"); }));
 }
 let LMAP = null;
+// triângulo do motorista girado na direção em que anda; tracejado = posição aproximada (sem GPS)
+const icCam = (rumo, aprox) => L.divIcon({ className: "ic-mapa", iconSize: [30, 30], iconAnchor: [15, 15],
+  html: `<svg width="30" height="30" viewBox="0 0 24 24" style="transform:rotate(${rumo ?? 0}deg)"><path d="M12 2 21 21 12 16 3 21Z" fill="#f59e0b" stroke="#111" stroke-width="1.6" stroke-linejoin="round"${aprox ? ' stroke-dasharray="2 2"' : ""}/></svg>` });
+// balão preto = cliente a entregar (contorno laranja/vermelho quando o caminhão está perto); cinza = já atendido
+const icBal = (p) => { const cor = p.desfecho ? "#9ca3af" : "#111", anel = !p.desfecho && p.km_cor === "vermelho" ? "#ef4444" : !p.desfecho && p.km_cor === "laranja" ? "#fb923c" : "#fff";
+  return L.divIcon({ className: "ic-mapa", iconSize: [24, 32], iconAnchor: [12, 31],
+    html: `<svg width="24" height="32" viewBox="0 0 30 40"><path d="M15 39C15 39 2 23 2 14a13 13 0 0 1 26 0c0 9-13 25-13 25Z" fill="${cor}" stroke="${anel}" stroke-width="2.4"/><circle cx="15" cy="14" r="5" fill="#fff"/></svg>` }); };
 function leaflet() { return window.L ? Promise.resolve() : new Promise((ok2, er) => { const s = document.createElement("script"); s.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"; s.onload = ok2; s.onerror = er; document.head.appendChild(s); }); }
 async function mapa(d) {
   const box = $("#mapa"); if (!box) return;
@@ -306,9 +318,9 @@ async function mapa(d) {
   const pts = [];
   d.cargas.forEach((g) => {
     if (g.trilha.length > 1) L.polyline(g.trilha.map((t) => [t[0], t[1]]), { color: "#a78bfa", weight: 3, opacity: .6 }).addTo(LMAP);
-    if (g.pos) { const m = L.circleMarker([g.pos.lat, g.pos.lng], { radius: 9, color: "#e8b33d", fillColor: "#e8b33d", fillOpacity: .9 }).addTo(LMAP).bindTooltip(`🚚 ${g.numero} · ${g.placa} · ${g.motorista}${g.pos.fonte !== "gps" ? " (" + g.pos.fonte + ")" : ""}`); pts.push([g.pos.lat, g.pos.lng]); }
-    g.pedidos.forEach((p) => { if (!p.destino) return; const cor = p.desfecho ? (DESF[p.desfecho] || [, "#94a3b8"])[1] : p.km_cor === "vermelho" ? "#ef4444" : p.km_cor === "laranja" ? "#fb923c" : "#60a5fa";
-      L.circleMarker([p.destino.lat, p.destino.lng], { radius: 6, color: cor, fillColor: cor, fillOpacity: .8 }).addTo(LMAP).bindTooltip(`#${p.numero} ${p.nome}${p.km != null ? " · " + kmTxt(p.km) : ""}`); pts.push([p.destino.lat, p.destino.lng]); });
+    if (g.pos) { L.marker([g.pos.lat, g.pos.lng], { icon: icCam(g.pos.rumo, g.pos.aprox), zIndexOffset: 500 }).addTo(LMAP).bindTooltip(`🚚 ${g.numero} · ${g.placa} · ${g.motorista}${g.pos.fonte !== "gps" ? " (" + g.pos.fonte + ")" : ""}`); pts.push([g.pos.lat, g.pos.lng]); }
+    g.pedidos.forEach((p) => { if (!p.destino) return;
+      L.marker([p.destino.lat, p.destino.lng], { icon: icBal(p) }).addTo(LMAP).bindTooltip(`#${p.numero} ${p.nome}${p.desfecho ? " · " + (DESF[p.desfecho] || [p.desfecho])[0] : p.km != null ? " · " + kmTxt(p.km) : ""}`); pts.push([p.destino.lat, p.destino.lng]); });
   });
   if (pts.length) LMAP.fitBounds(pts, { padding: [30, 30], maxZoom: 14 }); else LMAP.setView([-23.55, -46.63], 10);
 }
@@ -419,6 +431,11 @@ async function rMotoristas() {
       <div class="g3"><label class="campo">Tentativas de palavra antes de travar<input class="entrada" type="number" min="1" max="20" id="cTent" value="${c.tentativas}"></label>
         <label class="campo">Prazo do atendimento no chat (min)<input class="entrada" type="number" min="1" max="240" id="cChat" value="${c.chat_minutos}"></label>
         <label class="campo">Raio do "Chegou no cliente" (m)<input class="entrada" type="number" min="50" max="2000" id="cRaio" value="${c.raio_chegada_m}"></label></div>
+      <h3 style="margin-top:14px">📍 Distância do motorista até o cliente</h3>
+      <div class="g3"><label class="campo">🟠 Se aproximando: abaixo de (km)<input class="entrada" type="number" min="0.1" max="100" step="0.1" id="cKmL" value="${c.km_laranja}"></label>
+        <label class="campo">🔴 Bem perto: abaixo de (km)<input class="entrada" type="number" min="0.1" max="100" step="0.1" id="cKmV" value="${c.km_vermelho}"></label>
+        <label class="campo" style="align-self:end"><span style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="cMapa"${c.mapa_cliente ? " checked" : ""} style="width:18px;height:18px">Cliente vê o mapa (motorista e endereço)</span></label></div>
+      <span class="sub">Vale na hora para a operação, o app do motorista, o app do cliente e o link. O cliente só vê o mapa com o triângulo do motorista quando ele entra na faixa laranja; antes disso vê só "a caminho" e o km. Use casas decimais: 0,5 = 500 m.</span>
       <h3 style="margin-top:14px">Motivos (chat e retorno) → o que a baixa faz no ERP</h3><div id="mots">${c.motivos.map((m, i) => linhaMot(m, i)).join("")}</div>
       <div class="chips" style="margin-top:8px"><button type="button" class="btn v p" id="mAdd">${svg("mais")}Motivo</button><button type="button" class="btn" id="cSalvar">${svg("check")}Salvar regras</button></div></div></section>`;
   $$("[data-reset]").forEach((b) => (b.onclick = async () => { if (!(await A.confirmar(`Resetar a senha da placa <b>${esc(b.dataset.reset)}</b>? O celular logado sai.`, { perigo: true, rotulo: "Resetar" }))) return;
@@ -427,7 +444,7 @@ async function rMotoristas() {
   $("#mAdd").onclick = () => $("#mots").insertAdjacentHTML("beforeend", linhaMot({ motivo: "", tipo: "ausente" }, $$("#mots .linha").length));
   $("#cSalvar").onclick = async () => {
     const motivos = $$("#mots .linha").map((l) => ({ motivo: $("input", l).value, tipo: $("select", l).value })).filter((m) => m.motivo.trim());
-    try { await api("/cfg", { method: "PUT", body: { tentativas: +$("#cTent").value, chat_minutos: +$("#cChat").value, raio_chegada_m: +$("#cRaio").value, motivos } }); ok("Regras salvas."); rMotoristas(); } catch (e) { falha(e); } };
+    try { await api("/cfg", { method: "PUT", body: { tentativas: +$("#cTent").value, chat_minutos: +$("#cChat").value, raio_chegada_m: +$("#cRaio").value, km_laranja: +$("#cKmL").value, km_vermelho: +$("#cKmV").value, mapa_cliente: $("#cMapa").checked, motivos } }); ok("Regras salvas."); rMotoristas(); } catch (e) { falha(e); } };
 }
 const linhaMot = (m) => `<div class="linha"><input class="entrada" value="${esc(m.motivo)}" placeholder="ex.: Cliente ausente" style="flex:1;min-width:200px"><select class="entrada" style="width:auto">${[["ausente", "Ausente → reagendar (volta reservado)"], ["avaria", "Avaria → reposição (triagem)"], ["recusa", "Recusa → recusado (triagem)"]].map(([k, r]) => `<option value="${k}"${m.tipo === k ? " selected" : ""}>${r}</option>`).join("")}</select></div>`;
 

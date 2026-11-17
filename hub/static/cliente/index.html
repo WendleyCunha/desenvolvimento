@@ -594,7 +594,7 @@ function telaPedido(m, id) {
       ${p.entrega && !["entregue", "cancelado"].includes(p.status) ? `<div class="entrega">${ICO.cal}<span><b>${esc(dataLonga(p.entrega.data))}</b><small>${p.entrega.janela ? "Período: " + esc(p.entrega.janela) : "Entrega agendada"}</small></span></div>` : ""}
       ${rotaKm(p)}
       ${p.rota && p.rota.vizinho && !p.rota.desfecho ? `<p class="min">🏠 Entregar ao vizinho · casa/apto <b>${esc(p.rota.vizinho.numero)}</b>${p.rota.vizinho.nome ? ` · o vizinho <b>${esc(p.rota.vizinho.nome)}</b> diz o próprio nome ao motorista` : " · sem palavra-chave"}</p>` : ""}
-      ${p.rota && p.rota.link && !p.rota.desfecho ? `<a class="btn v grande" href="${esc(p.rota.link)}" style="margin-top:12px;text-align:center;text-decoration:none">${p.rota.pode_vizinho ? "📍 Acompanhar a entrega · entregar ao vizinho" : "📍 Acompanhar a entrega"}</a>` : ""}
+      ${p.rota && p.rota.link && !p.rota.desfecho ? `<a class="btn v grande" href="${esc(p.rota.link)}" style="margin-top:12px;text-align:center;text-decoration:none">${p.rota.mapa ? "📍 Ver o motorista no mapa" : p.rota.pode_vizinho ? "📍 Acompanhar a entrega · entregar ao vizinho" : "📍 Acompanhar a entrega"}</a>` : ""}
     </div>
     <div class="sec">Itens</div>
     <div class="cartao vidro"><ul class="itens">${p.itens.map((i) => `<li><b>${i.qtd}×</b>${esc(i.nome)}</li>`).join("")}</ul>
