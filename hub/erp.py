@@ -1080,6 +1080,8 @@ def _baixa(tx: Tx, u: dict, cid: str, c: dict, em=None):
     res = c.get("resultado")
     if res not in ("entregue", "ausente", "avaria", "recusado"):
         raise HTTPException(400, "Resultado inválido.")
+    antes = _copia({k: ped.get(k) for k in CAMPOS_DESFAZER})   # [WROUTER] para poder desfazer a baixa
+    movs0 = len(tx.movs)
     ref = f"CARGA {car['numero']} · PED {ped['numero']}"
     pend = {i["produto_id"]: i["qtd"] for i in ped.get("pendentes", [])}
     avariados = {}
@@ -1146,11 +1148,51 @@ def _baixa(tx: Tx, u: dict, cid: str, c: dict, em=None):
     ped["atualizado_em"] = em or agora()
     tx.put("pedidos", pid, ped)
     car.setdefault("baixas", {})[pid] = res
+    car.setdefault("baixas_det", {})[pid] = {"antes": antes, "movs": [m["id"] for m in tx.movs[movs0:]], "em": em or agora(), "por": u.get("login", "")}
     if len(car["baixas"]) == len(car["pedidos"]):
         car["status"] = "finalizada"
         car["fechada_em"] = em or agora()
     car["atualizado_em"] = em or agora()
     tx.put("cargas", cid, {k: v for k, v in car.items() if k != "id"})
+
+
+CAMPOS_DESFAZER = ("pendentes", "status", "pendencia", "reservado", "sem_estoque", "agendamento", "recolher_feito", "entregue_em", "carga_id", "tentativas")
+
+
+def desfazer_baixa(tx: Tx, u: dict, cid: str, pid: str, motivo: str, em=None) -> dict:
+    """[WROUTER] Desfaz a baixa de um pedido da carga (o motorista errou ou a frota reabriu):
+    estorna os movimentos de estoque daquela baixa, devolve o pedido para "em rota" e tira do
+    retorno do armazém as peças que ainda não foram recebidas."""
+    car = tx.get("cargas", cid)
+    if not car:
+        raise HTTPException(404, "Carga não encontrada.")
+    det = (car.get("baixas_det") or {}).get(pid)
+    if pid not in (car.get("baixas") or {}) or not det:
+        raise HTTPException(409, "Este pedido não tem baixa para desfazer.")
+    w = car.get("wlog") or {}
+    its = [x for x in (w.get("retorno") or {}).get("itens") or [] if x.get("pid") == pid]
+    if any(x.get("recebido") or x.get("nao_voltou") for x in its):
+        raise HTTPException(409, "O armazém já recebeu peça deste pedido no retorno — corrija pelo ERP/WLOGISTICA.")
+    ped = tx.get("pedidos", pid)
+    for mid in reversed(det.get("movs") or []):
+        m = ST.dados["movimentos"].get(mid) or next((x for x in tx.movs if x["id"] == mid), None)
+        if m:
+            tx.mover(m["produto_id"], m["qtd"], m["para"], m["de"], "estorno_baixa", ref=m.get("ref", ""), obs=motivo, em=em)
+    ped.update(_copia(det["antes"]))
+    _hist(ped, u, f"Baixa desfeita ({motivo})" if motivo else "Baixa desfeita", em)
+    ped["atualizado_em"] = em or agora()
+    tx.put("pedidos", pid, ped)
+    car["baixas"].pop(pid, None)
+    car["baixas_det"].pop(pid, None)
+    if w.get("retorno"):
+        w["retorno"]["itens"] = [x for x in w["retorno"]["itens"] if x.get("pid") != pid]
+        w["retorno"]["fim"] = None
+    if car.get("status") == "finalizada":
+        car["status"] = "em_rota"
+        car.pop("fechada_em", None)
+    car["atualizado_em"] = em or agora()
+    tx.put("cargas", cid, {k: v for k, v in car.items() if k != "id"})
+    return ped
 
 
 def _esperar_no_cd(tx: Tx, car: dict, pid: str, ped: dict, res: str, pend: dict, avariados: dict, motivo: str):

@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>WROUTER</title>
+<meta name="hub-icone" content="mapa">
+<meta name="hub-cor" content="#a78bfa">
+<meta name="hub-grupo" content="Operação">
+<meta name="hub-ordem" content="3">
+<meta name="hub-descricao" content="Entregas na rua em tempo real: app do motorista, palavra-chave, chat com a frota, km até o cliente e link de acompanhamento.">
+<script type="application/json" id="hub-permissoes">
+{
+  "acoes": {
+    "acessar": "Abrir o WROUTER",
+    "aovivo": "Ver o Ao vivo (cargas na rua, palavra-chave, km, links)",
+    "tratar": "Tratar: chat com o motorista, liberar sem palavra, validar e reabrir registros",
+    "historico": "Histórico de entregas e PDF do caso",
+    "motoristas": "Motoristas e app (palavra por motorista, senha da placa, motivos, prazos)"
+  }
+}
+</script>
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/aurora.css?v=3">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<!--
+═══════════════════════════════════════════════════════════════════════════════
+ wrouter.html — WROUTER · entregas na rua (kit Aurora Glass)
+───────────────────────────────────────────────────────────────────────────────
+ Ao vivo (cargas na rua, km até cada cliente, palavra-chave, vizinho, link do
+ cliente, liberações, entregas sem sinal), Conversas com o motorista, Histórico
+ com o PDF do caso e Motoristas e app. API: /api/wrouter (hub/wrouter.py).
+ App do motorista: /motorista/ · link do cliente: /entrega/<código>.
+═══════════════════════════════════════════════════════════════════════════════
+-->
+<style>
+body{padding:14px;min-height:100vh}
+.app{position:relative;z-index:1;max-width:1600px;margin:0 auto}
+.topo{position:sticky;top:10px;z-index:40;display:flex;align-items:center;gap:12px;padding:10px 12px 10px 14px;border-radius:20px;flex-wrap:wrap}
+.topo.vidro{background:linear-gradient(135deg,rgba(14,17,26,.9),rgba(8,10,16,.84))}
+.marca{display:flex;align-items:center;gap:12px;min-width:0}
+.marca b{display:block;font:700 1.08rem var(--titulo);letter-spacing:-.01em}
+.marca small{display:block;font-size:.6rem;letter-spacing:2.4px;text-transform:uppercase;font-weight:700;background:var(--grad-ouro);-webkit-background-clip:text;background-clip:text;color:transparent}
+.nav{display:flex;gap:4px;flex-wrap:wrap;margin:0 auto}
+.nav button{display:inline-flex;align-items:center;gap:7px;padding:8px 12px;border-radius:11px;font-size:.8rem;font-weight:600;color:var(--txt2);transition:.2s;position:relative}
+.nav button svg.i{width:15px;height:15px}
+.nav button:hover{color:var(--txt);background:rgba(255,255,255,.05)}
+.nav button.ativo{color:#140c26;background:#a78bfa;box-shadow:0 0 20px -4px #a78bfa}
+.nav button .bolha{position:absolute;top:-3px;right:-2px;min-width:16px;height:16px;padding:0 4px;border-radius:9px;font-size:.6rem;font-weight:800;font-style:normal;display:grid;place-items:center;background:var(--rosa);color:#fff;box-shadow:0 0 10px var(--rosa)}
+.dir{display:flex;gap:8px;align-items:center}
+.sync{display:inline-flex;align-items:center;gap:6px;font-size:.7rem;color:var(--txt3)}
+.sync i{width:7px;height:7px;border-radius:50%;background:var(--verde);box-shadow:0 0 8px var(--verde)}
+.sync.salvando i{background:var(--ouro);box-shadow:0 0 8px var(--ouro);animation:aurRespira 1s infinite}
+.sync.erro i{background:var(--rosa);box-shadow:0 0 8px var(--rosa)}
+main{margin-top:16px;display:flex;flex-direction:column;gap:16px}
+.painel{border-radius:24px;padding:18px}
+.cab{display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+.cab h2{margin:0;font:700 1.18rem var(--titulo);letter-spacing:-.01em}
+.cab p{margin:2px 0 0;font-size:.78rem;color:var(--txt3)}
+.cab .dir{margin-left:auto;flex-wrap:wrap}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.kpi{position:relative;padding:13px 14px;border-radius:15px;overflow:hidden;background:rgba(255,255,255,.035);border:1px solid var(--vidro-borda);--c:var(--ciano);text-align:left}
+.kpi::before{content:"";position:absolute;right:-24px;top:-24px;width:80px;height:80px;border-radius:50%;background:radial-gradient(circle,color-mix(in srgb,var(--c) 38%,transparent),transparent 70%)}
+.kpi small{display:block;font-size:.6rem;font-weight:700;letter-spacing:1.1px;text-transform:uppercase;color:var(--txt3)}
+.kpi b{display:block;font:700 1.5rem/1.1 var(--titulo);margin-top:8px;color:var(--c)}
+.kpi span{display:block;font-size:.68rem;color:var(--txt3);margin-top:4px}
+.bloco{border-radius:18px;padding:14px;background:rgba(255,255,255,.025);border:1px solid var(--vidro-borda)}
+.bloco>h3{margin:0 0 4px;display:flex;align-items:center;gap:8px;font:650 .92rem var(--titulo)}
+.bloco.alerta{border-color:rgba(251,146,60,.5);box-shadow:0 0 30px -18px #fb923c}
+.bloco.mal{border-color:rgba(251,113,133,.5);box-shadow:0 0 30px -18px #fb7185}
+.linha{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;padding:9px 0;border-top:1px solid var(--vidro-borda);font-size:.84rem}
+.sub{display:block;font-size:.72rem;color:var(--txt3);margin-top:2px}
+.mini{display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:7px;font-size:.66rem;font-weight:650;color:var(--txt2);background:rgba(255,255,255,.05);border:1px solid var(--vidro-borda);margin:2px 3px 0 0;white-space:nowrap}
+.mini.c{color:var(--c);border-color:color-mix(in srgb,var(--c) 35%,transparent);background:color-mix(in srgb,var(--c) 10%,transparent)}
+.tab-w{overflow:auto;border-radius:14px;border:1px solid var(--vidro-borda)}
+table.t{width:100%;border-collapse:collapse;font-size:.8rem}
+table.t th{position:sticky;top:0;background:rgba(12,14,20,.96);color:var(--txt3);font-weight:650;font-size:.64rem;letter-spacing:.8px;text-transform:uppercase;text-align:left;padding:10px;white-space:nowrap;z-index:1;cursor:pointer}
+table.t td{padding:9px 10px;border-top:1px solid var(--vidro-borda);vertical-align:middle}
+table.t tr.cl{cursor:pointer}
+table.t tr.cl:hover td{background:rgba(167,139,250,.06)}
+table.t tr.sel td{background:rgba(167,139,250,.1)}
+.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.btn.p{padding:6px 10px;font-size:.72rem}
+.km{display:inline-block;font:700 .82rem/1.2 var(--titulo);padding:3px 9px;border-radius:99px;white-space:nowrap;background:rgba(255,255,255,.07);color:var(--txt2)}
+.km.laranja{background:rgba(251,146,60,.16);color:#fdba74;border:1px solid #fb923c;box-shadow:0 0 14px -6px #fb923c}
+.km.vermelho{background:#ef4444;color:#fff;box-shadow:0 0 16px -4px #ef4444}
+.palavra{display:inline-block;font:700 .9rem/1.2 var(--titulo);letter-spacing:.08em;background:rgba(232,179,61,.12);color:var(--ouro2);border:1px solid rgba(232,179,61,.5);border-radius:7px;padding:3px 8px}
+.viz{--c:#22d3ee}
+.mapa{height:380px;border-radius:16px;overflow:hidden;background:rgba(255,255,255,.04)}
+.grade2{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:14px}
+.feed{max-height:380px;overflow:auto}
+.feed div{display:grid;grid-template-columns:44px 1fr;gap:8px;padding:7px 0;border-bottom:1px solid var(--vidro-borda);font-size:.8rem}
+.feed span:first-child{color:var(--txt3)}
+.barra-ferr{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0}
+.barra-ferr .entrada{max-width:360px}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.msgs{display:flex;flex-direction:column;gap:8px;max-height:46vh;overflow:auto;padding:4px}
+.mg{max-width:82%;padding:8px 12px;border-radius:16px;font-size:.86rem;white-space:pre-wrap;word-break:break-word;background:linear-gradient(160deg,rgba(255,255,255,.08),rgba(255,255,255,.03));border:1px solid var(--vidro-borda);align-self:flex-start}
+.mg.frota{align-self:flex-end;background:linear-gradient(135deg,rgba(167,139,250,.3),rgba(167,139,250,.12));border-color:rgba(167,139,250,.5)}
+.mg small{display:block;font-size:.66rem;color:var(--txt3);margin-bottom:2px}
+.mg img{display:block;max-width:240px;border-radius:10px;margin-top:4px}
+.mg.sis{align-self:center;background:none;border:0;font-size:.72rem;color:var(--txt3)}
+.motivo-gde{font:800 1.05rem var(--titulo);text-transform:uppercase;letter-spacing:.03em;color:#fdba74}
+.relogio{font:700 .82rem var(--titulo);padding:3px 9px;border-radius:9px;background:rgba(52,211,153,.14);color:#6ee7b7}
+.relogio.quase{background:rgba(251,146,60,.16);color:#fdba74}.relogio.estourou{background:rgba(251,113,133,.18);color:#fda4af}
+.dl{display:grid;grid-template-columns:140px 1fr;gap:6px 12px;font-size:.84rem}.dl dt{color:var(--txt3)}.dl dd{margin:0}
+.g3{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.chk{display:flex;gap:8px;align-items:center;font-size:.84rem;cursor:pointer}.chk input{width:18px;height:18px;accent-color:#a78bfa}
+.vazio{text-align:center;color:var(--txt3);padding:26px 10px;font-size:.84rem}
+.leaflet-container{background:#0b0e16}
+@media (max-width:1100px){.grade2{grid-template-columns:1fr}}
+@media (max-width:820px){.topo{position:relative;top:0}.nav{order:3;width:100%;overflow-x:auto;flex-wrap:nowrap;margin:0}}
+@media (max-width:560px){body{padding:8px}.painel{padding:13px}.nav button span{display:none}.dl{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topo vidro vidro-borda-viva">
+    <div class="marca"><span id="logo"></span><span><b>WROUTER</b><small>Entregas na rua</small></span></div>
+    <nav class="nav" id="nav"></nav>
+    <div class="dir"><span class="sync" id="sync"><i></i><span>conectando…</span></span><button type="button" class="btn-ic" id="btAtualizar" title="Recarregar"></button></div>
+  </header>
+  <main id="main"></main>
+</div>
+<script src="/static/aurora.js?v=3"></script>
+<script>
+(() => {
+"use strict";
+const A = Aurora, esc = A.esc, svg = A.svg;
+Object.assign(A.ICONES, {
+  caminhao: A.ICONES.caminhao || '<path d="M3 6h11v10H3z"/><path d="M14 9h4l3 3v4h-7"/><circle cx="7" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/>',
+  pino: '<path d="M12 21s-7-6.2-7-11a7 7 0 0114 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="3"/>',
+  historico: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/>',
+});
+A.fundo();
+document.getElementById("logo").outerHTML = A.orbe("mapa", "#a78bfa");
+document.querySelector('link[rel="icon"]').href = A.ATOMO_SVG;
+
+const API = "/api/wrouter";
+const V = { aba: ls("wd.wr.aba", "aovivo"), data: "", sel: null, busca: "", filtro: "todas", hde: "", hate: "", hbusca: "" };
+const S = { d: null, perm: { acoes: {} } };
+function ls(k, d) { try { return localStorage.getItem(k) ?? d; } catch (_) { return d; } }
+function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (_) {} }
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const hora = (iso) => iso ? String(iso).slice(11, 16) : "";
+const dBR = (iso) => iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : "—";
+const dhBR = (iso) => iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)} ${iso.slice(11, 16)}` : "—";
+const haQuanto = (s) => s == null ? "" : s < 60 ? `há ${s}s` : s < 3600 ? `há ${Math.round(s / 60)} min` : `há ${Math.round(s / 3600)} h`;
+const kmTxt = (k) => k < 1 ? `${Math.round(k * 1000)} m` : `${k.toFixed(1).replace(".", ",")} km`;
+const sem = (t) => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+const pode = (a) => !!S.perm.acoes?.[a];
+const DESF = { entregue: ["Entregue", "#34d399"], retorno: ["Retorno", "#fb7185"], parcial: ["Parcial", "#e8b33d"] };
+const BX = { entregue: "entregue", ausente: "ausente → reagendar", avaria: "avaria → reposição", recusado: "recusado" };
+const FASE = { aguardando: ["Liberada · aguardando saída", "#60a5fa"], rua: ["Na rua", "#e8b33d"], chegou: ["No CD", "#34d399"] };
+const etq = (t, c) => `<span class="etq" style="--c:${c}">${esc(t)}</span>`;
+const KM = (p) => p.km == null ? '<span class="sub">—</span>' : `<span class="km ${esc(p.km_cor === "normal" ? "" : p.km_cor)}" title="Distância em linha reta do caminhão até o endereço${p.km_aprox ? " — posição aproximada (sem GPS)" : ""}">${kmTxt(p.km)}${p.km_aprox ? " ≈" : ""}</span>`;
+const urlCli = (lk) => lk ? `${location.origin}/entrega/${lk}` : "";
+const BTLINK = (p) => p.link ? `<span style="white-space:nowrap"><button type="button" class="btn v p" data-lcp="${esc(urlCli(p.link))}">🔗 Copiar</button> <button type="button" class="btn v p" data-lwa="${esc(urlCli(p.link))}|${esc(String(p.nome || "").split(" ")[0])}">WhatsApp</button></span>` : "";
+const VIZ = (v) => v ? `<span class="mini c viz">🏠 Vizinho nº ${esc(v.numero)}${v.tel ? " · " + esc(v.tel) : ""}</span>` : "";
+const desfTag = (p) => p.desfecho ? etq(DESF[p.desfecho][0], DESF[p.desfecho][1]) + (p.baixa_erp ? `<span class="sub">ERP: ${esc(BX[p.baixa_erp] || p.baixa_erp)}${p.manual ? " (baixa manual)" : ""}</span>` : "")
+  : (p.liberacao || {}).status === "pendente" ? etq("Esperando liberação", "#a78bfa") : p.chegou ? etq(`📍 Chegou ${hora(p.chegou.em)}${p.chegou.conferido ? "" : " ⚠"}`, "#22d3ee") : etq("Pendente", "#94a3b8");
+
+function sync(e, t) { const el = $("#sync"); el.className = "sync " + (e || ""); el.lastElementChild.textContent = t; }
+async function api(url, op = {}) {
+  sync("salvando", op.method && op.method !== "GET" ? "salvando…" : "carregando…");
+  try { const r = await A.api(API + url, op); sync("", "atualizado " + new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })); return r; }
+  catch (e) { sync("erro", "erro"); if (e.status === 401) { const w = window.top || window; w.location.href = "/login?volta=" + encodeURIComponent(w.location.pathname); } throw e; }
+}
+const falha = (e) => A.toast("⚠ " + esc(e.message), [], { cor: "var(--rosa)", duracao: 9000 });
+const ok = (t) => A.toast("✓ " + t, [], { cor: "var(--verde)" });
+
+/* ══════ NAVEGAÇÃO ══════ */
+const ABAS = [["aovivo", "pino", "Ao vivo", "aovivo"], ["conversas", "mensagem", "Conversas", "aovivo"], ["historico", "historico", "Histórico de entregas", "historico"], ["motoristas", "usuarios", "Motoristas e app", "motoristas"]];
+function irPara(a) { V.aba = a; lsSet("wd.wr.aba", a); render(); scrollTo({ top: 0, behavior: "smooth" }); }
+function nav() {
+  const ab = ABAS.filter((a) => pode(a[3]));
+  if (!ab.some((a) => a[0] === V.aba) && ab.length) V.aba = ab[0][0];
+  const k = S.d?.kpi || {};
+  const bolha = { aovivo: k.liberacoes || 0, conversas: k.chats_nao_lidos || 0 };
+  $("#nav").innerHTML = ab.map(([id, ic, r]) => `<button type="button" data-aba="${id}" class="${V.aba === id ? "ativo" : ""}">${svg(ic)}<span>${r}</span>${bolha[id] ? `<em class="bolha">${bolha[id]}</em>` : ""}</button>`).join("");
+  $$("#nav [data-aba]").forEach((b) => (b.onclick = () => irPara(b.dataset.aba)));
+}
+async function render() {
+  nav();
+  if (V.aba === "aovivo") return rAoVivo();
+  if (V.aba === "conversas") return rConversas();
+  if (V.aba === "historico") return rHistorico();
+  if (V.aba === "motoristas") return rMotoristas();
+}
+async function carregarAoVivo() { const d = await api(`/ao-vivo${V.data ? "?data=" + V.data : ""}`); S.d = d; if (!V.data) V.data = d.data; return d; }
+
+/* ══════ AO VIVO ══════ */
+async function rAoVivo(silencioso) {
+  let d; try { d = await carregarAoVivo(); } catch (e) { $("#main").innerHTML = `<section class="painel vidro"><div class="vazio">${esc(e.message)}</div></section>`; return; }
+  nav();
+  const k = d.kpi, trata = d.pode_tratar, termo = sem(V.busca).trim();
+  const casa = (g, p) => termo && sem([p.numero, p.nome, p.bairro, p.cidade, p.palavra].join(" ")).includes(termo);
+  const casaC = (g) => !termo || sem([g.numero, g.placa, g.motorista, g.veiculo].join(" ")).includes(termo) || g.pedidos.some((p) => casa(g, p));
+  const filtros = { todas: () => true, rua: (g) => g.fase === "rua", aguardando: (g) => g.fase === "aguardando", chegou: (g) => g.fase === "chegou" };
+  const lista = d.cargas.filter(filtros[V.filtro] || filtros.todas).filter(casaC);
+  if (termo && lista.length === 1) V.sel = lista[0].id;
+  const sel = d.cargas.find((g) => g.id === V.sel);
+  const todos = []; d.cargas.forEach((g) => g.pedidos.forEach((p) => todos.push({ g, p })));
+  const perto = todos.filter(({ p }) => !p.desfecho && p.km != null && p.km < d.km_laranja).sort((a, b) => a.p.km - b.p.km);
+  const libs = todos.filter(({ p }) => (p.liberacao || {}).status === "pendente");
+  const vals = todos.filter(({ p }) => (p.validar_palavra || {}).status === "pendente");
+  const chats = todos.filter(({ p }) => p.chat.aberto).sort((a, b) => (b.p.chat.nao_lidas - a.p.chat.nao_lidas) || String(b.p.chat.ult_em).localeCompare(String(a.p.chat.ult_em)));
+  const scroll = scrollY;
+  const kp = (r, v, s, c) => `<div class="kpi" style="--c:${c}"><small>${r}</small><b>${v}</b><span>${s}</span></div>`;
+  $("#main").innerHTML = `<section class="painel vidro vidro-borda-viva"><div class="cab">${A.orbe("pino", "#a78bfa")}<div><h2>Ao vivo — entregas na rua</h2><p>O motorista registra no app e a baixa entra sozinha no ERP. Atualiza a cada 20 s · ${hora(d.servidor)}</p></div>
+      <div class="dir"><input type="date" class="entrada" id="avData" value="${d.data}" style="width:auto;padding:7px 10px"></div></div>
+    <div class="kpis">${kp("Na rua", k.na_rua, `${k.aguardando_saida} liberada(s) aguardando saída · ${k.chegaram} no CD`, "#e8b33d")}${kp("Entregues", k.entregues, `${k.pendentes} ainda sem registro`, "#34d399")}
+      ${kp("Retornos", k.retornos, `${k.pecas_a_receber} peça(s) a receber no CD`, "#fb7185")}${kp("Liberações", k.liberacoes, "motorista esperando a frota", k.liberacoes ? "#a78bfa" : "#64748b")}
+      ${kp("Conversas", k.chats_abertos, `${k.chats_nao_lidos} mensagem(ns) nova(s)`, k.chats_nao_lidos ? "#fb923c" : "#64748b")}</div></section>
+    ${vals.length ? `<section class="bloco mal"><h3>🔑 Entrega feita SEM SINAL — a palavra não conferiu (${vals.length})</h3><span class="sub">Confira com o cliente: valide a entrega ou reabra para o motorista registrar de novo (a baixa no ERP é desfeita).</span>
+      ${vals.map(({ g, p }) => `<div class="linha"><span><b>${esc(p.nome)}</b> · pedido #${p.numero} · carga ${g.numero} · ${esc(g.motorista)}<span class="sub">digitou “${esc(p.validar_palavra.digitada || "—")}” · palavra certa <span class="palavra">${esc(p.palavra || "—")}</span> · sem sinal às ${esc(String(p.validar_palavra.offline_em || "").slice(11, 16))}</span></span>
+        ${trata ? `<span class="chips"><button type="button" class="btn p" data-vpal="${g.id}|${p.pid}|aceitar">${svg("check")}Validar entrega</button><button type="button" class="btn perigo p" data-vpal="${g.id}|${p.pid}|reabrir">Reabrir</button></span>` : ""}</div>`).join("")}</section>` : ""}
+    ${perto.length ? `<section class="bloco alerta"><h3>🚨 Chegando — entregas a menos de ${d.km_laranja} km (${perto.length})</h3><span class="sub">Distância em linha reta do caminhão até o endereço. Laranja: menos de ${d.km_laranja} km · vermelho: menos de ${d.km_vermelho} km.</span>
+      ${perto.map(({ g, p }) => `<div class="linha"><span>${KM(p)} ${VIZ(p.vizinho)} <b>${esc(p.nome)}</b> · pedido #${p.numero} · ${esc(p.bairro || "")} · carga ${g.numero} · ${esc(g.motorista)}</span><span class="chips">${BTLINK(p)}<button type="button" class="btn v p" data-cli="${g.id}|${p.pid}">Ver cliente</button></span></div>`).join("")}</section>` : ""}
+    ${chats.length ? `<section class="bloco alerta"><h3>💬 Chat com motorista (${chats.length} aberto(s))</h3>${chats.map(({ g, p }) => `<div class="linha"><span><span class="motivo-gde">${esc(p.chat.motivo)}</span> ${relogio(p.chat)} ${p.chat.nao_lidas ? etq(p.chat.nao_lidas + " nova(s)", "#fb7185") : ""}<br><b>${esc(p.nome)}</b> · pedido #${p.numero} · carga ${g.numero} · ${esc(g.placa)} · ${esc(g.motorista)}<span class="sub">${esc(p.chat.ult_txt || "")} · ${hora(p.chat.ult_em)}${p.chat.assumido ? " · com " + esc(p.chat.assumido.por) : ""}</span></span><button type="button" class="btn p" data-cli="${g.id}|${p.pid}">Abrir conversa</button></div>`).join("")}</section>` : ""}
+    ${libs.length ? `<section class="bloco mal"><h3>Motorista esperando liberação sem palavra</h3>${libs.map(({ g, p }) => `<div class="linha"><span><b>${esc(p.nome)}</b> · pedido #${p.numero} · carga ${g.numero} · ${esc(g.motorista)}<span class="sub">${esc(p.liberacao.motivo || "")} · pediu às ${hora(p.liberacao.pedido_em)} · ${p.tentativas} tentativa(s) errada(s) · palavra certa <b>${esc(p.palavra || "—")}</b></span></span>
+      ${trata ? `<span class="chips"><button type="button" class="btn p" data-lib="${g.id}|${p.pid}|liberar">Liberar sem palavra</button><button type="button" class="btn perigo p" data-lib="${g.id}|${p.pid}|negar">Negar</button></span>` : ""}</div>`).join("")}</section>` : ""}
+    <section class="grade2"><div class="bloco" style="padding:0;overflow:hidden"><div id="mapa" class="mapa"></div><p class="sub" style="margin:6px 12px 10px">Caminhão = última posição (GPS, rede ou estimada). Pontos = clientes.</p></div>
+      <div class="bloco"><h3>${svg("relogio")} Últimos registros</h3><div class="feed">${feed(d)}</div></div></section>
+    <section class="painel vidro"><div class="barra-ferr"><input type="search" class="entrada" id="avBusca" value="${esc(V.busca)}" placeholder="🔎 Carga, pedido, cliente, placa, motorista, palavra, bairro…">
+      <span class="chips">${[["todas", "Todas"], ["rua", "Na rua"], ["aguardando", "Aguardando saída"], ["chegou", "No CD"]].map(([k, r]) => `<button type="button" class="chip${V.filtro === k ? " ativo" : ""}" data-avf="${k}">${r}</button>`).join("")}</span></div>
+      <div class="tab-w"><table class="t"><thead><tr><th>Carga</th><th>Placa · motorista</th><th>Situação</th><th class="num">Pedidos</th><th class="num">Entregues</th><th class="num">Retorno</th><th class="num">Pendentes</th><th class="num">Peças CD</th><th>Posição</th></tr></thead><tbody>
+      ${lista.map((g) => `<tr class="cl${g.id === V.sel ? " sel" : ""}" data-avc="${g.id}"><td><b>${g.numero}</b><span class="sub">${dBR(g.data)}</span></td><td>${esc(g.placa)}<span class="sub">${esc(g.motorista)}${g.palavra_ligada ? ' · <b style="color:var(--ouro2)">palavra</b>' : ""}</span></td>
+        <td>${etq(...(FASE[g.fase] || [g.fase, "#94a3b8"]))}<span class="sub">${g.saida ? "saiu " + hora(g.saida.em) : ""}${g.chegada ? " · chegou " + hora(g.chegada.em) : ""}</span></td>
+        <td class="num">${g.cont.total}</td><td class="num">${g.cont.entregue}</td><td class="num">${g.cont.retorno + g.cont.parcial}</td><td class="num">${g.cont.pendente}</td><td class="num">${g.cont.pecas_recebidas}/${g.cont.pecas_esperadas}</td><td>${g.fase === "rua" ? posTxt(g) : "—"}</td></tr>`).join("")
+        || `<tr><td colspan="9" class="vazio">Nenhuma carga liberada ou na rua${V.data !== d.data ? "" : " hoje"}. Cargas aparecem aqui quando o WLOGISTICA libera.</td></tr>`}</tbody></table></div></section>
+    ${sel ? detalhe(sel, trata) : ""}`;
+  if (silencioso) scrollTo(0, scroll);
+  $("#avData").onchange = (e) => { V.data = e.target.value; rAoVivo(); };
+  const bs = $("#avBusca"); bs.oninput = () => { V.busca = bs.value; clearTimeout(bs._t); bs._t = setTimeout(() => { rAoVivo(true).then(() => { const n = $("#avBusca"); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }); }, 300); };
+  $$("[data-avf]").forEach((b) => (b.onclick = () => { V.filtro = b.dataset.avf; rAoVivo(true); }));
+  $$("[data-avc]").forEach((r) => (r.onclick = () => { V.sel = V.sel === r.dataset.avc ? null : r.dataset.avc; rAoVivo(true); }));
+  ligarAcoes($("#main"));
+  mapa(d);
+}
+const relogio = (ch) => ch.restante_seg == null ? "" : `<span class="relogio" data-ate="${Date.now() + ch.restante_seg * 1000}" data-total="${(ch.prazo_min || 15) * 60}">⏱</span>`;
+setInterval(() => $$("[data-ate]").forEach((el) => { const s = (+el.dataset.ate - Date.now()) / 1000, t = +el.dataset.total || 900, n = Math.abs(Math.round(s));
+  el.textContent = `⏱ ${s < 0 ? "esgotado há " : ""}${Math.floor(n / 60)}:${String(n % 60).padStart(2, "0")}`; el.classList.toggle("estourou", s <= t / 3); el.classList.toggle("quase", s > t / 3 && s <= t * 2 / 3); }), 1000);
+function posTxt(g) {
+  if (!g.pos) return g.sinal ? `📵 sem posição<span class="sub">app com internet ${haQuanto(g.sinal.ha_seg)}</span>` : "—";
+  const h = g.pos.ha_seg != null ? haQuanto(g.pos.ha_seg) : "último ponto " + hora(g.pos.em);
+  if (g.pos.fonte === "estimada") return `≈ estimada<span class="sub">${esc(g.pos.ref || "último cliente")}${g.sinal ? ` · app com internet ${haQuanto(g.sinal.ha_seg)}${g.sinal.gps && g.sinal.gps !== "ativo" ? " · GPS desligado" : ""}` : ""}</span>`;
+  if (g.pos.fonte === "rede") return `📶 rede (sem GPS)<span class="sub">${h}${g.pos.prec ? " · ±" + g.pos.prec + " m" : ""}</span>`;
+  return `${h}${g.sinal && g.sinal.gps && !["ativo", "rede"].includes(g.sinal.gps) ? '<span class="sub" style="color:var(--rosa)">GPS desligado agora</span>' : ""}`;
+}
+function feed(d) {
+  const ev = [];
+  d.cargas.forEach((g) => {
+    if (g.saida) ev.push({ em: g.saida.em, t: `🚚 Carga ${g.numero} (${g.placa}) saiu · ${g.motorista}` });
+    if (g.chegada) ev.push({ em: g.chegada.em, t: `🏁 Carga ${g.numero} chegou no CD` });
+    g.pedidos.forEach((p) => { if (p.chegou) ev.push({ em: p.chegou.em, t: `📍 #${p.numero} ${p.nome}: chegou${p.chegou.conferido ? "" : " (⚠ " + (p.chegou.dist_m != null ? p.chegou.dist_m + " m do endereço" : "sem coordenada") + ")"}` });
+      if (p.desfecho && p.em) ev.push({ em: p.em, t: `${p.desfecho === "entregue" ? "✅" : p.desfecho === "parcial" ? "½" : "↩️"} #${p.numero} ${p.nome}: ${DESF[p.desfecho][0]}${p.motivo ? " — " + p.motivo : ""}${p.vizinho ? " · vizinho" : ""}` });
+      if ((p.liberacao || {}).pedido_em) ev.push({ em: p.liberacao.pedido_em, t: `⚠️ #${p.numero} ${p.nome}: pediu liberação sem palavra` }); });
+  });
+  ev.sort((a, b) => String(b.em).localeCompare(String(a.em)));
+  return ev.slice(0, 60).map((e) => `<div><span>${hora(e.em)}</span><span>${esc(e.t)}</span></div>`).join("") || '<p class="sub">Os registros dos motoristas aparecem aqui.</p>';
+}
+function detalhe(g, trata) {
+  return `<section class="painel vidro"><div class="cab">${A.orbe("caminhao", (FASE[g.fase] || [, "#a78bfa"])[1])}<div><h2>Carga ${g.numero} · ${esc(g.placa)} · ${esc(g.motorista)}</h2><p>${esc(g.veiculo || "")} · ${dBR(g.data)} · a baixa no ERP é automática a cada registro do motorista</p></div><div class="dir">${etq(...(FASE[g.fase] || [g.fase, "#94a3b8"]))}</div></div>
+    <div class="tab-w"><table class="t"><thead><tr><th>Pedido · cliente</th><th>Distância</th><th>Desfecho</th><th>Hora · quem</th><th>Palavra</th><th>Link do cliente</th><th>Peças CD</th><th></th></tr></thead><tbody>
+    ${g.pedidos.map((p) => `<tr class="cl" data-cli="${g.id}|${p.pid}"><td><b>#${p.numero} · ${esc(p.nome)}</b> ${p.chat.aberto ? etq("💬 " + p.chat.motivo + (p.chat.nao_lidas ? " · " + p.chat.nao_lidas : ""), p.chat.nao_lidas ? "#fb7185" : "#fb923c") : ""}<span class="sub">${esc([p.bairro, p.cidade].filter(Boolean).join(" · "))}${p.tipo === "troca" ? " · troca" : ""} · <u>ver tudo</u></span>${!p.desfecho ? VIZ(p.vizinho) : ""}</td>
+      <td>${KM(p)}</td><td>${desfTag(p)}${p.motivo ? `<span class="sub">${esc(p.motivo)}</span>` : ""}${p.foto ? `<button type="button" class="btn v p" data-foto="${esc(p.foto)}">📷 foto</button>` : ""}${p.corrigidos ? `<span class="sub">corrigido ${p.corrigidos}×</span>` : ""}</td>
+      <td>${p.em ? `${hora(p.em)}<span class="sub">${esc(p.por)}</span>` : "—"}</td>
+      <td>${p.palavra ? `<span class="palavra" title="${p.vizinho ? "Nome do vizinho (pedido pelo cliente)" : "Palavra-chave do pedido"}">${esc(p.palavra)}</span>` : p.vizinho ? etq("sem palavra (vizinho)", "#94a3b8") : ""}<span class="sub">${p.palavra_original ? "era " + esc(p.palavra_original) + " · " : ""}${p.palavra_ok === true ? "conferida" : p.palavra_ok === false ? "liberado pela frota" : p.tentativas ? p.tentativas + " erro(s)" : ""}</span></td>
+      <td>${BTLINK(p)}</td><td>${p.retorno_esperado ? etq(`${p.retorno_recebido}/${p.retorno_esperado} recebida(s)`, p.retorno_recebido >= p.retorno_esperado ? "#34d399" : "#e8b33d") : "—"}</td>
+      <td style="white-space:nowrap">${trata && p.desfecho && !p.manual && g.fase !== "chegou" ? `<button type="button" class="btn perigo p" data-reab="${g.id}|${p.pid}" title="Desfaz o registro e a baixa no ERP">Reabrir</button>` : ""}
+        ${trata && !p.desfecho && (p.liberacao || {}).status !== "liberada" && g.palavra_ligada ? `<button type="button" class="btn v p" data-lib="${g.id}|${p.pid}|liberar">🔓 Liberar sem palavra</button>` : ""}
+        ${(p.liberacao || {}).status === "liberada" && !p.desfecho ? etq("Liberado sem palavra", "#a78bfa") : ""}</td></tr>`).join("")}</tbody></table></div></section>`;
+}
+function ligarAcoes(c) {
+  $$("[data-cli]", c).forEach((b) => (b.onclick = (ev) => { if (ev.target.closest("[data-lcp],[data-lwa],[data-reab],[data-lib],[data-foto]")) return; const [g, p] = b.dataset.cli.split("|"); abrirCliente(g, p); }));
+  $$("[data-lcp]", c).forEach((b) => (b.onclick = async (ev) => { ev.stopPropagation(); try { await navigator.clipboard.writeText(b.dataset.lcp); ok("Link copiado. Envie ao cliente."); } catch (_) { prompt("Copie o link do cliente:", b.dataset.lcp); } }));
+  $$("[data-lwa]", c).forEach((b) => (b.onclick = (ev) => { ev.stopPropagation(); const [url, nome] = b.dataset.lwa.split("|");
+    const txt = `Olá${nome ? ", " + nome.charAt(0) + nome.slice(1).toLowerCase() : ""}! Acompanhe a sua entrega por aqui: ${url}\nNo link estão a sua palavra-chave e a distância do motorista. Se preferir, dá para pedir a entrega ao vizinho.`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(txt)}`, "_blank", "noopener"); }));
+  $$("[data-lib]", c).forEach((b) => (b.onclick = async (ev) => { ev.stopPropagation(); const [g, p, acao] = b.dataset.lib.split("|");
+    const nota = acao === "negar" ? prompt("Por que negar? (o motorista vê que foi negado)") : ""; if (acao === "negar" && nota === null) return;
+    try { await api(`/cargas/${g}/liberacao/${p}`, { method: "PUT", body: { acao, nota: nota || "" } }); ok(acao === "liberar" ? "Liberado: o motorista já pode registrar." : "Negado."); rAoVivo(true); } catch (e) { falha(e); } }));
+  $$("[data-vpal]", c).forEach((b) => (b.onclick = async (ev) => { ev.stopPropagation(); const [g, p, acao] = b.dataset.vpal.split("|");
+    if (acao === "reabrir" && !(await A.confirmar("Reabrir? O registro e a <b>baixa no ERP</b> são desfeitos e o motorista registra de novo.", { perigo: true, rotulo: "Reabrir" }))) return;
+    try { await api(`/cargas/${g}/validar-palavra/${p}`, { method: "PUT", body: { acao } }); ok(acao === "aceitar" ? "Entrega validada." : "Reaberto."); rAoVivo(true); } catch (e) { falha(e); } }));
+  $$("[data-reab]", c).forEach((b) => (b.onclick = async (ev) => { ev.stopPropagation(); const [g, p] = b.dataset.reab.split("|");
+    const nota = prompt("Por que reabrir? O registro do motorista e a BAIXA no ERP são desfeitos."); if (!nota) return;
+    try { await api(`/cargas/${g}/pedido/${p}/reabrir`, { method: "POST", body: { nota } }); ok("Reaberto: baixa desfeita no ERP."); rAoVivo(true); } catch (e) { falha(e); } }));
+  $$("[data-foto]", c).forEach((b) => (b.onclick = (ev) => { ev.stopPropagation(); window.open(`${API}/foto/${b.dataset.foto}`, "_blank"); }));
+}
+let LMAP = null;
+function leaflet() { return window.L ? Promise.resolve() : new Promise((ok2, er) => { const s = document.createElement("script"); s.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"; s.onload = ok2; s.onerror = er; document.head.appendChild(s); }); }
+async function mapa(d) {
+  const box = $("#mapa"); if (!box) return;
+  try { await leaflet(); } catch (_) { box.innerHTML = '<p class="sub" style="padding:14px">Não consegui carregar o mapa (OpenStreetMap).</p>'; return; }
+  if (LMAP) { LMAP.remove(); LMAP = null; }
+  LMAP = L.map(box, { zoomControl: true }); L.tileLayer("https://{s}.basemap.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", { attribution: "© OpenStreetMap · CARTO", maxZoom: 19 }).addTo(LMAP);
+  const pts = [];
+  d.cargas.forEach((g) => {
+    if (g.trilha.length > 1) L.polyline(g.trilha.map((t) => [t[0], t[1]]), { color: "#a78bfa", weight: 3, opacity: .6 }).addTo(LMAP);
+    if (g.pos) { const m = L.circleMarker([g.pos.lat, g.pos.lng], { radius: 9, color: "#e8b33d", fillColor: "#e8b33d", fillOpacity: .9 }).addTo(LMAP).bindTooltip(`🚚 ${g.numero} · ${g.placa} · ${g.motorista}${g.pos.fonte !== "gps" ? " (" + g.pos.fonte + ")" : ""}`); pts.push([g.pos.lat, g.pos.lng]); }
+    g.pedidos.forEach((p) => { if (!p.destino) return; const cor = p.desfecho ? (DESF[p.desfecho] || [, "#94a3b8"])[1] : p.km_cor === "vermelho" ? "#ef4444" : p.km_cor === "laranja" ? "#fb923c" : "#60a5fa";
+      L.circleMarker([p.destino.lat, p.destino.lng], { radius: 6, color: cor, fillColor: cor, fillOpacity: .8 }).addTo(LMAP).bindTooltip(`#${p.numero} ${p.nome}${p.km != null ? " · " + kmTxt(p.km) : ""}`); pts.push([p.destino.lat, p.destino.lng]); });
+  });
+  if (pts.length) LMAP.fitBounds(pts, { padding: [30, 30], maxZoom: 14 }); else LMAP.setView([-23.55, -46.63], 10);
+}
+
+/* ══════ CLIENTE COMPLETO + CONVERSA ══════ */
+async function abrirCliente(cid, pid) {
+  let d; try { d = await api(`/cargas/${cid}/pedido/${pid}`); } catch (e) { return falha(e); }
+  const end = d.endereco || {}, endTxt = [[end.logradouro, end.numero].filter(Boolean).join(", "), end.complemento, end.bairro, [end.cidade, end.uf].filter(Boolean).join("/")].filter(Boolean).join(" · ");
+  let timer = null;
+  const corpo = () => {
+    const ch = d.chat_det, a = ch.atual;
+    return `<div class="g3"><div class="bloco"><h3>${svg("pino")} Endereço</h3><p style="margin:4px 0">${esc(endTxt || "—")}${end.cep ? `<br>CEP ${esc(end.cep)}` : ""}${end.referencia ? `<br><span class="sub">Ref.: ${esc(end.referencia)}</span>` : ""}</p>${KM(d)} ${d.telefone ? `<span class="sub">📞 ${esc(d.telefone)}</span>` : ""}</div>
+      <div class="bloco"><h3>🔑 ${d.vizinho ? "Palavra (nome do vizinho)" : "Palavra-chave"}</h3><p style="margin:6px 0">${d.palavra ? `<span class="palavra">${esc(d.palavra)}</span>` : d.vizinho ? "sem palavra (vizinho sem nome)" : "—"}</p>${VIZ(d.vizinho)}${d.palavra_original ? `<span class="sub">palavra original ${esc(d.palavra_original)}</span>` : ""}<div style="margin-top:8px">${BTLINK(d)}</div></div>
+      <div class="bloco"><h3>${svg("caminhao")} Carga ${d.carga}</h3><p style="margin:4px 0">${esc(d.placa)} · ${esc(d.motorista)} · ${dBR(d.data)}</p>${desfTag(d)}${d.motivo ? `<span class="sub">${esc(d.motivo)}</span>` : ""}${d.foto ? ` <button type="button" class="btn v p" data-foto="${esc(d.foto)}">📷 foto</button>` : ""}</div></div>
+      <div class="bloco" style="margin-top:10px"><h3>Peças</h3>${d.itens.map((i) => `<div class="linha" style="padding:5px 0"><span>${esc(i.desc)} <span class="sub" style="display:inline">${esc(i.sku || "")}</span></span><b>${i.qtd}</b></div>`).join("")}
+        ${d.recolher.length ? `<span class="sub">Recolher (troca): ${d.recolher.map((r) => `${r.qtd}× ${esc(r.desc)}`).join(", ")}</span>` : ""}${d.obs_pedido ? `<span class="sub">Obs.: ${esc(d.obs_pedido)}</span>` : ""}
+        ${d.retorno_itens.length ? `<span class="sub">Retorno no CD: ${d.retorno_itens.map((x) => `${esc(x.desc)} — ${x.recebido ? "recebida" : x.nao_voltou ? "NÃO voltou" : "a receber"}`).join(" · ")}</span>` : ""}</div>
+      <div class="bloco" style="margin-top:10px"><h3>💬 Conversa com o motorista ${a ? `<span class="motivo-gde" style="margin-left:6px">${esc(a.motivo)}</span> ${relogio(a)}` : ""}</h3>
+        ${(d.presentes || []).filter((x) => x.login !== d.eu.login).length ? `<div class="aviso at">👀 ${d.presentes.filter((x) => x.login !== d.eu.login).map((x) => esc(x.por)).join(", ")} também está nesta conversa.</div>` : ""}
+        <div class="msgs" id="cvMsgs">${(ch.atendimentos || []).flatMap((at) => at.msgs).map((m) => m.de === "sistema" ? `<div class="mg sis">${esc(m.txt)} · ${dhBR(m.em)}</div>` : `<div class="mg ${m.de === "frota" ? "frota" : ""}"><small>${esc(m.de === "frota" ? "Frota · " + m.nome : "Motorista · " + m.nome)} · ${dhBR(m.em)}</small>${m.foto ? `<a href="${API}/foto/${esc(m.foto)}" target="_blank"><img src="${API}/foto/${esc(m.foto)}" alt="foto"></a>` : ""}${m.txt && m.txt !== "📷 Foto" ? esc(m.txt) : ""}</div>`).join("") || '<p class="sub">Sem conversa com o motorista neste cliente.</p>'}</div>
+        ${d.pode_tratar ? `<div style="display:flex;gap:8px;margin-top:8px"><input class="entrada" id="cvTxt" placeholder="${a ? "Responder ao motorista" : "Chamar o motorista (abre a conversa)"}" style="flex:1"><button type="button" class="btn" id="cvEnv">${svg("check")}${a ? "Enviar" : "Chamar"}</button>${a ? `<button type="button" class="btn perigo" id="cvFim">Encerrar</button>` : ""}</div>` : ""}</div>
+      ${d.historico.length ? `<div class="bloco" style="margin-top:10px"><h3>${svg("historico")} Linha do tempo</h3>${d.historico.slice().reverse().map((h) => `<div class="linha" style="padding:5px 0"><span>${esc(h.acao)}${h.det ? ` — <span class="sub" style="display:inline">${esc(h.det)}</span>` : ""}</span><span class="sub">${dhBR(h.em)} · ${esc(h.por)}</span></div>`).join("")}</div>` : ""}`;
+  };
+  const m = A.modal({ titulo: `Pedido #${d.numero} · ${d.nome}`, icone: "usuario", cor: "#a78bfa", largura: 980, html: `<div id="cvCorpo">${corpo()}</div>`,
+    esquerda: [{ rotulo: "PDF do caso", icone: "documento", acao: () => { dossie(d); return false; } }],
+    botoes: [{ rotulo: "Fechar" }],
+    aoAbrir: (cx) => { ligar(cx); },
+    aoFechar: () => { clearInterval(timer); api(`/cargas/${cid}/pedido/${pid}/presenca`, { method: "POST", body: { sair: true } }).catch(() => {}); if (V.aba === "aovivo") rAoVivo(true); else if (V.aba === "conversas") rConversas(); } });
+  function ligar(cx) {
+    const l = $("#cvMsgs", cx); if (l) l.scrollTop = l.scrollHeight;
+    ligarAcoes(cx);
+    const env = $("#cvEnv", cx); if (env) env.onclick = async () => { const t = $("#cvTxt", cx).value.trim(); if (!t) return;
+      try { await api(`/cargas/${cid}/pedido/${pid}/chat`, { method: "POST", body: { texto: t, iniciar: !d.chat_det.atual } }); await atualizar(true); } catch (e) { falha(e); } };
+    const ti = $("#cvTxt", cx); if (ti) ti.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); $("#cvEnv", cx).click(); } };
+    const fim = $("#cvFim", cx); if (fim) fim.onclick = async () => { const n = prompt("Encerrar o atendimento. Observação (opcional):", ""); if (n === null) return;
+      try { await api(`/cargas/${cid}/pedido/${pid}/chat/encerrar`, { method: "POST", body: { texto: n } }); await atualizar(true); } catch (e) { falha(e); } };
+  }
+  async function atualizar(forcar) {
+    const cx = m.el; const ti = $("#cvTxt", cx); if (!forcar && ti && ti.value) { api(`/cargas/${cid}/pedido/${pid}/presenca`, { method: "POST", body: {} }).catch(() => {}); return; }
+    try { d = await api(`/cargas/${cid}/pedido/${pid}`); $("#cvCorpo", cx).innerHTML = corpo(); ligar(cx); } catch (_) {}
+  }
+  timer = setInterval(() => { if (document.visibilityState === "visible") atualizar(false); }, 6000);
+}
+function dossie(d) {
+  const w = window.open("", "_blank"); if (!w) return falha(new Error("O navegador bloqueou a janela do PDF. Libere pop-ups."));
+  const end = d.endereco || {}, cod = Math.random().toString(36).slice(2, 8).toUpperCase(), agora = new Date().toLocaleString("pt-BR");
+  const L2 = (r, v) => v ? `<tr><th>${r}</th><td>${v}</td></tr>` : "";
+  const msgs = (d.chat_det.atendimentos || []).flatMap((a) => [`<p class="mt">Atendimento: <b>${esc(a.motivo)}</b> · aberto ${dhBR(a.aberto_em)}${a.fechado_em ? " · encerrado " + dhBR(a.fechado_em) + " por " + esc(a.fechado_por) : ""}</p>`,
+    ...a.msgs.map((m) => `<p><small>${dhBR(m.em)} · ${esc(m.de === "sistema" ? "sistema" : (m.de === "frota" ? "Frota · " : "Motorista · ") + m.nome)}</small> ${esc(m.txt)}</p>`)]).join("");
+  w.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Caso pedido ${d.numero}</title><style>body{font:13px/1.5 Arial,sans-serif;color:#111;margin:28px}h1{font-size:20px;margin:0}h2{font-size:14px;margin:18px 0 6px;border-bottom:1px solid #ccc}table{border-collapse:collapse;width:100%}th{text-align:left;width:200px;color:#555;font-weight:600;vertical-align:top;padding:3px 8px 3px 0}td{padding:3px 0}.mt{margin-top:10px}small{color:#666}img{max-width:320px;border:1px solid #ccc}.rod{margin-top:24px;font-size:11px;color:#666;border-top:1px solid #ccc;padding-top:6px}</style></head><body>
+    <h1>Caso de entrega · pedido #${d.numero}</h1><p>Código ${cod} · emitido em ${agora}</p>
+    <h2>Cliente</h2><table>${L2("Nome", esc(d.nome))}${L2("Endereço", esc([[end.logradouro, end.numero].filter(Boolean).join(", "), end.complemento, end.bairro, end.cidade, end.uf, end.cep].filter(Boolean).join(" · ")))}${L2("Telefone", esc(d.telefone || ""))}</table>
+    <h2>Carga</h2><table>${L2("Carga", d.carga)}${L2("Data", dBR(d.data))}${L2("Placa · motorista", esc(d.placa + " · " + d.motorista))}${L2("Saída", d.saida ? dhBR(d.saida.em) : "")}${L2("Chegada no CD", d.chegada ? dhBR(d.chegada.em) : "")}</table>
+    <h2>Peças</h2><table>${d.itens.map((i) => L2(i.qtd + "×", esc(i.desc))).join("")}</table>
+    <h2>Registro do motorista</h2><table>${L2("Desfecho", d.desfecho ? DESF[d.desfecho][0] : "Sem registro")}${L2("Baixa no ERP", esc(BX[d.baixa_erp] || d.baixa_erp || ""))}${L2("Motivo", esc(d.motivo))}${L2("Data e hora", dhBR(d.em))}${L2("Motorista", esc(d.por))}
+      ${L2("Local (GPS)", d.lat != null ? `${d.lat}, ${d.lng}` : "")}${L2("Chegada no cliente", d.chegou ? `${dhBR(d.chegou.em)} · ${d.chegou.dist_m != null ? d.chegou.dist_m + " m do endereço" : "endereço sem coordenada"}` : "")}
+      ${L2("Palavra-chave", `${esc(d.palavra || "—")} · ${d.palavra_ok === true ? "conferida pelo motorista" : d.palavra_ok === false ? "entregue SEM a palavra (liberado pela frota)" : "não exigida"}${d.tentativas ? " · " + d.tentativas + " tentativa(s) errada(s)" : ""}`)}
+      ${L2("Entregar ao vizinho", d.vizinho ? esc(`pedido pelo cliente · nº ${d.vizinho.numero}${d.vizinho.tel ? " · tel " + d.vizinho.tel : ""} · ${d.vizinho.nome || "sem nome"}`) : "")}${L2("Observação", esc(d.obs))}
+      ${(d.corrigidos_det || []).map((x) => L2("Registro corrigido", esc(`era ${x.desfecho} (${dhBR(x.em)}) · desfeito ${dhBR(x.desfeito_em)}${x.pela_frota ? " pela frota " + x.pela_frota + " · " + (x.nota || "") : " pelo motorista"}`))).join("")}</table>
+    ${d.foto ? `<h2>Foto</h2><img src="${location.origin}${API}/foto/${esc(d.foto)}">` : ""}
+    ${d.retorno_itens.length ? `<h2>Retorno no CD</h2><table>${d.retorno_itens.map((x) => L2(esc(x.desc), x.recebido ? "recebida " + dhBR(x.recebido.em) + " · " + esc(x.recebido.por) : x.nao_voltou ? "NÃO voltou: " + esc(x.nao_voltou.obs) : "a receber")).join("")}</table>` : ""}
+    ${msgs ? `<h2>Conversa com o motorista</h2>${msgs}` : ""}
+    <h2>Linha do tempo</h2><table>${(d.historico || []).map((h) => L2(dhBR(h.em), esc(`${h.acao}${h.det ? " — " + h.det : ""} · ${h.por}`))).join("")}</table>
+    <div class="rod">Documento gerado pelo WROUTER a partir dos registros do sistema (app do motorista, Ao vivo e armazém). Código ${cod} · ${agora}.</div>
+    <script>setTimeout(() => print(), 600)<\/script></body></html>`);
+  w.document.close();
+}
+
+/* ══════ CONVERSAS ══════ */
+async function rConversas() {
+  let d; try { d = await carregarAoVivo(); } catch (e) { return falha(e); }
+  nav();
+  const xs = []; d.cargas.forEach((g) => g.pedidos.forEach((p) => { if (p.chat.aberto || p.chat.atendimentos) xs.push({ g, p }); }));
+  xs.sort((a, b) => (b.p.chat.aberto - a.p.chat.aberto) || (b.p.chat.nao_lidas - a.p.chat.nao_lidas) || String(b.p.chat.ult_em).localeCompare(String(a.p.chat.ult_em)));
+  $("#main").innerHTML = `<section class="painel vidro vidro-borda-viva"><div class="cab">${A.orbe("mensagem", "#fb923c")}<div><h2>Conversas com os motoristas</h2><p>Abertas primeiro. Clique para responder — quem responde primeiro fica como responsável.</p></div></div>
+    ${xs.map(({ g, p }) => `<div class="linha cl" data-cli="${g.id}|${p.pid}" style="cursor:pointer"><span>${p.chat.aberto ? `<span class="motivo-gde">${esc(p.chat.motivo)}</span> ${relogio(p.chat)}` : etq("encerrada", "#64748b") + ` <span class="sub" style="display:inline">${esc(p.chat.ult_motivo || "")}${p.chat.fechado_por ? " · por " + esc(p.chat.fechado_por) : ""}</span>`} ${p.chat.nao_lidas ? etq(p.chat.nao_lidas + " nova(s)", "#fb7185") : ""}
+      <br><b>${esc(p.nome)}</b> · pedido #${p.numero} · carga ${g.numero} · ${esc(g.placa)} · ${esc(g.motorista)}<span class="sub">${esc(p.chat.ult_nome ? p.chat.ult_nome + ": " : "")}${esc(p.chat.ult_txt || "")} · ${hora(p.chat.ult_em)}${p.chat.assumido ? " · com " + esc(p.chat.assumido.por) : ""}${(p.chat.presenca || []).length ? " · 👀 " + p.chat.presenca.map((x) => esc(x.por)).join(", ") : ""}</span></span>
+      <button type="button" class="btn p">Abrir</button></div>`).join("") || `<div class="vazio">Nenhuma conversa hoje.</div>`}</section>`;
+  ligarAcoes($("#main"));
+}
+
+/* ══════ HISTÓRICO ══════ */
+async function rHistorico() {
+  if (!V.hate) { const h = new Date(); V.hate = h.toISOString().slice(0, 10); const d0 = new Date(h); d0.setDate(d0.getDate() - 6); V.hde = d0.toISOString().slice(0, 10); }
+  let d; try { d = await api(`/historico?de=${V.hde}&ate=${V.hate}&busca=${encodeURIComponent(V.hbusca)}`); } catch (e) { return falha(e); }
+  $("#main").innerHTML = `<section class="painel vidro vidro-borda-viva"><div class="cab">${A.orbe("historico", "#a78bfa")}<div><h2>Histórico de entregas</h2><p>Todos os clientes do período: o que o motorista registrou, a baixa no ERP, as conversas e o PDF do caso.</p></div></div>
+    <div class="barra-ferr"><input type="date" class="entrada" id="hDe" value="${d.de}" style="width:auto"><input type="date" class="entrada" id="hAte" value="${d.ate}" style="width:auto"><input type="search" class="entrada" id="hB" value="${esc(V.hbusca)}" placeholder="Cliente, pedido, código, carga, placa, motorista, bairro"></div>
+    <p class="sub">${d.total} cliente(s) no período${d.total > d.itens.length ? ` (mostrando ${d.itens.length})` : ""}.</p>
+    <div class="tab-w"><table class="t"><thead><tr><th>Data</th><th>Cliente · pedido</th><th>Carga · motorista</th><th>Desfecho</th><th>Chat</th><th></th></tr></thead><tbody>
+    ${d.itens.map((x) => `<tr><td>${dBR(x.data)}<span class="sub">${hora(x.em)}</span></td><td><b>${esc(x.nome)}</b><span class="sub">pedido #${x.numero}${x.codigo ? " · cód. " + esc(x.codigo) : ""} · ${esc(x.bairro || "")}</span></td><td>${x.carga}<span class="sub">${esc(x.placa)} · ${esc(x.motorista)}</span></td>
+      <td>${x.desfecho ? etq(DESF[x.desfecho][0], DESF[x.desfecho][1]) : etq("Sem registro", "#94a3b8")}${x.motivo ? `<span class="sub">${esc(x.motivo)}</span>` : ""}<span class="sub">${x.foto ? "📷 foto · " : ""}${x.palavra_ok === true ? "palavra conferida" : x.palavra_ok === false ? "liberado sem palavra" : ""}${x.vizinho ? " · vizinho" : ""}</span></td>
+      <td>${x.chats ? `💬 ${x.chats}${x.chat_aberto ? " (aberto)" : ""}<span class="sub">${esc(x.motivos_chat.join(", "))}</span>` : "—"}</td><td><button type="button" class="btn v p" data-cli="${x.carga_id}|${x.pid}">Ver · PDF</button></td></tr>`).join("") || `<tr><td colspan="6" class="vazio">Nada no período.</td></tr>`}</tbody></table></div></section>`;
+  $("#hDe").onchange = (e) => { V.hde = e.target.value; rHistorico(); }; $("#hAte").onchange = (e) => { V.hate = e.target.value; rHistorico(); };
+  const hb = $("#hB"); hb.oninput = () => { clearTimeout(hb._t); hb._t = setTimeout(async () => { V.hbusca = hb.value; await rHistorico(); const n = $("#hB"); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 400); };
+  ligarAcoes($("#main"));
+}
+
+/* ══════ MOTORISTAS E APP ══════ */
+async function rMotoristas() {
+  let d; try { d = await api("/motoristas"); } catch (e) { return falha(e); }
+  const c = d.cfg;
+  $("#main").innerHTML = `<section class="painel vidro vidro-borda-viva"><div class="cab">${A.orbe("usuarios", "#a78bfa")}<div><h2>Motoristas e app</h2><p>O motorista entra no app <b>${location.origin}/motorista/</b> com a PLACA do veículo (ERP → Cadastros → veículo) e a senha. A carga traz o motorista do ERP.</p></div></div>
+    <div class="grade2"><div class="bloco"><h3>${svg("caminhao")} Veículos (login do app)</h3><span class="sub">Senha inicial ${d.senha_inicial_padrao ? "<b>Rota@2026</b> (troque em WROUTER_SENHA_INICIAL no Render)" : "definida em WROUTER_SENHA_INICIAL"} — o app obriga a trocar no 1º acesso. Resetar volta para a inicial e derruba o celular.</span>
+      ${d.veiculos.map((v) => `<div class="linha"><span><b>${esc(v.placa)}</b> · ${esc(v.nome || "")}<span class="sub">senha ${v.senha === "trocada" ? "própria" : "inicial"}${v.senha_em ? " · " + dhBR(v.senha_em) : ""}${v.na_rua ? " · 🟢 app com GPS agora" : ""}</span></span><button type="button" class="btn v p" data-reset="${esc(v.placa)}">Resetar senha</button></div>`).join("") || '<p class="sub">Cadastre veículos com placa no ERP (Cadastros → Veículo).</p>'}</div>
+      <div class="bloco"><h3>🔑 Palavra-chave por motorista</h3><span class="sub">Ligada: o motorista só registra Entregue/Parcial com a palavra do pedido (ou o nome do vizinho). Ligue aos poucos.</span>
+      ${d.motoristas.map((m) => `<label class="linha chk"><span><b>${esc(m.nome)}</b>${m.telefone ? `<span class="sub">${esc(m.telefone)}</span>` : ""}</span><input type="checkbox" data-pal="${m.id}"${m.palavra ? " checked" : ""}></label>`).join("") || '<p class="sub">Cadastre motoristas no ERP (Cadastros → Motorista).</p>'}</div></div>
+    <div class="bloco" style="margin-top:14px"><h3>${svg("ajustes")} Regras do app</h3>
+      <div class="g3"><label class="campo">Tentativas de palavra antes de travar<input class="entrada" type="number" min="1" max="20" id="cTent" value="${c.tentativas}"></label>
+        <label class="campo">Prazo do atendimento no chat (min)<input class="entrada" type="number" min="1" max="240" id="cChat" value="${c.chat_minutos}"></label>
+        <label class="campo">Raio do "Chegou no cliente" (m)<input class="entrada" type="number" min="50" max="2000" id="cRaio" value="${c.raio_chegada_m}"></label></div>
+      <h3 style="margin-top:14px">Motivos (chat e retorno) → o que a baixa faz no ERP</h3><div id="mots">${c.motivos.map((m, i) => linhaMot(m, i)).join("")}</div>
+      <div class="chips" style="margin-top:8px"><button type="button" class="btn v p" id="mAdd">${svg("mais")}Motivo</button><button type="button" class="btn" id="cSalvar">${svg("check")}Salvar regras</button></div></div></section>`;
+  $$("[data-reset]").forEach((b) => (b.onclick = async () => { if (!(await A.confirmar(`Resetar a senha da placa <b>${esc(b.dataset.reset)}</b>? O celular logado sai.`, { perigo: true, rotulo: "Resetar" }))) return;
+    try { await api(`/placas/${b.dataset.reset}/resetar`, { method: "POST" }); ok("Senha resetada para a inicial."); rMotoristas(); } catch (e) { falha(e); } }));
+  $$("[data-pal]").forEach((i) => (i.onchange = async () => { try { await api(`/motoristas/${i.dataset.pal}`, { method: "PUT", body: { palavra: i.checked } }); ok(i.checked ? "Palavra ligada." : "Palavra desligada."); } catch (e) { falha(e); i.checked = !i.checked; } }));
+  $("#mAdd").onclick = () => $("#mots").insertAdjacentHTML("beforeend", linhaMot({ motivo: "", tipo: "ausente" }, $$("#mots .linha").length));
+  $("#cSalvar").onclick = async () => {
+    const motivos = $$("#mots .linha").map((l) => ({ motivo: $("input", l).value, tipo: $("select", l).value })).filter((m) => m.motivo.trim());
+    try { await api("/cfg", { method: "PUT", body: { tentativas: +$("#cTent").value, chat_minutos: +$("#cChat").value, raio_chegada_m: +$("#cRaio").value, motivos } }); ok("Regras salvas."); rMotoristas(); } catch (e) { falha(e); } };
+}
+const linhaMot = (m) => `<div class="linha"><input class="entrada" value="${esc(m.motivo)}" placeholder="ex.: Cliente ausente" style="flex:1;min-width:200px"><select class="entrada" style="width:auto">${[["ausente", "Ausente → reagendar (volta reservado)"], ["avaria", "Avaria → reposição (triagem)"], ["recusa", "Recusa → recusado (triagem)"]].map(([k, r]) => `<option value="${k}"${m.tipo === k ? " selected" : ""}>${r}</option>`).join("")}</select></div>`;
+
+$("#btAtualizar").innerHTML = svg("repetir");
+$("#btAtualizar").onclick = () => render();
+(async () => {
+  try { S.perm = (await api("/eu")).perm; } catch (e) { $("#main").innerHTML = `<section class="painel vidro"><div class="vazio">${esc(e.message)}</div></section>`; return; }
+  if (!["aovivo", "historico", "motoristas"].some(pode)) { $("#main").innerHTML = `<section class="painel vidro"><div class="vazio">Sem permissão nas abas do WROUTER. Peça ao administrador (Configurações → Usuários → WROUTER).</div></section>`; return; }
+  render();
+})();
+setInterval(() => { if (document.visibilityState !== "visible" || A.modalAberto()) return; if (V.aba === "aovivo") rAoVivo(true).catch(() => {}); else if (V.aba === "conversas") rConversas().catch(() => {}); }, 20000);
+})();
+</script>
+</body>
+</html>

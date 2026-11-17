@@ -77,6 +77,7 @@ import dados
 import passagens
 import erp
 import wlogistica
+import wrouter
 import secretaria
 import tickets
 import pqi_ponte
@@ -87,7 +88,7 @@ import cliente_app
 import promocoes
 import agente
 
-VERSAO = "3.14.0"
+VERSAO = "3.15.0"
 
 BASE = Path(__file__).resolve().parent
 PASTA_MODULOS = BASE / "modulos"
@@ -357,6 +358,7 @@ app.include_router(pqi_ponte.router)
 app.include_router(web_proxy.router)
 app.include_router(atelier.router)
 app.include_router(relatorios_publico.router)
+app.include_router(wrouter.router)   # WROUTER — /motorista/ (app), /entrega/<código> (cliente) e /api/wrouter/*
 app.include_router(cliente_app.router)   # App do cliente — /cliente/ e /api/cliente/* (públicos, sessão própria)
 agente.ligar(app)   # Agente IA do topo — /api/agente/* (static/agente.js)
 _inicio = time.time()
