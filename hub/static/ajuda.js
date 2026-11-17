@@ -1,9 +1,9 @@
 /* ajuda.js — PEDIDOS DE AJUDA em balão de chat, no topo do hub (como o Agente)
  *
- * Quando alguém pede ajuda ao MEU setor (botão "Pedir ajuda" no Atendimento), abre na hora um balão
+ * Quando alguém pede ajuda ao MEU setor (botão "Pedir ajuda" no CX), abre na hora um balão
  * de chat: dá para responder ali mesmo, conversar e encerrar. Quem pediu recebe as respostas no mesmo balão.
  * Cada setor vê só o que pediram a ele e o que ele pediu (regra no servidor: tickets.py › /api/tickets/ajuda).
- * A lista completa fica no Atendimento › aba "Pedidos de ajuda".
+ * A lista completa fica no CX › aba "Pedidos de ajuda".
  * 💬 Conversar com a equipe: chat direto com um colega online, SEM cliente (servidor: /api/tickets/conversa).
  * Visual: kit Aurora Glass do hub (variáveis --txt, --vidro, --violeta… e o tema claro de claro.css).
  */
@@ -151,10 +151,10 @@ html[data-claro] .aj-pe textarea{background:rgba(255,255,255,.7)}
         return `<button type="button" class="aj-it${naoLido(x) ? ' novo' : ''}" data-v="${esc(x.id)}" style="--c:${cor}"><span class="l1"><b>${esc(x.setor_origem)} → ${esc(x.setor_destino)}</b><span class="aj-tag">${naoLido(x) ? 'novo' : dh(x.ultima_em)}</span></span>
           <span class="l2">${esc(x.cliente_nome || '')} · ${esc(x.assunto || '')}</span><span class="l2">💬 ${esc(ult.nome || '')}: ${esc(ult.texto || '')}</span></button>`; };
       const dmBt = `<button type="button" class="aj-ib dm" data-pessoas title="Conversar com quem está online — sem vincular cliente">💬 <span>${on.length}</span></button>`;
-      POP.innerHTML = cab('Pedidos de ajuda', D.setor ? `setor ${D.setor} · ${rec.length} para você · ${env.length} pedidos por vocês` : 'seu usuário está sem setor no Atendimento', false, dmBt)
+      POP.innerHTML = cab('Pedidos de ajuda', D.setor ? `setor ${D.setor} · ${rec.length} para você · ${env.length} pedidos por vocês` : 'seu usuário está sem setor no CX', false, dmBt)
         + `<div class="aj-corpo">${conv.filter(c => !c.finalizada).length ? `<div class="aj-sec">Conversas com a equipe</div>${conv.filter(c => !c.finalizada).slice(0, 5).map(c => pessoa(c, (dmNaoLida(c) ? '' : (c.ultimo_de === D.eu.usuario ? 'você: ' : '')) + (c.texto || ''), dmNaoLida(c))).join('')}` : ''}${rec.length ? `<div class="aj-sec">Pediram ao seu setor</div>${rec.map(it).join('')}` : ''}${env.length ? `<div class="aj-sec">Seu setor pediu</div>${env.map(it).join('')}` : ''}
           ${!ab.length ? `<div class="aj-vazio">Nenhum pedido de ajuda aberto agora. 🎉${on.length ? `<br><small>${on.length} colega(s) online — toque em 💬 para conversar.</small>` : ''}</div>` : ''}</div>
-          <div class="aj-pe"><div class="aj-bts"><button type="button" class="aj-b" data-todos>Ver todos no Atendimento ↗</button></div></div>`;
+          <div class="aj-pe"><div class="aj-bts"><button type="button" class="aj-b" data-todos>Ver todos no CX ↗</button></div></div>`;
     } else {
       const eu = D.eu.usuario, aberto = v.status === 'aberto';
       POP.innerHTML = cab(`${v.setor_origem} → ${v.setor_destino}`, `${v.cliente_nome || ''} · ${v.cliente_codigo || ''}`, true)
@@ -198,7 +198,7 @@ html[data-claro] .aj-pe textarea{background:rgba(255,255,255,.7)}
     catch (e) { toast('⚠ ' + e.message); }
     finally { ocupado = false; }
   }
-  /* abre o Atendimento (aba do hub) já no lugar certo */
+  /* abre o CX (aba do hub) já no lugar certo */
   function irPara(hash) { try { window.postMessage({ hub: 'abrir', id: 'tickets', hash }, location.origin); } catch (_) {} fechar(); }
 
   async function enviar(v, encerrar) {
