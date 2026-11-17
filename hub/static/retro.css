@@ -1,0 +1,94 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   retro.css — tema "Retrô": claro, liso e estático (Configurações → Aparência)
+   ───────────────────────────────────────────────────────────────────────────
+   Liga quando o preset escolhido é o Retrô (Aurora.tema.aplicar marca
+   <html data-retro>, junto com data-claro). Sem vidro, brilho, degradê nem
+   animação: cartões brancos, borda fina, destaque em preto e cor só onde
+   tem significado (status, alertas, ocupação). aurora.css importa este arquivo.
+   ═══════════════════════════════════════════════════════════════════════════ */
+html[data-retro]{--noite:#f4f5f7; --noite2:#eceef1; --leve-vidro:#ffffff;
+  --txt:#1f2328; --txt2:#4b5563; --txt3:#8a919c;
+  --ouro:#1f6feb; --ouro2:#1f6feb; --ouro3:#1a5fcc; --ouro-rgb:31,111,235;
+  --violeta:#6d4fc2; --ciano:#0e7490; --rosa:#c2410c; --verde:#15803d; --azul:#1d4ed8; --laranja:#b45309;
+  --grad-ouro:#1f6feb; --vidro-borda:#dcdfe4; --vidro-borda-forte:#c9cdd4;
+  --raio:8px; --raio-m:6px; --raio-p:4px; --sombra:none; --blur:none;
+  --titulo:'Inter',system-ui,sans-serif; color-scheme:light;}
+html[data-retro] *,html[data-retro] *::before,html[data-retro] *::after{animation:none!important;transition:none!important;text-shadow:none!important}
+html[data-retro] body{background:#f4f5f7!important;color:var(--txt)}
+html[data-retro] .aur-fundo,html[data-retro] .luz::after,html[data-retro] .vidro-borda-viva::after,html[data-retro] .orbe::after,html[data-retro] .orbe::before{display:none!important}
+html[data-retro] .vidro,html[data-retro] .topo.vidro{background:#fff!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;border:1px solid #dcdfe4!important;box-shadow:none!important}
+html[data-retro] .painel,html[data-retro] .topo,html[data-retro] .aur-modal{border-radius:8px!important}
+html[data-retro] .aur-modal-fundo{background:rgba(20,24,31,.35)!important;backdrop-filter:none!important}
+html[data-retro] .aur-modal{transform:none!important}
+html[data-retro] .orbe{background:#f0f2f5!important;border:1px solid #dcdfe4!important;box-shadow:none!important;border-radius:6px!important;color:#374151!important}
+html[data-retro] .orbe svg.i{filter:none!important;stroke:#374151!important}
+html[data-retro] .atomo .halo,html[data-retro] .atomo .anel{display:none!important}
+html[data-retro] .atomo .nucleo{background:#1f2328!important;box-shadow:none!important}
+html[data-retro] .atomo .nucleo b{color:#fff!important;mix-blend-mode:normal!important;opacity:1!important}
+html[data-retro] .btn{background:#1f2328!important;color:#fff!important;border:1px solid #1f2328!important;box-shadow:none!important;border-radius:6px!important;transform:none!important}
+html[data-retro] .btn:hover{background:#374151!important}
+html[data-retro] .btn.v{background:#fff!important;color:#1f2328!important;border:1px solid #c9cdd4!important}
+html[data-retro] .btn.v:hover{background:#f4f5f7!important}
+html[data-retro] .btn.perigo{background:#fff!important;color:#b91c1c!important;border:1px solid #f1b8b8!important}
+html[data-retro] .btn[disabled]{opacity:.45}
+html[data-retro] .btn-ic{background:#fff!important;border:1px solid #dcdfe4!important;box-shadow:none!important;color:#4b5563!important;border-radius:6px!important}
+html[data-retro] .entrada,html[data-retro] .campo input,html[data-retro] .campo select,html[data-retro] .campo textarea{background:#fff!important;border:1px solid #c9cdd4!important;border-radius:6px!important;color:#1f2328!important;box-shadow:none!important}
+html[data-retro] .entrada:focus,html[data-retro] .campo input:focus,html[data-retro] .campo select:focus,html[data-retro] .campo textarea:focus{border-color:#1f6feb!important;box-shadow:0 0 0 2px rgba(31,111,235,.15)!important}
+html[data-retro] .campo{color:#4b5563!important;letter-spacing:0!important}
+html[data-retro] .campo select option,html[data-retro] select.entrada option{background:#fff!important;color:#1f2328}
+html[data-retro] .etq,html[data-retro] .mini{box-shadow:none!important;border-radius:4px!important}
+html[data-retro] .etq{background:color-mix(in srgb,var(--c,#6b7280) 12%,#fff)!important;color:color-mix(in srgb,var(--c,#6b7280) 75%,#000)!important;border:1px solid color-mix(in srgb,var(--c,#6b7280) 30%,#fff)!important}
+html[data-retro] .mini{background:#f4f5f7!important;color:#4b5563!important;border:1px solid #e5e7eb!important}
+html[data-retro] .mini.c{background:color-mix(in srgb,var(--c) 10%,#fff)!important;color:color-mix(in srgb,var(--c) 70%,#000)!important;border-color:color-mix(in srgb,var(--c) 28%,#fff)!important}
+html[data-retro] .nav button,html[data-retro] .seg button{border-radius:6px!important;color:#4b5563!important}
+html[data-retro] .nav button:hover,html[data-retro] .seg button:hover{background:#f0f2f5!important;color:#1f2328!important}
+html[data-retro] .nav button.ativo,html[data-retro] .seg button.ativo{background:#1f2328!important;color:#fff!important;box-shadow:none!important}
+html[data-retro] .seg{background:#f0f2f5!important;border:1px solid #dcdfe4!important;border-radius:6px!important}
+html[data-retro] .chave .trilho{background:#e5e7eb!important;border-color:#c9cdd4!important}
+html[data-retro] .chave input:checked+.trilho{background:#1f6feb!important;box-shadow:none!important}
+html[data-retro] .chave input:checked+.trilho::after{background:#fff!important}
+html[data-retro] .chave .trilho::after{background:#fff!important;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+html[data-retro] .bloco,html[data-retro] .carga,html[data-retro] .card-p,html[data-retro] .parada,html[data-retro] .kpi,html[data-retro] .cartao,html[data-retro] .dia{background:#fff!important;border:1px solid #e3e6ea!important;box-shadow:none!important;border-radius:6px!important}
+html[data-retro] .card-p::before{box-shadow:none!important;width:3px!important}
+html[data-retro] .card-p:hover,html[data-retro] .carga:hover{border-color:#c9cdd4!important;background:#fff!important}
+html[data-retro] .parada{background:#fafbfc!important}
+html[data-retro] .parada .n{background:#eef2f7!important;color:#1f2328!important}
+html[data-retro] .cap .t{background:#e9ecf0!important;border-radius:2px!important}
+html[data-retro] .cap .t i{box-shadow:none!important}
+html[data-retro] .dia.ativo{border-color:#1f2328!important;outline:1px solid #1f2328}
+html[data-retro] .sep{border-color:#e3e6ea!important}
+html[data-retro] h2,html[data-retro] h3,html[data-retro] h4{letter-spacing:0!important}
+html[data-retro] .sync{color:#6b7280!important}
+html[data-retro] .aviso{box-shadow:none!important;border-radius:6px!important}
+html[data-retro] .toast,html[data-retro] .aur-toast{background:#fff!important;color:#1f2328!important;border:1px solid #dcdfe4!important;box-shadow:0 2px 8px rgba(0,0,0,.08)!important;backdrop-filter:none!important}
+html[data-retro] table.t th,html[data-retro] table.tab th{background:#f7f8fa!important;color:#4b5563!important}
+html[data-retro] table.t td,html[data-retro] table.tab td{border-color:#eceef1!important}
+html[data-retro] *{scrollbar-color:#c9cdd4 transparent}
+html[data-retro] .fundo,html[data-retro] .kpi::before,html[data-retro] .kpi::after,html[data-retro] .vinheta{display:none!important}
+html[data-retro] .kpi b{color:#1f2328!important}
+/* ── túnel (home) e configurações ── */
+html[data-retro][data-claro] .orbe{background:#f0f2f5!important;color:#374151!important}
+html[data-retro] .nav-item:hover{transform:none!important;background:#f0f2f5!important}
+html[data-retro] .nav-item.ativo{background:#eceef1!important}
+html[data-retro] .nav-item.ativo::before{background:#1f2328!important;box-shadow:none!important}
+html[data-retro] .nav-item .vivo{background:#1f2328!important;box-shadow:none!important}
+html[data-retro] .aba.ativa{background:#fff!important;border-color:#c9cdd4!important;box-shadow:none!important}
+html[data-retro] .aba.ativa::after{background:#1f2328!important;box-shadow:none!important}
+html[data-retro] .aba .ic{background:#f0f2f5!important;color:#374151!important;box-shadow:none!important}
+html[data-retro] .holo .halo,html[data-retro] .holo .anel{display:none!important}
+html[data-retro] .holo .nucleo{background:#1f2328!important;box-shadow:none!important}
+html[data-retro] .holo .nucleo b{color:#fff!important;mix-blend-mode:normal!important;opacity:1!important}
+html[data-retro] .grupo-titulo::after{background:#e3e6ea!important}
+html[data-retro] .nav-cfg button.ativo{background:#eceef1!important;box-shadow:none!important}
+html[data-retro] .ag-btn{background:#fff!important;border:1px solid #dcdfe4!important;box-shadow:none!important}
+html[data-retro] .ag-btn::before,html[data-retro] .ag-btn::after,html[data-retro] .ag-orb::after{display:none!important}
+html[data-retro] .ag-orb{background:#1f2328!important;box-shadow:none!important;width:12px!important;height:12px!important}
+html[data-retro] .hero{background:#fff!important;border:1px solid #e3e6ea!important;box-shadow:none!important;border-radius:8px!important}
+html[data-retro] .hero::before,html[data-retro] .hero::after,html[data-retro] .num::before,html[data-retro] .cartao::before,html[data-retro] .cartao::after{display:none!important}
+html[data-retro] .hero h1 .ouro{background:none!important;color:#1f2328!important;-webkit-text-fill-color:#1f2328;filter:none!important}
+html[data-retro] .num,html[data-retro] .cartao{background:#fff!important;border:1px solid #e3e6ea!important;box-shadow:none!important;border-radius:8px!important;transform:none!important}
+html[data-retro] .num .valor{color:#1f2328!important}
+html[data-retro] .num .linha{background:#e3e6ea!important;opacity:1!important}
+html[data-retro] .status-pt{box-shadow:none!important}
+html[data-retro] .orbe{border-radius:6px!important}
+html[data-retro] .entra{opacity:1!important;transform:none!important}
