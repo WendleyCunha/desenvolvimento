@@ -1361,12 +1361,63 @@ def motoristas_app(request: Request):
     with E.ST.trava:
         c = cfg()
         pl = APP.dados()["placas"]
-        mots = [{"id": k, "nome": v.get("nome"), "telefone": v.get("telefone"), "palavra": bool(c["palavra"].get(k)), "ativo": v.get("ativo", True)}
+        mots = [{"id": k, "nome": v.get("nome"), "telefone": v.get("telefone") or "", "doc": v.get("doc") or "", "obs": v.get("obs") or "",
+                 "palavra": bool(c["palavra"].get(k)), "ativo": v.get("ativo", True)}
                 for k, v in E.ST.dados["parceiros"].items() if v.get("tipo") == "motorista"]
-        veics = [{**v, "senha": "trocada" if (pl.get(v["placa"]) or {}).get("hash") and not (pl.get(v["placa"]) or {}).get("trocar") else "inicial",
-                  "senha_em": (pl.get(v["placa"]) or {}).get("em"), "na_rua": bool(GPS.get(v["placa"]))} for v in placas_cadastradas().values()]
-    return {"motoristas": sorted(mots, key=lambda x: str(x["nome"] or "")), "veiculos": sorted(veics, key=lambda x: x["placa"]),
+        veics = []
+        for k, v in E.ST.dados["parceiros"].items():
+            if v.get("tipo") != "veiculo":
+                continue
+            pla = norm_placa(v.get("placa"))
+            info = pl.get(pla) or {}
+            veics.append({"id": k, "nome": v.get("nome") or "", "placa": pla, "ativo": v.get("ativo", True), "obs": v.get("obs") or "",
+                          **{x: v.get(x) or 0 for x in ("capacidade", "max_pontos", "max_m3", "max_kg")},
+                          "senha": "trocada" if info.get("hash") and not info.get("trocar") else "inicial", "senha_em": info.get("em"),
+                          "na_rua": bool(pla and GPS.get(pla))})
+    return {"motoristas": sorted(mots, key=lambda x: (not x["ativo"], str(x["nome"] or "").lower())),
+            "veiculos": sorted(veics, key=lambda x: (not x["ativo"], x["placa"] or x["nome"])),
             "cfg": {k: v for k, v in c.items() if k != "palavra"}, "senha_inicial_padrao": not os.environ.get("WROUTER_SENHA_INICIAL")}
+
+
+# ── CADASTRO de motoristas e veículos (mudou do ERP para cá; os dados continuam nos
+#    cadastros do ERP, porque a carga escolhe motorista e veículo de lá) ──
+CAMPOS_CAD = {"motorista": ("nome", "telefone", "doc", "obs", "ativo"),
+              "veiculo": ("nome", "placa", "capacidade", "max_pontos", "max_m3", "max_kg", "obs", "ativo")}
+
+
+@router.post("/api/wrouter/cadastros")
+async def criar_cadastro(request: Request):
+    return await _salvar_cadastro(request, None)
+
+
+@router.put("/api/wrouter/cadastros/{pid}")
+async def editar_cadastro(pid: str, request: Request):
+    return await _salvar_cadastro(request, pid)
+
+
+async def _salvar_cadastro(request: Request, pid: str | None):
+    q, p = _ctx(request, "motoristas", "cadastrar motoristas e veículos")
+    c = await request.json()
+    with E.ST.trava:
+        atual = E.ST.dados["parceiros"].get(pid) if pid else None
+        if pid and not atual:
+            raise HTTPException(404, "Cadastro não encontrado.")
+        tipo = (atual or {}).get("tipo") or c.get("tipo")
+        if tipo not in CAMPOS_CAD:
+            raise HTTPException(400, "Aqui só se cadastram motoristas e veículos.")
+        dados = {k: c[k] for k in CAMPOS_CAD[tipo] if k in c}
+        dados["tipo"] = tipo
+        if tipo == "veiculo":
+            pla = norm_placa(dados.get("placa", (atual or {}).get("placa")))
+            if len(pla) < 7:
+                raise HTTPException(400, "Informe a placa (ex.: ABC1D23) — ela é o login do app do motorista.")
+            if any(v.get("tipo") == "veiculo" and k != pid and norm_placa(v.get("placa")) == pla for k, v in E.ST.dados["parceiros"].items()):
+                raise HTTPException(409, f"A placa {pla} já está cadastrada.")
+            dados["placa"] = pla
+            if not str(dados.get("nome", (atual or {}).get("nome")) or "").strip():
+                dados["nome"] = pla
+        pid, d = E.gravar_parceiro(q, pid, dados, True)
+    return {"ok": True, "id": pid, "cadastro": {**d, "id": pid}}
 
 
 @router.put("/api/wrouter/motoristas/{mid}")

@@ -16,7 +16,7 @@
     "aovivo": "Ver o Ao vivo (cargas na rua, palavra-chave, km, links)",
     "tratar": "Tratar: chat com o motorista, liberar sem palavra, validar e reabrir registros",
     "historico": "Histórico de entregas e PDF do caso",
-    "motoristas": "Motoristas e app (palavra por motorista, senha da placa, motivos, prazos)"
+    "motoristas": "Motoristas e app (cadastro de motoristas e veículos, palavra, senha da placa, motivos, prazos)"
   }
 }
 </script>
@@ -422,11 +422,17 @@ async function rHistorico() {
 async function rMotoristas() {
   let d; try { d = await api("/motoristas"); } catch (e) { return falha(e); }
   const c = d.cfg;
-  $("#main").innerHTML = `<section class="painel vidro vidro-borda-viva"><div class="cab">${A.orbe("usuarios", "#a78bfa")}<div><h2>Motoristas e app</h2><p>O motorista entra no app <b>${location.origin}/motorista/</b> com a PLACA do veículo (ERP → Cadastros → veículo) e a senha. A carga traz o motorista do ERP.</p></div></div>
-    <div class="grade2"><div class="bloco"><h3>${svg("caminhao")} Veículos (login do app)</h3><span class="sub">Senha inicial ${d.senha_inicial_padrao ? "<b>Rota@2026</b> (troque em WROUTER_SENHA_INICIAL no Render)" : "definida em WROUTER_SENHA_INICIAL"} — o app obriga a trocar no 1º acesso. Resetar volta para a inicial e derruba o celular.</span>
-      ${d.veiculos.map((v) => `<div class="linha"><span><b>${esc(v.placa)}</b> · ${esc(v.nome || "")}<span class="sub">senha ${v.senha === "trocada" ? "própria" : "inicial"}${v.senha_em ? " · " + dhBR(v.senha_em) : ""}${v.na_rua ? " · 🟢 app com GPS agora" : ""}</span></span><button type="button" class="btn v p" data-reset="${esc(v.placa)}">Resetar senha</button></div>`).join("") || '<p class="sub">Cadastre veículos com placa no ERP (Cadastros → Veículo).</p>'}</div>
-      <div class="bloco"><h3>🔑 Palavra-chave por motorista</h3><span class="sub">Ligada: o motorista só registra Entregue/Parcial com a palavra do pedido (ou o nome do vizinho). Ligue aos poucos.</span>
-      ${d.motoristas.map((m) => `<label class="linha chk"><span><b>${esc(m.nome)}</b>${m.telefone ? `<span class="sub">${esc(m.telefone)}</span>` : ""}</span><input type="checkbox" data-pal="${m.id}"${m.palavra ? " checked" : ""}></label>`).join("") || '<p class="sub">Cadastre motoristas no ERP (Cadastros → Motorista).</p>'}</div></div>
+  const lim = (v) => [v.capacidade && `${v.capacidade} vol.`, v.max_pontos && `${v.max_pontos} paradas`, v.max_m3 && `${String(v.max_m3).replace(".", ",")} m³`, v.max_kg && `${v.max_kg} kg`].filter(Boolean).join(" · ") || "sem limites (usa o padrão do ERP)";
+  const ativos = (l) => l.filter((x) => x.ativo !== false).length;
+  $("#main").innerHTML = `<section class="painel vidro vidro-borda-viva"><div class="cab">${A.orbe("usuarios", "#a78bfa")}<div><h2>Motoristas e app</h2><p>Cadastro de motoristas e veículos. O motorista entra no app <b>${location.origin}/motorista/</b> com a PLACA do veículo e a senha; na montagem da carga (ERP) escolhe-se o veículo e o motorista daqui.</p></div></div>
+    <div class="grade2"><div class="bloco"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><h3>${svg("caminhao")} Veículos · ${ativos(d.veiculos)}</h3><button type="button" class="btn p" data-novo="veiculo">${svg("mais")}Veículo</button></div>
+      <span class="sub">A placa é o login do app. Senha inicial ${d.senha_inicial_padrao ? "<b>Rota@2026</b> (troque em WROUTER_SENHA_INICIAL no Render)" : "definida em WROUTER_SENHA_INICIAL"} — o app obriga a trocar no 1º acesso. Resetar volta para a inicial e derruba o celular.</span>
+      ${d.veiculos.map((v) => `<div class="linha"${v.ativo === false ? ' style="opacity:.55"' : ""}><span><b>${esc(v.placa || "sem placa")}</b> · ${esc(v.nome || "")}${v.ativo === false ? " · inativo" : ""}<span class="sub">${lim(v)}</span><span class="sub">senha ${v.senha === "trocada" ? "própria" : "inicial"}${v.senha_em ? " · " + dhBR(v.senha_em) : ""}${v.na_rua ? " · 🟢 app com GPS agora" : ""}</span></span>
+        <span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><button type="button" class="btn v p" data-ed="${v.id}">Editar</button>${v.placa && v.ativo !== false ? `<button type="button" class="btn v p" data-reset="${esc(v.placa)}">Resetar senha</button>` : ""}</span></div>`).join("") || '<p class="sub">Nenhum veículo. Clique em + Veículo.</p>'}</div>
+      <div class="bloco"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><h3>${svg("usuarios")} Motoristas · ${ativos(d.motoristas)}</h3><button type="button" class="btn p" data-novo="motorista">${svg("mais")}Motorista</button></div>
+      <span class="sub">🔑 Palavra-chave ligada: o motorista só registra Entregue/Parcial com a palavra do pedido (ou o nome do vizinho). Ligue aos poucos.</span>
+      ${d.motoristas.map((m) => `<div class="linha"${m.ativo === false ? ' style="opacity:.55"' : ""}><span><b>${esc(m.nome)}</b>${m.ativo === false ? " · inativo" : ""}<span class="sub">${esc([m.telefone, m.doc].filter(Boolean).join(" · ") || "sem telefone")}</span></span>
+        <span style="display:flex;gap:10px;align-items:center"><label class="chk" title="Exigir palavra-chave" style="display:flex;gap:6px;align-items:center;font-size:12.5px">🔑<input type="checkbox" data-pal="${m.id}"${m.palavra ? " checked" : ""}></label><button type="button" class="btn v p" data-ed="${m.id}">Editar</button></span></div>`).join("") || '<p class="sub">Nenhum motorista. Clique em + Motorista.</p>'}</div></div>
     <div class="bloco" style="margin-top:14px"><h3>${svg("ajustes")} Regras do app</h3>
       <div class="g3"><label class="campo">Tentativas de palavra antes de travar<input class="entrada" type="number" min="1" max="20" id="cTent" value="${c.tentativas}"></label>
         <label class="campo">Prazo do atendimento no chat (min)<input class="entrada" type="number" min="1" max="240" id="cChat" value="${c.chat_minutos}"></label>
@@ -440,11 +446,39 @@ async function rMotoristas() {
       <div class="chips" style="margin-top:8px"><button type="button" class="btn v p" id="mAdd">${svg("mais")}Motivo</button><button type="button" class="btn" id="cSalvar">${svg("check")}Salvar regras</button></div></div></section>`;
   $$("[data-reset]").forEach((b) => (b.onclick = async () => { if (!(await A.confirmar(`Resetar a senha da placa <b>${esc(b.dataset.reset)}</b>? O celular logado sai.`, { perigo: true, rotulo: "Resetar" }))) return;
     try { await api(`/placas/${b.dataset.reset}/resetar`, { method: "POST" }); ok("Senha resetada para a inicial."); rMotoristas(); } catch (e) { falha(e); } }));
+  const todos = Object.fromEntries([...d.veiculos.map((v) => [v.id, { ...v, tipo: "veiculo" }]), ...d.motoristas.map((m) => [m.id, { ...m, tipo: "motorista" }])]);
+  $$("[data-novo]").forEach((b) => (b.onclick = () => editarCad({ tipo: b.dataset.novo, ativo: true })));
+  $$("[data-ed]").forEach((b) => (b.onclick = () => editarCad(todos[b.dataset.ed])));
   $$("[data-pal]").forEach((i) => (i.onchange = async () => { try { await api(`/motoristas/${i.dataset.pal}`, { method: "PUT", body: { palavra: i.checked } }); ok(i.checked ? "Palavra ligada." : "Palavra desligada."); } catch (e) { falha(e); i.checked = !i.checked; } }));
   $("#mAdd").onclick = () => $("#mots").insertAdjacentHTML("beforeend", linhaMot({ motivo: "", tipo: "ausente" }, $$("#mots .linha").length));
   $("#cSalvar").onclick = async () => {
     const motivos = $$("#mots .linha").map((l) => ({ motivo: $("input", l).value, tipo: $("select", l).value })).filter((m) => m.motivo.trim());
     try { await api("/cfg", { method: "PUT", body: { tentativas: +$("#cTent").value, chat_minutos: +$("#cChat").value, raio_chegada_m: +$("#cRaio").value, km_laranja: +$("#cKmL").value, km_vermelho: +$("#cKmV").value, mapa_cliente: $("#cMapa").checked, motivos } }); ok("Regras salvas."); rMotoristas(); } catch (e) { falha(e); } };
+}
+function editarCad(x) {
+  const vei = x.tipo === "veiculo", nv = !x.id;
+  A.modal({
+    titulo: nv ? (vei ? "Novo veículo" : "Novo motorista") : `${vei ? "Veículo" : "Motorista"} · ${x.placa || x.nome}`, icone: vei ? "caminhao" : "usuarios", cor: "#a78bfa", largura: 620,
+    html: `${vei ? `<div class="g2"><label class="campo">Placa * <small style="font-weight:400">(login do app)</small><input class="entrada" id="fPlaca" value="${esc(x.placa || "")}" placeholder="ABC1D23" style="text-transform:uppercase"></label>
+        <label class="campo">Identificação / modelo<input class="entrada" id="fNome" value="${esc(x.nome && x.nome !== x.placa ? x.nome : "")}" placeholder="ex.: Furgão HR"></label></div>
+      ${!nv && x.placa ? `<p class="sub">Trocar a placa muda o login: o celular sai e a nova placa começa com a senha inicial.</p>` : ""}
+      <h4 style="margin:14px 0 6px">Capacidade para o planejamento de cargas <small style="font-weight:400">(0 = sem limite / usa o padrão do ERP)</small></h4>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px"><label class="campo">Volumes<input class="entrada" type="number" min="0" id="fCap" value="${x.capacidade || 0}"></label>
+        <label class="campo">Máx. paradas<input class="entrada" type="number" min="0" id="fPts" value="${x.max_pontos || 0}"></label><label class="campo">Máx. m³ (baú)<input class="entrada" type="number" min="0" step="0.1" id="fM3" value="${x.max_m3 || 0}"></label>
+        <label class="campo">Máx. kg<input class="entrada" type="number" min="0" step="10" id="fKg" value="${x.max_kg || 0}"></label></div>`
+      : `<label class="campo">Nome *<input class="entrada" id="fNome" value="${esc(x.nome || "")}"></label>
+      <div class="g2" style="margin-top:10px"><label class="campo">Telefone<input class="entrada" id="fTel" value="${esc(x.telefone || "")}" inputmode="tel"></label><label class="campo">CPF / CNH<input class="entrada" id="fDoc" value="${esc(x.doc || "")}"></label></div>`}
+      <label class="campo" style="margin-top:10px">Observações<textarea class="entrada" id="fObs" rows="2">${esc(x.obs || "")}</textarea></label>
+      <label class="linha chk" style="margin-top:10px"><span><b>Ativo</b><span class="sub">${vei ? "Inativo: some da montagem de carga e o login do app deixa de funcionar." : "Inativo: some da montagem de carga."}</span></span><input type="checkbox" id="fAtivo"${x.ativo === false ? "" : " checked"}></label>`,
+    botoes: [{ rotulo: "Cancelar" }, { rotulo: "Salvar", classe: "btn", icone: "check", principal: true, acao: async (cx) => {
+      const v = (q) => $(q, cx)?.value ?? "";
+      const body = { tipo: x.tipo, nome: v("#fNome").trim(), obs: v("#fObs"), ativo: $("#fAtivo", cx).checked };
+      if (vei) Object.assign(body, { placa: v("#fPlaca"), capacidade: +v("#fCap") || 0, max_pontos: +v("#fPts") || 0, max_m3: +String(v("#fM3")).replace(",", ".") || 0, max_kg: +v("#fKg") || 0 });
+      else Object.assign(body, { telefone: v("#fTel"), doc: v("#fDoc") });
+      try { await api(nv ? "/cadastros" : `/cadastros/${x.id}`, { method: nv ? "POST" : "PUT", body }); ok(vei ? "Veículo salvo." : "Motorista salvo."); rMotoristas(); }
+      catch (e) { falha(e); return false; }
+    } }],
+  });
 }
 const linhaMot = (m) => `<div class="linha"><input class="entrada" value="${esc(m.motivo)}" placeholder="ex.: Cliente ausente" style="flex:1;min-width:200px"><select class="entrada" style="width:auto">${[["ausente", "Ausente → reagendar (volta reservado)"], ["avaria", "Avaria → reposição (triagem)"], ["recusa", "Recusa → recusado (triagem)"]].map(([k, r]) => `<option value="${k}"${m.tipo === k ? " selected" : ""}>${r}</option>`).join("")}</select></div>`;
 

@@ -713,7 +713,7 @@ function montarCarga(ids, c, dataSel) {
           <span class="bxs" style="--c:#94a3b8"><button type="button" data-up="${i}" aria-label="Subir">↑</button><button type="button" data-dn="${i}" aria-label="Descer">↓</button></span></div>`; }).join("") || `<p class="dica">Sem pedidos agendados nesse dia.</p>`;
         const tot = { pontos: 0, vol: 0, m3: 0, kg: 0 };
         ordem.filter((i) => marcados.has(i)).forEach((i) => { const m = med(S.pedidos[i]); tot.pontos++; tot.vol += m.vol; tot.m3 += m.m3; tot.kg += m.kg; });
-        $("#cCap", cx).innerHTML = barras(tot, limVei(parc($("#cVei", cx).value))) + ($("#cVei", cx).value ? "" : `<p class="dica">Escolha o veículo para ver a ocupação (limites em Cadastros › Veículos).</p>`);
+        $("#cCap", cx).innerHTML = barras(tot, limVei(parc($("#cVei", cx).value))) + ($("#cVei", cx).value ? "" : `<p class="dica">Escolha o veículo para ver a ocupação (limites em WROUTER › Motoristas e app › Veículos).</p>`);
       };
       cx.addEventListener("change", (e) => { if (e.target.dataset.m) { e.target.checked ? marcados.add(e.target.dataset.m) : marcados.delete(e.target.dataset.m); desenhar(); } if (e.target.id === "cVei") desenhar(); });
       cx.addEventListener("click", (e) => {
@@ -822,7 +822,7 @@ function sugerirCargas(ids, data) {
       <label class="chave" style="--c:var(--ciano)"><input type="checkbox" id="plJan" ${pl.respeitar_janela !== false ? "checked" : ""}><span class="trilho"></span>Respeitar a janela (entregas da manhã primeiro, da tarde por último)</label>
       <div class="sep"><h4>Veículos disponíveis <small style="font-weight:400">(nenhum marcado = monta quantas cargas precisar, veículo a definir)</small></h4>
         ${veis.length ? veis.map((v) => `<div class="parada" style="grid-template-columns:22px minmax(0,1fr) minmax(160px,220px);margin-bottom:6px"><input type="checkbox" data-pv="${v.id}" style="accent-color:var(--ciano);width:18px;height:18px">
-          <span><b>${esc(v.nome)}</b>${v.placa ? ` <small class="sub" style="display:inline">${esc(v.placa)}</small>` : ""}<span class="sub">${limTxt(v)}</span></span><select data-pm="${v.id}">${opcoesParceiros("motorista", "", "Motorista…")}</select></div>`).join("") : `<p class="dica">Nenhum veículo cadastrado (Cadastros › Veículos).</p>`}</div>
+          <span><b>${esc(v.nome)}</b>${v.placa ? ` <small class="sub" style="display:inline">${esc(v.placa)}</small>` : ""}<span class="sub">${limTxt(v)}</span></span><select data-pm="${v.id}">${opcoesParceiros("motorista", "", "Motorista…")}</select></div>`).join("") : `<p class="dica">Nenhum veículo cadastrado (WROUTER › Motoristas e app).</p>`}</div>
       <div class="chips" style="margin-top:12px"><button type="button" class="btn" id="plGerar">${svg("alvo")}Gerar sugestão</button></div></div>
       <div id="plRes"></div>`,
     botoes: [{ rotulo: "Fechar" }],
@@ -1152,13 +1152,14 @@ function editarProduto(id) {
 }
 
 /* ══════ CADASTROS ══════ */
-const TIPOS_CAD = [["cliente", "Clientes", "usuario"], ["fornecedor", "Fornecedores", "caixa"], ["motorista", "Motoristas", "usuarios"], ["veiculo", "Veículos", "caminhao"]];
+// motoristas e veículos ficam no WROUTER › Motoristas e app (a montagem da carga lê os mesmos cadastros)
+const TIPOS_CAD = [["cliente", "Clientes", "usuario"], ["fornecedor", "Fornecedores", "caixa"]];
 function rCadastros() {
   const q = V.bCad.toLowerCase();
   const ps = lista("parceiros").filter((p) => p.tipo === V.cadTipo && (!q || `${p.nome} ${p.doc || ""} ${p.telefone || ""} ${p.endereco?.bairro || ""} ${p.endereco?.cidade || ""}`.toLowerCase().includes(q))).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
   const [, rotT, ic] = TIPOS_CAD.find((t) => t[0] === V.cadTipo);
   $("#main").innerHTML = `<section class="painel vidro vidro-borda-viva">
-    <div class="cab">${A.orbe(ic, "#8b5cf6")}<div><h2>Cadastros</h2><p>Clientes, fornecedores, motoristas e veículos (com capacidade em volumes para a montagem de carga).</p></div>
+    <div class="cab">${A.orbe(ic, "#8b5cf6")}<div><h2>Cadastros</h2><p>Clientes e fornecedores. <b>Motoristas e veículos</b> ficam no <b>WROUTER › Motoristas e app</b>.</p></div>
       <div class="dir">${pode("cadastros") ? `<button type="button" class="btn" id="btCad" data-perm="acao:cadastros">${svg("mais")}Novo</button>` : ""}</div></div>
     <div class="barra-ferr"><div class="seg">${TIPOS_CAD.map(([k, r]) => `<button type="button" data-ct="${k}" style="--c:var(--violeta)" class="${V.cadTipo === k ? "ativo" : ""}">${r} <small>${lista("parceiros").filter((p) => p.tipo === k).length}</small></button>`).join("")}</div>
       <input class="entrada" id="bCad" placeholder="Buscar…" value="${esc(V.bCad)}"></div>

@@ -463,44 +463,51 @@ async def _salvar_parceiro(request: Request, pid: str | None):
     u, p = _ctx(request, "cadastros", "editar cadastros")
     c = await request.json()
     with ST.trava:
-        atual = _copia(ST.dados["parceiros"].get(pid)) if pid else {"ativo": True}
-        if pid and atual is None:
-            raise HTTPException(404, "Cadastro não encontrado.")
-        for k in CAMPOS_PARCEIRO:
-            if k not in c:
-                continue
-            if k in ("doc", "telefone", "email") and not _pode_editar_campo(p, "contato"):
-                continue
-            v = c[k]
-            if k == "endereco":
-                v = {kk: str((v or {}).get(kk) or "").strip() for kk in ("logradouro", "numero", "complemento", "bairro", "cidade", "uf", "cep", "referencia")}
-            elif k in ("capacidade", "max_pontos"):
-                v = max(_int(v), 0)
-            elif k in ("max_m3", "max_kg"):
-                v = round(max(_num(v), 0), 3)
-            elif k == "ativo":
-                v = bool(v)
-            else:
-                v = str(v or "").strip()
-            atual[k] = v
-        if atual.get("tipo") not in TIPOS_PARCEIRO:
-            raise HTTPException(400, "Tipo de cadastro inválido.")
-        if not atual.get("nome"):
-            raise HTTPException(400, "Informe o nome.")
-        if atual.get("tipo") == "cliente":
-            atual["codigo"] = str(atual.get("codigo") or "").strip().upper()
-            if not atual["codigo"]:
-                atual["codigo"] = gerar_codigo_cliente()
-            elif any(str(o.get("codigo") or "").strip().upper() == atual["codigo"] and k != pid and o.get("tipo") == "cliente"
-                     for k, o in ST.dados["parceiros"].items()):
-                raise HTTPException(409, f"O código {atual['codigo']} já é de outro cliente.")
-        pid = pid or _id()
-        atual.setdefault("criado_em", agora())
-        atual["atualizado_em"] = agora()
-        tx = Tx(u)
-        tx.put("parceiros", pid, atual)
-        tx.commit()
+        pid, atual = gravar_parceiro(u, pid, c, _pode_editar_campo(p, "contato"))
         return {"ok": True, "parceiro": _filtrar(p, "parceiros", {**atual, "id": pid})}
+
+
+def gravar_parceiro(u: dict, pid: str | None, c: dict, pode_contato: bool = True) -> tuple[str, dict]:
+    """Cria/edita um cadastro (cliente, fornecedor, motorista, veículo). Chamar com ST.trava.
+    Usado pelo ERP (Cadastros) e pelo WROUTER (Motoristas e app: motoristas e veículos)."""
+    atual = _copia(ST.dados["parceiros"].get(pid)) if pid else {"ativo": True}
+    if pid and atual is None:
+        raise HTTPException(404, "Cadastro não encontrado.")
+    for k in CAMPOS_PARCEIRO:
+        if k not in c:
+            continue
+        if k in ("doc", "telefone", "email") and not pode_contato:
+            continue
+        v = c[k]
+        if k == "endereco":
+            v = {kk: str((v or {}).get(kk) or "").strip() for kk in ("logradouro", "numero", "complemento", "bairro", "cidade", "uf", "cep", "referencia")}
+        elif k in ("capacidade", "max_pontos"):
+            v = max(_int(v), 0)
+        elif k in ("max_m3", "max_kg"):
+            v = round(max(_num(v), 0), 3)
+        elif k == "ativo":
+            v = bool(v)
+        else:
+            v = str(v or "").strip()
+        atual[k] = v
+    if atual.get("tipo") not in TIPOS_PARCEIRO:
+        raise HTTPException(400, "Tipo de cadastro inválido.")
+    if not atual.get("nome"):
+        raise HTTPException(400, "Informe o nome.")
+    if atual.get("tipo") == "cliente":
+        atual["codigo"] = str(atual.get("codigo") or "").strip().upper()
+        if not atual["codigo"]:
+            atual["codigo"] = gerar_codigo_cliente()
+        elif any(str(o.get("codigo") or "").strip().upper() == atual["codigo"] and k != pid and o.get("tipo") == "cliente"
+                 for k, o in ST.dados["parceiros"].items()):
+            raise HTTPException(409, f"O código {atual['codigo']} já é de outro cliente.")
+    pid = pid or _id()
+    atual.setdefault("criado_em", agora())
+    atual["atualizado_em"] = agora()
+    tx = Tx(u)
+    tx.put("parceiros", pid, atual)
+    tx.commit()
+    return pid, atual
 
 
 # ══════════════════════════════════════════════════════════════════════════════
