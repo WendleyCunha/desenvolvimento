@@ -382,8 +382,8 @@ def kardex(pid: str, request: Request):
 # ══════════════════════════════════════════════════════════════════════════════
 # CADASTROS
 # ══════════════════════════════════════════════════════════════════════════════
-CAMPOS_PRODUTO = ["sku", "nome", "categoria", "unidade", "custo", "preco", "fornecedor_id", "minimo", "volumes", "ean", "ativo", "obs"]
-CAMPOS_PARCEIRO = ["tipo", "nome", "codigo", "doc", "telefone", "email", "endereco", "capacidade", "placa", "ativo", "obs"]   # codigo = código do cliente (liga com os Tickets)
+CAMPOS_PRODUTO = ["sku", "nome", "categoria", "unidade", "custo", "preco", "fornecedor_id", "minimo", "volumes", "ean", "ativo", "obs", "cubagem", "peso"]   # cubagem m³ e peso kg por unidade (planejamento de cargas)
+CAMPOS_PARCEIRO = ["tipo", "nome", "codigo", "doc", "telefone", "email", "endereco", "capacidade", "placa", "ativo", "obs", "max_pontos", "max_m3", "max_kg"]   # codigo = código do cliente (liga com os Tickets)
 TIPOS_PARCEIRO = ["cliente", "fornecedor", "motorista", "veiculo"]
 
 
@@ -399,6 +399,8 @@ def _limpar_produto(c: dict, p: dict, atual: dict | None) -> dict:
             v = round(max(_num(v), 0), 2)
         elif k in ("minimo", "volumes"):
             v = max(_int(v), 0)
+        elif k in ("cubagem", "peso"):
+            v = round(max(_num(v), 0), 4)
         elif k == "ativo":
             v = bool(v)
         else:
@@ -472,8 +474,10 @@ async def _salvar_parceiro(request: Request, pid: str | None):
             v = c[k]
             if k == "endereco":
                 v = {kk: str((v or {}).get(kk) or "").strip() for kk in ("logradouro", "numero", "complemento", "bairro", "cidade", "uf", "cep", "referencia")}
-            elif k == "capacidade":
+            elif k in ("capacidade", "max_pontos"):
                 v = max(_int(v), 0)
+            elif k in ("max_m3", "max_kg"):
+                v = round(max(_num(v), 0), 3)
             elif k == "ativo":
                 v = bool(v)
             else:
@@ -934,10 +938,9 @@ def _definir_pedidos_carga(tx: Tx, u: dict, cid: str, car: dict, ids: list, em=N
             raise HTTPException(400, "Pedido inexistente na carga.")
         if ped.get("carga_id") == cid:
             continue
-        if ped["status"] != "agendado":
-            raise HTTPException(409, f"Pedido {ped['numero']} precisa estar agendado (está {ped['status']}).")
         if ped.get("carga_id"):
             raise HTTPException(409, f"Pedido {ped['numero']} já está em outra carga.")
+        _puxar_para_data(ped, u, car, em)
         ped["carga_id"] = cid
         ped["status"] = "em_carga"
         _hist(ped, u, f"Incluído na carga {car['numero']}", em)
@@ -946,6 +949,30 @@ def _definir_pedidos_carga(tx: Tx, u: dict, cid: str, car: dict, ids: list, em=N
     car["pedidos"] = ids
     car["atualizado_em"] = em or agora()
     tx.put("cargas", cid, car)
+
+
+def _puxar_para_data(ped: dict, u: dict, car: dict, em=None):
+    """PUXAR: a carga pode levar pedido de outro dia (antecipa/remarca) ou ainda sem agenda
+    (confirmado / reagendar com estoque reservado). A agenda do pedido passa a ser a data da carga
+    e isso vai para o histórico (que chega ao Atendimento e ao app do cliente)."""
+    st = ped.get("status")
+    if st not in ("agendado", "confirmado", "reagendar"):
+        raise HTTPException(409, f"Pedido {ped['numero']} não pode entrar em carga (está {st}).")
+    if st != "agendado" and ped.get("pendentes") and not ped.get("reservado"):
+        raise HTTPException(409, f"Pedido {ped['numero']} está sem estoque reservado — reserve antes de pôr na carga.")
+    data = car.get("data") or hoje()
+    ag = ped.get("agendamento") or {}
+    antes = ag.get("data") or ""
+    if antes == data:
+        return
+    ped["agendamento"] = {"data": data, "janela": str(ag.get("janela") or ""), "obs": str(ag.get("obs") or "")}
+    dm = f"{data[8:10]}/{data[5:7]}"
+    if not antes or st != "agendado":
+        _hist(ped, u, f"Agendado para {dm} (montagem da carga {car['numero']})", em)
+    else:
+        verbo = "antecipada" if data < antes else "remarcada"
+        _hist(ped, u, f"Entrega {verbo} de {antes[8:10]}/{antes[5:7]} para {dm} (carga {car['numero']})", em)
+    ped["status"] = "agendado"
 
 
 @router.put("/cargas/{cid}")
@@ -957,11 +984,23 @@ async def editar_carga(cid: str, request: Request):
         car = tx.get("cargas", cid)
         if not car:
             raise HTTPException(404, "Carga não encontrada.")
+        data_antes = car.get("data")
         for k in ("veiculo_id", "motorista_id", "ajudante", "obs", "data"):
             if k in c:
                 if car["status"] != "montando" and k == "data":
                     continue
                 car[k] = str(c[k] or "")
+        if car.get("data") != data_antes:
+            if not re.match(r"^\d{4}-\d{2}-\d{2}$", car.get("data") or ""):
+                raise HTTPException(400, "Data inválida.")
+            for pid in car.get("pedidos") or []:          # a agenda dos pedidos acompanha a carga
+                ped = tx.get("pedidos", pid)
+                if ped and ped.get("carga_id") == cid:
+                    ped["status"] = "agendado"
+                    _puxar_para_data(ped, u, car)
+                    ped["status"] = "em_carga"
+                    ped["atualizado_em"] = agora()
+                    tx.put("pedidos", pid, ped)
         car["id"] = cid
         if "pedidos" in c and sorted(c["pedidos"] or []) != sorted(car.get("pedidos") or []):
             _travada_no_armazem(car)
@@ -1006,6 +1045,53 @@ def exigir_wlog() -> bool:
     return (ST.config.get("wlog") or {}).get("exigir", True) is not False
 
 
+def exigir_faturamento() -> bool:
+    return bool((ST.config.get("plano") or {}).get("exigir_faturamento"))
+
+
+def faturada(car: dict) -> bool:
+    peds = car.get("pedidos") or []
+    return bool(peds) and all((ST.dados["pedidos"].get(i) or {}).get("nf") for i in peds)
+
+
+@router.post("/cargas/{cid}/faturar")
+async def faturar_carga(cid: str, request: Request):
+    """FATURAMENTO: registra a nota fiscal de cada pedido da carga (número digitado — a emissão
+    da NF-e continua no sistema fiscal da empresa). Nota vazia = tira o faturamento do pedido."""
+    u, p = _ctx(request, "faturar", "faturar cargas")
+    c = await request.json()
+    nfs = c.get("nfs") or {}
+    with ST.trava:
+        tx = Tx(u)
+        car = tx.get("cargas", cid)
+        if not car:
+            raise HTTPException(404, "Carga não encontrada.")
+        if car["status"] != "montando":
+            raise HTTPException(409, "A carga já saiu.")
+        n = 0
+        for pid, num in nfs.items():
+            if pid not in car["pedidos"]:
+                continue
+            ped = tx.get("pedidos", pid)
+            num = re.sub(r"\s+", "", str(num or ""))[:20]
+            atual = (ped.get("nf") or {}).get("numero", "")
+            if num == atual:
+                continue
+            if num:
+                ped["nf"] = {"numero": num, "serie": str((c.get("series") or {}).get(pid) or "")[:5], "em": agora(), "por": u.get("login", "")}
+                _hist(ped, u, f"Faturado — NF {num}" + (f" (substitui a NF {atual})" if atual else ""))
+            else:
+                ped.pop("nf", None)
+                _hist(ped, u, f"Faturamento removido (era NF {atual})")
+            ped["atualizado_em"] = agora()
+            tx.put("pedidos", pid, ped)
+            n += 1
+        car["atualizado_em"] = agora()
+        tx.put("cargas", cid, car)
+        tx.commit()
+        return {"ok": True, "alterados": n, "faturada": faturada(ST.dados["cargas"][cid]), **_parcial(p, tx)}
+
+
 @router.post("/cargas/{cid}/sair")
 async def sair_carga(cid: str, request: Request):
     u, p = _ctx(request, "cargas", "liberar cargas")
@@ -1016,6 +1102,8 @@ async def sair_carga(cid: str, request: Request):
             import wlogistica
             if not wlogistica.liberada(car):
                 raise HTTPException(409, "A carga ainda não foi LIBERADA pelo armazém (WLOGISTICA): falta a montagem do palete e a conferência na doca.")
+        if car and exigir_faturamento() and not faturada(car):
+            raise HTTPException(409, "A carga ainda não foi FATURADA: informe a nota fiscal de todos os pedidos (botão Faturar).")
         _sair(tx, u, cid)
         tx.commit()
         return {"ok": True, **_parcial(p, tx)}

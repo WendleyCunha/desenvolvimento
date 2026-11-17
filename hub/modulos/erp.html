@@ -21,6 +21,8 @@
     "cancelar": "Cancelar pedidos",
     "agendar": "Agendar entregas",
     "cargas": "Montar e liberar cargas",
+    "planejar": "Sugerir cargas automaticamente (planejamento)",
+    "faturar": "Faturar cargas (nota fiscal dos pedidos)",
     "baixa": "Dar baixa de entrega (entregue, ausente, avaria, recusa)",
     "estoque": "Lançar entrada de estoque",
     "ajuste": "Inventário e ajuste de estoque",
@@ -240,7 +242,7 @@ document.querySelector('link[rel="icon"]').href = A.ATOMO_SVG;
 const API = "/api/erp";
 const COLS = ["produtos", "parceiros", "saldos", "pedidos", "cargas", "movimentos"];
 const S = { produtos: {}, parceiros: {}, saldos: {}, pedidos: {}, cargas: {}, movimentos: {}, config: {}, perm: { acoes: {}, campos: {} }, locais: [], destinos: [], hoje: "" };
-const V = { aba: ls("wd.erp.aba", "painel"), periodo: +ls("wd.erp.per", "30"), fPed: "abertos", bPed: "", dia: "", cadTipo: "cliente", bProd: "", bEst: "", bCad: "", sel: new Set() };
+const V = { aba: ls("wd.erp.aba", "painel"), periodo: +ls("wd.erp.per", "30"), fPed: "abertos", bPed: "", dia: "", cadTipo: "cliente", bProd: "", bEst: "", bCad: "", sel: new Set(), pDe: "", pAte: "", pJan: "", pBusca: "", pSemAg: false, pData: "", geo: {}, geoPedido: new Set() };
 function ls(k, d) { try { return localStorage.getItem(k) ?? d; } catch (_) { return d; } }
 function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (_) {} }
 const $ = (s, r = document) => r.querySelector(s);
@@ -345,6 +347,20 @@ function buscaViva(id, chave, redesenhar) {
 /* ══════ HELPERS DE PEDIDO ══════ */
 const resumoItens = (its, max = 2) => { const l = (its || []).map((i) => `${i.qtd}× ${prod(i.produto_id).nome}`); return esc(l.slice(0, max).join(" · ") + (l.length > max ? ` · +${l.length - max}` : "")); };
 const volumes = (p) => (p.pendentes || []).reduce((s, i) => s + Number(i.qtd || 0) * Math.max(1, Number(prod(i.produto_id).volumes || 1)), 0);
+// medidas da entrega no caminhão (o que vai + o que a troca recolhe) — cubagem e peso vêm do cadastro do produto
+const med = (p) => { let m3 = 0, kg = 0, falta = false; [...(p.pendentes || []), ...(p.recolher || [])].forEach((i) => { const pr = prod(i.produto_id), q = +i.qtd || 0; m3 += q * (+pr.cubagem || 0); kg += q * (+pr.peso || 0); if (!+pr.cubagem || !+pr.peso) falta = true; });
+  return { vol: volumes(p), m3: Math.round(m3 * 1000) / 1000, kg: Math.round(kg * 10) / 10, falta }; };
+const n1 = (v, d = 1) => Number(v || 0).toLocaleString("pt-BR", { maximumFractionDigits: d });
+const geoOk = (p) => (V.geo[p.id] !== undefined ? !!V.geo[p.id]?.lat : p.geo?.lat != null);
+const prontoCarga = (p) => !p.carga_id && (p.status === "agendado" || (["confirmado", "reagendar"].includes(p.status) && (p.reservado || !(p.pendentes || []).length)));
+const plano = () => S.config.plano || {};
+const limVei = (v, base = plano()) => ({ pontos: +v?.max_pontos || +base.max_pontos || 0, m3: +v?.max_m3 || +base.max_m3 || 0, kg: +v?.max_kg || +base.max_kg || 0, vol: +v?.capacidade || 0 });
+function barras(tot, lim) {
+  return [["pontos", "paradas", 0], ["vol", "volumes", 0], ["m3", "m³", 2], ["kg", "kg", 0]].map(([k, r, d]) => {
+    const l = lim[k], pc = l ? Math.round(tot[k] / l * 100) : 0, cor = !l ? "#94a3b8" : pc > 100 ? "#fb7185" : pc > 85 ? "#e8b33d" : "#34d399";
+    return `<div class="cap" style="margin-top:6px"><small><b>${n1(tot[k], d)}</b> ${r}${l ? ` de ${n1(l, d)} (${pc}%)` : " · sem limite"}</small>${l ? `<div class="t"><i style="width:${Math.min(100, pc)}%;background:${cor};color:${cor}"></i></div>` : ""}</div>`;
+  }).join("") + (Object.keys(lim).some((k) => lim[k] && tot[k] > lim[k]) ? `<div class="aviso mal">Passou do limite do veículo.</div>` : "");
+}
 const bairro = (p) => [p.endereco?.bairro, p.endereco?.cidade].filter(Boolean).join(" · ");
 const endTxt = (e) => e ? [[e.logradouro, e.numero].filter(Boolean).join(", "), e.complemento, e.bairro, [e.cidade, e.uf].filter(Boolean).join("/"), e.cep].filter(Boolean).join(" · ") : "";
 function cardPed(p, { check = false, extra = "" } = {}) {
@@ -670,9 +686,9 @@ function rAgenda() {
   $("#btMontar")?.addEventListener("click", () => montarCarga(selec, null));
   ligarCards($("#main"));
 }
-function montarCarga(ids, c) {
+function montarCarga(ids, c, dataSel) {
   const atual = c ? c.pedidos : ids;
-  const data = c ? c.data : V.dia;
+  const data = c ? c.data : dataSel || V.dia;
   const candidatos = lista("pedidos").filter((p) => p.agendamento?.data === data && p.status === "agendado").map((p) => p.id);
   const ordem = [...atual, ...candidatos.filter((i) => !atual.includes(i))];
   const marcados = new Set(atual);
@@ -693,11 +709,11 @@ function montarCarga(ids, c) {
     aoAbrir(cx) {
       const desenhar = () => {
         $("#cLista", cx).innerHTML = ordem.map((id, i) => { const p = S.pedidos[id]; return `<div class="parada" style="margin-bottom:6px;grid-template-columns:22px minmax(0,1fr) auto"><input type="checkbox" data-m="${id}" ${marcados.has(id) ? "checked" : ""} style="accent-color:var(--ciano);width:18px;height:18px">
-          <span><b>#${p.numero} · ${esc(p.cliente_nome)}</b><span class="sub">${esc(endTxt(p.endereco))} · ${volumes(p)} vol.${p.agendamento?.janela ? " · " + esc(p.agendamento.janela) : ""}${p.tipo === "troca" ? " · troca" : ""}</span></span>
+          <span><b>#${p.numero} · ${esc(p.cliente_nome)}</b><span class="sub">${esc(endTxt(p.endereco))} · ${volumes(p)} vol.${p.agendamento?.janela ? " · " + esc(p.agendamento.janela) : ""}${p.tipo === "troca" ? " · troca" : ""}</span>${puxadoTag(p, data)}</span>
           <span class="bxs" style="--c:#94a3b8"><button type="button" data-up="${i}" aria-label="Subir">↑</button><button type="button" data-dn="${i}" aria-label="Descer">↓</button></span></div>`; }).join("") || `<p class="dica">Sem pedidos agendados nesse dia.</p>`;
-        const vei = parc($("#cVei", cx).value), cap = Number(vei?.capacidade || 0), vol = ordem.filter((i) => marcados.has(i)).reduce((s, i) => s + volumes(S.pedidos[i]), 0);
-        const pc = cap ? Math.round(vol / cap * 100) : 0, cor = !cap ? "#94a3b8" : pc > 100 ? "#fb7185" : pc > 85 ? "#e8b33d" : "#34d399";
-        $("#cCap", cx).innerHTML = `<small>Ocupação: <b>${vol}</b> volume(s)${cap ? ` de ${cap} (${pc}%)` : " — escolha um veículo (capacidade em Cadastros)"}</small><div class="t"><i style="width:${Math.min(100, pc)}%;background:${cor};color:${cor}"></i></div>${pc > 100 ? `<div class="aviso mal">Passou da capacidade do veículo.</div>` : ""}`;
+        const tot = { pontos: 0, vol: 0, m3: 0, kg: 0 };
+        ordem.filter((i) => marcados.has(i)).forEach((i) => { const m = med(S.pedidos[i]); tot.pontos++; tot.vol += m.vol; tot.m3 += m.m3; tot.kg += m.kg; });
+        $("#cCap", cx).innerHTML = barras(tot, limVei(parc($("#cVei", cx).value))) + ($("#cVei", cx).value ? "" : `<p class="dica">Escolha o veículo para ver a ocupação (limites em Cadastros › Veículos).</p>`);
       };
       cx.addEventListener("change", (e) => { if (e.target.dataset.m) { e.target.checked ? marcados.add(e.target.dataset.m) : marcados.delete(e.target.dataset.m); desenhar(); } if (e.target.id === "cVei") desenhar(); });
       cx.addEventListener("click", (e) => {
@@ -711,12 +727,195 @@ function montarCarga(ids, c) {
 }
 
 /* ══════ CARGAS ══════ */
+// pedido de outro dia (antecipado/remarcado) ou ainda sem agenda: ao entrar na carga a agenda passa a ser a data da carga
+function puxadoTag(p, data) {
+  const d = p.agendamento?.data;
+  if (p.carga_id) return "";
+  if (p.status !== "agendado" || !d) return `<span class="mini c" style="--c:#60a5fa">sem agenda → ${dBR(data)}</span>`;
+  if (d !== data) return `<span class="mini c" style="--c:#e8b33d">${d > data ? "antecipa" : "remarca"} ${dBR(d)} → ${dBR(data)}</span>`;
+  return "";
+}
+function pedidosParaCarga() {
+  const q = V.pBusca.toLowerCase().trim();
+  return lista("pedidos").filter(prontoCarga)
+    .filter((p) => (p.status !== "agendado" || !p.agendamento?.data ? V.pSemAg : p.agendamento.data >= V.pDe && p.agendamento.data <= V.pAte))
+    .filter((p) => !V.pJan || (p.agendamento?.janela || "") === V.pJan)
+    .filter((p) => !q || `${p.numero} ${p.cliente_nome} ${p.endereco?.bairro || ""} ${p.endereco?.cidade || ""} ${p.endereco?.cep || ""} ${p.endereco?.logradouro || ""}`.toLowerCase().includes(q))
+    .sort((a, b) => (a.agendamento?.data || "9").localeCompare(b.agendamento?.data || "9") || a.numero - b.numero);
+}
+function blocoPuxar() {
+  if (!pode("cargas")) return "";
+  const am = addDia(S.hoje, 1);
+  if (!V.pDe) V.pDe = am; if (!V.pAte) V.pAte = am; if (!V.pData) V.pData = am;
+  const ps = pedidosParaCarga(), ids = ps.map((p) => p.id), sel = [...V.sel].filter((id) => ids.includes(id));
+  const tot = { pontos: 0, vol: 0, m3: 0, kg: 0 };
+  (sel.length ? sel : ids).forEach((i) => { const m = med(S.pedidos[i]); tot.pontos++; tot.vol += m.vol; tot.m3 += m.m3; tot.kg += m.kg; });
+  const semGeo = ps.filter((p) => !geoOk(p)).length, semMed = ps.filter((p) => med(p).falta).length;
+  const pre = V.pDe === am && V.pAte === am && !V.pSemAg && !V.pJan && !V.pBusca;
+  return `<div class="bloco" style="margin-bottom:16px"><h3>${svg("filtro")} Pedidos para carga <small>${pre ? "agendados para amanhã" : `${ps.length} no filtro`}</small></h3>
+    <div class="barra-ferr" style="flex-wrap:wrap;gap:8px;align-items:end">
+      <label class="campo" style="min-width:140px">Entrega de<input type="date" id="pDe" value="${V.pDe}"></label>
+      <label class="campo" style="min-width:140px">até<input type="date" id="pAte" value="${V.pAte}"></label>
+      <label class="campo" style="min-width:130px">Janela<select id="pJan"><option value="">Todas</option>${(S.config.janelas || []).map((j) => `<option ${V.pJan === j ? "selected" : ""}>${esc(j)}</option>`).join("")}</select></label>
+      <label class="campo" style="flex:1;min-width:180px">Bairro, cidade, CEP, cliente ou nº<input id="pBusca" value="${esc(V.pBusca)}" placeholder="Buscar…"></label>
+      <label class="chave" style="--c:var(--ciano);margin-bottom:8px"><input type="checkbox" id="pSemAg" ${V.pSemAg ? "checked" : ""}><span class="trilho"></span>Incluir sem agenda (com estoque reservado)</label>
+      <div class="seg" style="margin-bottom:4px"><button type="button" data-atalho="1">Amanhã</button><button type="button" data-atalho="7">Próx. 7 dias</button><button type="button" data-atalho="0">Tudo pronto</button></div>
+    </div>
+    <div class="chips" style="margin:10px 0"><span class="mini"><b>${tot.pontos}</b>&nbsp;${sel.length ? "selecionado(s)" : "pedido(s)"}</span><span class="mini">${tot.vol} vol.</span><span class="mini">${n1(tot.m3, 2)} m³</span><span class="mini">${n1(tot.kg, 0)} kg</span>
+      ${semGeo ? `<span class="mini c" style="--c:#fb923c" title="Localizando o endereço em segundo plano (OpenStreetMap / CEP)">📍 ${semGeo} sem localização</span>` : ""}${semMed ? `<span class="mini c" style="--c:#e8b33d" title="Preencha cubagem e peso no cadastro do produto">${semMed} sem m³/kg no produto</span>` : ""}</div>
+    ${ps.length ? `<div class="lst" style="max-height:440px;overflow:auto">${ps.map((p) => { const m = med(p); return cardPed(p, { check: true, extra: `<br><span class="mini">${n1(m.m3, 2)} m³</span><span class="mini">${n1(m.kg, 0)} kg</span>${geoOk(p) ? "" : `<span class="mini c" style="--c:#fb923c">📍 sem localização</span>`}${puxadoTag(p, V.pData)}` }); }).join("")}</div>`
+      : `<p class="dica">Nenhum pedido pronto para carga nesse filtro. Amplie as datas ou inclua os sem agenda.</p>`}
+    ${ps.length ? `<div class="sep chips" style="align-items:end"><button type="button" class="btn v p" id="pTodos">Selecionar todos</button>${sel.length ? `<button type="button" class="btn v p" id="pLimpa">Limpar seleção</button>` : ""}
+      <label class="campo" style="min-width:150px">Data da carga<input type="date" id="pData" value="${V.pData}" min="${S.hoje}"></label>
+      <button type="button" class="btn" id="pMontar" ${sel.length ? "" : "disabled"}>${svg("caminhao")}Montar carga · ${sel.length}</button>
+      ${pode("planejar") ? `<button type="button" class="btn" id="pSugerir" style="--c:var(--violeta)">${svg("alvo")}Sugerir cargas${sel.length ? ` · ${sel.length}` : ` · ${ps.length}`}</button>` : ""}</div>` : ""}</div>`;
+}
+function ligarPuxar() {
+  const re = () => { V.sel.clear(); render(); };
+  $("#pDe")?.addEventListener("change", (e) => { V.pDe = e.target.value; if (V.pAte < V.pDe) V.pAte = V.pDe; re(); });
+  $("#pAte")?.addEventListener("change", (e) => { V.pAte = e.target.value; re(); });
+  $("#pJan")?.addEventListener("change", (e) => { V.pJan = e.target.value; re(); });
+  $("#pSemAg")?.addEventListener("change", (e) => { V.pSemAg = e.target.checked; re(); });
+  $("#pData")?.addEventListener("change", (e) => { V.pData = e.target.value; render(); });
+  buscaViva("pBusca", "pBusca", render);
+  $$("[data-atalho]").forEach((b) => (b.onclick = () => { const n = +b.dataset.atalho, am = addDia(S.hoje, 1);
+    if (n === 0) { V.pDe = "2000-01-01"; V.pAte = "2999-12-31"; V.pSemAg = true; } else { V.pDe = am; V.pAte = addDia(S.hoje, n); V.pSemAg = false; } V.pJan = ""; V.pBusca = ""; re(); }));
+  const ids = pedidosParaCarga().map((p) => p.id);
+  $("#pTodos")?.addEventListener("click", () => { ids.forEach((i) => V.sel.add(i)); render(); });
+  $("#pLimpa")?.addEventListener("click", () => { V.sel.clear(); render(); });
+  $("#pMontar")?.addEventListener("click", () => montarCarga([...V.sel].filter((i) => ids.includes(i)), null, V.pData));
+  $("#pSugerir")?.addEventListener("click", () => { const sel = [...V.sel].filter((i) => ids.includes(i)); sugerirCargas(sel.length ? sel : ids, V.pData); });
+  localizarPedidos(ids);
+}
+// localização dos endereços (grátis, em segundo plano no servidor); a tela pergunta de novo até terminar
+let geoTimer = null;
+async function localizarPedidos(ids, tentativa = 0) {
+  const falta = ids.filter((i) => S.pedidos[i] && !geoOk(S.pedidos[i]) && V.geo[i]?.falhou !== true && (tentativa || !V.geoPedido.has(i)));
+  if (!falta.length) return;
+  falta.forEach((i) => V.geoPedido.add(i));
+  try {
+    const r = await A.api(API + "/plano/localizar", { method: "POST", body: { pedidos: falta } });
+    let mudou = false;
+    Object.entries(r.geo || {}).forEach(([i, g]) => { if (g && JSON.stringify(V.geo[i]) !== JSON.stringify(g)) { V.geo[i] = g; mudou = true; } });
+    if (mudou && V.aba === "cargas" && !A.modalAberto()) render();
+    clearTimeout(geoTimer);
+    if (r.na_fila && tentativa < 30) geoTimer = setTimeout(() => localizarPedidos(ids, tentativa + 1), 5000);
+  } catch (_) { /* sem permissão ou offline: segue sem localização */ }
+}
+
+/* ── SUGERIR CARGAS (planejamento automático) ── */
+function sugerirCargas(ids, data) {
+  const pl = plano();
+  const veis = lista("parceiros").filter((p) => p.tipo === "veiculo" && p.ativo !== false).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+  const st = { res: null, data };
+  const limTxt = (v) => { const l = limVei(v, {}); return [l.pontos && `${l.pontos} paradas`, l.vol && `${l.vol} vol.`, l.m3 && `${n1(l.m3, 2)} m³`, l.kg && `${n1(l.kg, 0)} kg`].filter(Boolean).join(" · ") || "sem limites próprios (usa os padrões)"; };
+  A.modal({
+    titulo: `Sugerir cargas · ${ids.length} pedido(s)`, icone: "alvo", cor: "#8b5cf6", largura: 1000,
+    html: `<div id="plCfg"><p class="dica" style="margin-top:0">Escolhe a entrega mais urgente e junta os pedidos mais próximos até bater um dos limites. A ordem de entrega sai do CD pelo caminho mais curto${pl.cd?.lat != null ? "" : ` — <b>cadastre o endereço do CD em Ajustes</b> para a rota começar dele`}.</p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px">
+        <label class="campo">Data das cargas<input type="date" id="plData" value="${data}" min="${S.hoje}"></label>
+        <label class="campo">Máx. paradas<input type="number" min="0" id="plPts" value="${pl.max_pontos || 0}"></label>
+        <label class="campo">Máx. m³<input type="number" min="0" step="0.1" id="plM3" value="${pl.max_m3 || 0}"></label>
+        <label class="campo">Máx. kg<input type="number" min="0" step="10" id="plKg" value="${pl.max_kg || 0}"></label>
+        <label class="campo">Raio (km)<input type="number" min="0" step="1" id="plRaio" value="${pl.raio_km || 0}"></label></div>
+      <p class="dica">0 = não usa o critério. O limite cadastrado no veículo vale mais que o padrão.</p>
+      <label class="chave" style="--c:var(--ciano)"><input type="checkbox" id="plJan" ${pl.respeitar_janela !== false ? "checked" : ""}><span class="trilho"></span>Respeitar a janela (entregas da manhã primeiro, da tarde por último)</label>
+      <div class="sep"><h4>Veículos disponíveis <small style="font-weight:400">(nenhum marcado = monta quantas cargas precisar, veículo a definir)</small></h4>
+        ${veis.length ? veis.map((v) => `<div class="parada" style="grid-template-columns:22px minmax(0,1fr) minmax(160px,220px);margin-bottom:6px"><input type="checkbox" data-pv="${v.id}" style="accent-color:var(--ciano);width:18px;height:18px">
+          <span><b>${esc(v.nome)}</b>${v.placa ? ` <small class="sub" style="display:inline">${esc(v.placa)}</small>` : ""}<span class="sub">${limTxt(v)}</span></span><select data-pm="${v.id}">${opcoesParceiros("motorista", "", "Motorista…")}</select></div>`).join("") : `<p class="dica">Nenhum veículo cadastrado (Cadastros › Veículos).</p>`}</div>
+      <div class="chips" style="margin-top:12px"><button type="button" class="btn" id="plGerar">${svg("alvo")}Gerar sugestão</button></div></div>
+      <div id="plRes"></div>`,
+    botoes: [{ rotulo: "Fechar" }],
+    aoAbrir(cx) {
+      const desenhar = () => {
+        const r = st.res; if (!r) return;
+        const info = (i) => r.pontos[i] || {};
+        const nC = r.cargas.length;
+        const card = (c, k) => {
+          const v = parc(c.veiculo_id), lim = limVei(v, { max_pontos: r.limites.max_pontos, max_m3: r.limites.max_m3, max_kg: r.limites.max_kg });
+          const tot = { pontos: c.pedidos.length, vol: 0, m3: 0, kg: 0 }; c.pedidos.forEach((i) => { tot.vol += info(i).vol || 0; tot.m3 += info(i).m3 || 0; tot.kg += info(i).kg || 0; });
+          const semMed = c.pedidos.some((i) => (info(i).sem_medida || []).length);
+          return `<div class="carga luz" style="--c:#22d3ee"><div class="t1">${A.orbe("caminhao", "#22d3ee")}<div><b>Carga ${k + 1} · ${dBR(st.data)}</b><span class="sub">${c.pedidos.length} parada(s)${c.km ? ` · ≈ ${n1(c.km)} km em linha reta${r.cd ? " a partir do CD" : ""}` : ""}</span></div></div>
+            <div class="g2"><label class="campo">Veículo<select data-sv="${k}"><option value="">A definir</option>${veisOpc(c.veiculo_id)}</select></label><label class="campo">Motorista<select data-sm="${k}">${opcoesParceiros("motorista", c.motorista_id, "A definir")}</select></label></div>
+            ${barras(tot, lim)}${semMed ? `<p class="dica">Há produto sem cubagem/peso no cadastro: m³ e kg podem estar abaixo do real.</p>` : ""}
+            ${c.pedidos.map((i, n) => { const p = S.pedidos[i] || {}, f = info(i);
+              return `<div class="parada" style="grid-template-columns:24px minmax(0,1fr) auto"><span class="n">${n + 1}</span><span style="min-width:0"><b>#${p.numero} ${esc(p.cliente_nome || "")}</b><span class="sub">${esc(f.bairro || bairro(p))} · ${f.vol} vol. · ${n1(f.m3, 2)} m³ · ${n1(f.kg, 0)} kg${f.janela ? " · " + esc(f.janela) : ""}</span>${puxadoTag(p, st.data)}</span>
+                <span class="bxs" style="--c:#94a3b8"><button type="button" data-su="${k}:${n}" aria-label="Subir">↑</button><button type="button" data-sd="${k}:${n}" aria-label="Descer">↓</button><select data-mv="${k}:${i}" aria-label="Mover" style="max-width:120px"><option value="">mover…</option>${r.cargas.map((_, j) => j === k ? "" : `<option value="${j}">p/ carga ${j + 1}</option>`).join("")}<option value="fora">tirar</option></select></span></div>`; }).join("") || `<p class="dica">Carga vazia (não será criada).</p>`}</div>`;
+        };
+        const foraLista = [...r.sobra, ...r.sem_local.map((i) => ({ id: i, motivo: "sem localização (endereço ainda não encontrado)" }))];
+        $("#plRes", cx).innerHTML = `<div class="sep"><h4>Sugestão: ${nC} carga(s) · ${r.cargas.reduce((s, c) => s + c.pedidos.length, 0)} pedido(s)</h4>
+          ${nC ? `<div class="cargas">${r.cargas.map(card).join("")}</div>` : `<p class="dica">Nenhuma carga coube nos limites.</p>`}
+          ${foraLista.length ? `<div class="sep"><h4>Ficaram de fora · ${foraLista.length}</h4>${foraLista.map((x) => { const p = S.pedidos[x.id] || {};
+            return `<div class="parada" style="grid-template-columns:minmax(0,1fr) auto"><span><b>#${p.numero} ${esc(p.cliente_nome || "")}</b><span class="sub">${esc(bairro(p))} — ${esc(x.motivo)}</span></span>
+              ${nC && !/reservado|outra carga|está /.test(x.motivo) ? `<select data-mv="fora:${x.id}"><option value="">pôr na…</option>${r.cargas.map((_, j) => `<option value="${j}">carga ${j + 1}</option>`).join("")}</select>` : ""}</div>`; }).join("")}</div>` : ""}
+          ${nC ? `<div class="chips" style="margin-top:14px"><button type="button" class="btn" id="plCriar">${svg("check")}Criar ${r.cargas.filter((c) => c.pedidos.length).length} carga(s) para ${dBR(st.data)}</button><span class="dica">Pedidos de outros dias ou sem agenda passam para essa data (fica no histórico e o cliente vê no app).</span></div>` : ""}</div>`;
+      };
+      const veisOpc = (sel) => veis.map((v) => `<option value="${v.id}" ${v.id === sel ? "selected" : ""}>${esc(v.nome)}</option>`).join("");
+      $("#plGerar", cx).onclick = async () => {
+        const veiculos = $$("[data-pv]", cx).filter((x) => x.checked).map((x) => ({ veiculo_id: x.dataset.pv, motorista_id: $(`[data-pm="${x.dataset.pv}"]`, cx).value }));
+        st.data = $("#plData", cx).value || data;
+        const body = { data: st.data, pedidos: ids, veiculos, respeitar_janela: $("#plJan", cx).checked,
+          limites: { max_pontos: +$("#plPts", cx).value || 0, max_m3: +$("#plM3", cx).value || 0, max_kg: +$("#plKg", cx).value || 0, raio_km: +$("#plRaio", cx).value || 0 } };
+        try { st.res = await api("/plano/sugerir", { method: "POST", body }); desenhar(); $("#plRes", cx).scrollIntoView({ behavior: "smooth", block: "start" }); } catch (e) { falha(e); }
+      };
+      cx.addEventListener("change", (e) => {
+        const r = st.res; if (!r) return;
+        const t = e.target;
+        if (t.dataset.sv != null) { r.cargas[+t.dataset.sv].veiculo_id = t.value; desenhar(); }
+        if (t.dataset.sm != null) r.cargas[+t.dataset.sm].motorista_id = t.value;
+        if (t.dataset.mv != null && t.value !== "") {
+          const [de, pid] = t.dataset.mv.split(":");
+          if (de === "fora") { r.sobra = r.sobra.filter((x) => x.id !== pid); r.sem_local = r.sem_local.filter((x) => x !== pid); }
+          else r.cargas[+de].pedidos = r.cargas[+de].pedidos.filter((x) => x !== pid);
+          if (t.value === "fora") r.sobra.push({ id: pid, motivo: "tirado por você" }); else r.cargas[+t.value].pedidos.push(pid);
+          if (!r.pontos[pid]) { const p = S.pedidos[pid], m = med(p); r.pontos[pid] = { ...m, janela: p.agendamento?.janela || "", bairro: bairro(p) }; }
+          desenhar();
+        }
+      });
+      cx.addEventListener("click", async (e) => {
+        const r = st.res, b = e.target.closest("button"); if (!r || !b) return;
+        const mv = (s, d) => { const [k, n] = s.split(":").map(Number), l = r.cargas[k].pedidos, j = n + d; if (j < 0 || j >= l.length) return; [l[n], l[j]] = [l[j], l[n]]; desenhar(); };
+        if (b.dataset.su) mv(b.dataset.su, -1);
+        if (b.dataset.sd) mv(b.dataset.sd, 1);
+        if (b.id === "plCriar") {
+          const cargas = r.cargas.filter((c) => c.pedidos.length).map((c) => ({ veiculo_id: c.veiculo_id, motorista_id: c.motorista_id, pedidos: c.pedidos }));
+          b.disabled = true;
+          try { const x = await api("/plano/confirmar", { method: "POST", body: { data: st.data, cargas } }); ok(`${x.cargas.length} carga(s) criada(s) para ${dBR(st.data)}.`); V.sel.clear(); $("[data-fechar]", cx)?.click(); render(); }
+          catch (er) { falha(er); b.disabled = false; }
+        }
+      });
+    },
+  });
+}
+
+/* ── FATURAMENTO ── */
+const nfTag = (c) => {
+  if (c.status !== "montando" || !c.pedidos.length) return "";
+  const n = c.pedidos.filter((i) => S.pedidos[i]?.nf).length, tudo = n === c.pedidos.length;
+  if (!n && !plano().exigir_faturamento) return "";
+  return `<span class="mini c" style="--c:${tudo ? "#34d399" : "#fb923c"}" title="Faturamento">🧾 ${tudo ? "faturada" : `${n}/${c.pedidos.length} com NF`}</span>`;
+};
+function faturar(c) {
+  A.modal({
+    titulo: `Faturar carga ${c.numero} · ${dBR(c.data)}`, icone: "documento", cor: "#34d399", largura: 640,
+    html: `<p class="dica" style="margin-top:0">Digite o número da nota fiscal de cada pedido (a NF-e continua sendo emitida no seu sistema fiscal). ${plano().exigir_faturamento ? "<b>A carga só sai e só aparece no app do motorista depois de faturada.</b>" : ""}</p>
+      ${c.pedidos.map((pid) => { const p = S.pedidos[pid]; if (!p) return "";
+        return `<div class="parada" style="grid-template-columns:minmax(0,1fr) 170px;margin-bottom:6px"><span><b>#${p.numero} ${esc(p.cliente_nome)}</b><span class="sub">${resumoItens(p.pendentes?.length ? p.pendentes : p.itens)}${vis("preco") && p.valor_total != null ? " · " + brl(p.valor_total) : ""}</span>${p.nf ? `<span class="sub">NF ${esc(p.nf.numero)} · ${dhBR(p.nf.em)}</span>` : ""}</span>
+          <input class="entrada" data-nf="${pid}" value="${esc(p.nf?.numero || "")}" placeholder="nº da NF" inputmode="numeric"></div>`; }).join("")}`,
+    botoes: [{ rotulo: "Cancelar" }, { rotulo: "Salvar faturamento", classe: "btn", icone: "check", principal: true, acao: async (cx) => {
+      const nfs = Object.fromEntries($$("[data-nf]", cx).map((x) => [x.dataset.nf, x.value.trim()]));
+      try { const r = await api(`/cargas/${c.id}/faturar`, { method: "POST", body: { nfs } }); ok(r.faturada ? `Carga ${c.numero} faturada.` : `Notas salvas (${r.alterados}).`); render(); } catch (e) { falha(e); return false; }
+    } }],
+  });
+}
+
 function rCargas() {
   const cs = lista("cargas").sort((a, b) => b.data.localeCompare(a.data) || b.numero - a.numero);
   const ab = cs.filter((c) => c.status !== "finalizada"), fin = cs.filter((c) => c.status === "finalizada").slice(0, 24);
   $("#main").innerHTML = `<section class="painel vidro vidro-borda-viva">
-    <div class="cab">${A.orbe("caminhao", "#22d3ee")}<div><h2>Cargas</h2><p>Liberar a saída baixa o estoque reservado para <b>${esc(rot("transito"))}</b>. Na volta, a baixa de cada parada define para onde vai cada peça.</p></div></div>
-    ${ab.length ? `<div class="cargas">${ab.map(cardCarga).join("")}</div>` : `<div class="vazio">${A.orbe("caminhao", "#22d3ee")}<b>Nenhuma carga aberta</b>Monte cargas na Agenda.</div>`}
+    <div class="cab">${A.orbe("caminhao", "#22d3ee")}<div><h2>Cargas</h2><p>Puxe pedidos de qualquer dia, monte à mão ou peça uma sugestão por distância, paradas, m³ e kg. Liberar a saída baixa o estoque reservado para <b>${esc(rot("transito"))}</b>. Na volta, a baixa de cada parada define para onde vai cada peça.</p></div></div>
+    ${blocoPuxar()}
+    ${ab.length ? `<div class="cargas">${ab.map(cardCarga).join("")}</div>` : `<div class="vazio">${A.orbe("caminhao", "#22d3ee")}<b>Nenhuma carga aberta</b>Selecione pedidos acima (ou na Agenda) e monte a carga — ou peça uma sugestão.</div>`}
     ${fin.length ? `<div class="sep"><h4>Finalizadas</h4><div class="cargas">${fin.map(cardCarga).join("")}</div></div>` : ""}</section>`;
   $$("[data-csair]").forEach((b) => (b.onclick = async () => { const c = S.cargas[b.dataset.csair];
     if (!(await A.confirmar(`Liberar a saída da carga <b>${c.numero}</b>? O estoque reservado de ${c.pedidos.length} pedido(s) vai para <b>${esc(rot("transito"))}</b>.`, { titulo: "Saída da carga", rotulo: "Liberar saída" }))) return;
@@ -726,6 +925,8 @@ function rCargas() {
     if (!(await A.confirmar(`Desfazer a carga <b>${c.numero}</b>? Os pedidos voltam para a agenda.`, { titulo: "Desfazer carga", rotulo: "Desfazer", perigo: true }))) return;
     try { await api(`/cargas/${c.id}`, { method: "DELETE" }); ok(`Carga ${c.numero} desfeita.`); render(); } catch (e) { falha(e); } }));
   $$("[data-cprint]").forEach((b) => (b.onclick = () => romaneio(S.cargas[b.dataset.cprint])));
+  $$("[data-cfat]").forEach((b) => (b.onclick = () => faturar(S.cargas[b.dataset.cfat])));
+  ligarPuxar();
   $$("[data-bx]").forEach((b) => (b.onclick = () => baixa(b.dataset.c, b.dataset.p, b.dataset.bx)));
   ligarCards($("#main"));
 }
@@ -736,11 +937,11 @@ function cardCarga(c) {
   return `<div class="carga luz" style="--c:${cor}">
     <div class="t1">${A.orbe("caminhao", cor)}<div><b>Carga ${c.numero} · ${dBR(c.data)}</b><span class="sub">${esc(parc(c.veiculo_id)?.nome || "sem veículo")} · ${esc(parc(c.motorista_id)?.nome || "sem motorista")}${c.ajudante ? " + " + esc(c.ajudante) : ""}</span></div>
       <span class="etq" style="--c:${cor}">${{ montando: "Montando", em_rota: "Em rota", finalizada: "Finalizada" }[c.status]}</span></div>
-    <div><span class="mini">${c.pedidos.length} parada(s)</span>${c.status === "montando" ? `<span class="mini">${vol} vol.</span>${wlogTag(c)}` : ""}${c.status !== "montando" ? Object.entries(RES).map(([k, [r, col]]) => { const n = res.filter((x) => x === k).length; return n ? `<span class="mini c" style="--c:${col}">${n} ${r.toLowerCase()}</span>` : ""; }).join("") + (c.status === "em_rota" ? `<span class="mini">${c.pedidos.length - res.length} sem baixa</span>` : "") : ""}</div>
+    <div><span class="mini">${c.pedidos.length} parada(s)</span>${c.status === "montando" ? `<span class="mini">${vol} vol.</span>${wlogTag(c)}${nfTag(c)}` : ""}${c.status !== "montando" ? Object.entries(RES).map(([k, [r, col]]) => { const n = res.filter((x) => x === k).length; return n ? `<span class="mini c" style="--c:${col}">${n} ${r.toLowerCase()}</span>` : ""; }).join("") + (c.status === "em_rota" ? `<span class="mini">${c.pedidos.length - res.length} sem baixa</span>` : "") : ""}</div>
     ${c.pedidos.map((pid, i) => { const p = S.pedidos[pid]; if (!p) return ""; const b = (c.baixas || {})[pid];
       return `<div class="parada"><span class="n">${i + 1}</span><span style="min-width:0;cursor:pointer" data-abrir="${pid}"><b>#${p.numero} ${esc(p.cliente_nome)}</b><span class="sub">${esc(bairro(p))}</span></span>
         ${b ? `<span class="etq" style="--c:${RES[b][1]}">${RES[b][0]}</span>` : c.status === "em_rota" && pode("baixa") ? `<span class="bxs linha2">${Object.entries(RES).map(([k, [r, col]]) => `<button type="button" style="--c:${col}" data-bx="${k}" data-c="${c.id}" data-p="${pid}" data-perm="acao:baixa">${r}</button>`).join("")}</span>` : ""}</div>`; }).join("")}
-    <div class="chips">${c.status === "montando" && pode("cargas") ? `<button type="button" class="btn v p" data-cedit="${c.id}">${svg("lapis")}Editar</button><button type="button" class="btn perigo p" data-cdel="${c.id}">${svg("lixo")}Desfazer</button><button type="button" class="btn p" data-csair="${c.id}" data-perm="acao:cargas">${svg("caminhao")}Liberar saída</button>` : ""}
+    <div class="chips">${c.status === "montando" && pode("cargas") ? `<button type="button" class="btn v p" data-cedit="${c.id}">${svg("lapis")}Editar</button><button type="button" class="btn perigo p" data-cdel="${c.id}">${svg("lixo")}Desfazer</button><button type="button" class="btn p" data-csair="${c.id}" data-perm="acao:cargas">${svg("caminhao")}Liberar saída</button>` : ""}${c.status === "montando" && pode("faturar") && c.pedidos.length ? `<button type="button" class="btn v p" data-cfat="${c.id}">${svg("documento")}Faturar</button>` : ""}
       <button type="button" class="btn v p" data-cprint="${c.id}">${svg("impressora")}Romaneio</button></div>
   </div>`;
 }
@@ -933,12 +1134,14 @@ function editarProduto(id) {
       <div class="g3" style="margin-top:10px">${vis("custo") ? `<label class="campo" data-perm="campo:custo">Custo (R$)<input type="number" id="fCusto" min="0" step="0.01" value="${p.custo ?? 0}" ${edita("custo") ? "" : "disabled"}></label>` : ""}
         ${vis("preco") ? `<label class="campo" data-perm="campo:preco">Preço de venda (R$)<input type="number" id="fPreco" min="0" step="0.01" value="${p.preco ?? 0}" ${edita("preco") ? "" : "disabled"}></label>` : ""}
         <label class="campo">Estoque mínimo<input type="number" id="fMin" min="0" value="${p.minimo ?? 0}"></label></div>
+      <div class="g3" style="margin-top:10px"><label class="campo">Cubagem por unidade (m³)<input type="number" id="fCub" min="0" step="0.001" value="${p.cubagem ?? 0}"></label>
+        <label class="campo">Peso por unidade (kg)<input type="number" id="fPeso" min="0" step="0.1" value="${p.peso ?? 0}"></label><span class="dica" style="align-self:end">Usados no planejamento de cargas (ocupação do caminhão).</span></div>
       <div class="g3" style="margin-top:10px;align-items:end"><label class="campo">Volumes por unidade<input type="number" id="fVol" min="1" value="${p.volumes ?? 1}"></label>
         <label class="campo">Fornecedor<select id="fForn">${opcoesParceiros("fornecedor", p.fornecedor_id, "—")}</select></label>
         <label class="chave" style="--c:var(--verde);margin-bottom:8px"><input type="checkbox" id="fAtivo" ${p.ativo === false ? "" : "checked"}><span class="trilho"></span>Ativo</label></div>
       <label class="campo" style="margin-top:10px">Observações<textarea id="fObs" rows="2">${esc(p.obs || "")}</textarea></label></fieldset>`,
     botoes: so ? [{ rotulo: "Fechar" }] : [{ rotulo: "Cancelar" }, { rotulo: "Salvar", classe: "btn", icone: "check", principal: true, acao: async (cx) => {
-      const body = { sku: $("#fSku", cx).value, nome: $("#fNome", cx).value, categoria: $("#fCat", cx).value, unidade: $("#fUn", cx).value, ean: $("#fEan", cx).value, minimo: +$("#fMin", cx).value, volumes: +$("#fVol", cx).value || 1, fornecedor_id: $("#fForn", cx).value, ativo: $("#fAtivo", cx).checked, obs: $("#fObs", cx).value };
+      const body = { sku: $("#fSku", cx).value, nome: $("#fNome", cx).value, categoria: $("#fCat", cx).value, unidade: $("#fUn", cx).value, ean: $("#fEan", cx).value, minimo: +$("#fMin", cx).value, volumes: +$("#fVol", cx).value || 1, cubagem: +$("#fCub", cx).value || 0, peso: +$("#fPeso", cx).value || 0, fornecedor_id: $("#fForn", cx).value, ativo: $("#fAtivo", cx).checked, obs: $("#fObs", cx).value };
       if ($("#fCusto", cx) && edita("custo")) body.custo = +$("#fCusto", cx).value;
       if ($("#fPreco", cx) && edita("preco")) body.preco = +$("#fPreco", cx).value;
       try { const r = id ? await api("/produtos/" + id, { method: "PUT", body }) : await api("/produtos", { method: "POST", body });
@@ -959,8 +1162,8 @@ function rCadastros() {
       <div class="dir">${pode("cadastros") ? `<button type="button" class="btn" id="btCad" data-perm="acao:cadastros">${svg("mais")}Novo</button>` : ""}</div></div>
     <div class="barra-ferr"><div class="seg">${TIPOS_CAD.map(([k, r]) => `<button type="button" data-ct="${k}" style="--c:var(--violeta)" class="${V.cadTipo === k ? "ativo" : ""}">${r} <small>${lista("parceiros").filter((p) => p.tipo === k).length}</small></button>`).join("")}</div>
       <input class="entrada" id="bCad" placeholder="Buscar…" value="${esc(V.bCad)}"></div>
-    ${ps.length ? `<div class="tab-w"><table class="t"><tr><th>Nome</th>${V.cadTipo === "veiculo" ? `<th class="num">Capacidade (vol.)</th>` : `${vis("contato") ? "<th>Documento</th><th>Telefone</th>" : ""}<th>Endereço</th>`}${V.cadTipo === "cliente" ? `<th class="num">Pedidos</th>` : ""}<th>Situação</th></tr>
-      ${ps.map((p) => `<tr class="cl" data-ec="${p.id}"><td><b>${esc(p.nome)}</b></td>${V.cadTipo === "veiculo" ? `<td class="num">${p.capacidade || "—"}</td>` : `${vis("contato") ? `<td>${esc(p.doc || "")}</td><td>${esc(p.telefone || "")}</td>` : ""}<td>${esc(endTxt(p.endereco))}</td>`}${V.cadTipo === "cliente" ? `<td class="num">${lista("pedidos").filter((x) => x.cliente_id === p.id).length}</td>` : ""}<td>${p.ativo === false ? `<span class="etq" style="--c:#6b7183">Inativo</span>` : `<span class="etq" style="--c:#34d399">Ativo</span>`}</td></tr>`).join("")}</table></div>` : `<div class="vazio">${A.orbe(ic, "#8b5cf6")}<b>Nenhum cadastro em ${esc(rotT)}</b></div>`}</section>`;
+    ${ps.length ? `<div class="tab-w"><table class="t"><tr><th>Nome</th>${V.cadTipo === "veiculo" ? `<th class="num">Capacidade (vol.)</th><th class="num">Paradas</th><th class="num">m³</th><th class="num">kg</th>` : `${vis("contato") ? "<th>Documento</th><th>Telefone</th>" : ""}<th>Endereço</th>`}${V.cadTipo === "cliente" ? `<th class="num">Pedidos</th>` : ""}<th>Situação</th></tr>
+      ${ps.map((p) => `<tr class="cl" data-ec="${p.id}"><td><b>${esc(p.nome)}</b></td>${V.cadTipo === "veiculo" ? `<td class="num">${p.capacidade || "—"}</td><td class="num">${p.max_pontos || "—"}</td><td class="num">${p.max_m3 ? n1(p.max_m3, 2) : "—"}</td><td class="num">${p.max_kg ? n1(p.max_kg, 0) : "—"}</td>` : `${vis("contato") ? `<td>${esc(p.doc || "")}</td><td>${esc(p.telefone || "")}</td>` : ""}<td>${esc(endTxt(p.endereco))}</td>`}${V.cadTipo === "cliente" ? `<td class="num">${lista("pedidos").filter((x) => x.cliente_id === p.id).length}</td>` : ""}<td>${p.ativo === false ? `<span class="etq" style="--c:#6b7183">Inativo</span>` : `<span class="etq" style="--c:#34d399">Ativo</span>`}</td></tr>`).join("")}</table></div>` : `<div class="vazio">${A.orbe(ic, "#8b5cf6")}<b>Nenhum cadastro em ${esc(rotT)}</b></div>`}</section>`;
   $$("[data-ct]").forEach((b) => (b.onclick = () => { V.cadTipo = b.dataset.ct; rCadastros(); }));
   buscaViva("bCad", "bCad", rCadastros);
   $("#btCad")?.addEventListener("click", () => editarParceiro(null, V.cadTipo));
@@ -976,7 +1179,9 @@ function editarParceiro(id, tipo, depois) {
     html: `<fieldset ${so ? "disabled" : ""} style="border:0;padding:0;margin:0">
       <label class="campo">${tipo === "veiculo" ? "Identificação (placa · modelo)" : "Nome / razão social"} *<input id="cNome" value="${esc(p.nome || "")}" autofocus></label>
       ${tipo === "cliente" ? `<label class="campo" style="margin-top:10px">Código do cliente <small style="font-weight:400;color:var(--txt3)">(o mesmo dos Tickets — liga o atendimento aos pedidos)</small><input id="cCod" value="${esc(p.codigo || "")}" placeholder="em branco = automático (6 letras e números)"></label>` : ""}
-      ${tipo === "veiculo" ? `<div class="g2" style="margin-top:10px"><label class="campo">Placa<input id="cPlaca" value="${esc(p.placa || "")}"></label><label class="campo">Capacidade (volumes)<input type="number" id="cCap" min="0" value="${p.capacidade || 0}"></label></div>` :
+      ${tipo === "veiculo" ? `<div class="g2" style="margin-top:10px"><label class="campo">Placa<input id="cPlaca" value="${esc(p.placa || "")}"></label><label class="campo">Capacidade (volumes)<input type="number" id="cCap" min="0" value="${p.capacidade || 0}"></label></div>
+      <div class="g3" style="margin-top:10px"><label class="campo">Máx. paradas<input type="number" id="cPts" min="0" value="${p.max_pontos || 0}"></label><label class="campo">Máx. m³ (baú)<input type="number" id="cM3" min="0" step="0.1" value="${p.max_m3 || 0}"></label><label class="campo">Máx. kg<input type="number" id="cKg" min="0" step="10" value="${p.max_kg || 0}"></label></div>
+      <p class="dica">Limites do planejamento de cargas (0 = usa o padrão de Ajustes).</p>` :
       `${vis("contato") ? `<div class="g3" style="margin-top:10px" data-perm="campo:contato"><label class="campo">CPF / CNPJ<input id="cDoc" value="${esc(p.doc || "")}" ${edita("contato") ? "" : "disabled"}></label><label class="campo">Telefone<input id="cTel" value="${esc(p.telefone || "")}" ${edita("contato") ? "" : "disabled"}></label><label class="campo">E-mail<input id="cMail" value="${esc(p.email || "")}" ${edita("contato") ? "" : "disabled"}></label></div>` : ""}
       ${tipo !== "motorista" ? `<div class="sep"><h4>Endereço${tipo === "cliente" ? " de entrega" : ""}</h4>
         <div style="display:grid;grid-template-columns:110px minmax(0,2fr) 80px minmax(0,1fr);gap:10px"><label class="campo">CEP<input id="eCep" value="${esc(e.cep || "")}"></label><label class="campo">Logradouro<input id="eLog" value="${esc(e.logradouro || "")}"></label><label class="campo">Nº<input id="eNum" value="${esc(e.numero || "")}"></label><label class="campo">Complemento<input id="eCompl" value="${esc(e.complemento || "")}"></label></div>
@@ -988,7 +1193,7 @@ function editarParceiro(id, tipo, depois) {
       const v = (s) => $(s, cx)?.value ?? "";
       const body = { tipo, nome: v("#cNome"), ativo: $("#cAtivo", cx).checked, obs: v("#cObs") };
       if ($("#cCod", cx)) body.codigo = v("#cCod").trim();
-      if (tipo === "veiculo") Object.assign(body, { placa: v("#cPlaca"), capacidade: +v("#cCap") || 0 });
+      if (tipo === "veiculo") Object.assign(body, { placa: v("#cPlaca"), capacidade: +v("#cCap") || 0, max_pontos: +v("#cPts") || 0, max_m3: +v("#cM3") || 0, max_kg: +v("#cKg") || 0 });
       else {
         if ($("#cDoc", cx) && edita("contato")) Object.assign(body, { doc: v("#cDoc"), telefone: v("#cTel"), email: v("#cMail") });
         if ($("#eLog", cx)) body.endereco = { cep: v("#eCep"), logradouro: v("#eLog"), numero: v("#eNum"), complemento: v("#eCompl"), bairro: v("#eBai"), cidade: v("#eCid"), uf: v("#eUf").toUpperCase(), referencia: v("#eRef") };
@@ -1010,6 +1215,15 @@ function rAjustes() {
     <div class="grade2"><div class="bloco"><h3>${svg("casa")} Empresa</h3><label class="campo">Nome exibido<input id="cfEmp" value="${esc(c.empresa || "")}"></label>
       <div class="sep"><h4>Nomes dos locais de estoque</h4><div class="g2">${S.locais.map((l) => `<label class="campo"><span style="color:${COR_LOCAL[l]}">● ${l}</span><input data-rot="${l}" value="${esc(rot(l))}"></label>`).join("")}</div></div></div>
       <div class="bloco"><h3>${svg("lista")} Listas</h3><div class="g2">${lst("janelas", "Janelas de entrega")}${lst("categorias", "Categorias de produto")}${lst("motivos_ausencia", "Motivos de ausência")}${lst("motivos_avaria", "Motivos de avaria")}${lst("motivos_troca", "Motivos de troca")}</div></div></div>
+    <div class="sep"><div class="bloco"><h3>${svg("caminhao")} Planejamento de cargas</h3>
+      <label class="campo">Endereço do CD (de onde as cargas saem)<input id="plEnd" value="${esc(plano().cd?.endereco || "")}" placeholder="Rua, número, bairro, cidade - UF, CEP"></label>
+      <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end;margin-top:10px"><label class="campo">Latitude<input id="plLat" value="${plano().cd?.lat ?? ""}" inputmode="decimal"></label><label class="campo">Longitude<input id="plLng" value="${plano().cd?.lng ?? ""}" inputmode="decimal"></label>
+        <button type="button" class="btn v" id="plAchar">${svg("mapa")}Localizar</button></div><p class="dica" id="plAchou">${plano().cd?.lat != null ? "CD localizado ✓" : "Sem o CD a rota sugerida começa pela ponta mais distante."}</p>
+      <h4 style="margin-top:12px">Limites padrão por carga <small style="font-weight:400">(0 = não usa; o limite do veículo vale mais)</small></h4>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px"><label class="campo">Máx. paradas<input type="number" min="0" id="plPts" value="${plano().max_pontos || 0}"></label><label class="campo">Máx. m³<input type="number" min="0" step="0.1" id="plM3" value="${plano().max_m3 || 0}"></label>
+        <label class="campo">Máx. kg<input type="number" min="0" step="10" id="plKg" value="${plano().max_kg || 0}"></label><label class="campo">Raio da carga (km)<input type="number" min="0" step="1" id="plRaio" value="${plano().raio_km || 0}"></label></div>
+      <div style="display:grid;gap:8px;margin-top:12px"><label class="chave" style="--c:var(--ciano)"><input type="checkbox" id="plJanA" ${plano().respeitar_janela !== false ? "checked" : ""}><span class="trilho"></span>Respeitar a janela na ordem de entrega (manhã → sem janela → tarde)</label>
+        <label class="chave" style="--c:var(--verde)"><input type="checkbox" id="plFat" ${plano().exigir_faturamento ? "checked" : ""}><span class="trilho"></span>Exigir faturamento (NF de todos os pedidos) antes da saída e do app do motorista</label></div></div></div>
     ${vazio ? `<div class="sep"><button type="button" class="btn v" id="btEx">${svg("foguete")}Carregar dados de exemplo</button><p class="dica">Cria um cenário completo para conhecer o sistema (só com o ERP vazio).</p></div>` : ""}
     ${S.admin ? `<div class="sep"><h4 style="color:var(--rosa)">Começar do zero</h4><p class="dica">Baixe o backup antes. Zerar apaga produtos, clientes, saldos, pedidos, cargas e movimentos (os ajustes desta tela ficam e a numeração volta para 1). Não tem volta.</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><a class="btn v" href="/api/erp/backup" download>${svg("baixar")}Baixar backup (JSON)</a><button type="button" class="btn perigo" id="btZerar">${svg("lixo")}Zerar ERP</button></div></div>` : ""}
@@ -1027,7 +1241,13 @@ function rAjustes() {
   $("#btCfg").onclick = async () => {
     const body = { empresa: $("#cfEmp").value, rotulos: Object.fromEntries($$("[data-rot]").map((x) => [x.dataset.rot, x.value])) };
     $$("[data-cfg]").forEach((x) => (body[x.dataset.cfg] = x.value.split("\n").map((s) => s.trim()).filter(Boolean)));
-    try { const r = await api("/config", { method: "PUT", body }); S.config = r.config; ok("Ajustes salvos."); render(); } catch (e) { falha(e); }
+    const pl = { cd: { endereco: $("#plEnd").value, lat: $("#plLat").value.replace(",", "."), lng: $("#plLng").value.replace(",", ".") }, max_pontos: +$("#plPts").value || 0, max_m3: +$("#plM3").value || 0,
+      max_kg: +$("#plKg").value || 0, raio_km: +$("#plRaio").value || 0, respeitar_janela: $("#plJanA").checked, exigir_faturamento: $("#plFat").checked };
+    try { const r = await api("/config", { method: "PUT", body }); const r2 = await api("/plano/config", { method: "PUT", body: pl }); S.config = { ...r.config, plano: r2.plano }; ok("Ajustes salvos."); render(); } catch (e) { falha(e); }
+  };
+  $("#plAchar").onclick = async () => {
+    try { const r = await api("/plano/cd/localizar", { method: "POST", body: { endereco: $("#plEnd").value } }); $("#plLat").value = r.lat; $("#plLng").value = r.lng; $("#plAchou").textContent = `Encontrado: ${r.achado || ""} — confira e salve os ajustes.`; }
+    catch (e) { falha(e); }
   };
 }
 
