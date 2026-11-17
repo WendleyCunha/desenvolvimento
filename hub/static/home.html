@@ -16,6 +16,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/claro.css?v=1">
 <link rel="stylesheet" href="/static/retro.css?v=1">
+<link rel="stylesheet" href="/static/eduking.css?v=1">
 <!--
 ═══════════════════════════════════════════════════════════════════════════════
  home.html — Wendley Desenvolvimento · Hub (Menu Túnel) · v2 "Aurora Glass"
@@ -142,6 +143,7 @@ body.em-modulo .aurora,body.em-modulo .grade-fundo{animation-play-state:paused}
 @keyframes girar{to{--ang:360deg}}
 @keyframes respirar{0%,100%{opacity:.45;transform:scale(.92)}50%{opacity:1;transform:scale(1.08)}}
 .marca-txt{min-width:0;line-height:1.1}
+.marca-txt b i{font-style:normal}
 .marca-txt b{display:block;font:700 1.08rem var(--titulo);letter-spacing:-.01em;white-space:nowrap}
 .marca-txt small{display:block;font-size:.62rem;letter-spacing:2.6px;text-transform:uppercase;margin-top:5px;white-space:nowrap;
   background:var(--grad-ouro);-webkit-background-clip:text;background-clip:text;color:transparent;font-weight:700}
@@ -427,7 +429,7 @@ kbd{font:600 .64rem var(--sans);color:var(--txt3);border:1px solid var(--vidro-b
 </style>
 </head>
 
-<body>
+<body class="hub-casca">
 <!-- ═════════ FUNDO VIVO ═════════ -->
 <div class="fundo" aria-hidden="true">
   <div class="aurora a1"></div><div class="aurora a2"></div><div class="aurora a3"></div><div class="aurora a4"></div>
@@ -446,7 +448,7 @@ kbd{font:600 .64rem var(--sans);color:var(--txt3);border:1px solid var(--vidro-b
     <div class="sb-topo">
       <button class="marca" id="btnMarca" title="Início">
         <span class="atomo mini" style="--s:46px" aria-hidden="true"><span class="halo"></span><span class="anel r2"></span><span class="anel r1"></span><span class="anel r3"></span><span class="nucleo"><b>W</b></span></span>
-        <span class="marca-txt"><b>Wendley</b><small>Desenvolvimento</small></span>
+        <span class="marca-txt"><b>Wend<i>ley</i></b><small>Desenvolvimento</small></span>
       </button>
       <button class="btn-mini" id="btnMini" title="Recolher / expandir menu" aria-label="Recolher menu">
         <svg viewBox="0 0 24 24" class="i"><path d="M15 18l-6-6 6-6"/></svg>
@@ -475,17 +477,23 @@ kbd{font:600 .64rem var(--sans);color:var(--txt3);border:1px solid var(--vidro-b
       <button class="hamb" id="btnHamb" aria-label="Abrir menu">
         <svg viewBox="0 0 24 24" class="i"><path d="M4 7h16M4 12h10M4 17h16"/></svg>
       </button>
+      <button class="edk-secao" id="edkSecao" title="Abrir os sistemas"></button>
       <div class="abas" id="abas" role="tablist" aria-label="Abas abertas"></div>
       <div class="topo-acoes">
-        <button class="btn-ic" id="btnRecarregar" title="Recarregar aba (Alt+R)" aria-label="Recarregar aba">
+        <label class="edk-busca" id="edkBusca" title="Buscar módulo (Ctrl+K)">
+          <svg viewBox="0 0 24 24" class="i"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+          <input id="edkBuscaIn" placeholder="Buscar módulo…" autocomplete="off" spellcheck="false" aria-label="Buscar módulo">
+        </label>
+        <button class="btn-ic esconde" id="btnRecarregar" title="Recarregar aba (Alt+R)" aria-label="Recarregar aba">
           <svg viewBox="0 0 24 24" class="i"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
         </button>
-        <button class="btn-ic" id="btnNovaAba" title="Abrir em nova aba do navegador" aria-label="Abrir em nova aba">
+        <button class="btn-ic esconde" id="btnNovaAba" title="Abrir em nova aba do navegador" aria-label="Abrir em nova aba">
           <svg viewBox="0 0 24 24" class="i"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>
         </button>
-        <button class="btn-ic" id="btnTelaCheia" title="Tela cheia (F11)" aria-label="Tela cheia">
+        <button class="btn-ic esconde" id="btnTelaCheia" title="Tela cheia (F11)" aria-label="Tela cheia">
           <svg viewBox="0 0 24 24" class="i"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
         </button>
+        <button class="btn-ic edk-so" id="edkTema" title="Trocar tema claro / escuro" aria-label="Trocar tema claro / escuro"></button>
         <button class="btn-ic engrenagem" id="btnConfig" title="Configurações — aparência, usuários e permissões" aria-label="Configurações">
           <svg viewBox="0 0 24 24" class="i"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
         </button>
@@ -520,6 +528,7 @@ kbd{font:600 .64rem var(--sans);color:var(--txt3);border:1px solid var(--vidro-b
           <div id="catalogo"></div>
           <div class="rodape-inicio" id="rodapeInicio"></div>
         </div>
+        <div class="edk-inicio" id="edkInicio"></div>
       </div>
       <!-- painéis das abas são criados aqui pelo JS -->
     </section>
@@ -527,6 +536,10 @@ kbd{font:600 .64rem var(--sans);color:var(--txt3);border:1px solid var(--vidro-b
 
   <div class="veu" id="veu"></div>
 </div>
+
+<!-- ═════════ EDUKING: a bolinha (menu 100% oculto) + resultados da busca do topo ═════════ -->
+<button class="edk-bolinha" id="edkBolinha" title="Sistemas e módulos" aria-label="Abrir os sistemas"><span>W</span></button>
+<div class="edk-res vidro" id="edkRes" role="listbox"></div>
 
 <!-- ═════════ PALETA Ctrl+K ═════════ -->
 <div class="paleta-fundo" id="paletaFundo" aria-hidden="true">
@@ -543,7 +556,7 @@ kbd{font:600 .64rem var(--sans);color:var(--txt3);border:1px solid var(--vidro-b
 
 <div class="aviso vidro" id="aviso" role="status" aria-live="polite"></div>
 
-<script src="/static/aurora.js?v=5"></script>
+<script src="/static/aurora.js?v=6"></script>
 <script src="/static/agente.js?v=1" defer></script>
 <script src="/static/ajuda.js?v=3" defer></script>
 <script>
@@ -587,6 +600,12 @@ kbd{font:600 .64rem var(--sans);color:var(--txt3);border:1px solid var(--vidro-b
     repetir:'<path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/>',
     seta:'<path d="M5 12h14M13 6l6 6-6 6"/>',
     abas:'<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18M8 4v5"/>',
+    play:'<path d="M7 4.5v15l12.5-7.5z"/>',
+    esq:'<path d="M15 18l-6-6 6-6"/>', dir:'<path d="M9 18l6-6-6-6"/>',
+    menu:'<path d="M4 7h16M4 12h10M4 17h16"/>',
+    sol:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+    lua:'<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>',
+    teclado:'<rect x="2" y="6" width="20" height="12" rx="3"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/>',
   };
   const PALETA_CORES = ["#e8b33d", "#a78bfa", "#22d3ee", "#34d399", "#fb7185", "#60a5fa", "#fb923c", "#f472b6"];
 
@@ -678,16 +697,16 @@ kbd{font:600 .64rem var(--sans);color:var(--txt3);border:1px solid var(--vidro-b
   }
 
   /* ══════ RENDER: MENU ══════ */
-  function navItem(item) {
+  function navItem(item, n = 0) {
     const cls = [estado.ativa === item.id && "ativo", abaDe(item.id) && "aberto"].filter(Boolean).join(" ");
-    return `<button class="nav-item ${cls}" data-id="${esc(item.id)}" title="${esc(item.titulo)}" style="--c:${corDo(item)}">
-      ${orbe(item)}<span class="rot">${esc(item.titulo)}</span><span class="vivo"></span></button>`;
+    return `<button class="nav-item ${cls}" data-id="${esc(item.id)}" title="${esc(item.titulo)}" style="--c:${corDo(item)};--i:${n}">
+      ${orbe(item)}<span class="rot">${esc(item.titulo)}<small>${esc(item.descricao || item.grupo || "")}</small></span><span class="vivo"></span></button>`;
   }
   function renderNav() {
-    let h = navItem(ITEM_INICIO);
+    let h = navItem(ITEM_INICIO), n = 1;
     if (!estado.itens.length) h += `<div class="sb-vazio">Nenhum módulo ainda.</div>`;
     for (const [grupo, itens] of agrupados(estado.itens)) {
-      h += `<div class="sb-grupo">${esc(grupo)}</div><div class="sb-grupo-sep"></div>` + itens.map(navItem).join("");
+      h += `<div class="sb-grupo">${esc(grupo)}</div><div class="sb-grupo-sep"></div>` + itens.map((i) => navItem(i, n++)).join("");
     }
     el.nav.innerHTML = h;
   }
@@ -744,9 +763,135 @@ kbd{font:600 .64rem var(--sans);color:var(--txt3);border:1px solid var(--vidro-b
     }
     el.catalogo.innerHTML = h;
     el.rodapeInicio.textContent = `Wendley Desenvolvimento · hub v${estado.versao}`;
+    renderEdk(true);
   }
+
+  /* ══════ TEMA EDUKING: menu na bolinha, topo com abas modernas, início em fileiras ══════ */
+  const edk = () => document.documentElement.hasAttribute("data-eduking");
+  const primeiroNome = () => String(estado.usuario?.nome || "").trim().split(/\s+/)[0] || "";
+  function rnd(seed, n) { const x = Math.sin(seed * 9301 + n * 49297) * 233280; return x - Math.floor(x); }
+  /** Capa gerada (sem foto): luz dourada, anéis e o ícone do módulo grande. */
+  function arte(chave, icone, tom = 0) {
+    const s = hash(chave) % 9973, r = (n) => rnd(s, n);
+    const pal = [["240,203,78", "210,174,52"], ["247,230,163", "240,203,78"], ["210,174,52", "120,88,18"], ["255,255,255", "240,203,78"]][(s + tom) % 4];
+    const tam = 38 + r(7) * 26, x = 52 + r(8) * 30, y = 8 + r(9) * 40;
+    return `<div class="edk-arte" style="background:
+      radial-gradient(${55 + r(1) * 30}% ${70 + r(2) * 30}% at ${Math.round(r(3) * 100)}% ${Math.round(r(4) * 100)}%, rgba(${pal[0]},.55), transparent 62%),
+      radial-gradient(45% 60% at ${Math.round(r(5) * 100)}% ${Math.round(r(6) * 100)}%, rgba(${pal[1]},.38), transparent 66%),
+      linear-gradient(${Math.round(r(10) * 360)}deg,var(--edk-a1),var(--edk-a2) 55%,var(--edk-a3))">
+      <span class="anel" style="width:${120 + r(11) * 160}%;aspect-ratio:1;left:${-40 + r(12) * 60}%;top:${-60 + r(13) * 40}%"></span>
+      <span class="anel" style="width:${60 + r(14) * 80}%;aspect-ratio:1;left:${30 + r(15) * 40}%;top:${10 + r(16) * 40}%"></span>
+      ${icone ? `<span class="ico" style="width:${tam}%;aspect-ratio:1;left:${x}%;top:${y}%">${conteudoIcone(icone)}</span>` : ""}</div>`;
+  }
+  let FIL = 0;
+  function fileira(titulo, selo, itens) {
+    if (!itens.length) return "";
+    const id = "edkFil" + ++FIL;
+    return `<section class="edk-fil"><div class="edk-fil-cab"><h2>${titulo}${selo ? `<span class="edk-selo">${selo}</span>` : ""}</h2>
+        <div class="edk-setas"><button data-sc="${id}" data-d="-1" aria-label="Voltar">${svg("esq")}</button><button data-sc="${id}" data-d="1" aria-label="Avançar">${svg("dir")}</button></div></div>
+      <div class="edk-rel"><button class="edk-seta e" data-sc="${id}" data-d="-1" aria-label="Voltar">${svg("esq")}</button>
+        <div class="edk-trilho" id="${id}">${itens.join("")}</div>
+        <button class="edk-seta d" data-sc="${id}" data-d="1" aria-label="Avançar">${svg("dir")}</button></div></section>`;
+  }
+  function cardEdk(i, tom = 0) {
+    const aberto = !!abaDe(i.id);
+    return `<button class="edk-card" data-id="${esc(i.id)}" title="${esc(i.titulo)}">${arte(i.id, i.icone, tom)}<span class="sombra"></span>
+      <span class="topo-c"><span class="nota">${i.tipo === "externo" ? "hospedado" : "html"}</span>${aberto ? `<span class="nota aberto">aberto</span>` : ""}</span>
+      <span class="info"><span class="cat">${esc(i.grupo || "Módulo")}</span><h3>${esc(i.titulo)}</h3>
+        <span class="ctr"><span class="bts"><span class="play">${svg("play")}</span><span>${svg("abas")}</span></span><small>${aberto ? "Voltar para a aba" : esc(i.descricao || "Abrir")}</small></span></span></button>`;
+  }
+  let assinaturaEdk = "";
+  function renderEdk(forcar) {
+    const box = $("#edkInicio");
+    if (!box || !edk() || !estado.itens) return;
+    const assin = estado.abas.map((a) => a.id).join(",") + "|" + estado.itens.length;
+    if (!forcar && assin === assinaturaEdk && box.innerHTML) return;
+    assinaturaEdk = assin; FIL = 0;
+    const nInt = estado.itens.filter((i) => i.tipo === "interno").length, nome = primeiroNome();
+    const abertas = estado.abas.map((a) => itemDe(a.id)).filter(Boolean);
+    const kpis = [
+      ["grade", "Módulos", estado.itens.length, "no seu hub"], ["globo", "Hospedados", estado.itens.length - nInt, "sistemas externos"],
+      ["codigo", "Em HTML", nInt, "módulos do hub"], ["abas", "Abas abertas", estado.abas.length, abertas.length ? "continuam abertas" : "nenhuma agora"],
+    ].map(([ic, r, v, d]) => `<div class="edk-kpi vidro"><small>${svg(ic)}${r}</small><b>${v}</b><span>${d}</span></div>`);
+    let h = `<section class="edk-hero"><div class="bg">${arte("hub-inicio" + new Date().getDate(), "casa")}</div><div class="wrap">
+      <div class="edk-cartao vidro"><div class="edk-chips"><span class="edk-chip forte"><i></i><span id="edkData">${esc(el.heroData.textContent)}</span></span><span class="edk-chip">hub v${esc(estado.versao)}</span></div>
+        <h1><span id="edkSaud">${esc(el.heroSaud.textContent)}</span>${nome ? ` <span class="ouro">${esc(nome)}</span>` : ""}</h1>
+        <div class="meta"><span>${estado.itens.length} módulos</span><span>·</span><span>${estado.abas.length} ${estado.abas.length === 1 ? "aba aberta" : "abas abertas"}</span><span>·</span><span id="edkRel">${esc(el.relogio.textContent)}</span></div>
+        <p>Seus sistemas e módulos em um só lugar. Cada um abre em uma aba e continua aberto enquanto você trabalha nos outros.</p>
+        <div class="edk-destaque"><span class="ic">${svg("teclado")}</span><span><b>Atalhos:</b> <kbd>Ctrl K</kbd> busca · <kbd>Alt 1…9</kbd> troca de aba · <kbd>Alt W</kbd> fecha</span></div>
+        <div class="edk-acoes"><button class="edk-bt ouro" data-edk="buscar">${svg("seta")}O que você quer abrir?</button>
+          ${abertas.length ? `<button class="edk-bt v" data-id="${esc(abertas[abertas.length - 1].id)}">${svg("repetir")}Continuar em ${esc(abertas[abertas.length - 1].titulo)}</button>` : `<button class="edk-bt v" data-edk="sistemas">${svg("menu")}Ver os sistemas</button>`}</div></div>
+      <div class="edk-lado">
+        <div class="edk-mini vidro"><h3>${svg("abas")}Abas abertas<small>${abertas.length}</small></h3>${abertas.length
+          ? abertas.slice(0, 5).map((i) => `<button class="edk-pend" data-id="${esc(i.id)}"><span class="ic">${conteudoIcone(i.icone)}</span><span><b>${esc(i.titulo)}</b><small>${esc(i.grupo || "")} · aberto</small></span></button>`).join("")
+          : `<div class="edk-pend" style="cursor:default"><span class="ic">${svg("abas")}</span><span><b>Nenhuma aba aberta</b><small>Abra um módulo pela bolinha ou pelos cartões abaixo</small></span></div>`}</div>
+      </div></div></section><div class="edk-conteudo">`;
+    h += fileira("Seus números", "agora", kpis);
+    if (abertas.length) h += fileira("Continue de onde parou", "abertas", abertas.map((i) => cardEdk(i, 1)));
+    for (const [grupo, itens] of agrupados(estado.itens)) h += fileira(esc(grupo), `${itens.length} ${itens.length === 1 ? "item" : "itens"}`, itens.map((i) => cardEdk(i)));
+    h += `<div class="edk-rodape">Wendley Desenvolvimento · hub v${esc(estado.versao)}</div></div>`;
+    const rol = box.scrollTop; box.innerHTML = h; box.scrollTop = rol;
+  }
+  $("#edkInicio").addEventListener("click", (e) => {
+    const sc = e.target.closest("[data-sc]");
+    if (sc) { const t = $("#" + sc.dataset.sc); t && t.scrollBy({ left: +sc.dataset.d * t.clientWidth * 0.8, behavior: "smooth" }); return; }
+    const a = e.target.closest("[data-edk]");
+    if (a) { a.dataset.edk === "buscar" ? abrirPaleta() : abrirSistemas(); return; }
+    const b = e.target.closest("[data-id]"); if (b) abrir(b.dataset.id);
+  });
+  /* indicador dourado das abas do topo */
+  function posInd() {
+    const ind = $("#edkInd"), a = el.abas.querySelector(".aba.ativa");
+    if (!ind || !a) return;
+    ind.style.left = a.offsetLeft + "px"; ind.style.width = a.offsetWidth + "px";
+  }
+  addEventListener("resize", posInd);
+  /* título da seção (à esquerda do topo) */
+  function edkSecao() {
+    const it = itemDe(estado.ativa) || ITEM_INICIO;
+    $("#edkSecao").innerHTML = `${svg("menu")}<span>${esc(abaDe(estado.ativa)?.titulo || it.titulo)}</span>${it.grupo ? `<small>${esc(it.grupo)}</small>` : ""}`;
+  }
+  /* menu de sistemas: abre em círculo a partir da bolinha */
+  function abrirSistemas() { if (!edk()) { el.app.classList.add("gaveta"); return; } el.app.classList.add("sis-aberto"); $("#edkBolinha").classList.add("aberta"); }
+  function fecharSistemas() { el.app.classList.remove("sis-aberto"); $("#edkBolinha").classList.remove("aberta"); }
+  const sistemasAbertos = () => el.app.classList.contains("sis-aberto");
+  $("#edkBolinha").onclick = () => (sistemasAbertos() ? fecharSistemas() : abrirSistemas());
+  $("#edkSecao").onclick = abrirSistemas;
+  $("#veu").addEventListener("click", fecharSistemas);
+  /* tema: sol/lua troca entre o Eduking claro e o escuro */
+  function edkIconeTema() { const claro = document.documentElement.hasAttribute("data-claro"); const b = $("#edkTema"); b.innerHTML = svg(claro ? "lua" : "sol"); b.title = claro ? "Usar o tema escuro" : "Usar o tema claro"; }
+  $("#edkTema").onclick = () => window.Aurora?.tema.alternar();
+  let eraEdk = edk();
+  addEventListener("wd-tema", () => {
+    edkIconeTema();
+    if (edk() !== eraEdk) { eraEdk = edk(); fecharSistemas(); renderNav(); renderAbas(); renderEdk(true); }
+    requestAnimationFrame(posInd);
+  });
+  edkIconeTema();
+  /* busca do topo que expande e mostra os módulos */
+  const bBox = $("#edkBusca"), bIn = $("#edkBuscaIn"), bRes = $("#edkRes");
+  let bSel = 0, bLista = [];
+  function pintarBusca() {
+    const q = bIn.value.trim();
+    if (!q) { bRes.classList.remove("aberto"); return; }
+    bLista = filtrar(q).slice(0, 8); bSel = Math.min(bSel, Math.max(bLista.length - 1, 0));
+    bRes.innerHTML = bLista.length ? bLista.map((i, n) => `<button class="${n === bSel ? "sel" : ""}" data-n="${n}">${orbe(i)}<span><b>${esc(i.titulo)}</b><small>${esc(i.grupo || "")}${abaDe(i.id) ? " · aberto" : ""}</small></span></button>`).join("")
+      : `<div style="padding:14px;color:var(--txt3);font-size:13px">Nada encontrado para “${esc(q)}”.</div>`;
+    bRes.classList.add("aberto");
+  }
+  bBox.addEventListener("click", () => { bBox.classList.add("aberta"); bIn.focus(); });
+  bIn.addEventListener("input", () => { bSel = 0; pintarBusca(); });
+  bIn.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown") { e.preventDefault(); bSel = (bSel + 1) % Math.max(bLista.length, 1); pintarBusca(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); bSel = (bSel - 1 + bLista.length) % Math.max(bLista.length, 1); pintarBusca(); }
+    else if (e.key === "Enter" && bLista[bSel]) { const id = bLista[bSel].id; bIn.value = ""; bIn.blur(); pintarBusca(); abrir(id); }
+    else if (e.key === "Escape") { bIn.value = ""; bIn.blur(); pintarBusca(); }
+  });
+  bIn.addEventListener("blur", () => setTimeout(() => { if (!bIn.value) bBox.classList.remove("aberta"); bRes.classList.remove("aberto"); }, 200));
+  bRes.addEventListener("mousedown", (e) => { const b = e.target.closest("[data-n]"); if (!b) return; e.preventDefault(); const id = bLista[+b.dataset.n].id; bIn.value = ""; bIn.blur(); pintarBusca(); abrir(id); });
   /* atualização leve do Início (sem refazer animações de entrada) */
   function sincronizarInicio() {
+    renderEdk();
     el.catalogo.querySelectorAll(".cartao[data-id]").forEach((c) => c.classList.toggle("aberto", !!abaDe(c.dataset.id)));
     const v = el.numeros.querySelectorAll(".valor");
     if (v[3]) v[3].textContent = estado.abas.length;
@@ -765,8 +910,15 @@ kbd{font:600 .64rem var(--sans);color:var(--txt3);border:1px solid var(--vidro-b
               ${chip(item, a.iframe && !a.carregado)}<span class="rot">${esc(a.titulo)}</span>
               <button class="x" data-fechar="${esc(a.id)}" title="Fechar (Alt+W)" aria-label="Fechar ${esc(a.titulo)}">×</button></div>`;
     });
-    el.abas.innerHTML = h;
+    const indAntes = $("#edkInd"), deOnde = indAntes ? [indAntes.style.left, indAntes.style.width] : null;
+    el.abas.innerHTML = h + `<span class="ind" id="edkInd" aria-hidden="true"></span>`;
+    if (deOnde && deOnde[1]) {   // o indicador continua de onde estava (não "nasce" do zero a cada redesenho)
+      const ind = $("#edkInd"); ind.style.transition = "none"; ind.style.left = deOnde[0]; ind.style.width = deOnde[1];
+      void ind.offsetWidth; ind.style.transition = "";
+    }
     el.abas.querySelector(".aba.ativa")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    posInd(); requestAnimationFrame(posInd);
+    edkSecao();
     const naInicio = estado.ativa === INICIO;
     el.btnRecarregar.disabled = naInicio;
     el.btnNovaAba.disabled = naInicio;
@@ -805,8 +957,15 @@ kbd{font:600 .64rem var(--sans);color:var(--txt3);border:1px solid var(--vidro-b
     estado.ativa = id;
     const aba = abaDe(id);
     if (aba && !aba.painel) montarPainel(aba);
-    el.palco.querySelectorAll(":scope > .painel").forEach((p) => p.classList.remove("ativo"));
-    (id === INICIO ? $("#painel-inicio") : aba.painel).classList.add("ativo");
+    const novo = id === INICIO ? $("#painel-inicio") : aba.painel;
+    const antigo = el.palco.querySelector(":scope > .painel.ativo");
+    if (edk() && antigo && antigo !== novo && !reduzido) {   // Eduking: a tela atual ENCOLHE e a nova EXPANDE
+      antigo.classList.add("edk-sai"); clearTimeout(antigo._sai); antigo._sai = setTimeout(() => antigo.classList.remove("edk-sai"), 320);
+      novo.style.animationDelay = ".12s";
+    } else novo.style.animationDelay = "";
+    el.palco.querySelectorAll(":scope > .painel").forEach((p) => { if (p !== novo) p.classList.remove("ativo"); });
+    if (!novo.classList.contains("ativo")) novo.classList.add("ativo");
+    fecharSistemas();
     document.body.classList.toggle("em-modulo", id !== INICIO);
     history.replaceState(null, "", id === INICIO ? location.pathname : "#/" + id);
     document.title = (id === INICIO ? "Início" : aba.titulo) + " · Wendley Desenvolvimento";
@@ -840,7 +999,7 @@ kbd{font:600 .64rem var(--sans);color:var(--txt3);border:1px solid var(--vidro-b
 
   /* ══════ PALETA Ctrl+K ══════ */
   function abrirPaleta() {
-    el.app.classList.remove("gaveta");
+    el.app.classList.remove("gaveta"); fecharSistemas();
     el.pFundo.classList.add("aberta");
     el.pFundo.setAttribute("aria-hidden", "false");
     el.pInput.value = ""; estado.pSel = 0; renderPaleta();
@@ -979,7 +1138,7 @@ kbd{font:600 .64rem var(--sans);color:var(--txt3);border:1px solid var(--vidro-b
     const digitando = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName);
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); paletaAberta() ? fecharPaleta() : abrirPaleta(); return; }
     if (e.key === "/" && !digitando) { e.preventDefault(); abrirPaleta(); return; }
-    if (e.key === "Escape") { if (paletaAberta()) fecharPaleta(); el.app.classList.remove("gaveta"); return; }
+    if (e.key === "Escape") { if (paletaAberta()) fecharPaleta(); el.app.classList.remove("gaveta"); fecharSistemas(); return; }
     if (!e.altKey) return;
     if (/^[1-9]$/.test(e.key)) {
       e.preventDefault();
@@ -1024,6 +1183,7 @@ kbd{font:600 .64rem var(--sans);color:var(--txt3);border:1px solid var(--vidro-b
     el.heroData.textContent = dt.charAt(0).toUpperCase() + dt.slice(1);
     const h = +agora.toLocaleString("pt-BR", { timeZone: TZ, hour: "2-digit", hour12: false });
     el.heroSaud.textContent = h < 5 ? "Boa madrugada," : h < 12 ? "Bom dia," : h < 18 ? "Boa tarde," : "Boa noite,";
+    for (const [id, v] of [["#edkData", el.heroData.textContent], ["#edkSaud", el.heroSaud.textContent], ["#edkRel", el.relogio.textContent]]) { const x = document.querySelector(id); if (x) x.textContent = v; }
   }
 
   /* ══════ INÍCIO ══════ */
@@ -1043,6 +1203,7 @@ kbd{font:600 .64rem var(--sans);color:var(--txt3);border:1px solid var(--vidro-b
     if (doLink && estado.porId.has(doLink)) abrir(doLink);
     else if (salva !== INICIO && abaDe(salva)) ativar(salva);
     else ativar(INICIO);
+    try { if (edk() && estado.ativa === INICIO && !sessionStorage.getItem("edk.sis")) { sessionStorage.setItem("edk.sis", "1"); setTimeout(abrirSistemas, 450); } } catch (_) {}
   }
   iniciar();
 })();
