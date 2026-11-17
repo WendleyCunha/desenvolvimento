@@ -179,6 +179,10 @@ def test_km_e_posicao_sem_gps(t):
     assert g["pos"]["fonte"] == "estimada" and "Maria" in g["pos"]["ref"] and g["sinal"]["gps"] == "negado", "sem GPS: estimada pelo último cliente"
     e2 = cli.get(f"/api/entrega/{R.link_do_pedido(E.ST.dados['cargas'][cid], 'ped2')}").json()
     assert e2["km"] is not None and e2["km_aprox"], "o cliente continua vendo o km (aproximado)"
+    import cliente_app
+    r = cliente_app._rota_do_pedido("ped2")
+    assert r["fase"] == "rua" and r["km"] is not None and r["link"].startswith("/entrega/"), "o app do cliente mostra o km e o link do acompanhamento"
+    assert cliente_app._rota_do_pedido("ped1")["desfecho"] == "entregue"
 
 
 def test_carga_so_aparece_liberada_pelo_armazem(t):

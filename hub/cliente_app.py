@@ -344,11 +344,27 @@ def pedidos_do_cliente(cid: str) -> list[dict]:
             "tentativas": [{"n": x.get("n"), "data": str(x.get("data") or "")[:10], "resultado": RES_TENT.get(x.get("resultado"), x.get("resultado"))}
                            for x in p.get("tentativas", [])],
             "palavra_chave": p.get("palavra_chave") if st not in ("cancelado", "recusado") else "",
+            "rota": _rota_do_pedido(pid) if st in ("agendado", "em_carga", "em_rota", "entregue", "reagendar") else None,
             "endereco": ", ".join(x for x in (f"{end.get('logradouro', '')} {end.get('numero', '')}".strip(), end.get("bairro"),
                                                 f"{end.get('cidade', '')}/{end.get('uf', '')}".strip("/")) if x),
         })
     saida.sort(key=lambda x: (x["status"] in ("entregue", "cancelado", "recusado"), -(x["numero"] or 0)))
     return saida
+
+
+def _rota_do_pedido(pid: str) -> dict | None:
+    """[WROUTER] Acompanhamento da entrega: situação na rua, km até o endereço e o link (vizinho, palavra)."""
+    try:
+        import wrouter
+        a = wrouter.acompanhamento_do_pedido(pid)
+    except Exception:  # noqa: BLE001
+        return None
+    if not a:
+        return None
+    me = next((x for x in a["pedidos"] if x["pid"] == pid), {})
+    return {"fase": a["fase"], "km": me.get("km"), "km_cor": me.get("km_cor"), "km_aprox": me.get("km_aprox"), "pos_ha_seg": a.get("pos_ha_seg"),
+            "chegou": me.get("chegou"), "desfecho": me.get("desfecho"), "vizinho": me.get("vizinho"), "pode_vizinho": a.get("pode_vizinho"),
+            "link": f"/entrega/{a['token']}" if a.get("token") else ""}
 
 
 def tickets_do_cliente(cid: str, cli: dict) -> list[dict]:
