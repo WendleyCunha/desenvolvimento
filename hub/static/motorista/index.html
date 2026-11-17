@@ -573,8 +573,14 @@ function usarPosicao(pos, fonte) {
   const p = { lat: pos.coords.latitude, lng: pos.coords.longitude, prec: pos.coords.accuracy, t: Date.now(), fonte };
   const ant = S.gps.ult; S.gps.ult = p; S.gps.estado = fonte === "rede" ? "rede" : "ativo"; S.gps.fixT = Date.now(); barraStatus();
   const moveu = !ant || Math.hypot(p.lat - ant.lat, p.lng - ant.lng) > 0.0004;
-  if (Date.now() - S.gps.enviado > (moveu ? 30000 : 90000)) { S.gps.enviado = Date.now(); api("/gps", { lat: p.lat, lng: p.lng, prec: p.prec, fonte }).catch(() => {}); }
+  const perto = pertoDoCliente(p);   // dentro da faixa laranja o cliente acompanha no mapa: manda a posição a cada 10 s
+  if (Date.now() - S.gps.enviado > (perto ? 10000 : moveu ? 30000 : 90000)) { S.gps.enviado = Date.now(); api("/gps", { lat: p.lat, lng: p.lng, prec: p.prec, fonte }).catch(() => {}); }
   conferirChegada();   // [v6.1] pendente → CHEGOU ao entrar no raio do endereço
+}
+function pertoDoCliente(g) {
+  const c = cargaAtual(); if (!c || !c.saida || c.chegada) return false;
+  const lim = (c.km_laranja || 7) * 1000;
+  return (c.pedidos || []).some((p) => !p.desfecho && p.destino && distM(g, p.destino) < lim);
 }
 function ligarGps() {
   if (S.gps.watch != null || !("geolocation" in navigator)) { if (!("geolocation" in navigator)) S.gps.estado = "erro"; return; }

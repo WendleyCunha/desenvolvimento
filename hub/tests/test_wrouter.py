@@ -163,9 +163,14 @@ def test_km_e_posicao_sem_gps(t):
     cli = TestClient(t)
     assert cli.get(f"/api/entrega/{lk}").json()["km"] is None, "antes do Iniciar rota: sem km"
     mot.post(f"/api/wrouter/app/cargas/{cid}/saida", json={})
+    mot.post("/api/wrouter/app/gps", json={"lat": -23.55 - 0.09, "lng": -46.63, "prec": 10})
+    e = cli.get(f"/api/entrega/{lk}").json()
+    assert 9.5 < e["km"] < 10.5 and e["km_cor"] == "normal" and e["mapa"] is None, "longe (fora do laranja): o cliente só vê o km, sem mapa"
     mot.post("/api/wrouter/app/gps", json={"lat": -23.55 - 0.045, "lng": -46.63, "prec": 10})
     e = cli.get(f"/api/entrega/{lk}").json()
-    assert 4.5 < e["km"] < 5.5 and e["km_cor"] == "laranja" and "lat" not in str(e), "< 7 km laranja; o cliente só vê o km"
+    assert 4.5 < e["km"] < 5.5 and e["km_cor"] == "laranja", "< 7 km laranja"
+    m = e["mapa"]
+    assert m and m["destino"] == {"lat": -23.55, "lng": -46.63} and 4900 < m["dist_m"] < 5100 and m["motorista"]["rumo"] in (0, 360, None), "dentro do laranja: mapa com o caminhão e o endereço"
     mot.post("/api/wrouter/app/gps", json={"lat": -23.555, "lng": -46.63, "prec": 900, "fonte": "rede"})
     g = pq.get("/api/wrouter/ao-vivo").json()["cargas"][0]
     p1 = next(p for p in g["pedidos"] if p["pid"] == "ped1")
@@ -193,3 +198,26 @@ def test_carga_so_aparece_liberada_pelo_armazem(t):
     assert mot.get("/api/wrouter/app/cargas").json()["cargas"] == [], "sem a liberação do WLOGISTICA o motorista não vê a carga"
     E.ST.config["wlog"] = {"exigir": False}
     assert len(mot.get("/api/wrouter/app/cargas").json()["cargas"]) == 1
+
+
+def test_faixas_de_km_configuraveis(t):
+    pq, cid = montar(t)
+    mot = TestClient(t)
+    entrar(mot)
+    car = E.ST.dados["cargas"][cid]
+    R.rota(car)["geo"].update({"ped1": {"lat": -23.55, "lng": -46.63}, "ped2": {"lat": -23.60, "lng": -46.70}})
+    R.garantir_links(car)
+    lk = R.link_do_pedido(car, "ped1")
+    mot.post(f"/api/wrouter/app/cargas/{cid}/saida", json={})
+    mot.post("/api/wrouter/app/gps", json={"lat": -23.55 - 0.045, "lng": -46.63, "prec": 10})   # ~5 km
+    assert pq.put("/api/wrouter/cfg", json={"km_laranja": 1, "km_vermelho": 3}).status_code == 400, "vermelho precisa ser menor que o laranja"
+    c = pq.put("/api/wrouter/cfg", json={"km_laranja": "3", "km_vermelho": 1}).json()["cfg"]
+    assert (c["km_laranja"], c["km_vermelho"]) == (3.0, 1.0)
+    e = TestClient(t).get(f"/api/entrega/{lk}").json()
+    assert e["km_cor"] == "normal" and e["mapa"] is None and e["km_laranja"] == 3.0, "com 3 km, 5 km ainda é longe: sem mapa"
+    mot.post("/api/wrouter/app/gps", json={"lat": -23.55 - 0.0072, "lng": -46.63, "prec": 10})   # ~800 m
+    e = TestClient(t).get(f"/api/entrega/{lk}").json()
+    assert e["km_cor"] == "vermelho" and e["mapa"] and 700 < e["mapa"]["dist_m"] < 900 and e["mapa"]["motorista"]["rumo"] == 0, "indo para o norte: triângulo aponta 0°"
+    assert pq.get("/api/wrouter/ao-vivo").json()["km_laranja"] == 3.0
+    pq.put("/api/wrouter/cfg", json={"mapa_cliente": False})
+    assert TestClient(t).get(f"/api/entrega/{lk}").json()["mapa"] is None, "dá para desligar o mapa do cliente"

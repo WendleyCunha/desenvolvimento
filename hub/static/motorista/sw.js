@@ -1,7 +1,7 @@
 /* WROUTER · app do motorista — deixa o app instalável e abrir sem sinal.
    A tela fica guardada; dados (/api/) NUNCA vêm do cache: sem sinal, o app guarda
    as baixas no celular e envia quando a conexão voltar. */
-const CACHE = "wrouter-v1";
+const CACHE = "wrouter-v2";
 const CASCA = ["/motorista/", "/motorista/manifest.webmanifest", "/static/app/icone-192.png", "/static/app/icone-512.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(CASCA)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", e => {
