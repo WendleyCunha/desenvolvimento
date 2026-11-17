@@ -86,7 +86,7 @@ import cliente_app
 import promocoes
 import agente
 
-VERSAO = "3.12.1"
+VERSAO = "3.13.0"
 
 BASE = Path(__file__).resolve().parent
 PASTA_MODULOS = BASE / "modulos"

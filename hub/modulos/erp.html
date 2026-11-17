@@ -572,6 +572,7 @@ function abrirPedido(id) {
       <div class="sep"><h4>Histórico</h4><ul class="linha-tempo">${(p.historico || []).slice().reverse().map((h) => `<li>${esc(h.evento)}<small>${dhBR(h.em)} · @${esc(h.por || "")}</small></li>`).join("")}</ul></div>`,
     aoAbrir: (cx) => ticketsDoPedido(p, cx),
     esquerda: [
+      { rotulo: "PDF do pedido", classe: "btn v", icone: "baixar", acao: () => { window.open(`/api/erp/pedidos/${encodeURIComponent(p.id)}/pdf`, "_blank", "noopener"); return false; } },
       ...(pode("cancelar") && !fim ? [{ rotulo: "Cancelar pedido", classe: "btn perigo", icone: "lixo", acao: async () => {
         const motivo = await perguntar("Motivo do cancelamento"); if (motivo === null) return false;
         try { await api(`/pedidos/${p.id}/acao`, { method: "POST", body: { acao: "cancelar", motivo } }); ok(`Pedido #${p.numero} cancelado — reserva liberada.`); render(); } catch (e) { falha(e); return false; }

@@ -1192,7 +1192,7 @@ function erpBloco(t, erp) {
     ${erp.pedidos.map((p) => `<div class="ped" style="--c:${(ERP_ST[p.status] || ["", "#888"])[1]}">
       <div class="t1"><b>${p.tipo === "troca" ? "Troca" : "Pedido"} #${p.numero}</b>${etq((ERP_ST[p.status] || [p.status])[0], (ERP_ST[p.status] || ["", "#888"])[1])}${p.pendencia === "ausente" ? etq("ausente — reagendar", "#fb923c") : ""}${p.pendencia === "reposicao" ? etq("reposição de avaria", "#fb7185") : ""}${p.sem_estoque ? etq("sem estoque", "#fb7185") : ""}</div>
       ${erp.pode.palavra && p.status !== "rascunho" ? `<p class="dica" style="margin-top:4px">🔑 Palavra-chave: ${p.palavra_chave ? `<b style="color:var(--ouro2);letter-spacing:1px">${esc(p.palavra_chave)}</b>` : "<i>sem palavra</i>"} · <a href="#" data-nova-palavra="${p.id}">${p.palavra_chave ? "gerar outra" : "gerar"}</a></p>` : ""}
-      <p class="dica" style="margin-top:3px">${d10(p.criado_em)}${p.agendamento ? ` · entrega ${d10(p.agendamento.data)} ${esc(p.agendamento.janela || "")}` : ""}${p.carga ? ` · carga ${esc(p.carga)}` : ""}</p>
+      <p class="dica" style="margin-top:3px">${d10(p.criado_em)}${p.agendamento ? ` · entrega ${d10(p.agendamento.data)} ${esc(p.agendamento.janela || "")}` : ""}${p.carga ? ` · carga ${esc(p.carga)}` : ""} · <a href="/api/erp/pedidos/${encodeURIComponent(p.id)}/pdf" target="_blank" rel="noopener">⬇ PDF do pedido</a></p>
       <ul>${p.itens.map((i) => `<li>${i.qtd}× ${esc(i.nome)}</li>`).join("")}</ul>
       ${p.tentativas.length ? `<p class="dica">Tentativas: ${p.tentativas.map((x) => `${x.n}ª ${esc(x.resultado)} ${d10(x.data)}${x.motivo ? " (" + esc(x.motivo) + ")" : ""}`).join(" · ")}</p>` : ""}
       <div class="acoes">${ac(p)}</div></div>`).join("") || `<p class="dica">Nenhum pedido encontrado.</p>`}`;

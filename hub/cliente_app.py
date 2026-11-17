@@ -51,7 +51,7 @@ import time
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 
 import acesso
 import tickets as T
@@ -491,6 +491,18 @@ def eu(request: Request):
             "pedidos": pedidos_do_cliente(cid), "chamados": [resumo_cliente(t) for t in ts],
             "chamado": chamado_unico(cli, todos),
             "chat": _completo(ativo) if ativo else None, "versao": T.BASE.ver}
+
+
+@router.get("/api/cliente/pedido/{pid}/pdf")
+def pdf_pedido_cliente(pid: str, request: Request):
+    """O cliente baixa o PDF do próprio pedido (com a palavra-chave da entrega)."""
+    cid, _cli = _cliente_da_sessao(request)
+    e = _erp()
+    ped = e.ST.dados["pedidos"].get(pid)
+    if not ped or ped.get("cliente_id") != cid or ped.get("status") in (None, "rascunho"):
+        raise HTTPException(404, "Pedido não encontrado.")
+    pdf = e.pdf_do_pedido(ped, palavra=(ped.get("palavra_chave") or "") if ped.get("status") not in ("cancelado", "recusado", "entregue") else "")
+    return Response(pdf, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="pedido_{ped.get("numero")}.pdf"'})
 
 
 @router.get("/api/cliente/novidades")
