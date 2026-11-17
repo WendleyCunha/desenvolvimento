@@ -44,6 +44,9 @@
     perola:   { claro: true, nome: "Pérola rosé",    desc: "Madrepérola: rosé, lilás e champanhe",  noite: "#f8f1f4", aur: ["244,114,182", "167,139,250", "251,191,36", "56,189,248"], ouro: ["#c03f78", "#e0659c", "#86214f"] },
     // ── Retrô: claro, liso e estático (retro.css) — sem vidro, brilho nem animação ──
     retro:    { claro: true, retro: true, nome: "Retrô", desc: "Liso, claro e sem efeitos: só o essencial", noite: "#f4f5f7", aur: ["148,163,184", "148,163,184", "148,163,184", "148,163,184"], ouro: ["#1f2328", "#374151", "#111827"] },
+    // ── Eduking: vidro, ouro, preto e branco (eduking.css) — claro e escuro, troca no sol/lua do topo ──
+    eduking:      { claro: true, eduking: true, par: "edukingNoite", nome: "Eduking · claro", desc: "Vidro claro, ouro e preto — menu oculto na bolinha", noite: "#efefef", aur: ["240,203,78", "210,174,52", "247,230,163", "240,203,78"], ouro: ["#f0cb4e", "#a37a0c", "#7a5a06"] },
+    edukingNoite: { eduking: true, par: "eduking", nome: "Eduking · escuro", desc: "Vidro escuro, ouro e branco — menu oculto na bolinha", noite: "#09090b", aur: ["240,203,78", "210,174,52", "247,230,163", "240,203,78"], ouro: ["#f0cb4e", "#f7e6a3", "#d2ae34"] },
     nevoa:    { claro: true, nome: "Névoa da manhã", desc: "Branco gelo, índigo suave e prata",     noite: "#eef1f7", aur: ["148,163,184", "99,102,241", "34,211,238", "232,179,61"],  ouro: ["#4c5bd4", "#6f7ce6", "#3237a6"] },
   };
   const TEMA_PADRAO = { preset: "abismo", prof: 0, aur: 0.55, vidro: 0.34, blur: 22, vel: 1, luz: 0, part: 1, grao: 0.06, leve: false };
@@ -55,6 +58,7 @@
     r.setProperty("--noite", p.noite);
     if (p.claro) document.documentElement.setAttribute("data-claro", ""); else document.documentElement.removeAttribute("data-claro");
     if (p.retro) document.documentElement.setAttribute("data-retro", ""); else document.documentElement.removeAttribute("data-retro");
+    if (p.eduking) document.documentElement.setAttribute("data-eduking", ""); else document.documentElement.removeAttribute("data-eduking");
     p.aur.forEach((c, i) => r.setProperty("--aur" + (i + 1), c));
     r.setProperty("--ouro", p.ouro[0]); r.setProperty("--ouro2", p.ouro[1]); r.setProperty("--ouro3", p.ouro[2]); r.setProperty("--ouro-rgb", hexRgb(p.ouro[0]));
     r.setProperty("--aur-op", t.aur);
@@ -84,7 +88,65 @@
   }
   aplicarTema(carregarTema());
   addEventListener("storage", (e) => { if (e.key === TEMA_CHAVE) aplicarTema(carregarTema()); });
-  const tema = { PRESETS, PADRAO: TEMA_PADRAO, carregar: carregarTema, aplicar: aplicarTema, salvar: salvarTema, daConta: temaDaConta };
+  /** Eduking: o sol/lua do topo troca entre o claro e o escuro do mesmo tema. */
+  const ehEduking = () => !!(PRESETS[carregarTema().preset] || {}).eduking;
+  function alternarClaroEscuro() {
+    const t = carregarTema(), p = PRESETS[t.preset];
+    if (p && p.par) salvarTema({ ...t, preset: p.par });
+  }
+  const tema = { PRESETS, PADRAO: TEMA_PADRAO, carregar: carregarTema, aplicar: aplicarTema, salvar: salvarTema, daConta: temaDaConta, eduking: ehEduking, alternar: alternarClaroEscuro };
+
+  /* ══════ EDUKING: abas com indicador dourado que DESLIZA até a aba ativa ══════
+     Vale para toda barra .nav e .seg do hub (módulos e configurações) quando o
+     tema é Eduking. Um <i class="edk-ind"> é posto atrás dos botões e segue o
+     .ativo (troca de aba, redimensionar, conteúdo redesenhado). */
+  const SEL_ABAS = ".nav, .seg, .nav-cfg";
+  let quadroInd = 0;
+  function posicionarIndicadores() {
+    quadroInd = 0;
+    const liga = document.documentElement.hasAttribute("data-eduking");
+    document.querySelectorAll(SEL_ABAS).forEach((box) => {
+      let ind = box.querySelector(":scope > i.edk-ind");
+      if (!liga) { ind?.remove(); return; }
+      const at = box.querySelector(":scope > .ativo, :scope > button.ativo");
+      if (!ind) { ind = document.createElement("i"); ind.className = "edk-ind"; ind.setAttribute("aria-hidden", "true"); box.prepend(ind); }
+      if (!at || !at.offsetWidth) { ind.style.opacity = "0"; return; }
+      const novo = !ind.dataset.ok;
+      if (novo) ind.style.transition = "none";
+      Object.assign(ind.style, { opacity: "1", left: at.offsetLeft + "px", top: at.offsetTop + "px", width: at.offsetWidth + "px", height: at.offsetHeight + "px" });
+      const c = getComputedStyle(at).getPropertyValue("--c").trim();
+      if (c) ind.style.setProperty("--c", c); else ind.style.removeProperty("--c");
+      if (novo) { void ind.offsetWidth; ind.style.transition = ""; ind.dataset.ok = "1"; }
+    });
+  }
+  const agendarInd = () => { if (!quadroInd) quadroInd = requestAnimationFrame(posicionarIndicadores); };
+  function ligarIndicadores() {
+    new MutationObserver((ms) => {
+      if (!document.documentElement.hasAttribute("data-eduking") && !document.querySelector("i.edk-ind")) return;
+      for (const m of ms) if (m.type === "childList" ? ![...m.addedNodes].every((n) => n.classList?.contains("edk-ind")) || m.removedNodes.length : true) return agendarInd();
+    }).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["class", "hidden", "style"] });
+    addEventListener("resize", agendarInd); addEventListener("wd-tema", agendarInd);
+    document.fonts?.ready.then(agendarInd);
+    agendarInd();
+  }
+  if (document.body) ligarIndicadores(); else document.addEventListener("DOMContentLoaded", ligarIndicadores);
+
+  /* EDUKING: o popup "nasce" do botão/cartão clicado (encolhe ↔ expande) */
+  let ORIGEM = null;
+  addEventListener("pointerdown", (e) => {
+    const alvo = e.target.closest?.("button, a, [role=button], .card-p, .carga, .kpi, tr, .cartao, .linha");
+    if (alvo && !alvo.closest(".aur-modal-fundo")) ORIGEM = { r: alvo.getBoundingClientRect(), t: performance.now() };
+  }, { capture: true, passive: true });
+  const origemRecente = () => (ORIGEM && performance.now() - ORIGEM.t < 1500 ? ORIGEM.r : null);
+  function morph(caixa, voltando, o) {
+    if (!document.documentElement.hasAttribute("data-eduking") || reduzido || !caixa.animate || !caixa.isConnected) return null;
+    const f = caixa.getBoundingClientRect();
+    if (!o || !f.width || !f.height) return null;
+    const de = { transform: `translate(${o.left - f.left}px,${o.top - f.top}px) scale(${Math.max(o.width / f.width, .05)},${Math.max(o.height / f.height, .05)})`, opacity: .35, borderRadius: "22px" };
+    const para = { transform: "none", opacity: 1, borderRadius: getComputedStyle(caixa).borderRadius };
+    caixa.style.transformOrigin = "0 0";
+    return caixa.animate(voltando ? [para, de] : [de, para], { duration: voltando ? 340 : 560, easing: voltando ? "cubic-bezier(.4,0,.2,1)" : "cubic-bezier(.16,1,.3,1)", fill: "both" });
+  }
 
   /* ══════ LUZ QUE ACOMPANHA O MOUSE (.wg e .luz) ══════ */
   let quadroLuz = 0;
@@ -249,13 +311,15 @@
     </div>`;
     document.body.appendChild(fundoEl);
     const caixa = fundoEl.querySelector(".aur-modal");
+    const origem = origemRecente();
     let fechado = false;
     const fechar = () => {
       if (fechado) return; fechado = true;
       const i = pilhaModais.indexOf(fundoEl); if (i >= 0) pilhaModais.splice(i, 1);
       fundoEl.classList.remove("aberto");
       document.removeEventListener("keydown", tecla, true);
-      setTimeout(() => fundoEl.remove(), 260);
+      morph(caixa, true, origem);
+      setTimeout(() => fundoEl.remove(), 340);
       aoFechar && aoFechar();
     };
     const tecla = (e) => {
@@ -272,6 +336,7 @@
     });
     ligar(botoes, "d"); ligar(esquerda, "e");
     requestAnimationFrame(() => fundoEl.classList.add("aberto"));
+    const anim = morph(caixa, false, origem); if (anim) anim.onfinish = () => { anim.cancel(); caixa.style.transformOrigin = ""; };
     aoAbrir && aoAbrir(caixa);
     setTimeout(() => caixa.querySelector("[autofocus]")?.focus(), 60);
     return { el: caixa, fechar };
