@@ -963,6 +963,8 @@ async def editar_carga(cid: str, request: Request):
                     continue
                 car[k] = str(c[k] or "")
         car["id"] = cid
+        if "pedidos" in c and sorted(c["pedidos"] or []) != sorted(car.get("pedidos") or []):
+            _travada_no_armazem(car)
         if "pedidos" in c:
             _definir_pedidos_carga(tx, u, cid, car, c["pedidos"])
         else:
@@ -985,6 +987,7 @@ def excluir_carga(cid: str, request: Request):
             raise HTTPException(404, "Carga não encontrada.")
         if car["status"] != "montando":
             raise HTTPException(409, "Só cargas que ainda não saíram podem ser desfeitas.")
+        _travada_no_armazem(car)
         car["id"] = cid
         _definir_pedidos_carga(tx, u, cid, car, [])
         tx.put("cargas", cid, None)
@@ -992,11 +995,27 @@ def excluir_carga(cid: str, request: Request):
         return {"ok": True, **_parcial(p, tx)}
 
 
+def _travada_no_armazem(car: dict):
+    """[WLOGISTICA] Depois que a montagem do palete começou, os pedidos da carga só mudam pelo ajuste do WLOGISTICA."""
+    w = car.get("wlog") or {}
+    if w.get("montagem") or w.get("doca"):
+        raise HTTPException(409, "O armazém (WLOGISTICA) já está montando esta carga — retire ou agrupe pedidos pelo WLOGISTICA (Ajuste na carga).")
+
+
+def exigir_wlog() -> bool:
+    return (ST.config.get("wlog") or {}).get("exigir", True) is not False
+
+
 @router.post("/cargas/{cid}/sair")
 async def sair_carga(cid: str, request: Request):
     u, p = _ctx(request, "cargas", "liberar cargas")
     with ST.trava:
         tx = Tx(u)
+        car = tx.get("cargas", cid)
+        if car and exigir_wlog():
+            import wlogistica
+            if not wlogistica.liberada(car):
+                raise HTTPException(409, "A carga ainda não foi LIBERADA pelo armazém (WLOGISTICA): falta a montagem do palete e a conferência na doca.")
         _sair(tx, u, cid)
         tx.commit()
         return {"ok": True, **_parcial(p, tx)}
@@ -1061,6 +1080,8 @@ def _baixa(tx: Tx, u: dict, cid: str, c: dict, em=None):
     res = c.get("resultado")
     if res not in ("entregue", "ausente", "avaria", "recusado"):
         raise HTTPException(400, "Resultado inválido.")
+    antes = _copia({k: ped.get(k) for k in CAMPOS_DESFAZER})   # [WROUTER] para poder desfazer a baixa
+    movs0 = len(tx.movs)
     ref = f"CARGA {car['numero']} · PED {ped['numero']}"
     pend = {i["produto_id"]: i["qtd"] for i in ped.get("pendentes", [])}
     avariados = {}
@@ -1114,6 +1135,7 @@ def _baixa(tx: Tx, u: dict, cid: str, c: dict, em=None):
         ped["status"] = "recusado"
         ped["pendentes"] = []
         ped["pendencia"] = ""
+    _esperar_no_cd(tx, car, pid, ped, res, pend, avariados, motivo)
     tent = {"n": len(ped.get("tentativas", [])) + 1, "data": car["data"], "carga_id": cid, "carga": car["numero"],
             "motorista_id": car.get("motorista_id", ""), "resultado": res, "motivo": motivo,
             "avariados": [{"produto_id": k, "qtd": v} for k, v in avariados.items()],
@@ -1126,11 +1148,65 @@ def _baixa(tx: Tx, u: dict, cid: str, c: dict, em=None):
     ped["atualizado_em"] = em or agora()
     tx.put("pedidos", pid, ped)
     car.setdefault("baixas", {})[pid] = res
+    car.setdefault("baixas_det", {})[pid] = {"antes": antes, "movs": [m["id"] for m in tx.movs[movs0:]], "em": em or agora(), "por": u.get("login", "")}
     if len(car["baixas"]) == len(car["pedidos"]):
         car["status"] = "finalizada"
         car["fechada_em"] = em or agora()
     car["atualizado_em"] = em or agora()
     tx.put("cargas", cid, {k: v for k, v in car.items() if k != "id"})
+
+
+CAMPOS_DESFAZER = ("pendentes", "status", "pendencia", "reservado", "sem_estoque", "agendamento", "recolher_feito", "entregue_em", "carga_id", "tentativas")
+
+
+def desfazer_baixa(tx: Tx, u: dict, cid: str, pid: str, motivo: str, em=None) -> dict:
+    """[WROUTER] Desfaz a baixa de um pedido da carga (o motorista errou ou a frota reabriu):
+    estorna os movimentos de estoque daquela baixa, devolve o pedido para "em rota" e tira do
+    retorno do armazém as peças que ainda não foram recebidas."""
+    car = tx.get("cargas", cid)
+    if not car:
+        raise HTTPException(404, "Carga não encontrada.")
+    det = (car.get("baixas_det") or {}).get(pid)
+    if pid not in (car.get("baixas") or {}) or not det:
+        raise HTTPException(409, "Este pedido não tem baixa para desfazer.")
+    w = car.get("wlog") or {}
+    its = [x for x in (w.get("retorno") or {}).get("itens") or [] if x.get("pid") == pid]
+    if any(x.get("recebido") or x.get("nao_voltou") for x in its):
+        raise HTTPException(409, "O armazém já recebeu peça deste pedido no retorno — corrija pelo ERP/WLOGISTICA.")
+    ped = tx.get("pedidos", pid)
+    for mid in reversed(det.get("movs") or []):
+        m = ST.dados["movimentos"].get(mid) or next((x for x in tx.movs if x["id"] == mid), None)
+        if m:
+            tx.mover(m["produto_id"], m["qtd"], m["para"], m["de"], "estorno_baixa", ref=m.get("ref", ""), obs=motivo, em=em)
+    ped.update(_copia(det["antes"]))
+    _hist(ped, u, f"Baixa desfeita ({motivo})" if motivo else "Baixa desfeita", em)
+    ped["atualizado_em"] = em or agora()
+    tx.put("pedidos", pid, ped)
+    car["baixas"].pop(pid, None)
+    car["baixas_det"].pop(pid, None)
+    if w.get("retorno"):
+        w["retorno"]["itens"] = [x for x in w["retorno"]["itens"] if x.get("pid") != pid]
+        w["retorno"]["fim"] = None
+    if car.get("status") == "finalizada":
+        car["status"] = "em_rota"
+        car.pop("fechada_em", None)
+    car["atualizado_em"] = em or agora()
+    tx.put("cargas", cid, {k: v for k, v in car.items() if k != "id"})
+    return ped
+
+
+def _esperar_no_cd(tx: Tx, car: dict, pid: str, ped: dict, res: str, pend: dict, avariados: dict, motivo: str):
+    """[WLOGISTICA] O que volta para o CD nesta baixa vira peça a RECEBER no Retorno do armazém."""
+    try:
+        import wlogistica as W
+    except Exception:  # noqa: BLE001
+        return
+    if res in ("ausente", "recusado"):
+        W.esperar_retorno(tx, car, pid, ped, [{"produto_id": k, "qtd": v} for k, v in pend.items()], res, motivo)
+    elif res == "avaria":
+        W.esperar_retorno(tx, car, pid, ped, [{"produto_id": k, "qtd": v} for k, v in avariados.items()], "avaria", motivo)
+    if res in ("entregue", "avaria") and ped.get("recolher"):
+        W.esperar_retorno(tx, car, pid, ped, ped["recolher"], "recolha", ped.get("motivo_troca") or "troca")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
