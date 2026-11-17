@@ -185,6 +185,11 @@ html[data-claro] .pref.off small{color:#be123c}
 .atualiz .at{padding:8px 10px;border-radius:12px;font-size:.86rem;white-space:pre-wrap;background:rgba(255,255,255,.04);border:1px solid var(--vidro-borda)}
 .atualiz .at.central{border-color:rgba(96,165,250,.4);background:rgba(96,165,250,.08)}
 .atualiz .at small{display:block;font-size:.68rem;color:var(--txt3);margin-bottom:2px}
+/* [WROUTER] acompanhamento da entrega: km até o endereço (laranja < 7 km, vermelho < 2 km) */
+.rota-km{display:flex;align-items:center;gap:12px;margin-top:12px;padding:12px 14px;border-radius:16px;background:rgba(34,211,238,.08);border:1px solid rgba(34,211,238,.35)}
+.rota-km b{font:700 1.6rem/1 var(--titulo);color:var(--ciano)} .rota-km small{display:block;color:var(--txt2);font-size:.8rem}
+.rota-km.laranja{background:rgba(251,146,60,.12);border-color:#fb923c}.rota-km.laranja b{color:#fdba74}
+.rota-km.vermelho{background:rgba(239,68,68,.16);border-color:#ef4444;box-shadow:0 0 24px -10px #ef4444}.rota-km.vermelho b{color:#fca5a5}
 .palavra{text-align:center}.palavra b{font:700 1.6rem var(--titulo);letter-spacing:4px;color:var(--ouro2);text-shadow:0 0 18px rgba(var(--ouro-rgb),.5)}
 .sols{display:flex;flex-direction:column;gap:6px;margin-top:10px}
 .sol{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;padding:8px 10px;border-radius:12px;border-left:4px solid var(--c);background:color-mix(in srgb,var(--c) 9%,transparent)}
@@ -565,9 +570,18 @@ function telaPedidos(m) {
   const cartao = (p) => `<button class="cartao vidro" data-p="${esc(p.id)}"><div class="l1"><b>${p.tipo === "troca" ? "Troca" : "Pedido"} #${p.numero}</b><span class="etq ${ST_COR[p.status] || ""} dir">${esc(p.rotulo)}</span></div>
     <p>${esc(p.itens.map((i) => `${i.qtd}× ${i.nome}`).join(", "))}</p>
     ${p.palavra_chave ? `<p class="min">🔑 Palavra-chave: <b style="color:var(--ouro2);letter-spacing:1px">${esc(p.palavra_chave)}</b></p>` : ""}
+    ${rotaKm(p)}
     ${p.entrega && !["entregue", "cancelado"].includes(p.status) ? `<div class="entrega">${ICO.cal}<span><b>${esc(dataLonga(p.entrega.data))}</b><small>${p.entrega.janela ? "Período: " + esc(p.entrega.janela) : "Entrega agendada"}</small></span></div>` : p.texto && p.status !== "entregue" ? `<p>${esc(p.texto)}</p>` : ""}</button>`;
   m.innerHTML = `${ab.length ? `<h2 class="tit">Em andamento</h2>${ab.map(cartao).join("")}` : ""}${fe.length ? `<div class="sec">Concluídos</div>${fe.map(cartao).join("")}` : ""}`;
   m.querySelectorAll("[data-p]").forEach((b) => (b.onclick = () => ir("pedidos", { tela: "pedido", id: b.dataset.p })));
+}
+const kmTxt = (k) => k < 1 ? `${Math.round(k * 1000)} m` : `${k.toFixed(1).replace(".", ",")} km`;
+function rotaKm(p) {   // [WROUTER] o motorista a caminho: distância em linha reta até o endereço
+  const r = p.rota; if (!r || r.desfecho) return "";
+  if (r.chegou) return `<div class="rota-km vermelho"><b>📍</b><span><b style="font-size:1rem">O motorista chegou</b><small>às ${esc(String(r.chegou).slice(11, 16))}</small></span></div>`;
+  if (r.fase === "rua" && r.km != null) return `<div class="rota-km ${r.km_cor === "normal" ? "" : esc(r.km_cor)}"><b>${kmTxt(r.km)}</b><span><b style="font-size:.95rem">${r.km_cor === "vermelho" ? "O motorista está bem perto!" : r.km_cor === "laranja" ? "O motorista está se aproximando" : "Seu pedido está a caminho"}</b><small>distância do motorista até você, em linha reta${r.km_aprox ? " (aproximada)" : ""}</small></span></div>`;
+  if (r.fase === "rua") return `<div class="rota-km"><b>🚚</b><span><b style="font-size:.95rem">Saiu para entrega</b><small>a distância aparece assim que tivermos a localização do motorista</small></span></div>`;
+  return "";
 }
 function telaPedido(m, id) {
   const p = S.eu.pedidos.find((x) => x.id === id);
@@ -578,6 +592,9 @@ function telaPedido(m, id) {
       ${p.texto ? `<p>${esc(p.texto)}</p>` : ""}
       ${!fora ? `<div class="trilha"><div class="barra" style="width:${larg}%"></div>${p.trilha.map((t, i) => `<span class="${i < p.passo || p.status === "entregue" ? "feito" : i === p.passo ? "agora" : ""}"><i></i>${esc(t)}</span>`).join("")}</div>` : ""}
       ${p.entrega && !["entregue", "cancelado"].includes(p.status) ? `<div class="entrega">${ICO.cal}<span><b>${esc(dataLonga(p.entrega.data))}</b><small>${p.entrega.janela ? "Período: " + esc(p.entrega.janela) : "Entrega agendada"}</small></span></div>` : ""}
+      ${rotaKm(p)}
+      ${p.rota && p.rota.vizinho && !p.rota.desfecho ? `<p class="min">🏠 Entregar ao vizinho · casa/apto <b>${esc(p.rota.vizinho.numero)}</b>${p.rota.vizinho.nome ? ` · o vizinho <b>${esc(p.rota.vizinho.nome)}</b> diz o próprio nome ao motorista` : " · sem palavra-chave"}</p>` : ""}
+      ${p.rota && p.rota.link && !p.rota.desfecho ? `<a class="btn v grande" href="${esc(p.rota.link)}" style="margin-top:12px;text-align:center;text-decoration:none">${p.rota.pode_vizinho ? "📍 Acompanhar a entrega · entregar ao vizinho" : "📍 Acompanhar a entrega"}</a>` : ""}
     </div>
     <div class="sec">Itens</div>
     <div class="cartao vidro"><ul class="itens">${p.itens.map((i) => `<li><b>${i.qtd}×</b>${esc(i.nome)}</li>`).join("")}</ul>
