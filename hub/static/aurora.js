@@ -42,6 +42,8 @@
     areia:    { claro: true, nome: "Areia dourada",  desc: "Praia ao sol: areia, ouro e turquesa",  noite: "#f6f1e6", aur: ["232,179,61", "56,189,248", "251,146,60", "167,139,250"], ouro: ["#c48a12", "#e3a92e", "#8a5f08"] },
     rasas:    { claro: true, nome: "Águas rasas",    desc: "Piscina natural: ciano e azul-claro",   noite: "#eaf4f8", aur: ["34,211,238", "59,130,246", "45,212,191", "232,179,61"],  ouro: ["#0b8fb2", "#22b5d6", "#075e78"] },
     perola:   { claro: true, nome: "Pérola rosé",    desc: "Madrepérola: rosé, lilás e champanhe",  noite: "#f8f1f4", aur: ["244,114,182", "167,139,250", "251,191,36", "56,189,248"], ouro: ["#c03f78", "#e0659c", "#86214f"] },
+    // ── Retrô: claro, liso e estático (retro.css) — sem vidro, brilho nem animação ──
+    retro:    { claro: true, retro: true, nome: "Retrô", desc: "Liso, claro e sem efeitos: só o essencial", noite: "#f4f5f7", aur: ["148,163,184", "148,163,184", "148,163,184", "148,163,184"], ouro: ["#1f2328", "#374151", "#111827"] },
     nevoa:    { claro: true, nome: "Névoa da manhã", desc: "Branco gelo, índigo suave e prata",     noite: "#eef1f7", aur: ["148,163,184", "99,102,241", "34,211,238", "232,179,61"],  ouro: ["#4c5bd4", "#6f7ce6", "#3237a6"] },
   };
   const TEMA_PADRAO = { preset: "abismo", prof: 0, aur: 0.55, vidro: 0.34, blur: 22, vel: 1, luz: 0, part: 1, grao: 0.06, leve: false };
@@ -52,6 +54,7 @@
     const p = PRESETS[t.preset] || PRESETS.abismo, r = document.documentElement.style;
     r.setProperty("--noite", p.noite);
     if (p.claro) document.documentElement.setAttribute("data-claro", ""); else document.documentElement.removeAttribute("data-claro");
+    if (p.retro) document.documentElement.setAttribute("data-retro", ""); else document.documentElement.removeAttribute("data-retro");
     p.aur.forEach((c, i) => r.setProperty("--aur" + (i + 1), c));
     r.setProperty("--ouro", p.ouro[0]); r.setProperty("--ouro2", p.ouro[1]); r.setProperty("--ouro3", p.ouro[2]); r.setProperty("--ouro-rgb", hexRgb(p.ouro[0]));
     r.setProperty("--aur-op", t.aur);
