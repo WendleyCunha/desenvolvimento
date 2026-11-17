@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>WLOGISTICA</title>
+<meta name="hub-icone" content="caixa">
+<meta name="hub-cor" content="#fb923c">
+<meta name="hub-grupo" content="Operação">
+<meta name="hub-ordem" content="2">
+<meta name="hub-descricao" content="Armazém: montagem do palete, conferência na doca, retorno no CD e apontamentos — direto da carga do ERP.">
+<script type="application/json" id="hub-permissoes">
+{
+  "acoes": {
+    "acessar": "Abrir o WLOGISTICA",
+    "montagem": "Montagem do palete (1ª conferência)",
+    "doca": "Conferência na doca (2ª conferência)",
+    "retorno": "Receber o retorno no CD",
+    "apontamentos": "Apontamentos: resolver divergências, ajustar a carga, refazer etapa",
+    "configurar": "Configurar o WLOGISTICA"
+  }
+}
+</script>
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/aurora.css?v=3">
+<!--
+═══════════════════════════════════════════════════════════════════════════════
+ wlogistica.html — WLOGISTICA · armazém do wendleyservice (kit Aurora Glass)
+───────────────────────────────────────────────────────────────────────────────
+ A carga montada no ERP cai aqui: MONTAGEM DO PALETE (1ª conferência) → CONFERÊNCIA
+ NA DOCA por outra pessoa (2ª) → LIBERADA para o app do motorista (WROUTER).
+ Divergência vira APONTAMENTO. Na volta, o RETORNO recebe no CD peça por peça.
+ API: /api/wlog (hub/wlogistica.py) — regras e permissões validadas no servidor.
+═══════════════════════════════════════════════════════════════════════════════
+-->
+<style>
+body{padding:14px;min-height:100vh}
+.app{position:relative;z-index:1;max-width:1500px;margin:0 auto}
+.topo{position:sticky;top:10px;z-index:40;display:flex;align-items:center;gap:12px;padding:10px 12px 10px 14px;border-radius:20px;flex-wrap:wrap}
+.topo.vidro{background:linear-gradient(135deg,rgba(14,17,26,.9),rgba(8,10,16,.84))}
+.marca{display:flex;align-items:center;gap:12px;min-width:0}
+.marca b{display:block;font:700 1.08rem var(--titulo);letter-spacing:-.01em}
+.marca small{display:block;font-size:.6rem;letter-spacing:2.4px;text-transform:uppercase;font-weight:700;background:var(--grad-ouro);-webkit-background-clip:text;background-clip:text;color:transparent}
+.nav{display:flex;gap:4px;flex-wrap:wrap;margin:0 auto}
+.nav button{display:inline-flex;align-items:center;gap:7px;padding:8px 12px;border-radius:11px;font-size:.8rem;font-weight:600;color:var(--txt2);transition:.2s;position:relative}
+.nav button svg.i{width:15px;height:15px}
+.nav button:hover{color:var(--txt);background:rgba(255,255,255,.05)}
+.nav button.ativo{color:#1a0d04;background:#fb923c;box-shadow:0 0 20px -4px #fb923c}
+.nav button .bolha{position:absolute;top:-3px;right:-2px;min-width:16px;height:16px;padding:0 4px;border-radius:9px;font-size:.6rem;font-weight:800;font-style:normal;display:grid;place-items:center;background:var(--rosa);color:#fff;box-shadow:0 0 10px var(--rosa)}
+.dir{display:flex;gap:8px;align-items:center}
+.sync{display:inline-flex;align-items:center;gap:6px;font-size:.7rem;color:var(--txt3)}
+.sync i{width:7px;height:7px;border-radius:50%;background:var(--verde);box-shadow:0 0 8px var(--verde)}
+.sync.salvando i{background:var(--ouro);box-shadow:0 0 8px var(--ouro);animation:aurRespira 1s infinite}
+.sync.erro i{background:var(--rosa);box-shadow:0 0 8px var(--rosa)}
+main{margin-top:16px;display:flex;flex-direction:column;gap:16px}
+.painel{border-radius:24px;padding:18px}
+.cab{display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+.cab h2{margin:0;font:700 1.18rem var(--titulo);letter-spacing:-.01em}
+.cab p{margin:2px 0 0;font-size:.78rem;color:var(--txt3)}
+.cab .dir{margin-left:auto;flex-wrap:wrap}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.kpi{position:relative;padding:13px 14px;border-radius:15px;overflow:hidden;background:rgba(255,255,255,.035);border:1px solid var(--vidro-borda);transition:.25s;--c:var(--ciano);text-align:left}
+.kpi:hover{border-color:color-mix(in srgb,var(--c) 45%,transparent);box-shadow:0 0 26px -10px var(--c);transform:translateY(-2px)}
+.kpi::before{content:"";position:absolute;right:-24px;top:-24px;width:80px;height:80px;border-radius:50%;background:radial-gradient(circle,color-mix(in srgb,var(--c) 38%,transparent),transparent 70%)}
+.kpi small{display:block;font-size:.6rem;font-weight:700;letter-spacing:1.1px;text-transform:uppercase;color:var(--txt3)}
+.kpi b{display:block;font:700 1.5rem/1.1 var(--titulo);margin-top:8px;color:var(--c)}
+.kpi span{display:block;font-size:.68rem;color:var(--txt3);margin-top:4px}
+.lst{display:flex;flex-direction:column;gap:8px}
+.card-c{--c:var(--ciano);position:relative;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:center;padding:12px 14px;border-radius:15px;background:rgba(255,255,255,.035);border:1px solid var(--vidro-borda);text-align:left;transition:.2s;width:100%}
+.card-c::before{content:"";position:absolute;left:-1px;top:10px;bottom:10px;width:3px;border-radius:0 3px 3px 0;background:var(--c);box-shadow:0 0 10px var(--c)}
+.card-c:hover{border-color:color-mix(in srgb,var(--c) 40%,transparent);background:rgba(255,255,255,.055)}
+.card-c b{font:650 .95rem var(--titulo)}
+.card-c .orbe{width:36px;height:36px;border-radius:12px}
+.sub{display:block;font-size:.72rem;color:var(--txt3);margin-top:2px}
+.mini{display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:7px;font-size:.66rem;font-weight:650;color:var(--txt2);background:rgba(255,255,255,.05);border:1px solid var(--vidro-borda);margin:4px 4px 0 0}
+.mini.c{color:var(--c);border-color:color-mix(in srgb,var(--c) 35%,transparent);background:color-mix(in srgb,var(--c) 10%,transparent)}
+.vazio{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;color:var(--txt3);font-size:.84rem;padding:34px 10px}
+.vazio b{color:var(--txt);font:600 1rem var(--titulo)}
+/* tela de leitura */
+.leitor{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center;padding:12px;border-radius:18px;background:rgba(251,146,60,.07);border:1px solid rgba(251,146,60,.35)}
+.leitor input{font:600 1.25rem var(--titulo);letter-spacing:1px;padding:14px 16px;border-radius:14px}
+.prog{height:12px;border-radius:7px;background:rgba(255,255,255,.07);overflow:hidden;margin:10px 0 4px}
+.prog i{display:block;height:100%;background:linear-gradient(90deg,#fb923c,#34d399);box-shadow:0 0 14px #fb923c;transition:width .4s}
+.ped{border-radius:16px;padding:12px;background:rgba(255,255,255,.025);border:1px solid var(--vidro-borda);margin-bottom:10px}
+.ped>.t1{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.ped>.t1 b{font:700 .95rem var(--titulo)}
+.ped>.t1 .q{margin-left:auto;font:700 .9rem var(--titulo);color:var(--txt2)}
+.un{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px 10px;border-radius:12px;background:rgba(255,255,255,.03);margin-bottom:5px;font-size:.84rem}
+.un .ck{width:26px;height:26px;border-radius:9px;display:grid;place-items:center;border:1.5px dashed var(--vidro-borda-forte);color:var(--txt3);font-weight:800}
+.un.ok .ck{border:0;background:var(--verde);color:#04140b;box-shadow:0 0 12px -2px var(--verde)}
+.un.ok{opacity:.78}
+.un .acts{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}
+.btn.p{padding:6px 10px;font-size:.72rem}
+.travado-b{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 14px;border-radius:14px;background:rgba(251,113,133,.1);border:1px solid rgba(251,113,133,.45);color:#fecdd3;font-weight:600}
+.aviso{font-size:.8rem;padding:9px 12px;border-radius:11px;margin-top:10px;line-height:1.5}
+.aviso.ok{color:#bbf7d0;background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.3)}
+.aviso.mal{color:#fecdd3;background:rgba(251,113,133,.08);border:1px solid rgba(251,113,133,.3)}
+.aviso.at{color:#fde68a;background:rgba(232,179,61,.08);border:1px solid rgba(232,179,61,.3)}
+.grade2{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:14px;align-items:start}
+.bloco{border-radius:18px;padding:14px;background:rgba(255,255,255,.025);border:1px solid var(--vidro-borda)}
+.bloco h3{margin:0 0 10px;display:flex;align-items:center;gap:8px;font:650 .9rem var(--titulo)}
+.linha-tempo{position:relative;padding-left:18px;margin:0}
+.linha-tempo li{list-style:none;position:relative;padding:0 0 10px;font-size:.78rem}
+.linha-tempo li::before{content:"";position:absolute;left:-14px;top:5px;width:8px;height:8px;border-radius:50%;background:#fb923c;box-shadow:0 0 8px #fb923c}
+.linha-tempo small{display:block;color:var(--txt3)}
+.chk{display:flex;gap:8px;align-items:center;font-size:.84rem;cursor:pointer}.chk input{width:18px;height:18px;accent-color:#fb923c}
+.flash{animation:flash .9s ease}
+@keyframes flash{0%{box-shadow:0 0 0 0 rgba(52,211,153,.8)}100%{box-shadow:0 0 0 18px rgba(52,211,153,0)}}
+.flash-mal{animation:flashm .9s ease}
+@keyframes flashm{0%{box-shadow:0 0 0 0 rgba(251,113,133,.8)}100%{box-shadow:0 0 0 18px rgba(251,113,133,0)}}
+video#cam{width:100%;max-height:260px;border-radius:14px;background:#000;object-fit:cover}
+.div-l{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) minmax(0,1fr);gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--vidro-borda);font-size:.82rem}
+@media (max-width:1000px){.grade2{grid-template-columns:1fr}}
+@media (max-width:820px){.topo{position:relative;top:0}.nav{order:3;width:100%;overflow-x:auto;flex-wrap:nowrap;margin:0}}
+@media (max-width:560px){body{padding:8px}.painel{padding:13px}.nav button span{display:none}.leitor{grid-template-columns:1fr 1fr}.leitor input{grid-column:1/-1}.div-l{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topo vidro vidro-borda-viva">
+    <div class="marca"><span id="logo"></span><span><b>WLOGISTICA</b><small>Armazém · carga do ERP</small></span></div>
+    <nav class="nav" id="nav"></nav>
+    <div class="dir"><span class="sync" id="sync"><i></i><span>conectando…</span></span><button type="button" class="btn-ic" id="btAtualizar" title="Recarregar"></button></div>
+  </header>
+  <main id="main"></main>
+</div>
+<script src="/static/aurora.js?v=3"></script>
+<script>
+(() => {
+"use strict";
+const A = Aurora, esc = A.esc, svg = A.svg;
+Object.assign(A.ICONES, {
+  caminhao: A.ICONES.caminhao || '<path d="M3 6h11v10H3z"/><path d="M14 9h4l3 3v4h-7"/><circle cx="7" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/>',
+  retorno: '<path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/>',
+  painel: '<rect x="3" y="3" width="8" height="10" rx="2"/><rect x="13" y="3" width="8" height="6" rx="2"/><rect x="13" y="11" width="8" height="10" rx="2"/><rect x="3" y="15" width="8" height="6" rx="2"/>',
+  palete: '<path d="M3 17h18M5 17v3M12 17v3M19 17v3"/><rect x="4" y="6" width="7" height="11" rx="1"/><rect x="13" y="9" width="7" height="8" rx="1"/>',
+  doca: '<path d="M3 21V9l9-6 9 6v12"/><path d="M7 21v-8h10v8M7 17h10"/>',
+  pedido: '<path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h5"/>',
+  camera: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
+});
+A.fundo();
+document.getElementById("logo").outerHTML = A.orbe("caixa", "#fb923c");
+document.querySelector('link[rel="icon"]').href = A.ATOMO_SVG;
+
+const API = "/api/wlog";
+const S = { cargas: [], pendencias: [], agendados: [], perm: { acoes: {} }, cfg: {}, estados: {}, eu: {}, carga: null };
+const V = { aba: ls("wd.wlog.aba", "painel"), cid: null, etapa: null, cam: null };
+function ls(k, d) { try { return localStorage.getItem(k) ?? d; } catch (_) { return d; } }
+function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (_) {} }
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const pode = (a) => !!S.perm.acoes?.[a];
+const dBR = (iso) => iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : "—";
+const dhBR = (iso) => iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)} ${iso.slice(11, 16)}` : "—";
+const ST = {
+  aguardando: ["Aguardando montagem", "#94a3b8"], em_montagem: ["Em montagem", "#e8b33d"], montada: ["Palete montado · aguardando doca", "#60a5fa"],
+  em_conferencia: ["Em conferência na doca", "#22d3ee"], divergencia: ["Divergência · apontamento", "#fb7185"], liberada: ["Liberada · aguardando motorista", "#34d399"],
+  em_rota: ["Em rota", "#a78bfa"], finalizada: ["Finalizada", "#64748b"],
+};
+const ETAPA = { montagem: ["Montagem do palete", "palete", "#fb923c"], doca: ["Conferência na doca", "doca", "#22d3ee"] };
+const ORIG = { ausente: ["Ausente — volta reservado", "#fb923c"], avaria: ["Avaria", "#fb7185"], recusado: ["Recusado", "#f43f5e"], recolha: ["Recolha da troca", "#a78bfa"] };
+const etq = (st) => { const [r, c] = ST[st] || [st, "#94a3b8"]; return `<span class="etq" style="--c:${c}">${esc(r)}</span>`; };
+
+function sync(e, t) { const el = $("#sync"); el.className = "sync " + (e || ""); el.lastElementChild.textContent = t; }
+async function api(url, op = {}) {
+  sync("salvando", op.method && op.method !== "GET" ? "salvando…" : "carregando…");
+  try { const r = await A.api(API + url, op); sync("", "atualizado " + new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })); return r; }
+  catch (e) { sync("erro", "erro"); if (e.status === 401) { const w = window.top || window; w.location.href = "/login?volta=" + encodeURIComponent(w.location.pathname); } throw e; }
+}
+const falha = (e) => A.toast("⚠ " + esc(e.message), [], { cor: "var(--rosa)", duracao: 9000 });
+const ok = (t) => A.toast("✓ " + t, [], { cor: "var(--verde)" });
+async function carregar() { Object.assign(S, await api("/estado")); render(); }
+
+/* ══════ NAVEGAÇÃO ══════ */
+const ABAS = [["painel", "painel", "Painel"], ["montagem", "palete", "Montagem", () => pode("montagem")], ["doca", "doca", "Conferência na doca", () => pode("doca")],
+  ["retorno", "retorno", "Retorno", () => pode("retorno")], ["apontamentos", "atencao", "Apontamentos", () => pode("apontamentos")], ["ajustes", "ajustes", "Ajustes", () => pode("configurar")]];
+const NA = { montagem: ["aguardando", "em_montagem"], doca: ["montada", "em_conferencia"] };
+function bolhas() {
+  return { montagem: S.cargas.filter((c) => NA.montagem.includes(c.status)).length, doca: S.cargas.filter((c) => NA.doca.includes(c.status)).length,
+    retorno: S.cargas.filter((c) => c.retorno.pendentes).length, apontamentos: S.pendencias.length + S.cargas.filter((c) => c.ajuste).length };
+}
+function irPara(aba) { pararCam(); V.aba = aba; V.cid = null; lsSet("wd.wlog.aba", aba); render(); scrollTo({ top: 0, behavior: "smooth" }); }
+function render() {
+  const ab = ABAS.filter((a) => !a[3] || a[3]());
+  if (!ab.some((a) => a[0] === V.aba)) V.aba = ab[0][0];
+  const b = bolhas();
+  $("#nav").innerHTML = ab.map(([k, ic, r]) => `<button type="button" data-aba="${k}" class="${V.aba === k ? "ativo" : ""}">${svg(ic)}<span>${r}</span>${b[k] ? `<em class="bolha">${b[k] > 99 ? "99+" : b[k]}</em>` : ""}</button>`).join("");
+  $$("#nav [data-aba]").forEach((x) => (x.onclick = () => irPara(x.dataset.aba)));
+  if (V.cid && S.carga) return V.aba === "retorno" ? rRetornoCarga() : rCarga();
+  ({ painel: rPainel, montagem: () => rLista("montagem"), doca: () => rLista("doca"), retorno: rRetorno, apontamentos: rApont, ajustes: rAjustes }[V.aba])();
+}
+function cardCarga(c, extra = "") {
+  const [, cor] = ST[c.status] || ["", "#94a3b8"];
+  return `<button type="button" class="card-c" style="--c:${cor}" data-carga="${c.id}">${A.orbe("caminhao", cor)}
+    <span style="min-width:0"><b>Carga ${c.numero} · ${dBR(c.data)}</b><span class="sub">${esc(c.placa || "sem veículo")} · ${esc(c.motorista || "sem motorista")} · ${c.pedidos} pedido(s)${c.volumes ? ` · ${c.volumes} volume(s)` : ""}</span>
+      ${c.montagem ? `<span class="mini">palete ${c.montagem.lidas}/${c.volumes || c.montagem.lidas}${c.montagem.fim_em ? " ✓ " + esc(c.montagem.fim_por || "") : " · " + esc(c.montagem.por || "")}</span>` : ""}
+      ${c.doca ? `<span class="mini">doca ${c.doca.lidas}${c.doca.fim_em ? " ✓ " + esc(c.doca.fim_por || "") : " · " + esc(c.doca.por || "")}</span>` : ""}
+      ${c.pend_abertas ? `<span class="mini c" style="--c:#fb7185">${c.pend_abertas} apontamento(s)</span>` : ""}${c.ajuste ? `<span class="mini c" style="--c:#fb7185">🔒 travada: ajuste</span>` : ""}${extra}</span>
+    ${etq(c.status)}</button>`;
+}
+function ligarCards(cb) { $$("[data-carga]").forEach((b) => (b.onclick = () => (cb || abrirCarga)(b.dataset.carga))); }
+
+/* ══════ PAINEL ══════ */
+function rPainel() {
+  const n = (st) => S.cargas.filter((c) => st.includes(c.status)).length, ret = S.cargas.reduce((s, c) => s + c.retorno.pendentes, 0);
+  const k = (r, v, s, c, aba) => `<button type="button" class="kpi" style="--c:${c}" data-ir="${aba || ""}"><small>${r}</small><b>${v}</b><span>${s}</span></button>`;
+  $("#main").innerHTML = `<section class="painel vidro vidro-borda-viva"><div class="cab">${A.orbe("painel", "#fb923c")}<div><h2>Armazém hoje</h2><p>Carga montada no ERP → montagem do palete → conferência na doca (outra pessoa) → liberada para o motorista.</p></div></div>
+    <div class="kpis">${k("Aguardando montagem", n(["aguardando"]), "cargas do ERP", "#94a3b8", "montagem")}${k("Em montagem", n(["em_montagem"]), "palete sendo montado", "#e8b33d", "montagem")}
+      ${k("Para a doca", n(["montada", "em_conferencia"]), "2ª conferência", "#22d3ee", "doca")}${k("Apontamentos", S.pendencias.length, "divergências abertas", S.pendencias.length ? "#fb7185" : "#64748b", "apontamentos")}
+      ${k("Liberadas", n(["liberada"]), "aguardando o motorista", "#34d399")}${k("Em rota", n(["em_rota"]), "com o motorista", "#a78bfa")}${k("Retorno a receber", ret, "peças voltando ao CD", ret ? "#fb923c" : "#64748b", "retorno")}</div></section>
+    <section class="painel vidro"><div class="cab"><div><h2>Cargas</h2><p>Últimos ${20} dias e tudo o que está aberto. Clique para abrir.</p></div></div>
+      <div class="lst">${S.cargas.map((c) => cardCarga(c)).join("") || `<div class="vazio">${A.orbe("caixa", "#fb923c")}<b>Nenhuma carga no armazém</b>Monte a carga no ERP (aba Cargas) e ela aparece aqui.</div>`}</div></section>`;
+  $$("[data-ir]").forEach((b) => (b.onclick = () => b.dataset.ir && irPara(b.dataset.ir)));
+  ligarCards((cid) => { const c = S.cargas.find((x) => x.id === cid); const aba = NA.montagem.includes(c.status) && pode("montagem") ? "montagem" : NA.doca.includes(c.status) && pode("doca") ? "doca" : c.retorno.total && pode("retorno") ? "retorno" : pode("apontamentos") ? "apontamentos" : V.aba; V.aba = aba; abrirCarga(cid); });
+}
+function rLista(et) {
+  const [nome, ic, cor] = ETAPA[et];
+  const cs = S.cargas.filter((c) => NA[et].includes(c.status) || (c.status === "divergencia" && (et === "doca" ? c.doca : !c.doca)));
+  $("#main").innerHTML = `<section class="painel vidro vidro-borda-viva"><div class="cab">${A.orbe(ic, cor)}<div><h2>${nome}</h2><p>${et === "montagem" ? "1ª conferência: leia o código de cada volume de cada pedido ao montar o palete." : "2ª conferência: OUTRA pessoa confere o palete montado antes de liberar para o motorista."}</p></div></div>
+    <div class="lst">${cs.map((c) => cardCarga(c)).join("") || `<div class="vazio">${A.orbe("check", "#34d399")}<b>Nada para ${et === "montagem" ? "montar" : "conferir"}</b>${et === "montagem" ? "Quando o ERP montar uma carga, ela aparece aqui." : "Os paletes montados aparecem aqui."}</div>`}</div></section>`;
+  ligarCards();
+}
+async function abrirCarga(cid) {
+  try { S.carga = await api(`/cargas/${cid}`); V.cid = cid; V.etapa = V.aba === "doca" ? "doca" : V.aba === "montagem" ? "montagem" : (S.carga.montagem?.fim_em ? "doca" : "montagem"); render(); scrollTo({ top: 0 }); }
+  catch (e) { falha(e); }
+}
+
+/* ══════ TELA DA ETAPA (leitura) ══════ */
+function rCarga() {
+  const c = S.carga, et = V.etapa, [nome, ic, cor] = ETAPA[et];
+  const naEtapa = et === "montagem" ? c.unidades : c.unidades.filter((u) => u.montagem || u.pos_montagem);
+  const lida = (u) => !!u[et], feitas = naEtapa.filter(lida).length, fechada = !!(c[et] && c[et].fim_em);
+  const podeEt = pode(et) && c.erp_status === "montando" && !fechada && (et === "montagem" ? !c.doca : !!c.montagem?.fim_em);
+  const grupos = {}; naEtapa.forEach((u) => (grupos[u.pid] = grupos[u.pid] || []).push(u));
+  const ped = Object.fromEntries(c.pedidos_det.map((p) => [p.id, p]));
+  const sobras = c.sobras[et] || [];
+  $("#main").innerHTML = `<section class="painel vidro vidro-borda-viva"><div class="cab">${A.orbe(ic, cor)}<div><h2>${nome} · carga ${c.numero}</h2><p>${esc(c.placa || "sem veículo")} · ${esc(c.motorista || "sem motorista")} · ${dBR(c.data)} · ${c.pedidos} pedido(s)</p></div>
+      <div class="dir">${etq(c.status)}<button type="button" class="btn v p" id="voltar">${svg("voltar")}Cargas</button></div></div>
+    ${c.ajuste ? `<div class="travado-b">🔒 Carga TRAVADA: ${c.ajuste.tipo === "retirar" ? "RETIRAR" : "AGRUPAR"} o pedido #${c.ajuste.numero} (${esc(c.ajuste.cliente || "")}) — ${esc(c.ajuste.motivo)}. Faça no palete e confirme.
+      ${pode("montagem") || pode("doca") || pode("apontamentos") ? `<button type="button" class="btn p" id="ajFeito">${svg("check")}Ajuste feito no palete</button>` : ""}</div>` : ""}
+    ${fechada ? `<div class="aviso ${c[et].ok ? "ok" : "at"}">${nome} fechada por <b>${esc(c[et].fim_por)}</b> em ${dhBR(c[et].fim_em)}${c[et].ok ? " — tudo conferido." : ` com ${c[et].divergencias} divergência(s) → Apontamentos.`}</div>` : ""}
+    ${et === "doca" && !c.montagem?.fim_em ? `<div class="aviso at">O palete ainda não foi montado. A doca confere depois da montagem.</div>` : ""}
+    ${podeEt && !c.ajuste ? `<div class="leitor"><input id="cod" class="entrada" placeholder="Leia o código (SKU ou EAN) + Enter" autocomplete="off" autofocus>
+      <button type="button" class="btn v" id="btCam" title="Ler com a câmera">${svg("camera")}<span>Câmera</span></button><button type="button" class="btn" id="btLer">${svg("check")}Ler</button></div><div id="camBox"></div>` : ""}
+    <div class="prog"><i style="width:${naEtapa.length ? Math.round(feitas / naEtapa.length * 100) : 0}%"></i></div>
+    <p class="sub" style="margin:0 0 12px"><b style="color:var(--txt)">${feitas} de ${naEtapa.length}</b> volume(s) ${et === "montagem" ? "montado(s)" : "conferido(s)"}${sobras.length ? ` · <b style="color:#fda4af">${sobras.length} sobra(s)</b>` : ""}</p>
+    <div class="grade2"><div>${Object.entries(grupos).map(([pid, us]) => { const p = ped[pid] || {}, f = us.filter(lida).length;
+      return `<div class="ped"><div class="t1">${A.orbe("pedido", f === us.length ? "#34d399" : cor)}<span><b>Pedido #${p.numero} · ${esc(p.cliente || "")}</b><span class="sub">${esc([p.bairro, p.cidade].filter(Boolean).join(" · "))}${p.tipo === "troca" ? " · troca" : ""}</span></span><span class="q">${f}/${us.length}</span></div>
+        ${us.map((u) => `<div class="un ${lida(u) ? "ok" : ""}"><span class="ck">${lida(u) ? "✓" : ""}</span><span style="min-width:0"><b>${esc(u.desc)}</b>${u.vols > 1 ? ` <span class="mini">vol ${u.vol}/${u.vols}</span>` : ""}${u.de > 1 ? ` <span class="mini">peça ${u.peca}/${u.de}</span>` : ""}${u.pos_montagem && et === "doca" ? ' <span class="mini c" style="--c:#a78bfa">agrupado depois</span>' : ""}
+          <span class="sub">${esc(u.sku || "sem código")}${u.ean ? " · EAN " + esc(u.ean) : ""}${lida(u) ? ` · ${u[et].modo === "sem_leitor" ? "sem leitor: " + esc(u[et].motivo) : u[et].modo === "manual" ? "confirmado" : "lido"} por ${esc(u[et].por)} ${dhBR(u[et].em).slice(6)}` : ""}</span></span>
+          <span class="acts">${podeEt && !c.ajuste ? (lida(u) ? `<button type="button" class="btn v p" data-desf="${esc(u.id)}" title="Desfazer a leitura">Desfazer</button>` : u.tem_codigo ? `<button type="button" class="btn v p" data-sem="${esc(u.id)}">Sem leitor</button>` : `<button type="button" class="btn p" data-man="${esc(u.id)}">${svg("check")}Confirmar</button>`) : ""}</span></div>`).join("")}</div>`; }).join("")
+      || `<div class="vazio">${A.orbe("caixa", "#94a3b8")}<b>Nada para conferir nesta etapa</b></div>`}</div>
+      <div>${sobras.length ? `<div class="bloco" style="margin-bottom:12px"><h3>⚠ Sobras lidas</h3>${sobras.map((s) => `<div class="un"><span class="ck" style="border-color:#fb7185;color:#fb7185">+</span><span><b>${esc(s.desc)}</b><span class="sub">${esc(s.codigo)} · ${esc(s.por)} ${dhBR(s.em).slice(6)}</span></span><span class="acts">${podeEt ? `<button type="button" class="btn v p" data-desf="${esc(s.id)}">Tirar</button>` : ""}</span></div>`).join("")}</div>` : ""}
+        ${podeEt && !c.ajuste ? `<div class="bloco"><h3>${svg("check")} Fechar ${nome.toLowerCase()}</h3><p class="sub">Faltou ou sobrou volume? O sistema pede o motivo de cada divergência e ela vira apontamento.</p><button type="button" class="btn" id="btFechar" style="margin-top:10px;width:100%">${svg("check")}Fechar ${et === "montagem" ? "o palete" : "a conferência"}</button></div>` : ""}
+        <div class="bloco" style="margin-top:12px"><h3>${svg("relogio")} Linha do tempo</h3><ul class="linha-tempo">${c.hist.slice().reverse().slice(0, 25).map((h) => `<li>${esc(h.acao)}${h.det ? ` — ${esc(h.det)}` : ""}<small>${dhBR(h.em)} · ${esc(h.por)}</small></li>`).join("") || "<li>Sem registros ainda.</li>"}</ul></div></div></div></section>`;
+  $("#voltar").onclick = () => { pararCam(); V.cid = null; S.carga = null; carregar(); };
+  const inp = $("#cod"); if (inp) { inp.focus(); inp.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); lerCodigo(inp.value); } }; }
+  const bl = $("#btLer"); if (bl) bl.onclick = () => lerCodigo($("#cod").value);
+  const bc = $("#btCam"); if (bc) bc.onclick = abrirCam;
+  $$("[data-man]").forEach((b) => (b.onclick = () => leitura({ unidade: b.dataset.man })));
+  $$("[data-sem]").forEach((b) => (b.onclick = () => semLeitor(b.dataset.sem)));
+  $$("[data-desf]").forEach((b) => (b.onclick = async () => { try { S.carga = await api(`/cargas/${c.id}/${et}/desfazer`, { method: "POST", body: { unidade: b.dataset.desf } }); render(); } catch (e) { falha(e); } }));
+  const bf = $("#btFechar"); if (bf) bf.onclick = () => fechar([]);
+  const af = $("#ajFeito"); if (af) af.onclick = async () => { try { S.carga = await api(`/cargas/${c.id}/ajuste/${c.ajuste.id}/feito`, { method: "POST" }); ok("Ajuste confirmado — leitura liberada."); render(); } catch (e) { falha(e); } };
+}
+function lerCodigo(cod) { cod = String(cod || "").trim(); if (!cod) return; const i = $("#cod"); if (i) i.value = ""; leitura({ codigo: cod }); }
+async function leitura(corpo) {
+  const c = S.carga, et = V.etapa;
+  try {
+    const r = await api(`/cargas/${c.id}/${et}/leitura`, { method: "POST", body: corpo });
+    if (r.carga) S.carga = r.carga;
+    if (r.resultado === "ok") { if (navigator.vibrate) navigator.vibrate(60); render(); const l = $(".leitor"); if (l) l.classList.add("flash"); A.toast(`✓ ${esc(r.unidade.desc)} · pedido #${r.unidade.numero}`, [], { cor: "var(--verde)", duracao: 1800 }); }
+    else if (r.resultado === "sobra") { if (navigator.vibrate) navigator.vibrate([200, 80, 200]); render(); const l = $(".leitor"); if (l) l.classList.add("flash-mal"); A.toast("⚠ " + esc(r.mensagem) + ` (${esc(r.desc)})`, [], { cor: "var(--rosa)", duracao: 6000 }); }
+    else if (r.resultado === "escolher_pedido") escolherPedido(r);
+    else if (r.resultado === "exige_codigo") A.toast("⚠ " + esc(r.mensagem), [], { cor: "var(--ouro)", duracao: 6000 });
+    else if (r.resultado === "ja_lido") A.toast("Este volume já foi lido.", [], { duracao: 2500 });
+  } catch (e) { falha(e); if (e.status === 423 || e.status === 409) { S.carga = await api(`/cargas/${c.id}`); render(); } }
+  const i = $("#cod"); if (i) i.focus();
+}
+function escolherPedido(r) {
+  A.modal({ titulo: "De qual pedido é este volume?", icone: "pedido", cor: "#fb923c", largura: 480,
+    html: `<p class="sub" style="margin-bottom:10px">O código <b>${esc(r.codigo)}</b> está em mais de um pedido desta carga.</p><div class="lst">${r.opcoes.map((o) => `<button type="button" class="card-c" data-pp="${esc(o.pid)}">${A.orbe("pedido", "#fb923c")}<span><b>Pedido #${o.numero}</b><span class="sub">${esc(o.cliente || "")} · faltam ${o.faltam}</span></span><span></span></button>`).join("")}</div>`,
+    aoAbrir: (cx) => cx.querySelectorAll("[data-pp]").forEach((b) => (b.onclick = () => { cx.querySelector("[data-fechar]").click(); leitura({ codigo: r.codigo, pedido: b.dataset.pp }); })),
+    botoes: [{ rotulo: "Cancelar" }] });
+}
+function semLeitor(uid) {
+  A.modal({ titulo: "Confirmar sem leitor", icone: "atencao", cor: "#e8b33d", largura: 460,
+    html: `<p class="sub">Este produto tem código. Diga por que não foi possível ler — fica registrado.</p><label class="campo" style="margin-top:8px">Motivo<input id="msl" placeholder="ex.: etiqueta rasgada, leitor sem bateria" autofocus></label>`,
+    botoes: [{ rotulo: "Cancelar" }, { rotulo: "Confirmar volume", classe: "btn", icone: "check", acao: async () => { const m = $("#msl").value.trim(); if (!m) { falha(new Error("Escreva o motivo.")); return false; } await leitura({ unidade: uid, sem_leitor: true, motivo: m }); } }] });
+}
+async function fechar(respostas) {
+  const c = S.carga, et = V.etapa;
+  try {
+    const r = await api(`/cargas/${c.id}/${et}/finalizar`, { method: "POST", body: { respostas } });
+    if (r.resultado === "precisa_motivo") return pedirMotivos(r);
+    S.carga = r.carga; pararCam();
+    ok(r.divergencias.length ? `${ETAPA[et][0]} fechada com ${r.divergencias.length} divergência(s) → Apontamentos.` : r.status === "liberada" ? "Doca OK — carga LIBERADA para o motorista." : "Palete OK — segue para a conferência na doca.");
+    await carregar();
+  } catch (e) { falha(e); }
+}
+function pedirMotivos(r) {
+  A.modal({ titulo: `${r.divergencias.length} divergência(s) — diga o motivo`, icone: "atencao", cor: "#fb7185", largura: 720,
+    html: `<p class="sub">Cada divergência vira um <b>apontamento</b> para resolver antes de liberar a carga.</p>${r.divergencias.map((d, i) => `<div class="div-l"><span><span class="etq" style="--c:${d.tipo === "falta" ? "#fb7185" : "#e8b33d"}">${d.tipo === "falta" ? "FALTA" : "SOBRA"} ${d.qtd}×</span> ${esc(d.desc)}${d.numero ? `<span class="sub">pedido #${d.numero}</span>` : ""}</span>
+      <select data-mot="${i}"><option value="">Motivo…</option>${r.motivos.map((m) => `<option>${esc(m)}</option>`).join("")}</select><input data-obs="${i}" placeholder="observação (opcional)"></div>`).join("")}`,
+    botoes: [{ rotulo: "Voltar à leitura" }, { rotulo: "Fechar com divergência", classe: "btn perigo", icone: "check", acao: async () => {
+      const resp = r.divergencias.map((d, i) => ({ chave: d.chave, motivo: $(`[data-mot="${i}"]`).value, obs: $(`[data-obs="${i}"]`).value }));
+      if (resp.some((x) => !x.motivo)) { falha(new Error("Escolha o motivo de cada divergência.")); return false; }
+      setTimeout(() => fechar(resp), 250);
+    } }] });
+}
+/* câmera (navegadores com BarcodeDetector — Chrome no Android). Leitor USB/Bluetooth funciona direto no campo. */
+async function abrirCam() {
+  if (V.cam) return pararCam();
+  if (!("BarcodeDetector" in window)) return A.toast("Este navegador não lê código pela câmera. Use o leitor (USB/Bluetooth) ou o Chrome no Android.", [], { duracao: 6000 });
+  try {
+    const st = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+    $("#camBox").innerHTML = `<video id="cam" playsinline muted></video>`; const v = $("#cam"); v.srcObject = st; await v.play();
+    const det = new BarcodeDetector(); let ult = "", t = 0;
+    V.cam = { st, timer: setInterval(async () => { try { const r = await det.detect(v); if (r[0]) { const cod = r[0].rawValue; if (cod !== ult || Date.now() - t > 2500) { ult = cod; t = Date.now(); leitura({ codigo: cod }); } } } catch (_) {} }, 350) };
+  } catch (e) { falha(new Error("Não consegui abrir a câmera: " + e.message)); }
+}
+function pararCam() { if (!V.cam) return; clearInterval(V.cam.timer); V.cam.st.getTracks().forEach((t) => t.stop()); V.cam = null; const b = $("#camBox"); if (b) b.innerHTML = ""; }
+
+/* ══════ RETORNO ══════ */
+function rRetorno() {
+  const cs = S.cargas.filter((c) => c.retorno.total || c.status === "em_rota");
+  $("#main").innerHTML = `<section class="painel vidro vidro-borda-viva"><div class="cab">${A.orbe("retorno", "#fb923c")}<div><h2>Retorno no CD</h2><p>O que o motorista não entregou (ausente, avaria, recusa) e o que foi recolhido nas trocas volta para o CD. Receba peça por peça; o que não voltou vira apontamento.</p></div></div>
+    <div class="lst">${cs.map((c) => cardCarga(c, c.retorno.total ? `<span class="mini c" style="--c:${c.retorno.pendentes ? "#fb923c" : "#34d399"}">retorno ${c.retorno.recebidos + c.retorno.nao_voltou}/${c.retorno.total}${c.retorno.fim ? " · concluído" : ""}</span>` : `<span class="mini">sem retorno até agora</span>`)).join("")
+      || `<div class="vazio">${A.orbe("check", "#34d399")}<b>Nenhum retorno esperado</b>As baixas com ausente, avaria, recusa ou recolha aparecem aqui.</div>`}</div></section>`;
+  ligarCards();
+}
+function rRetornoCarga() {
+  const c = S.carga, its = c.retorno_itens, pend = its.filter((x) => !x.recebido && !x.nao_voltou);
+  const grupos = {}; its.forEach((x) => (grupos[x.pid] = grupos[x.pid] || []).push(x));
+  const podeR = pode("retorno");
+  $("#main").innerHTML = `<section class="painel vidro vidro-borda-viva"><div class="cab">${A.orbe("retorno", "#fb923c")}<div><h2>Retorno · carga ${c.numero}</h2><p>${esc(c.placa || "")} · ${esc(c.motorista || "")} · ${dBR(c.data)}</p></div>
+      <div class="dir">${etq(c.status)}<button type="button" class="btn v p" id="voltar">${svg("voltar")}Cargas</button></div></div>
+    ${c.retorno.fim ? `<div class="aviso ok">Retorno concluído por <b>${esc(c.retorno.fim.por)}</b> em ${dhBR(c.retorno.fim.em)}.</div>` : ""}
+    <div class="prog"><i style="width:${its.length ? Math.round((its.length - pend.length) / its.length * 100) : 0}%"></i></div>
+    <p class="sub" style="margin:0 0 12px"><b style="color:var(--txt)">${its.length - pend.length} de ${its.length}</b> peça(s) tratada(s)</p>
+    ${Object.entries(grupos).map(([pid, xs]) => `<div class="ped"><div class="t1">${A.orbe("pedido", "#fb923c")}<span><b>Pedido #${xs[0].numero} · ${esc(xs[0].cliente || "")}</b></span></div>
+      ${xs.map((x) => { const [r, col] = ORIG[x.origem] || [x.origem, "#94a3b8"]; const feito = x.recebido || x.nao_voltou;
+        return `<div class="un ${feito ? "ok" : ""}"><span class="ck">${x.recebido ? "✓" : x.nao_voltou ? "✕" : ""}</span><span style="min-width:0"><b>${esc(x.desc)}</b> <span class="mini c" style="--c:${col}">${esc(r)}</span>
+          <span class="sub">${esc(x.sku || "")}${x.motivo ? " · " + esc(x.motivo) : ""}${x.recebido ? ` · recebida ${esc(S.estados[x.recebido.estado] || "")} por ${esc(x.recebido.por)} ${dhBR(x.recebido.em)}${x.recebido.obs ? " · " + esc(x.recebido.obs) : ""}` : ""}${x.nao_voltou ? ` · NÃO voltou: ${esc(x.nao_voltou.obs)}` : ""}</span></span>
+          <span class="acts">${podeR && !feito ? `<button type="button" class="btn p" data-rec="${x.id}|ok">${svg("check")}Recebida OK</button><button type="button" class="btn v p" data-rec="${x.id}|avariada">Avariada</button><button type="button" class="btn perigo p" data-nv="${x.id}">Não voltou</button>` : ""}</span></div>`; }).join("")}</div>`).join("")
+      || `<div class="vazio">${A.orbe("check", "#34d399")}<b>Nada voltou nesta carga até agora</b>Quando o motorista registrar ausente, avaria, recusa ou recolha, as peças aparecem aqui.</div>`}
+    ${podeR && its.length && !c.retorno.fim && c.erp_status !== "montando" ? `<button type="button" class="btn" id="btConcluir" style="margin-top:8px"${pend.length ? " disabled" : ""}>${svg("check")}Concluir o retorno${pend.length ? ` (faltam ${pend.length})` : ""}</button>` : ""}
+    <p class="sub" style="margin-top:10px">O estoque já foi movido na baixa do ERP (ausente volta reservado; avaria, recusa e recolha vão para a triagem do ERP, que decide o destino). Aqui é a conferência física de que a peça chegou.</p></section>`;
+  $("#voltar").onclick = () => { V.cid = null; S.carga = null; carregar(); };
+  $$("[data-rec]").forEach((b) => (b.onclick = () => { const [id, est] = b.dataset.rec.split("|");
+    A.modal({ titulo: est === "ok" ? "Peça recebida — OK" : "Peça recebida — avariada", icone: "retorno", cor: est === "ok" ? "#34d399" : "#fb7185", largura: 440,
+      html: `<label class="campo">Observação${est === "avariada" ? " (o que está avariado)" : " (opcional)"}<input id="rObs" autofocus></label>`,
+      botoes: [{ rotulo: "Cancelar" }, { rotulo: "Confirmar", classe: "btn", icone: "check", acao: async () => { try { S.carga = await api(`/cargas/${c.id}/retorno/receber`, { method: "POST", body: { item_id: id, estado: est, obs: $("#rObs").value } }); render(); } catch (e) { falha(e); return false; } } }] }); }));
+  $$("[data-nv]").forEach((b) => (b.onclick = () => A.modal({ titulo: "A peça NÃO voltou", icone: "atencao", cor: "#fb7185", largura: 460,
+    html: `<p class="sub">Vira apontamento para investigar.</p><label class="campo" style="margin-top:8px">O que aconteceu?<input id="nvObs" autofocus></label>`,
+    botoes: [{ rotulo: "Cancelar" }, { rotulo: "Registrar", classe: "btn perigo", acao: async () => { try { S.carga = await api(`/cargas/${c.id}/retorno/nao-voltou`, { method: "POST", body: { item_id: b.dataset.nv, obs: $("#nvObs").value } }); render(); } catch (e) { falha(e); return false; } } }] })));
+  const bc = $("#btConcluir"); if (bc) bc.onclick = async () => { try { S.carga = await api(`/cargas/${c.id}/retorno/concluir`, { method: "POST" }); ok("Retorno concluído."); render(); } catch (e) { falha(e); } };
+}
+
+/* ══════ APONTAMENTOS (divergências, ajuste na carga, refazer) ══════ */
+function rApont() {
+  const abertas = S.cargas.filter((c) => c.erp_status === "montando");
+  $("#main").innerHTML = `<section class="painel vidro vidro-borda-viva"><div class="cab">${A.orbe("atencao", "#fb7185")}<div><h2>Apontamentos</h2><p>Divergência da montagem, da doca ou do retorno. Enquanto houver apontamento aberto, a carga não é liberada.</p></div></div>
+    <div class="lst">${S.pendencias.map((a) => `<div class="card-c" style="--c:#fb7185">${A.orbe("atencao", "#fb7185")}<span style="min-width:0"><b>${{ falta: "FALTA", sobra: "SOBRA", nao_voltou: "NÃO VOLTOU" }[a.tipo] || a.tipo} ${a.qtd}× ${esc(a.desc)}</b>
+      <span class="sub">carga ${a.carga} · ${{ montagem: "montagem do palete", doca: "conferência na doca", retorno: "retorno" }[a.origem] || a.origem}${a.numero ? " · pedido #" + a.numero : ""} · ${esc(a.motivo)}${a.obs ? " — " + esc(a.obs) : ""} · ${esc(a.por)} ${dhBR(a.em)}</span></span>
+      <button type="button" class="btn p" data-res="${a.carga_id}|${a.id}">${svg("check")}Resolver</button></div>`).join("") || `<div class="vazio">${A.orbe("check", "#34d399")}<b>Nenhum apontamento aberto</b></div>`}</div></section>
+    <section class="painel vidro"><div class="cab">${A.orbe("caminhao", "#22d3ee")}<div><h2>Ajuste na carga</h2><p>Retirar ou agrupar um pedido enquanto o armazém trabalha. A etapa em andamento trava até “Ajuste feito no palete”.</p></div></div>
+      <div class="lst">${abertas.map((c) => cardCarga(c, `<span class="mini">ajustar · refazer</span>`)).join("") || `<div class="vazio">Nenhuma carga no armazém.</div>`}</div></section>`;
+  $$("[data-res]").forEach((b) => (b.onclick = () => { const [cid, aid] = b.dataset.res.split("|");
+    A.modal({ titulo: "Resolver apontamento", icone: "check", cor: "#34d399", largura: 460, html: `<label class="campo">Como foi resolvido?<input id="rn" placeholder="ex.: peça localizada e carregada; pedido retirado da carga" autofocus></label>`,
+      botoes: [{ rotulo: "Cancelar" }, { rotulo: "Resolver", classe: "btn", icone: "check", acao: async () => { try { await api(`/cargas/${cid}/pendencias/${aid}`, { method: "PUT", body: { nota: $("#rn").value } }); ok("Apontamento resolvido."); carregar(); } catch (e) { falha(e); return false; } } }] }); }));
+  ligarCards(ajusteCarga);
+}
+async function ajusteCarga(cid) {
+  let c; try { c = await api(`/cargas/${cid}`); } catch (e) { return falha(e); }
+  A.modal({ titulo: `Carga ${c.numero} · ajustar`, icone: "caminhao", cor: "#22d3ee", largura: 640,
+    html: `<label class="campo">Ação<select id="ajT"><option value="retirar">Retirar um pedido da carga</option><option value="agrupar">Agrupar um pedido agendado</option></select></label>
+      <label class="campo" style="margin-top:8px">Pedido<select id="ajP"></select></label><label class="campo" style="margin-top:8px">Motivo<input id="ajM" placeholder="ex.: cliente pediu para adiar; pedido entrou de última hora"></label>
+      <div class="sep" style="margin-top:14px"><h4 class="sub">Refazer etapa (arquiva as leituras e começa de novo)</h4><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${c.montagem ? `<button type="button" class="btn v p" data-ref="montagem">Refazer a montagem</button>` : ""}${c.doca ? `<button type="button" class="btn v p" data-ref="doca">Refazer a doca</button>` : ""}${!c.montagem ? '<span class="sub">Nenhuma etapa começou.</span>' : ""}</div></div>`,
+    aoAbrir: (cx) => {
+      const enche = () => { const t = cx.querySelector("#ajT").value; cx.querySelector("#ajP").innerHTML = (t === "retirar" ? c.pedidos_det.map((p) => [p.id, `#${p.numero} · ${p.cliente}`]) : S.agendados.map((p) => [p.id, `#${p.numero} · ${p.cliente} · entrega ${dBR(p.data)}`])).map(([v, r]) => `<option value="${esc(v)}">${esc(r)}</option>`).join("") || `<option value="">— nenhum —</option>`; };
+      cx.querySelector("#ajT").onchange = enche; enche();
+      cx.querySelectorAll("[data-ref]").forEach((b) => (b.onclick = async () => { const m = prompt("Motivo para refazer " + (b.dataset.ref === "montagem" ? "a montagem (a doca também volta)" : "a doca") + ":"); if (!m) return;
+        try { await api(`/cargas/${cid}/refazer/${b.dataset.ref}`, { method: "POST", body: { motivo: m } }); ok("Etapa reaberta."); cx.querySelector("[data-fechar]").click(); carregar(); } catch (e) { falha(e); } }));
+    },
+    botoes: [{ rotulo: "Fechar" }, { rotulo: "Aplicar ajuste", classe: "btn", icone: "check", acao: async () => {
+      try { const r = await api(`/cargas/${cid}/ajuste`, { method: "POST", body: { tipo: $("#ajT").value, pedido_id: $("#ajP").value, motivo: $("#ajM").value } });
+        ok(r.ajuste.status === "pendente" ? "Ajuste registrado — a etapa fica travada até confirmarem no palete." : "Ajuste registrado."); carregar(); } catch (e) { falha(e); return false; } } }] });
+}
+
+/* ══════ AJUSTES ══════ */
+function rAjustes() {
+  $("#main").innerHTML = `<section class="painel vidro vidro-borda-viva"><div class="cab">${A.orbe("ajustes", "#fb923c")}<div><h2>Ajustes do WLOGISTICA</h2></div></div>
+    <label class="chk"><input type="checkbox" id="cfEx"${S.cfg.exigir ? " checked" : ""}> <b>Exigir a conferência do armazém</b> — a carga só sai (ERP ou app do motorista) depois de LIBERADA aqui</label>
+    <label class="campo" style="margin-top:14px">Motivos de divergência (um por linha)<textarea id="cfMot" rows="7">${esc((S.cfg.motivos_divergencia || []).join("\n"))}</textarea></label>
+    <button type="button" class="btn" id="cfSalvar" style="margin-top:10px">${svg("check")}Salvar</button></section>`;
+  $("#cfSalvar").onclick = async () => { try { const r = await api("/config", { method: "PUT", body: { exigir: $("#cfEx").checked, motivos_divergencia: $("#cfMot").value.split("\n") } }); S.cfg = r.cfg; ok("Ajustes salvos."); } catch (e) { falha(e); } };
+}
+
+$("#btAtualizar").innerHTML = svg("repetir");
+$("#btAtualizar").onclick = () => (V.cid ? abrirCarga(V.cid) : carregar());
+setInterval(() => { if (document.visibilityState !== "visible" || A.modalAberto() || V.cam) return; if (V.cid) { const a = document.activeElement; if (a && a.id === "cod" && a.value) return; api(`/cargas/${V.cid}`).then((c) => { S.carga = c; const foco = document.activeElement?.id === "cod"; render(); if (foco) $("#cod")?.focus(); }).catch(() => {}); } else carregar().catch(() => {}); }, 20000);
+carregar().catch(falha);
+})();
+</script>
+</body>
+</html>

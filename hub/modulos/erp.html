@@ -736,13 +736,20 @@ function cardCarga(c) {
   return `<div class="carga luz" style="--c:${cor}">
     <div class="t1">${A.orbe("caminhao", cor)}<div><b>Carga ${c.numero} · ${dBR(c.data)}</b><span class="sub">${esc(parc(c.veiculo_id)?.nome || "sem veículo")} · ${esc(parc(c.motorista_id)?.nome || "sem motorista")}${c.ajudante ? " + " + esc(c.ajudante) : ""}</span></div>
       <span class="etq" style="--c:${cor}">${{ montando: "Montando", em_rota: "Em rota", finalizada: "Finalizada" }[c.status]}</span></div>
-    <div><span class="mini">${c.pedidos.length} parada(s)</span>${c.status === "montando" ? `<span class="mini">${vol} vol.</span>` : ""}${c.status !== "montando" ? Object.entries(RES).map(([k, [r, col]]) => { const n = res.filter((x) => x === k).length; return n ? `<span class="mini c" style="--c:${col}">${n} ${r.toLowerCase()}</span>` : ""; }).join("") + (c.status === "em_rota" ? `<span class="mini">${c.pedidos.length - res.length} sem baixa</span>` : "") : ""}</div>
+    <div><span class="mini">${c.pedidos.length} parada(s)</span>${c.status === "montando" ? `<span class="mini">${vol} vol.</span>${wlogTag(c)}` : ""}${c.status !== "montando" ? Object.entries(RES).map(([k, [r, col]]) => { const n = res.filter((x) => x === k).length; return n ? `<span class="mini c" style="--c:${col}">${n} ${r.toLowerCase()}</span>` : ""; }).join("") + (c.status === "em_rota" ? `<span class="mini">${c.pedidos.length - res.length} sem baixa</span>` : "") : ""}</div>
     ${c.pedidos.map((pid, i) => { const p = S.pedidos[pid]; if (!p) return ""; const b = (c.baixas || {})[pid];
       return `<div class="parada"><span class="n">${i + 1}</span><span style="min-width:0;cursor:pointer" data-abrir="${pid}"><b>#${p.numero} ${esc(p.cliente_nome)}</b><span class="sub">${esc(bairro(p))}</span></span>
         ${b ? `<span class="etq" style="--c:${RES[b][1]}">${RES[b][0]}</span>` : c.status === "em_rota" && pode("baixa") ? `<span class="bxs linha2">${Object.entries(RES).map(([k, [r, col]]) => `<button type="button" style="--c:${col}" data-bx="${k}" data-c="${c.id}" data-p="${pid}" data-perm="acao:baixa">${r}</button>`).join("")}</span>` : ""}</div>`; }).join("")}
     <div class="chips">${c.status === "montando" && pode("cargas") ? `<button type="button" class="btn v p" data-cedit="${c.id}">${svg("lapis")}Editar</button><button type="button" class="btn perigo p" data-cdel="${c.id}">${svg("lixo")}Desfazer</button><button type="button" class="btn p" data-csair="${c.id}" data-perm="acao:cargas">${svg("caminhao")}Liberar saída</button>` : ""}
       <button type="button" class="btn v p" data-cprint="${c.id}">${svg("impressora")}Romaneio</button></div>
   </div>`;
+}
+// [WLOGISTICA] situação do armazém na carga (montagem do palete → doca → liberada)
+function wlogTag(c) {
+  const w = c.wlog || {}, ab = (w.pendencias || []).some((x) => x.status === "aberta");
+  const st = ab ? ["divergência no armazém", "#fb7185"] : w.doca?.fim ? ["liberada pelo armazém", "#34d399"] : w.doca ? ["em conferência na doca", "#22d3ee"]
+    : w.montagem?.fim ? ["palete montado", "#60a5fa"] : w.montagem ? ["em montagem", "#e8b33d"] : ["aguardando armazém", "#94a3b8"];
+  return `<span class="mini c" style="--c:${st[1]}" title="WLOGISTICA">📦 ${st[0]}</span>`;
 }
 function baixa(cid, pid, res) {
   const p = S.pedidos[pid];
