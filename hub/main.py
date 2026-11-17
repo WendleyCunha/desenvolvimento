@@ -76,6 +76,7 @@ import banco
 import dados
 import passagens
 import erp
+import cargas_plano
 import wlogistica
 import wrouter
 import secretaria
@@ -88,7 +89,7 @@ import cliente_app
 import promocoes
 import agente
 
-VERSAO = "3.16.0"
+VERSAO = "3.17.0"
 
 BASE = Path(__file__).resolve().parent
 PASTA_MODULOS = BASE / "modulos"
@@ -350,6 +351,7 @@ app.include_router(acesso.router)
 app.include_router(dados.router)
 app.include_router(passagens.router)
 app.include_router(erp.router)
+app.include_router(cargas_plano.router)   # ERP · planejamento de cargas (puxar pedidos, sugerir cargas)
 app.include_router(wlogistica.router)   # WLOGISTICA — armazém (montagem, doca, retorno, apontamentos)
 app.include_router(secretaria.router)
 app.include_router(tickets.router)

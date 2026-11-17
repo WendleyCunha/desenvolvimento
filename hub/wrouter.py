@@ -176,6 +176,8 @@ def na_rua(car: dict) -> bool:
 def liberada_para_app(car: dict) -> bool:
     if car.get("status") != "montando" or not car.get("pedidos"):
         return False
+    if E.exigir_faturamento() and not E.faturada(car):
+        return False
     if not E.exigir_wlog():
         return True
     import wlogistica
@@ -286,7 +288,10 @@ def _geo_trabalhar():
 
 def pedir_geo(cid: str, car: dict):
     geo = (car.get("rota") or {}).get("geo") or {}
+    import cargas_plano
     for pid in car.get("pedidos") or []:
+        if cargas_plano.geo_do_pedido(E.ST.dados["pedidos"].get(pid) or {}):
+            continue     # já localizado no planejamento de cargas
         if pid not in geo and (cid, pid) not in GEO_FILA:
             GEO_FILA.append((cid, pid))
     if GEO_FILA and not GEO_ESTADO["rodando"] and os.environ.get("WROUTER_GEO", "1") != "0":
@@ -296,6 +301,9 @@ def pedir_geo(cid: str, car: dict):
 
 def destino(car: dict, pid: str) -> dict | None:
     g = ((car.get("rota") or {}).get("geo") or {}).get(pid) or {}
+    if g.get("lat") is None:     # o planejamento de cargas já pode ter localizado o pedido
+        import cargas_plano
+        g = cargas_plano.geo_do_pedido(E.ST.dados["pedidos"].get(pid) or {}) or {}
     return {"lat": g["lat"], "lng": g["lng"], "fonte": g.get("fonte")} if g.get("lat") is not None else None
 
 

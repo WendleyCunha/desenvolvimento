@@ -16,3 +16,12 @@ Permissões em Configurações → Usuários: **WLOGISTICA** (montagem, doca, re
 Render (opcional): `WROUTER_SENHA_INICIAL`, `HUB_URL_PUBLICA` (endereço público para os links), `WROUTER_GEO=0` desliga a busca de coordenadas (OpenStreetMap/BrasilAPI, grátis).
 
 Testes: `pytest tests` (test_pedido_pdf, test_wlogistica, test_wrouter).
+
+## Planejamento de cargas (ERP › Cargas) — etapa 5
+- **Pedidos para carga**: por padrão os agendados para amanhã; filtros de data, janela, bairro/cidade/CEP/cliente e "incluir sem agenda" (confirmados ou reagendar com estoque reservado).
+- **Puxar**: pôr na carga um pedido de outro dia ou sem agenda muda a agenda para a data da carga e grava no histórico ("Entrega antecipada de 20/11 para 18/11 (carga 43)"), o que chega ao ticket e ao app do cliente. Mudar a data da carga leva a agenda dos pedidos junto.
+- **Sugerir cargas** (`cargas_plano.py`): a entrega mais urgente é a semente; a carga cresce pelo pedido mais próximo que ainda cabe em paradas · volumes · m³ · kg · raio (km). Limite do veículo > padrão de Ajustes; 0 = não usa. Ordem: do CD, vizinho mais próximo + 2-opt; com janela, manhã → sem janela → tarde. Nada grava até "Criar cargas".
+- **Medidas**: cubagem (m³) e peso (kg) por unidade no cadastro do produto; limites de paradas/m³/kg no cadastro do veículo.
+- **Localização**: OpenStreetMap/BrasilAPI (grátis), em segundo plano, guardada no pedido (`ped.geo`), refeita se o endereço mudar. O WROUTER reaproveita.
+- **Faturamento**: botão Faturar na carga (nº da NF por pedido; a NF-e continua no sistema fiscal). Com "Exigir faturamento" ligado em Ajustes, a carga só sai e só aparece no app do motorista quando todos os pedidos têm NF.
+- Permissões novas no ERP: "Sugerir cargas" (planejar) e "Faturar cargas" (faturar).
