@@ -221,3 +221,22 @@ def test_faixas_de_km_configuraveis(t):
     assert pq.get("/api/wrouter/ao-vivo").json()["km_laranja"] == 3.0
     pq.put("/api/wrouter/cfg", json={"mapa_cliente": False})
     assert TestClient(t).get(f"/api/entrega/{lk}").json()["mapa"] is None, "dá para desligar o mapa do cliente"
+
+
+def test_cadastro_de_motoristas_e_veiculos_no_wrouter(t):
+    pq = TestClient(t)
+    r = pq.post("/api/wrouter/cadastros", json={"tipo": "veiculo", "placa": "kst-2e45", "nome": "Caminhão 3/4", "capacidade": "40", "max_m3": 18})
+    assert r.status_code == 200, r.text
+    vid = r.json()["id"]
+    v = E.ST.dados["parceiros"][vid]
+    assert v["placa"] == "KST2E45" and v["capacidade"] == 40 and v["max_m3"] == 18 and v["tipo"] == "veiculo"
+    assert pq.post("/api/wrouter/cadastros", json={"tipo": "veiculo", "placa": "KST 2E45"}).status_code == 409, "placa repetida"
+    assert pq.post("/api/wrouter/cadastros", json={"tipo": "veiculo", "placa": "AB1"}).status_code == 400, "placa obrigatória"
+    assert pq.post("/api/wrouter/cadastros", json={"tipo": "cliente", "nome": "X"}).status_code == 400, "cliente fica no ERP"
+    mid = pq.post("/api/wrouter/cadastros", json={"tipo": "motorista", "nome": "Rogério", "telefone": "11 9999"}).json()["id"]
+    assert pq.put(f"/api/wrouter/cadastros/{mid}", json={"ativo": False, "tipo": "veiculo"}).json()["cadastro"]["tipo"] == "motorista", "não troca o tipo"
+    d = pq.get("/api/wrouter/motoristas").json()
+    assert any(x["id"] == vid and x["capacidade"] == 40 for x in d["veiculos"]) and any(x["id"] == mid and x["ativo"] is False for x in d["motoristas"])
+    r = pq.post("/api/erp/cargas", json={"pedidos": ["ped1"], "veiculo_id": vid, "motorista_id": "m1", "data": E.hoje()})
+    assert r.status_code == 200, "a montagem da carga no ERP usa o veículo cadastrado no WROUTER"
+    assert "KST2E45" in R.placas_cadastradas(), "e a placa já serve de login do app"
