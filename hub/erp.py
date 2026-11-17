@@ -731,6 +731,31 @@ def _novo_pedido(tx: Tx, u: dict, p: dict, c: dict, em: str | None = None) -> di
     return ped
 
 
+def pdf_do_pedido(ped: dict, ver_preco: bool = True, ver_contato: bool = True, palavra: str = "", por: str = "") -> bytes:
+    import pedido_pdf
+    return pedido_pdf.gerar(ped, ST.dados["produtos"], ST.dados["parceiros"].get(ped.get("cliente_id") or ""), ST.config.get("empresa") or "",
+                            ver_preco=ver_preco, ver_contato=ver_contato, palavra=palavra, emitido_por=por, emitido_em=agora())
+
+
+@router.get("/pedidos/{pid}/pdf")
+def baixar_pdf_pedido(pid: str, request: Request):
+    """PDF do pedido. A palavra-chave entra só para quem tem a permissão do Atendimento "Ver a palavra-chave"."""
+    u, p = _ctx(request)
+    with ST.trava:
+        ped = ST.dados["pedidos"].get(pid)
+        if not ped:
+            raise HTTPException(404, "Pedido não encontrado.")
+        try:
+            import tickets
+            ver = tickets.ver_palavra(u)
+        except Exception:  # noqa: BLE001
+            ver = False
+        pdf = pdf_do_pedido(ped, ver_preco=p["campos"].get("preco", "editar") != "oculto", ver_contato=p["campos"].get("contato", "editar") != "oculto",
+                            palavra=(ped.get("palavra_chave") or "") if ver and ped.get("status") not in ("cancelado", "recusado") else "",
+                            por=u.get("nome") or u.get("login") or "")
+    return Response(pdf, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="pedido_{ped.get("numero")}.pdf"'})
+
+
 @router.put("/pedidos/{pid}")
 async def alterar_pedido(pid: str, request: Request):
     """Altera itens/cliente/endereço/obs. Antes da rota a reserva é refeita

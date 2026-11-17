@@ -588,7 +588,8 @@ function telaPedido(m, id) {
     <p class="nota">Pedido feito em ${dataBR(p.criado_em)}/${String(p.criado_em).slice(0, 4)}</p>
     <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
       <button class="btn grande" id="falar">${ICO.chat} Falar sobre este pedido</button>
-      <button class="btn v grande" id="chamado">${ICO.lista} Abrir chamado deste pedido</button></div>`;
+      <button class="btn v grande" id="chamado">${ICO.lista} Abrir chamado deste pedido</button>
+      <a class="btn v grande" href="/api/cliente/pedido/${encodeURIComponent(p.id)}/pdf" target="_blank" rel="noopener" style="text-align:center;text-decoration:none">⬇ Baixar o PDF do pedido</a></div>`;
   $("#falar").onclick = () => { S.rascunho = `Sobre o pedido #${p.numero}: `; if (!S.eu.chat && !S.assunto) S.assunto = (S.eu.ura.find((u) => u.id === "entrega") || S.eu.ura[0]).id; ir("atendimento"); setTimeout(() => $("#txt")?.focus(), 80); };
   $("#chamado").onclick = () => ir("chamados", { tela: "novo", pedido: p.id });
 }
