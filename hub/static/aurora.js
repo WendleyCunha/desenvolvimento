@@ -239,7 +239,8 @@
   }
   function modal({ titulo = "", icone = "", cor = "", html = "", largura = 560, botoes = [], esquerda = [], aoAbrir, aoFechar } = {}) {
     const fundoEl = document.createElement("div");
-    fundoEl.className = "aur-modal-fundo";
+    // popups ocupam a tela inteira; só as confirmações curtas (A.confirmar, ≤ 460 px) continuam como caixinha
+    fundoEl.className = "aur-modal-fundo" + (largura > 460 ? " cheia" : "");
     const bt = (b, i, lado) => `<button type="button" class="${b.classe || "btn v"}" data-b="${lado}${i}">${b.icone ? svg(b.icone) : ""}${esc(b.rotulo)}</button>`;
     fundoEl.innerHTML = `<div class="aur-modal vidro vidro-borda-viva" role="dialog" aria-modal="true" aria-label="${esc(titulo)}" style="--larg:${largura}px">
       <div class="aur-modal-cab">${icone ? orbe(icone, cor) : ""}<h3>${esc(titulo)}</h3><button type="button" class="btn-ic" data-fechar aria-label="Fechar">${svg("fechar")}</button></div>

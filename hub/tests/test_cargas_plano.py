@@ -140,3 +140,15 @@ def test_campos_produto_e_veiculo(t):
     r = t.put("/api/erp/parceiros/v1", json={"max_m3": "9.5", "max_kg": 1500, "max_pontos": "10"})
     v = E.ST.dados["parceiros"]["v1"]
     assert r.status_code == 200 and (v["max_m3"], v["max_kg"], v["max_pontos"]) == (9.5, 1500, 10)
+
+
+def test_preco_vem_do_cadastro(t):
+    E.ST.dados["produtos"]["p1"]["preco"] = 1999.9
+    r = t.post("/api/erp/pedidos", json={"cliente_id": "c1", "itens": [{"produto_id": "p1", "qtd": 2, "preco": 1}], "confirmar": False})
+    assert r.status_code == 200, r.text
+    ped = next(p for p in E.ST.dados["pedidos"].values() if p.get("numero") == 11)
+    assert ped["itens"][0]["preco"] == 1999.9 and ped["valor_total"] == 3999.8, "o preço digitado é ignorado: vale o do cadastro"
+    E.ST.dados["produtos"]["p1"]["preco"] = 2500
+    pid = next(k for k, p in E.ST.dados["pedidos"].items() if p.get("numero") == 11)
+    t.put(f"/api/erp/pedidos/{pid}", json={"itens": [{"produto_id": "p1", "qtd": 3, "preco": 5}]})
+    assert E.ST.dados["pedidos"][pid]["itens"][0]["preco"] == 1999.9, "item que já estava mantém o preço da venda"

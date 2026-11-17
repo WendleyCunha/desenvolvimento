@@ -614,7 +614,9 @@ def _itens_validos(tx: Tx, itens, com_preco=True) -> list[dict]:
         else:
             out[pid] = {"produto_id": pid, "qtd": q}
             if com_preco:
-                out[pid]["preco"] = round(_num(it.get("preco"), _num(prod.get("preco"))), 2)
+                # o preço do item é SEMPRE o do cadastro do produto (não se digita preço no pedido);
+                # ajuste de valor só por frete/desconto, com a permissão de preços
+                out[pid]["preco"] = round(_num(prod.get("preco")), 2)
     return list(out.values())
 
 
@@ -718,10 +720,7 @@ def _novo_pedido(tx: Tx, u: dict, p: dict, c: dict, em: str | None = None) -> di
     _dados_cliente(tx, ped, c)
     ped["itens"] = _itens_validos(tx, c.get("itens"), com_preco=True)
     ped["recolher"] = _itens_validos(tx, c.get("recolher"), com_preco=False) if tipo == "troca" else []
-    if not _pode_editar_campo(p, "preco"):
-        for i in ped["itens"]:
-            i["preco"] = round(_num((tx.get("produtos", i["produto_id"]) or {}).get("preco")), 2)
-    else:
+    if _pode_editar_campo(p, "preco"):
         ped["frete"] = round(max(_num(c.get("frete")), 0), 2)
         ped["desconto"] = round(max(_num(c.get("desconto")), 0), 2)
     if not ped["itens"] and not ped["recolher"]:
@@ -794,10 +793,10 @@ async def alterar_pedido(pid: str, request: Request):
             _liberar(tx, ped, "alteração do pedido")
             if "itens" in c:
                 novos = _itens_validos(tx, c.get("itens"))
-                if not _pode_editar_campo(p, "preco"):
-                    antigos = {i["produto_id"]: i.get("preco") for i in ped["itens"]}
-                    for i in novos:
-                        i["preco"] = antigos.get(i["produto_id"], round(_num((tx.get("produtos", i["produto_id"]) or {}).get("preco")), 2))
+                antigos = {i["produto_id"]: i.get("preco") for i in ped["itens"]}   # item que já estava mantém o preço da venda
+                for i in novos:
+                    if antigos.get(i["produto_id"]) is not None:
+                        i["preco"] = antigos[i["produto_id"]]
                 ped["itens"] = novos
                 ped["pendentes"] = [{"produto_id": i["produto_id"], "qtd": i["qtd"]} for i in novos]
             if "recolher" in c and ped["tipo"] == "troca":
