@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Atendimento</title>
+<title>CX</title>
 <meta name="hub-icone" content="mensagem">
 <meta name="hub-cor" content="#e8b33d">
 <meta name="hub-grupo" content="Operação">
 <meta name="hub-ordem" content="2">
-<meta name="hub-descricao" content="Atendimento do HUB: caixa, atendimento, tabulação com SLA, pendências entre setores e os pedidos do ERP no mesmo lugar.">
+<meta name="hub-descricao" content="CX do HUB (atendimento ao cliente): caixa, atendimento, tabulação com SLA, pendências entre setores e os pedidos do ERP no mesmo lugar.">
 <script type="application/json" id="hub-permissoes">
 {
   "acoes": {
@@ -317,7 +317,7 @@ button.kpi:hover{border-color:color-mix(in srgb,var(--c) 50%,transparent)}
 <div class="app">
   <div class="congelado" id="congelado">
   <header class="topo vidro vidro-borda-viva">
-    <div class="marca"><span id="logo"></span><span><b>Atendimento</b><small>HUB</small></span></div>
+    <div class="marca"><span id="logo"></span><span><b>CX</b><small>HUB</small></span></div>
     <nav class="nav" id="nav"></nav>
     <form class="busca-topo" id="fBusca"><input class="entrada" id="qTopo" placeholder="Nº, cliente, pedido…"><button class="btn-ic" type="submit" title="Buscar" id="btBusca"></button></form>
     <button type="button" class="btn-ic oculto" id="btPalavra" title="Palavra-chave dos pedidos (app do cliente)"></button>
@@ -506,7 +506,7 @@ function novoEstado(e) {
     if (chegaram.length) { try { A.som && A.som(); } catch (_) {} }
   }
   const n = cs.filter((c) => c.app_pendente && vivo(c)).length;
-  document.title = (n ? `(${n}) ` : "") + "Atendimento";
+  document.title = (n ? `(${n}) ` : "") + "CX";
 }
 /* abre o CLIENTE (aceita o id de uma solicitação "cliente#sid": abre o cliente com ela selecionada) */
 function abrirTicket(id) {

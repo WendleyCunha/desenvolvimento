@@ -584,7 +584,7 @@ function abrirPedido(id) {
       </table></div>${vis("preco") ? `<div class="totais">${p.frete ? `<span>Frete ${brl(p.frete)}</span>` : ""}${p.desconto ? `<span>Desconto ${brl(p.desconto)}</span>` : ""}<span>Total <b>${brl(p.valor_total)}</b></span></div>` : ""}</div>
       ${(p.tentativas || []).length ? `<div class="sep"><h4>Tentativas de entrega</h4>${p.tentativas.map((t) => `<div class="tent"><span class="etq" style="--c:${RES[t.resultado][1]}">${t.n}ª · ${RES[t.resultado][0]}</span>
         <span>${dBR(t.data)} · carga ${t.carga} · ${esc(parc(t.motorista_id)?.nome || "—")}${t.motivo ? ` · <b>${esc(t.motivo)}</b>` : ""}${t.recebedor ? ` · recebido por ${esc(t.recebedor)}` : ""}${(t.avariados || []).length ? `<span class="sub">Avariado: ${resumoItens(t.avariados, 5)}</span>` : ""}${t.obs ? `<span class="sub">${esc(t.obs)}</span>` : ""}</span></div>`).join("")}</div>` : ""}
-      <div class="sep" id="tkPed"><h4>Atendimentos (Tickets)</h4><div class="sub">carregando…</div></div>
+      <div class="sep" id="tkPed"><h4>Chamados no CX</h4><div class="sub">carregando…</div></div>
       <div class="sep"><h4>Histórico</h4><ul class="linha-tempo">${(p.historico || []).slice().reverse().map((h) => `<li>${esc(h.evento)}<small>${dhBR(h.em)} · @${esc(h.por || "")}</small></li>`).join("")}</ul></div>`,
     aoAbrir: (cx) => ticketsDoPedido(p, cx),
     esquerda: [
@@ -613,7 +613,7 @@ async function ticketsDoPedido(p, cx) {
   if (!d.configurado || d.sem_acesso) { box.remove(); return; }
   const SITU = { aberto: ["Aberto", "#fbbf24"], em_andamento: ["Em andamento", "#60a5fa"], aguardando: ["Aguardando", "#fb923c"], resolvido: ["Resolvido", "#34d399"], finalizado: ["Finalizado", "#a3a3a3"], cancelado: ["Cancelado", "#6b7183"] };
   const abrirMod = (id) => { try { (window.top || window).postMessage({ hub: "abrir", id: "tickets", hash: "t=" + encodeURIComponent(id) }, location.origin); } catch (_) {} };
-  box.innerHTML = `<h4>Atendimentos (Tickets) · ${d.tickets.length}</h4>
+  box.innerHTML = `<h4>Chamados no CX · ${d.tickets.length}</h4>
     ${d.tickets.length ? d.tickets.map((t) => `<div class="tent" style="cursor:pointer" data-tk="${esc(t.id)}"><span class="etq" style="--c:${(SITU[t.status] || ["", "#888"])[1]}">${(SITU[t.status] || [t.status])[0]}</span>
       <span>${esc(t.assunto || "")}<span class="sub">${esc(t.motivo_pai || "")}${t.motivo_filho ? " › " + esc(t.motivo_filho) : ""} · ${esc(String(t.criado_em || "").slice(0, 16))}${t.atribuido_para ? " · com " + esc(t.atribuido_para) : " · sem dono"}</span></span></div>`).join("") : `<div class="sub">Nenhum atendimento ligado a este pedido ou cliente.</div>`}
     ${d.pode_abrir ? `<button type="button" class="btn v p" id="tkAbrir" style="margin-top:8px">${svg("mais")} Abrir ticket deste pedido</button>` : ""}`;

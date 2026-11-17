@@ -81,7 +81,6 @@ import wlogistica
 import wrouter
 import secretaria
 import tickets
-import pqi_ponte
 import web_proxy
 import atelier
 import relatorios_publico
@@ -89,7 +88,7 @@ import cliente_app
 import promocoes
 import agente
 
-VERSAO = "3.17.0"
+VERSAO = "3.17.1"
 
 BASE = Path(__file__).resolve().parent
 PASTA_MODULOS = BASE / "modulos"
@@ -356,7 +355,6 @@ app.include_router(wlogistica.router)   # WLOGISTICA — armazém (montagem, doc
 app.include_router(secretaria.router)
 app.include_router(tickets.router)
 app.include_router(promocoes.router)
-app.include_router(pqi_ponte.router)
 app.include_router(web_proxy.router)
 app.include_router(atelier.router)
 app.include_router(relatorios_publico.router)
