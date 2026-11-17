@@ -963,6 +963,8 @@ async def editar_carga(cid: str, request: Request):
                     continue
                 car[k] = str(c[k] or "")
         car["id"] = cid
+        if "pedidos" in c and sorted(c["pedidos"] or []) != sorted(car.get("pedidos") or []):
+            _travada_no_armazem(car)
         if "pedidos" in c:
             _definir_pedidos_carga(tx, u, cid, car, c["pedidos"])
         else:
@@ -985,6 +987,7 @@ def excluir_carga(cid: str, request: Request):
             raise HTTPException(404, "Carga não encontrada.")
         if car["status"] != "montando":
             raise HTTPException(409, "Só cargas que ainda não saíram podem ser desfeitas.")
+        _travada_no_armazem(car)
         car["id"] = cid
         _definir_pedidos_carga(tx, u, cid, car, [])
         tx.put("cargas", cid, None)
@@ -992,11 +995,27 @@ def excluir_carga(cid: str, request: Request):
         return {"ok": True, **_parcial(p, tx)}
 
 
+def _travada_no_armazem(car: dict):
+    """[WLOGISTICA] Depois que a montagem do palete começou, os pedidos da carga só mudam pelo ajuste do WLOGISTICA."""
+    w = car.get("wlog") or {}
+    if w.get("montagem") or w.get("doca"):
+        raise HTTPException(409, "O armazém (WLOGISTICA) já está montando esta carga — retire ou agrupe pedidos pelo WLOGISTICA (Ajuste na carga).")
+
+
+def exigir_wlog() -> bool:
+    return (ST.config.get("wlog") or {}).get("exigir", True) is not False
+
+
 @router.post("/cargas/{cid}/sair")
 async def sair_carga(cid: str, request: Request):
     u, p = _ctx(request, "cargas", "liberar cargas")
     with ST.trava:
         tx = Tx(u)
+        car = tx.get("cargas", cid)
+        if car and exigir_wlog():
+            import wlogistica
+            if not wlogistica.liberada(car):
+                raise HTTPException(409, "A carga ainda não foi LIBERADA pelo armazém (WLOGISTICA): falta a montagem do palete e a conferência na doca.")
         _sair(tx, u, cid)
         tx.commit()
         return {"ok": True, **_parcial(p, tx)}
@@ -1114,6 +1133,7 @@ def _baixa(tx: Tx, u: dict, cid: str, c: dict, em=None):
         ped["status"] = "recusado"
         ped["pendentes"] = []
         ped["pendencia"] = ""
+    _esperar_no_cd(tx, car, pid, ped, res, pend, avariados, motivo)
     tent = {"n": len(ped.get("tentativas", [])) + 1, "data": car["data"], "carga_id": cid, "carga": car["numero"],
             "motorista_id": car.get("motorista_id", ""), "resultado": res, "motivo": motivo,
             "avariados": [{"produto_id": k, "qtd": v} for k, v in avariados.items()],
@@ -1131,6 +1151,20 @@ def _baixa(tx: Tx, u: dict, cid: str, c: dict, em=None):
         car["fechada_em"] = em or agora()
     car["atualizado_em"] = em or agora()
     tx.put("cargas", cid, {k: v for k, v in car.items() if k != "id"})
+
+
+def _esperar_no_cd(tx: Tx, car: dict, pid: str, ped: dict, res: str, pend: dict, avariados: dict, motivo: str):
+    """[WLOGISTICA] O que volta para o CD nesta baixa vira peça a RECEBER no Retorno do armazém."""
+    try:
+        import wlogistica as W
+    except Exception:  # noqa: BLE001
+        return
+    if res in ("ausente", "recusado"):
+        W.esperar_retorno(tx, car, pid, ped, [{"produto_id": k, "qtd": v} for k, v in pend.items()], res, motivo)
+    elif res == "avaria":
+        W.esperar_retorno(tx, car, pid, ped, [{"produto_id": k, "qtd": v} for k, v in avariados.items()], "avaria", motivo)
+    if res in ("entregue", "avaria") and ped.get("recolher"):
+        W.esperar_retorno(tx, car, pid, ped, ped["recolher"], "recolha", ped.get("motivo_troca") or "troca")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
