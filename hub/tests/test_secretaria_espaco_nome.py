@@ -55,3 +55,28 @@ def test_renomear_guarda_a_ficha_antiga(hub, monkeypatch):
     T.DB[(secretaria.COL_REL, "r2")] = {"nome": "Ana Exemplo", "mes_referencia": "Setembro 2026", "participou_ministerio": True}
     secretaria.BASE.atualizar(forcar=True)
     assert [ln["membro_id"] for ln in secretaria.BASE.linhas() if ln["id"] == "r2"] == ["Ana Exemplo Souza"]
+
+
+def test_selo_ficha_completa_e_excluir(hub):
+    import secretaria
+    assert secretaria.campos_faltando({"nome_oficial": "X", "categoria": "PUBLICADOR", "grupo": "g1", "genero": "Feminino", "classe": "Outras ovelhas",
+                                       "data_nascimento": "01/02/1990", "data_batismo": "NB", "telefone_emergencia": "Ana, filha 11 99999-0000"}) == []
+    assert secretaria.campos_faltando({"nome_oficial": "X", "categoria": "PUBLICADOR", "data_batismo": "26/12/1071"}) == [
+        "Grupo de campo", "Gênero", "Classe", "Data de nascimento", "Data de batismo", "Telefone de emergência"]
+    T.DB[(secretaria.COL_MEMBROS, "Bia Completa")] = {"nome_oficial": "Bia Completa", "categoria": "PUBLICADOR", "grupo": "g1", "genero": "Feminino",
+                                                     "classe": "Outras ovelhas", "data_nascimento": "01/02/1990", "data_batismo": "03/04/2005",
+                                                     "telefone_emergencia": "Carlos, irmão 11 98888-7777 / Ana, mãe 11 97777-6666"}
+    T.DB[(secretaria.COL_MEMBROS, "Rui Incompleto")] = {"nome_oficial": "Rui Incompleto", "categoria": "PUBLICADOR"}
+    chefe = entrar(hub(), "chefe", "senha-forte")
+    secretaria.BASE.membros = None
+    ms = {m["id"]: m for m in chefe.get("/api/secretaria/base").json()["membros"]}
+    assert ms["Bia Completa"]["completo"] is True and ms["Rui Incompleto"]["completo"] is False and "Gênero" in ms["Rui Incompleto"]["faltando"]
+    assert chefe.get("/api/secretaria/membro/Bia Completa").json()["membro"]["completo"] is True
+    longo = "Carlos, irmão 11 98888-7777 / Ana, mãe 11 97777-6666 / trabalho 11 3333-4444"
+    chefe.put("/api/secretaria/membros/Rui Incompleto", json={"telefone_emergencia": longo})
+    assert T.DB[(secretaria.COL_MEMBROS, "Rui Incompleto")]["telefone_emergencia"] == longo          # não corta em 40
+    assert chefe.delete("/api/secretaria/membros/Rui Incompleto").status_code == 200
+    assert "excluido_em" in T.DB[(secretaria.COL_MEMBROS, "Rui Incompleto")]                          # guardada, não apagada
+    secretaria.BASE.membros = None
+    assert "Rui Incompleto" not in {m["id"] for m in chefe.get("/api/secretaria/base").json()["membros"]}
+    assert chefe.post("/api/secretaria/membros", json={"nome_oficial": "Rui Incompleto"}).status_code == 409
