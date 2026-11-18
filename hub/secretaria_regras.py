@@ -31,6 +31,14 @@ ATIVO / INATIVO (definição do S-1/S-10):
     inativo_desde do membro). A partir de X, a participação ANTERIOR a X deixa
     de contar — a pessoa fica inativa até voltar a participar (aí é reativada).
 
+SITUAÇÃO MARCADA À MÃO (status_manual = {"tipo", "desde"}) — o que o secretário vê:
+  • "sem_relatorio": tirado da lista de pendências; fica na aba Sem relatório.
+  • "inativo": também grava inativo_desde (vale para o S-1/S-10); some das pendências.
+  • "ativo": ativado de novo — volta para as pendências, aguardando relatório.
+  Se a pessoa entregar um relatório (com participação) a partir do mês marcado,
+  a marca deixa de valer e volta a regra normal. "Saiu" usa saiu_em (aba Saíram).
+  A contagem oficial de ativos do S-1/S-10 continua pela regra dos 6 meses.
+
 PIONEIRO REGULAR: meta anual de horas (padrão 600) — totais_ano() diz se atingiu.
 """
 from __future__ import annotations
@@ -381,6 +389,24 @@ def situacao(membro: dict, part: set[str], ch: str) -> str:
     return "sem_relatorio"
 
 
+def marca_manual(membro: dict, part: set[str], ch: str) -> str | None:
+    """Tipo da situação marcada à mão que ainda vale em ch (None = segue a regra normal)."""
+    sm = membro.get("status_manual") or {}
+    tipo, desde = sm.get("tipo"), sm.get("desde")
+    if tipo not in ("ativo", "inativo", "sem_relatorio") or not chave_valida(desde) or distancia(desde, ch) < 0:
+        return None
+    if any(distancia(desde, c) >= 0 and distancia(c, ch) >= 0 for c in part):
+        return None   # entregou com participação depois da marca → vale a regra normal
+    return tipo
+
+
+def situacao_tela(membro: dict, part: set[str], ch: str) -> str:
+    """Situação para as abas de Membros: a regra do S-1 + o que o secretário marcou à mão."""
+    if not no_quadro(membro, ch):
+        return "fora"
+    return marca_manual(membro, part, ch) or situacao(membro, part, ch)
+
+
 def eventos(membro: dict, part: set[str], meses: list[str]) -> list[dict]:
     """Viradas de situação dentro dos meses pedidos."""
     saida = []
@@ -451,19 +477,21 @@ def s1(ch: str, linhas: list[dict], membros: dict[str, dict], media_fim_semana=0
 
 
 def pendencias(ch: str, linhas: list[dict], membros: dict[str, dict], part=None) -> dict:
-    """Quem ainda não entregou no mês: ativos/novos (cobrar) e inativos (separado)."""
+    """Quem ainda não entregou no mês: ativos/novos (cobrar), inativos e tirados da lista (sem relatório)."""
     part = part if part is not None else participacoes(linhas)
     entregaram = {ln["membro_id"] for ln in validas(linhas) if ln["chave"] == ch}
-    cobrar, inativos = [], []
+    grupos: dict[str, list] = {"cobrar": [], "inativos": [], "sem_relatorio": []}
     for mid, m in membros.items():
         if mid in entregaram or not no_quadro(m, ch):
             continue
-        st = situacao(m, part.get(mid, set()), somar(ch, -1))
+        p = part.get(mid, set())
+        mk = marca_manual(m, p, ch)
+        st = mk or ("inativo" if situacao(m, p, somar(ch, -1)) == "inativo" else "cobrar")
         item = {"membro_id": mid, "nome": m.get("nome_oficial") or mid, "grupo": m.get("grupo", ""),
-                "regular": eh_regular(m), "ultimo": ultimo_mes_com_participacao(part.get(mid, set()), somar(ch, -1))}
-        (inativos if st == "inativo" else cobrar).append(item)
+                "regular": eh_regular(m), "ultimo": ultimo_mes_com_participacao(p, somar(ch, -1))}
+        grupos[{"inativo": "inativos", "sem_relatorio": "sem_relatorio"}.get(st, "cobrar")].append(item)
     chave_ord = lambda x: normalizar(x["nome"])  # noqa: E731
-    return {"cobrar": sorted(cobrar, key=chave_ord), "inativos": sorted(inativos, key=chave_ord)}
+    return {k: sorted(v, key=chave_ord) for k, v in grupos.items()}
 
 
 def s10(as_: int, linhas: list[dict], membros: dict[str, dict], assist: dict, cfg: dict | None = None,
