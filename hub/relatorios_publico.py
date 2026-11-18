@@ -151,7 +151,26 @@ async def enviar(request: Request):
     }
     ref = banco.db().collection(secretaria.COL_REL).document()
     secretaria.BASE.gravar_rel(ref.id, dados, merge=False)   # grava e já entra no cache do Secretário
-    return {"ok": True, "nome": nome, "mes": R.rotulo(ch), "protocolo": ref.id[:6].upper()}
+    try:   # ficha incompleta? o "obrigado" já pede o que falta (nunca atrapalha o envio)
+        secretaria.BASE.atualizar()
+        completar = secretaria.pedido_publicador(nome, ref.id)
+    except Exception:  # noqa: BLE001
+        completar = None
+    return {"ok": True, "nome": nome, "mes": R.rotulo(ch), "protocolo": ref.id[:6].upper(), "completar": completar}
+
+
+@router.post("/api/relatorios-publico/completar")
+async def completar(request: Request):
+    """Grava os dados que faltavam na ficha (só campos vazios; passe assinado do envio, vale 2 h)."""
+    if not banco.configurado():
+        raise HTTPException(503, "Sistema em manutenção. Tente mais tarde.")
+    try:
+        d = await request.json()
+    except Exception:
+        raise HTTPException(400, "Envio inválido.")
+    _limitar(request)
+    dados = d.get("dados") if isinstance(d.get("dados"), dict) else {}
+    return secretaria.completar_publicador(str(d.get("passe") or ""), dados)
 
 
 # ══════════════════════════════════════════════════════════════════════════════

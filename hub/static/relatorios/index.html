@@ -111,6 +111,20 @@ body{margin:0;background:var(--noite,#f6f1e6);color:var(--txt);font-family:var(-
 .confete i{position:absolute;top:-10px;width:7px;height:12px;border-radius:2px;opacity:.9;animation:cai 2.6s ease-in forwards}
 @keyframes cai{to{transform:translateY(520px) rotate(540deg);opacity:0}}
 
+/* completar a ficha (depois do obrigado) */
+.falta{margin:0 0 16px;padding:16px 14px;border-radius:20px;text-align:left;background:rgba(var(--ouro-rgb),.10);border:1.5px solid rgba(var(--ouro-rgb),.6);animation:borda 1.6s ease-in-out infinite}
+.falta .pede{display:block;text-align:center;font:700 1.02rem/1.35 var(--titulo);color:var(--ouro2);margin:0 0 4px;animation:piscaTx 1.1s ease-in-out infinite}
+.falta .sub{display:block;text-align:center;font-size:.8rem;color:var(--txt2);margin:0 0 12px}
+.falta .campo{margin-bottom:10px}
+.falta .campo input,.falta .campo select{font-size:16px;width:100%}
+.falta .nb{display:inline-flex;align-items:center;gap:7px;font-size:.8rem;color:var(--txt2);margin-top:6px;cursor:pointer}
+.falta .bts{display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:4px}
+.falta.feito{animation:none;border-color:rgba(15,159,110,.55);background:rgba(15,159,110,.08);text-align:center}
+.falta.feito b{color:var(--verde)}
+@keyframes piscaTx{0%,100%{opacity:1}50%{opacity:.25}}
+@keyframes borda{0%,100%{box-shadow:0 0 0 0 rgba(var(--ouro-rgb),.55)}50%{box-shadow:0 0 0 6px rgba(var(--ouro-rgb),0)}}
+@media (prefers-reduced-motion:reduce){.falta,.falta .pede{animation:none}}
+
 /* anúncios */
 .an{border-radius:22px;padding:16px;margin-bottom:12px}
 .an .cab{display:flex;align-items:center;gap:10px;margin-bottom:10px}
@@ -330,6 +344,7 @@ function mostrarOk(r, c) {
       <div><b>${c.horas}</b><span>Horas</span></div>
     </div>
     <div class="prot">${esc(r.nome)} · protocolo ${esc(r.protocolo)} · ${new Date().toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</div>
+    ${r.completar ? `<form class="falta" id="falta" novalidate></form>` : ""}
     <div class="acoes">
       <button type="button" class="btn v" id="okAn">${svg("sino")} Ver anúncios</button>
       <button type="button" class="btn v" id="okVoltar">${svg("voltar")} Voltar ao início</button>
@@ -338,6 +353,44 @@ function mostrarOk(r, c) {
   window.scrollTo({ top: 0, behavior: "smooth" });
   $("#okAn").onclick = () => { voltar(); irPara("an"); };
   $("#okVoltar").onclick = voltar;
+  if (r.completar) pedirFaltando(r.completar, primeiro);
+}
+
+/* Ficha incompleta: pede só o que está vazio e grava direto no cadastro */
+function pedirFaltando(pd, primeiro) {
+  const f = $("#falta"), ph = { data_nascimento: "DD/MM/AAAA", data_batismo: "DD/MM/AAAA", telefone_emergencia: "Nome, parentesco e telefone com DDD" };
+  const campo = (c) => {
+    if (c.opcoes) return `<label class="campo">${esc(c.rotulo)}<select class="entrada" name="${c.campo}"><option value="">Escolha…</option>${c.opcoes.map((o) => `<option value="${esc(o.id)}">${esc(o.nome)}</option>`).join("")}</select></label>`;
+    const data = c.campo.startsWith("data_");
+    return `<label class="campo">${esc(c.rotulo)}<input class="entrada" name="${c.campo}" ${data ? 'inputmode="numeric" maxlength="10"' : 'maxlength="200"'} placeholder="${ph[c.campo] || ""}" autocomplete="off"></label>${c.campo === "data_batismo" ? `<label class="nb"><input type="checkbox" id="fNb"> Não sou batizado(a)</label>` : ""}`;
+  };
+  f.innerHTML = `<span class="pede">${esc(primeiro)}, pode me enviar o dado que está faltando no seu cadastro?</span>
+    <span class="sub">Vai direto para o secretário. Só precisa fazer isso uma vez.</span>
+    ${pd.campos.map(campo).join("")}
+    <div class="erro" id="fErro"></div>
+    <div class="bts"><button type="submit" class="btn p" id="fEnviar">Enviar dados</button><button type="button" class="btn v" id="fDepois">Agora não</button></div>`;
+  f.querySelectorAll('input[name^="data_"]').forEach((i) => (i.oninput = () => {
+    const d = i.value.replace(/\D/g, "").slice(0, 8);
+    i.value = d.length > 4 ? `${d.slice(0, 2)}/${d.slice(2, 4)}/${d.slice(4)}` : d.length > 2 ? `${d.slice(0, 2)}/${d.slice(2)}` : d;
+  }));
+  const nb = $("#fNb"), bat = f.querySelector('[name="data_batismo"]');
+  if (nb) nb.onchange = () => { bat.disabled = nb.checked; if (nb.checked) bat.value = ""; };
+  const err = (t) => { const e = $("#fErro"); e.textContent = t || ""; e.classList.toggle("on", !!t); };
+  $("#fDepois").onclick = () => f.remove();
+  f.onsubmit = async (ev) => {
+    ev.preventDefault(); err("");
+    const dados = {};
+    f.querySelectorAll("[name]").forEach((i) => { if (i.value.trim()) dados[i.name] = i.value.trim(); });
+    if (nb && nb.checked) dados.data_batismo = "NB";
+    for (const k of ["data_nascimento", "data_batismo"]) if (dados[k] && dados[k] !== "NB" && !/^\d{2}\/\d{2}\/\d{4}$/.test(dados[k])) { err("Data no formato DD/MM/AAAA."); return; }
+    if (!Object.keys(dados).length) { err("Preencha pelo menos um dos campos."); return; }
+    const bt = $("#fEnviar"); bt.disabled = true; bt.textContent = "Enviando…";
+    try {
+      const r = await api("/api/relatorios-publico/completar", { method: "POST", body: { passe: pd.passe, dados } });
+      f.classList.add("feito");
+      f.innerHTML = `<b>Obrigado! Seu cadastro foi atualizado ✓</b>${r.faltando && r.faltando.length ? `<span class="sub" style="margin:6px 0 0">Ainda falta: ${r.faltando.map(esc).join(", ")}. Pode enviar no próximo relatório.</span>` : ""}`;
+    } catch (e) { err(e.message); bt.disabled = false; bt.textContent = "Enviar dados"; }
+  };
 }
 function voltar() {
   $("#ok").classList.add("oculto"); $("#form").classList.remove("oculto");
