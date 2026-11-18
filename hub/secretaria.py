@@ -439,7 +439,7 @@ async def lancar(request: Request):
     existente = _ja_tem(mid, ch)
     if existente:
         raise HTTPException(409, f"Já existe relatório de {R.rotulo(ch)} para essa pessoa — edite o que está lá.")
-    obs = str(c.get("observacoes") or "")[:300] if _nivel(p, "observacoes") == "editar" else ""
+    obs = str(c.get("observacoes") or "")[:1000] if _nivel(p, "observacoes") == "editar" else ""
     dados = _dados_rel(mid, ch, c.get("participou", True), _int(c.get("horas", 0), 0, 400),
                        _int(c.get("estudos", 0), 0, 200), obs, u, "hub")
     if c.get("categoria_mes") in R.CATEGORIAS:
@@ -508,7 +508,7 @@ async def editar_relatorio(rid: str, request: Request):
     if "observacoes" in c:
         if _nivel(p, "observacoes") != "editar":
             raise HTTPException(403, "Sem permissão para alterar observações.")
-        novo["observacoes"] = str(c["observacoes"] or "")[:300]
+        novo["observacoes"] = str(c["observacoes"] or "")[:1000]
     if "categoria_mes" in c:
         from google.cloud import firestore
         novo["categoria_mes"] = c["categoria_mes"] if c["categoria_mes"] in R.CATEGORIAS else firestore.DELETE_FIELD
@@ -567,9 +567,10 @@ def _limpar_membro(c: dict, p: dict) -> dict:
             d[campo] = c[campo] if c[campo] in opcoes else ""
     if "cargo" in c:
         d["cargo"] = [x for x in (c["cargo"] or []) if x in CARGOS]
-    for campo in ("grupo", "saiu_motivo"):
-        if campo in c:
-            d[campo] = str(c[campo] or "")[:200]
+    if "grupo" in c:
+        d["grupo"] = str(c["grupo"] or "")[:200]
+    if "saiu_motivo" in c:
+        d["saiu_motivo"] = str(c["saiu_motivo"] or "")[:300]
     if "observacao" in c:
         d["observacao"] = str(c["observacao"] or "")[:1000]
     for campo in ("surdo", "cego", "preso"):
@@ -648,7 +649,7 @@ async def status_membro(mid: str, request: Request):
     ch = c.get("chave") if R.chave_valida(c.get("chave")) else _mes_atual()
     d: dict = {"atualizado_por": u["login"], "atualizado_em": _agora()}
     if tipo == "saiu":
-        d.update(saiu_em=ch, saiu_motivo=str(c.get("motivo") or m.get("saiu_motivo") or "")[:200], status="Inativo")
+        d.update(saiu_em=ch, saiu_motivo=str(c.get("motivo") or m.get("saiu_motivo") or "")[:300], status="Inativo")
     else:
         d.update(status_manual={"tipo": tipo, "desde": ch, "por": u["login"], "em": _agora()},
                  status="Inativo" if tipo == "inativo" else "Ativo")
@@ -719,7 +720,7 @@ async def salvar_reuniao(request: Request):
         reun.pop(rid, None)
     else:
         d = {"data": dia.isoformat(), "tipo": tipo, "assistencia": _int(c["assistencia"], 0, 5000),
-             "obs": str(c.get("obs") or "")[:200], "atualizado_por": u["login"], "atualizado_em": _agora()}
+             "obs": str(c.get("obs") or "")[:500], "atualizado_por": u["login"], "atualizado_em": _agora()}
         col.document(rid).set(d, timeout=banco.TIMEOUT)
         reun[rid] = d
     ch = R.chave(dia.year, dia.month)
@@ -815,7 +816,7 @@ async def salvar_config(request: Request):
         novo["pastas"] = [{"caminho": str(x.get("caminho", ""))[:150], "membros": [str(m) for m in (x.get("membros") or [])][:400]}
                           for x in (c["pastas"] or []) if str(x.get("caminho", "")).strip()][:60]
     if "its" in c:
-        novo["its"] = [{"titulo": str(x.get("titulo", ""))[:150], "ref": str(x.get("ref", ""))[:60], "nota": str(x.get("nota", ""))[:600]}
+        novo["its"] = [{"titulo": str(x.get("titulo", ""))[:150], "ref": str(x.get("ref", ""))[:60], "nota": str(x.get("nota", ""))[:2000]}
                        for x in (c["its"] or []) if str(x.get("titulo", "")).strip()][:120]
     for campo in ("dia_meio", "dia_fim"):   # 0 = segunda … 6 = domingo; -1 = não definido
         if campo in c:
