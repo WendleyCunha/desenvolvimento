@@ -48,11 +48,10 @@ TIPOS = {"aviso": "Aviso", "promocao": "Promoção", "cupom": "Cupom", "brinde":
 LIMITE_PADRAO = 50
 MAX_DISPAROS = 200
 _lock = threading.RLock()
-_insc: dict[str, dict] | None = None      # código do cliente → {"subs": [...], "avisos": bool, "promocoes": bool, "nome": str}
-_cart: dict[str, dict] = {}
-_idx: dict | None = None
-_vapid: dict | None = None
-_dest: dict[str, dict] = {}               # disparo → {código do cliente: {nome, ok, em, vale, aberto_em, usado_em, usado_local}}
+# caches POR EMPRESA (Duplicar sistema): inscrições, carteiras, chaves e disparos de uma nunca servem a outra
+_EST = banco.por_empresa(lambda: {"insc": None, "idx": None, "vapid": None})   # insc: código do cliente → {"subs", "avisos", "promocoes", "nome"}
+_cart = banco.por_empresa(dict)
+_dest = banco.por_empresa(dict)          # disparo → {código do cliente: {nome, ok, em, vale, aberto_em, usado_em, usado_local}}
 
 
 def destinatarios(did: str) -> dict:
@@ -95,9 +94,8 @@ def _gaveta(cod: str) -> str:
 
 # ── inscrições ────────────────────────────────────────────────────────────────
 def inscricoes() -> dict:
-    global _insc
     with _lock:
-        if _insc is None:
+        if _EST["insc"] is None:
             tudo = {}
             for g in GAVETAS:
                 try:
@@ -105,8 +103,8 @@ def inscricoes() -> dict:
                     tudo.update((snap.to_dict() if snap.exists else None) or {})
                 except Exception:
                     return {}   # banco fora: tenta de novo na próxima
-            _insc = tudo
-        return _insc
+            _EST["insc"] = tudo
+        return _EST["insc"]
 
 
 def _gravar_insc(cod: str, dado: dict | None):
@@ -122,10 +120,9 @@ def _gravar_insc(cod: str, dado: dict | None):
 
 # ── chaves VAPID (geradas uma vez, guardadas no banco) ───────────────────────
 def vapid() -> dict:
-    global _vapid
     with _lock:
-        if _vapid:
-            return _vapid
+        if _EST["vapid"]:
+            return _EST["vapid"]
         ref = db().collection(COL_CFG).document("vapid")
         snap = ref.get(timeout=T.banco.TIMEOUT)
         d = snap.to_dict() if snap.exists else None
@@ -137,7 +134,7 @@ def vapid() -> dict:
             pub = chave.public_key().public_bytes(serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint)
             d = {"privada_pem": pem, "publica": base64.urlsafe_b64encode(pub).rstrip(b"=").decode(), "criada_em": agora()}
             ref.set(d, timeout=T.banco.TIMEOUT)
-        _vapid = d
+        _EST["vapid"] = d
         return d
 
 
@@ -183,18 +180,18 @@ def _vale_publico(v: dict) -> dict:
 
 # ── disparos ──────────────────────────────────────────────────────────────────
 def indice() -> dict:
-    global _idx
     with _lock:
-        if _idx is None:
+        if _EST["idx"] is None:
             snap = db().collection(COL_CFG).document("disparos").get(timeout=T.banco.TIMEOUT)
-            _idx = (snap.to_dict() if snap.exists else None) or {"lista": []}
-        return _idx
+            _EST["idx"] = (snap.to_dict() if snap.exists else None) or {"lista": []}
+        return _EST["idx"]
 
 
 def _gravar_indice():
     with _lock:
-        _idx["lista"] = _idx["lista"][:MAX_DISPAROS]
-        db().collection(COL_CFG).document("disparos").set(_idx, timeout=T.banco.TIMEOUT)
+        idx = indice()
+        idx["lista"] = idx["lista"][:MAX_DISPAROS]
+        db().collection(COL_CFG).document("disparos").set(idx, timeout=T.banco.TIMEOUT)
 
 
 def _disparo(did: str) -> dict:

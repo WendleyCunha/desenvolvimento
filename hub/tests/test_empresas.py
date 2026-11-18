@@ -178,3 +178,17 @@ def test_links_publicos_por_empresa(hub, monkeypatch):
     assert pub.get(f"/{eid}/relatorios/").status_code == 404 and pub.get(f"/{eid}/cliente/").status_code == 200
     chefe.put(f"/api/super/empresas/{eid}", json={"ativo": False})
     assert pub.get(f"/{eid}/cliente/").status_code == 404
+
+
+def test_estado_em_memoria_e_cookies_separados_por_empresa():
+    import cliente_app
+    import promocoes
+    import wrouter
+    wrouter.GPS["ABC1D23"] = {"lat": 1}
+    promocoes._EST["vapid"] = {"publica": "da-principal"}
+    with banco.usar_empresa("loja"):
+        assert "ABC1D23" not in wrouter.GPS and promocoes._EST["vapid"] is None   # a mesma placa / as chaves de push não vazam
+        assert cliente_app._ck() == "cli_sessao_loja" and wrouter._ck() == "hub_motorista_loja"
+    assert cliente_app._ck() == "cli_sessao" and wrouter._ck() == "hub_motorista"
+    wrouter.GPS.clear()
+    promocoes._EST["vapid"] = None

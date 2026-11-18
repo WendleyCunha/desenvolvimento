@@ -74,7 +74,7 @@ def _mes_chave() -> str:
                             secretaria.BASE.config().get("corte_dia", R.CORTE_DIA_PADRAO) if banco.configurado() else R.CORTE_DIA_PADRAO)
 
 
-_envios: dict[str, list[float]] = {}
+_envios = banco.por_empresa(dict)
 _trava_envios = threading.Lock()
 
 
