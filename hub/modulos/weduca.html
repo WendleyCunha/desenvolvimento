@@ -2218,7 +2218,7 @@ async function entrarConversa(c) {
       <h3 data-perfil="${esc(c.com.login)}">${esc(c.com.nome)}<small>${esc([g.cargo, g.setor].filter(Boolean).join(" · ") || "ver perfil")}</small></h3></div>
     <div class="dm-msgs" id="dmMsgs"><div class="carregar">carregando…</div></div>
     <div class="dm-pe"><div class="dm-anx" id="dmAnx"></div><div class="dm-comp">
-      <label class="btn-ic" title="Anexar foto ou PDF">${svg("clipe")}<input type="file" class="arq-in" id="dmArq" accept="image/*,application/pdf" multiple></label>
+      <label class="btn-ic" title="Anexar foto ou PDF">${svg("clipe")}<input type="file" class="arq-in" id="dmArq" accept=".jpg,.jpeg,.png,.webp,.gif,.heic,.heif,.bmp,.pdf" multiple></label>
       <textarea class="entrada" id="dmTx" rows="1" maxlength="4000" placeholder="Mensagem para ${esc(c.com.nome.split(" ")[0])}…"></textarea>
       <button type="button" class="dm-env" id="dmEnv" title="Enviar">${svg("aviao")}</button></div>
       <div class="dm-priv">${svg("cadeado")}Conversa privada — só vocês dois veem. Não entra na base da IA.</div></div>`;
