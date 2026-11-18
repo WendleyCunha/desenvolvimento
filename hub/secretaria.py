@@ -195,13 +195,16 @@ class _Base:
         """Fichas ativas em self.membros; as renomeadas (guardadas, nunca apagadas) em self.renomeados."""
         todos = {d.id: (d.to_dict() or {}) for d in _db().collection(COL_MEMBROS).stream(timeout=banco.TIMEOUT)}
         self.leituras += len(todos)
-        self.membros = {k: v for k, v in todos.items() if not v.get("renomeado_para")}
+        self.membros = {k: v for k, v in todos.items() if not v.get("renomeado_para") and not v.get("excluido_em")}
         self.renomeados = {k: v for k, v in todos.items() if v.get("renomeado_para")}
+        self.excluidos = {k: v for k, v in todos.items() if v.get("excluido_em") and not v.get("renomeado_para")}
 
     def nome_ocupado(self, nome: str) -> str:
         """'' se o nome está livre; senão, por quê (ficha ativa ou ficha renomeada guardada)."""
         if nome in (self.membros or {}):
             return "Já existe um membro com esse nome."
+        if nome in (getattr(self, "excluidos", None) or {}):
+            return "Existe uma ficha excluída com esse nome (guardada no histórico). Use outro nome ou peça para restaurar."
         r = (getattr(self, "renomeados", None) or {}).get(nome)
         if r:
             return f"Esse nome é de uma ficha renomeada para \"{r.get('renomeado_para')}\" (guardada no histórico). Use outro nome."
@@ -373,8 +376,41 @@ def _media_fim(ch: str) -> float:
 # ══════════════════════════════════════════════════════════════════════════════
 # SAÍDA PARA A TELA (respeitando campos ocultos)
 # ══════════════════════════════════════════════════════════════════════════════
+# Ficha completa = todos estes preenchidos (ganha o selo ✓ no cartão e na ficha)
+OBRIGATORIOS = [("nome_oficial", "Nome completo"), ("categoria", "Categoria fixa"), ("grupo", "Grupo de campo"), ("genero", "Gênero"),
+                ("classe", "Classe"), ("data_nascimento", "Data de nascimento"), ("data_batismo", "Data de batismo"),
+                ("telefone_emergencia", "Telefone de emergência")]
+_DATA = re.compile(r"^\s*\d{2}/\d{2}/(\d{4})\s*$")
+
+
+def campos_faltando(m: dict) -> list[str]:
+    """Rótulos dos campos obrigatórios que faltam na ficha (batismo aceita NB = não batizado)."""
+    def ok(campo: str) -> bool:
+        v = str(m.get(campo) or "").strip()
+        if campo == "data_nascimento":
+            d = _DATA.match(v)
+            return bool(d) and 1900 <= int(d.group(1)) <= 2100
+        if campo == "data_batismo":
+            if R.normalizar(v) in ("nb", "n b", "nao batizado", "nao batizada"):
+                return True
+            d = _DATA.match(v)
+            return bool(d) and 1900 <= int(d.group(1)) <= 2100
+        if campo == "categoria":
+            return v in (R.PUB, R.REG)
+        if campo == "genero":
+            return v in GENEROS[1:]
+        if campo == "classe":
+            return v in CLASSES[1:]
+        if campo == "telefone_emergencia":
+            return sum(ch.isdigit() for ch in v) >= 8
+        return bool(v)
+    return [rot for campo, rot in OBRIGATORIOS if not ok(campo)]
+
+
 def _membro_saida(mid: str, m: dict, p: dict, part: set[str], atual: str) -> dict:
     out = {k: m.get(k) for k in CAMPOS_MEMBRO if k in m}
+    falta = campos_faltando({**m, "nome_oficial": m.get("nome_oficial") or mid})
+    out.update(completo=not falta, faltando=falta)
     for c in CAMPOS_SENSIVEIS:
         if _nivel(p, c) == "oculto":
             out.pop(c, None)
@@ -620,7 +656,7 @@ def _limpar_membro(c: dict, p: dict) -> dict:
         if campo in c:
             if _nivel(p, campo) != "editar":
                 raise HTTPException(403, "Sem permissão para alterar dados pessoais.")
-            d[campo] = str(c[campo] or "")[:40]
+            d[campo] = str(c[campo] or "")[:200 if campo == "telefone_emergencia" else 40]
     if d.get("categoria") == R.REG and "Pioneiro regular" not in d.get("cargo", ["Pioneiro regular"]):
         d.setdefault("cargo", []).append("Pioneiro regular")
     if "saiu_em" in d or "inativo_desde" in d:
@@ -666,6 +702,23 @@ async def editar_membro(mid: str, request: Request):
         return _renomear(mid, novo_nome, d, u)
     d.update(atualizado_por=u["login"], atualizado_em=_agora())
     BASE.gravar_membro(mid, d)
+    return {"ok": True, "id": mid}
+
+
+@router.delete("/membros/{mid}")
+def excluir_membro(mid: str, request: Request):
+    """Tira a ficha do Secretário. Nada é apagado: a ficha fica guardada (excluido_em) e os relatórios ficam."""
+    u, p = _contexto(request)
+    _exigir(p, "membros", "excluir membros")
+    BASE.atualizar()
+    if mid not in (BASE.membros or {}):
+        raise HTTPException(404, "Membro não encontrado.")
+    d = {"excluido_em": _agora(), "excluido_por": u["login"], "status": "Excluído"}
+    _db().collection(COL_MEMBROS).document(mid).set(d, merge=True, timeout=banco.TIMEOUT)
+    with BASE.trava:
+        m = BASE.membros.pop(mid, {})
+        BASE.excluidos = {**(getattr(BASE, "excluidos", None) or {}), mid: {**m, **d}}
+        BASE._linhas = None
     return {"ok": True, "id": mid}
 
 
