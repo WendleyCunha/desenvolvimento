@@ -567,9 +567,11 @@ def _limpar_membro(c: dict, p: dict) -> dict:
             d[campo] = c[campo] if c[campo] in opcoes else ""
     if "cargo" in c:
         d["cargo"] = [x for x in (c["cargo"] or []) if x in CARGOS]
-    for campo in ("grupo", "observacao", "saiu_motivo"):
+    for campo in ("grupo", "saiu_motivo"):
         if campo in c:
             d[campo] = str(c[campo] or "")[:200]
+    if "observacao" in c:
+        d["observacao"] = str(c["observacao"] or "")[:1000]
     for campo in ("surdo", "cego", "preso"):
         if campo in c:
             d[campo] = bool(c[campo])
