@@ -11,6 +11,7 @@ Casca em FastAPI que roda no Render (plano Free) e serve:
     /configuracoes    → engrenagem: aparência, usuários e permissões, conta
     /api/auth/*  /api/eu  /api/admin/*   → acesso.py (login, usuários, permissões)
     /api/dados/<modulo>/<colecao>        → dados.py  (dados com permissão por campo)
+    /api/weduca/*     → weduca.py (WEDUCA: feed, aprendizagem… o conteúdo das pessoas vira base da IA)
     /api/agente/*     → agente.py (Agente IA do topo — static/agente.js; permissões em
                         Configurações → Usuários → "Agente IA (topo)")
     /cliente/         → APP DO CLIENTE (público, CPF + e-mail): pedidos, chamados e chat com o Atendimento
@@ -87,8 +88,9 @@ import relatorios_publico
 import cliente_app
 import promocoes
 import agente
+import weduca
 
-VERSAO = "3.21.0"
+VERSAO = "3.22.0"
 
 BASE = Path(__file__).resolve().parent
 PASTA_MODULOS = BASE / "modulos"
@@ -360,6 +362,9 @@ app.include_router(atelier.router)
 app.include_router(relatorios_publico.router)
 app.include_router(wrouter.router)   # WROUTER — /motorista/ (app), /entrega/<código> (cliente) e /api/wrouter/*
 app.include_router(cliente_app.router)   # App do cliente — /cliente/ e /api/cliente/* (públicos, sessão própria)
+app.include_router(weduca.router)   # WEDUCA — feed/aprendizagem; o conteúdo vira base da IA do topo
+agente.FONTES_EXTRAS.append(weduca.base_conhecimento)
+agente.ORIGENS["weduca"] = {"nao_resolveu": weduca.nao_resolveu, "ajustar": weduca.ajustar}
 agente.ligar(app)   # Agente IA do topo — /api/agente/* (static/agente.js)
 _inicio = time.time()
 
