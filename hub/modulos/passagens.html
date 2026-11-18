@@ -62,7 +62,7 @@ body{padding:14px;min-height:100vh}
 .topo{position:sticky;top:10px;z-index:40;display:flex;align-items:center;gap:14px;padding:10px 12px 10px 14px;border-radius:20px;flex-wrap:wrap}
 .marca{display:flex;align-items:center;gap:12px;min-width:0;margin-right:auto}
 .marca b{display:block;font:700 1.08rem var(--titulo);letter-spacing:-.01em}
-.marca small{display:block;font-size:.6rem;letter-spacing:2.4px;text-transform:uppercase;font-weight:700;background:var(--grad-ouro);-webkit-background-clip:text;background-clip:text;color:transparent}
+.marca small{display:block;font-size:.78rem;letter-spacing:1.6px;text-transform:uppercase;font-weight:700;background:var(--grad-ouro);-webkit-background-clip:text;background-clip:text;color:transparent}
 .topo select.entrada{width:auto;min-width:200px;max-width:340px;padding:9px 12px}
 .sync{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;color:var(--txt3)}
 .sync i{width:7px;height:7px;border-radius:50%;background:var(--verde);box-shadow:0 0 8px var(--verde)}
@@ -198,7 +198,7 @@ main{margin-top:16px;display:flex;flex-direction:column;gap:16px}
 <body>
 <div class="app">
   <header class="topo vidro vidro-borda-viva">
-    <div class="marca"><span id="logo"></span><span><b>Passagens</b><small>Parque Aliança · VGP</small></span></div>
+    <div class="marca"><span id="logo"></span><span><b>Passagens</b><small id="psEmp">Parque Aliança · VGP</small></span></div>
     <select class="entrada" id="selEvento" title="Evento" hidden></select>
     <span class="sync" id="sync"><i></i><span>conectando…</span></span>
     <span class="somente-leitura" id="chLeitura" hidden></span>
@@ -228,6 +228,7 @@ const S = {
   aba: ls.get(K.aba, "reservas"), filtro: ls.get(K.filtro, "pendentes"), busca: "", grupoF: "", dia: ls.get(K.dia, ""), buscaCh: "",
 };
 const $ = (s, r = document) => r.querySelector(s);
+let PRINC = true, SIS = "Parque Aliança";   // empresa duplicada: textos sem "Parque Aliança"
 const brl = (v) => "R$ " + Number(v || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const brl0 = (v) => "R$ " + Math.round(Number(v || 0)).toLocaleString("pt-BR");
 const abrev = (d) => ({ Sexta: "Sex", "Sábado": "Sáb", Domingo: "Dom" }[d] || d);
@@ -433,7 +434,7 @@ function pChamada() {
             <div class="col" style="--c:var(--verde)"><h4>🟢 Embarcados · ${e}</h4>${gp.filter((p) => p.embarcou).map(linha).join("") || `<p class="dica">Ninguém ainda.</p>`}</div>
           </div></div>`;
       }).join("")}
-    ${S.dia !== "geral" ? `<p class="dica">O embarque é um só por passageiro (como no Parque Aliança): quem viaja em mais de um dia aparece embarcado nos outros dias também.</p>` : ""}`;
+    ${S.dia !== "geral" ? `<p class="dica">O embarque é um só por passageiro (como no ${SIS}): quem viaja em mais de um dia aparece embarcado nos outros dias também.</p>` : ""}`;
   pnl.querySelectorAll("[data-d]").forEach((x) => (x.onclick = () => { S.dia = x.dataset.d; ls.set(K.dia, S.dia); pChamada(); }));
   const b = $("#buscaCh", pnl);
   b.oninput = () => { S.buscaCh = b.value; const pos = b.selectionStart; pChamada(); const nb = $("#buscaCh"); nb.focus(); nb.setSelectionRange(pos, pos); };
@@ -460,12 +461,12 @@ function pAjustes() {
       <button type="button" class="btn" id="btEdEv" data-perm="acao:eventos">${svg("check")}Salvar alterações do evento</button></div>` : ""}
     ${pode("eventos") ? cartaoNovoEvento() : ""}
     ${pode("exportar") ? `<div class="cartao luz"><h3>${A.orbe("baixar", "#34d399")}Exportar</h3>
-      <p>Baixe a lista completa de passageiros (o mesmo formato que o Parque Aliança importa) ou a lista de chamada com uma aba por dia.</p>
+      <p>Baixe a lista completa de passageiros (o mesmo formato que o ${SIS} importa) ou a lista de chamada com uma aba por dia.</p>
       <div class="dias"><button type="button" class="btn v" id="btXlsDados" data-perm="acao:exportar">${svg("baixar")}Dados (Excel)</button>
       <button type="button" class="btn v" id="btXlsCh2" data-perm="acao:exportar">${svg("baixar")}Chamada (Excel)</button></div></div>` : ""}
     ${pode("importar") ? cartaoImportar() : ""}
     ${pode("arquivar") ? `<div class="cartao luz" style="border-color:rgba(251,113,133,.25)"><h3>${A.orbe("pasta", "#fb7185")}Encerrar evento</h3>
-      <p>Arquivar <b>${esc(ev.nome)}</b> move o evento para o histórico — some daqui e do Parque Aliança.</p>
+      <p>Arquivar <b>${esc(ev.nome)}</b> move o evento para o histórico — some daqui${PRINC ? " e do Parque Aliança" : ""}.</p>
       <label class="campo">Digite o nome do evento para confirmar<input id="confArq" placeholder="${esc(ev.nome)}" autocomplete="off"></label>
       <button type="button" class="btn perigo" id="btArq" data-perm="acao:arquivar">${svg("pasta")}Arquivar evento</button></div>` : ""}
     ${!["eventos", "exportar", "importar", "arquivar"].some(pode) ? `<div class="vazio">${A.orbe("cadeado", "#94a3b8")}<b>Sem ajustes liberados</b>Fale com o administrador.</div>` : ""}
@@ -482,7 +483,7 @@ function pAjustes() {
   $("#btArq", pnl)?.addEventListener("click", async () => {
     const conf = $("#confArq").value;
     if (conf.trim().toLowerCase() !== String(ev.nome).trim().toLowerCase()) { A.toast("O nome não confere.", [], { cor: "var(--rosa)" }); return; }
-    if (!(await A.confirmar(`Arquivar <b>${esc(ev.nome)}</b>? Ele sai da lista de eventos ativos aqui e no Parque Aliança.`, { titulo: "Arquivar evento", rotulo: "Arquivar", perigo: true }))) return;
+    if (!(await A.confirmar(`Arquivar <b>${esc(ev.nome)}</b>? Ele sai da lista de eventos ativos aqui${PRINC ? " e no Parque Aliança" : ""}.`, { titulo: "Arquivar evento", rotulo: "Arquivar", perigo: true }))) return;
     try { await chamar(`/eventos/${encodeURIComponent(S.evId)}/arquivar`, { method: "POST", body: { confirmacao: conf } }); A.toast("Evento arquivado.", [], { cor: "var(--verde)" }); S.evId = null; ls.set(K.ev, ""); await carregarEventos(); }
     catch (er) { falha(er); }
   });
@@ -636,7 +637,7 @@ function gerenciar(id) {
         ${vis("embarcou") ? `<label class="chave" style="--c:var(--azul)" data-perm="campo:embarcou"><input type="checkbox" id="gEmb"${p.embarcou ? " checked" : ""}${podeEmb ? "" : " disabled"}><span class="trilho"></span>🚌 Embarcou</label>` : ""}
       </div>`,
     esquerda: pode("excluir") ? [{ rotulo: "Excluir", classe: "btn perigo", icone: "lixo", acao: async () => {
-      if (!(await A.confirmar(`Excluir a reserva de <b>${esc(p.nome)}</b>? Some aqui e no Parque Aliança.`, { titulo: "Excluir reserva", rotulo: "Excluir", perigo: true }))) return false;
+      if (!(await A.confirmar(`Excluir a reserva de <b>${esc(p.nome)}</b>? Some aqui${PRINC ? " e no Parque Aliança" : ""}.`, { titulo: "Excluir reserva", rotulo: "Excluir", perigo: true }))) return false;
       try { await chamar(`/eventos/${encodeURIComponent(S.evId)}/passageiros/${encodeURIComponent(p.id)}`, { method: "DELETE" });
         S.pax = S.pax.filter((x) => x.id !== p.id); render(); A.toast(`Reserva de <b>${esc(p.nome)}</b> excluída.`, [], { cor: "var(--ouro)" }); }
       catch (e) { falha(e); return false; }
@@ -791,6 +792,10 @@ addEventListener("focus", fresco);
 setInterval(() => { if (document.hasFocus() && Date.now() - S.lidoEm > 180000) fresco(); }, 30000);
 
 (async () => {
+  try {   // empresa duplicada: o nome dela no lugar de "Parque Aliança"
+    const e = (await A.api("/api/eu")).empresa || {};
+    if (e.id && e.id !== "principal") { PRINC = false; SIS = "sistema antigo"; $("#psEmp").textContent = e.nome; }
+  } catch (_) {}
   try { await A.permissoes.carregar("passagens"); }
   catch (e) { if (e.status !== 401) $("#main").innerHTML = `<section class="painel vidro"><div class="vazio"><b>Não consegui abrir</b>${esc(e.message)}</div></section>`; return; }
   try { await carregarEventos(); }

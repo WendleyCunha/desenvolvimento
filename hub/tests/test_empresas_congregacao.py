@@ -21,3 +21,13 @@ def test_app_relatorios_mostra_a_congregacao_da_empresa(hub):
     assert chefe.get("/api/secretaria/base").json()["identidade"] == {"nome": "Areia Branca (Sul)", "numero": "12345"}
     pg = pub.get(f"/{eid}/relatorios/").text
     assert "Areia Branca (Sul)" in pg and "12345" in pg
+
+
+def test_menu_mostra_o_nome_da_empresa_no_lugar_de_parque_alianca(hub):
+    chefe = entrar(hub(), "chefe", "senha-forte")
+    grupos = {i["grupo"] for i in chefe.get("/api/modulos").json()["itens"]}
+    assert "Parque Aliança" in grupos                       # principal igual
+    eid = chefe.post("/api/super/empresas", json={"nome": "Congregação Areia Branca", "admin": {"login": "ab2", "senha": "123456"}}).json()["empresa"]["id"]
+    chefe.post("/api/super/entrar-empresa", json={"empresa": eid})
+    grupos = {i["grupo"] for i in chefe.get("/api/modulos").json()["itens"]}
+    assert "Parque Aliança" not in grupos and "Congregação Areia Branca" in grupos
