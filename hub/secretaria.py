@@ -27,6 +27,7 @@ COTA GRÁTIS DO FIRESTORE — leitura econômica:
 from __future__ import annotations
 
 import base64
+import json
 import re
 import threading
 import time
@@ -49,7 +50,7 @@ TIPOS_REUNIAO = {"meio": "Reunião do Meio de Semana", "fim": "Reunião do Fim d
 CAMPOS_SENSIVEIS = ["data_nascimento", "data_batismo", "telefone_emergencia"]
 CAMPOS_MEMBRO = ["nome_oficial", "categoria", "genero", "classe", "cargo", "status", "grupo", "data_nascimento",
                  "data_batismo", "telefone_emergencia", "surdo", "cego", "preso", "saiu_em", "saiu_motivo",
-                 "inicio_chave", "mes_inicio", "observacao", "inativo_desde", "status_manual"]
+                 "inicio_chave", "mes_inicio", "observacao", "inativo_desde", "status_manual", "informado_publicador"]
 GENEROS = ["", "Masculino", "Feminino"]
 CLASSES = ["", "Outras ovelhas", "Ungido"]
 CARGOS = ["Ancião", "Servo ministerial", "Pioneiro regular", "Pioneiro especial", "Missionário em campo"]
@@ -70,7 +71,9 @@ ITS_PADRAO = [
 ]
 CONFIG_PADRAO = {"limite_aux": R.LIMITE_AUX_PADRAO, "corte_dia": R.CORTE_DIA_PADRAO, "grupos": [], "pastas": [],
                  "dia_meio": -1, "dia_fim": -1, "meta_regular": 600,
-                 "its": ITS_PADRAO, "territorios_total": 0, "territorios_nao_trabalhados": 0, "visita_ultima": ""}
+                 "its": ITS_PADRAO, "territorios_total": 0, "territorios_nao_trabalhados": 0, "visita_ultima": "",
+                 "pedir_dados_publicador": True,
+                 "campos_publicador": ["data_nascimento", "data_batismo", "telefone_emergencia", "genero", "grupo"]}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -407,6 +410,142 @@ def campos_faltando(m: dict) -> list[str]:
     return [rot for campo, rot in OBRIGATORIOS if not ok(campo)]
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# COMPLETAR A FICHA PELO APP RELATÓRIOS (depois do "obrigado")
+# ══════════════════════════════════════════════════════════════════════════════
+# O app é público: só PERGUNTA o que está vazio (nunca mostra o que já existe),
+# só GRAVA em campo vazio e só quando o nome enviado aponta, sem dúvida, para UMA ficha.
+CAMPOS_PUBLICADOR = [("data_nascimento", "Data de nascimento"), ("data_batismo", "Data de batismo"),
+                     ("telefone_emergencia", "Telefone de emergência"), ("genero", "Gênero"), ("grupo", "Grupo de campo")]
+_VALIDADE_PEDIDO = 2 * 3600
+
+
+def membro_certo(nome: str) -> str | None:
+    """Ficha que o nome enviado identifica SEM dúvida (senão None): nome igual, nome antigo de
+    ficha renomeada, ou todas as palavras (2+) dentro de UMA única ficha com o mesmo primeiro nome."""
+    membros = BASE.membros or {}
+    n = R.normalizar(nome)
+    if not n:
+        return None
+    iguais = [mid for mid, m in membros.items() if n in (R.normalizar(mid), R.normalizar(m.get("nome_oficial") or ""))]
+    if len(iguais) == 1:
+        return iguais[0]
+    if iguais:
+        return None
+    for antigo, r in (getattr(BASE, "renomeados", None) or {}).items():
+        if R.normalizar(antigo) == n:
+            alvo = r.get("renomeado_para")
+            return alvo if alvo in membros else None
+    tok = n.split()
+    if len(tok) < 2:
+        return None
+    cands = set()
+    for mid, m in membros.items():
+        for nm in {mid, m.get("nome_oficial") or mid}:
+            of = R.normalizar(nm).split()
+            if of and of[0] == tok[0] and set(tok) <= set(of):
+                cands.add(mid)
+    return cands.pop() if len(cands) == 1 else None
+
+
+def _faltando_publicador(m: dict) -> list[dict]:
+    """Campos que a pessoa pode preencher: só os que estão VAZIOS na ficha."""
+    cfg = BASE.config()
+    grupos = cfg.get("grupos") or []
+    marcados = cfg.get("campos_publicador")
+    marcados = [k for k, _ in CAMPOS_PUBLICADOR] if marcados is None else marcados
+    out = []
+    for campo, rot in CAMPOS_PUBLICADOR:
+        if campo not in marcados or str(m.get(campo) or "").strip():
+            continue
+        if campo == "grupo":
+            if not grupos:
+                continue
+            out.append({"campo": campo, "rotulo": rot, "opcoes": [{"id": g["id"], "nome": g["nome"]} for g in grupos]})
+        elif campo == "genero":
+            out.append({"campo": campo, "rotulo": rot, "opcoes": [{"id": g, "nome": g} for g in GENEROS if g]})
+        else:
+            out.append({"campo": campo, "rotulo": rot})
+    return out
+
+
+def pedido_publicador(nome: str, rid: str) -> dict | None:
+    """Depois do envio: o que pedir para completar a ficha + um passe assinado (2 h) para gravar."""
+    if not BASE.config().get("pedir_dados_publicador", True):
+        return None
+    mid = membro_certo(nome)
+    if not mid:
+        return None
+    campos = _faltando_publicador(BASE.membros[mid])
+    if not campos:
+        return None
+    corpo = acesso._b64(json.dumps({"e": banco.empresa_atual(), "m": mid, "r": rid,
+                                    "x": int(time.time() + _VALIDADE_PEDIDO)}).encode())
+    return {"passe": corpo + "." + acesso._assinar(corpo), "campos": campos}
+
+
+def _ler_passe(passe: str) -> str:
+    import hmac as _hmac
+    erro = HTTPException(403, "Este pedido expirou. Envie o relatório de novo para completar o cadastro.")
+    if not passe or "." not in passe:
+        raise erro
+    corpo, assin = passe.rsplit(".", 1)
+    if not _hmac.compare_digest(acesso._assinar(corpo), assin):
+        raise erro
+    try:
+        d = json.loads(acesso._unb64(corpo))
+    except Exception:  # noqa: BLE001
+        raise erro
+    if d.get("e") != banco.empresa_atual() or d.get("x", 0) < time.time() or d.get("m") not in (BASE.membros or {}):
+        raise erro
+    return d["m"]
+
+
+def _valor_publicador(campo: str, v: str, opcoes: list[dict]) -> str:
+    v = " ".join(str(v or "").split())
+    if not v:
+        return ""
+    if campo in ("data_nascimento", "data_batismo"):
+        if campo == "data_batismo" and R.normalizar(v) in ("nb", "n b", "nao batizado", "nao batizada"):
+            return "NB"
+        d = _DATA.match(v)
+        if not d or not 1900 <= int(d.group(1)) <= datetime.now().year:
+            raise HTTPException(422, "Data inválida. Use DD/MM/AAAA.")
+        try:
+            datetime.strptime(v, "%d/%m/%Y")
+        except ValueError:
+            raise HTTPException(422, "Data inválida. Use DD/MM/AAAA.")
+        return v
+    if campo == "telefone_emergencia":
+        if sum(ch.isdigit() for ch in v) < 8:
+            raise HTTPException(422, "Telefone de emergência: coloque nome e telefone com DDD.")
+        return v[:200]
+    ids = [o["id"] for o in opcoes]
+    if v not in ids:
+        raise HTTPException(422, "Escolha uma das opções.")
+    return v
+
+
+def completar_publicador(passe: str, dados: dict) -> dict:
+    """Grava SÓ campos que ainda estão vazios e que o app pediu. Nunca sobrescreve."""
+    BASE.atualizar()
+    mid = _ler_passe(passe)
+    m = BASE.membros[mid]
+    pedidos = {c["campo"]: c for c in _faltando_publicador(m)}
+    novo = {}
+    for campo, info in pedidos.items():
+        if campo in dados:
+            v = _valor_publicador(campo, dados.get(campo), info.get("opcoes") or [])
+            if v:
+                novo[campo] = v
+    if not novo:
+        raise HTTPException(422, "Preencha pelo menos um dos campos.")
+    hoje = datetime.now(R.FUSO).strftime("%Y-%m-%d")
+    marca = {**(m.get("informado_publicador") or {}), **{c: hoje for c in novo}}
+    BASE.gravar_membro(mid, {**novo, "informado_publicador": marca})
+    return {"ok": True, "gravados": len(novo), "faltando": [c["rotulo"] for c in _faltando_publicador(BASE.membros[mid])]}
+
+
 def _membro_saida(mid: str, m: dict, p: dict, part: set[str], atual: str) -> dict:
     out = {k: m.get(k) for k in CAMPOS_MEMBRO if k in m}
     falta = campos_faltando({**m, "nome_oficial": m.get("nome_oficial") or mid})
@@ -446,6 +585,7 @@ def base(request: Request, mes: str = "", recarregar: int = 0):
     return _json({
         "perm": p, "usuario": acesso.publico(u), "mes": ch, "mes_atual": atual, "mes_calendario": datetime.now(R.FUSO).strftime("%Y-%m"), "meses": meses,
         "config": {k: v for k, v in cfg.items()}, "identidade": identidade(),
+        "campos_publicador": [{"campo": k, "rotulo": r} for k, r in CAMPOS_PUBLICADOR],
         "opcoes": {"generos": GENEROS, "classes": CLASSES, "cargos": CARGOS, "categorias": R.CATEGORIAS},
         "membros": [_membro_saida(mid, m, p, part.get(mid, set()), ch) for mid, m in membros.items()],
         "relatorios": [_linha_saida(ln, p) for ln in do_mes if ln["situacao"] == "IDENTIFICADO"],
@@ -929,6 +1069,11 @@ async def salvar_config(request: Request):
         novo["congregacao_numero"] = re.sub(r"[^0-9A-Za-z-]", "", str(c["congregacao_numero"] or ""))[:20]
     if "visita_ultima" in c:
         novo["visita_ultima"] = str(c["visita_ultima"] or "")[:10]
+    if "pedir_dados_publicador" in c:
+        novo["pedir_dados_publicador"] = bool(c["pedir_dados_publicador"])
+    if "campos_publicador" in c:
+        validos = [k for k, _ in CAMPOS_PUBLICADOR]
+        novo["campos_publicador"] = [k for k in validos if k in (c["campos_publicador"] or [])]
     BASE.salvar_config(novo)
     return {"ok": True, "config": BASE.config()}
 
