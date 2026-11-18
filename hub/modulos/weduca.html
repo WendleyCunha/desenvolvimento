@@ -418,7 +418,17 @@ b[data-perfil]:hover{text-decoration:underline}
 .perfil-nums{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 18px}
 .perfil-nums span{padding:8px 14px;border-radius:14px;background:var(--sup);border:1px solid var(--linha);font-size:.8rem;color:var(--txt2)}
 .perfil-nums b{font:800 1.05rem var(--titulo);color:var(--txt);margin-right:4px}
-.foto-ed{display:flex;align-items:center;gap:16px;margin-bottom:12px}
+.foto-ed{display:flex;align-items:center;gap:18px;margin-bottom:14px;padding:14px;border-radius:18px;border:1px dashed var(--linha)}
+.mp-av{position:relative;flex:none;width:112px;height:112px;border-radius:50%;overflow:hidden;cursor:pointer;display:grid;place-items:center;
+  background:linear-gradient(135deg,#f7e6a3,#f0cb4e);box-shadow:0 0 0 4px var(--noite),0 0 0 6px rgba(240,203,78,.7);font:800 1.8rem var(--titulo);color:#1a1204}
+.mp-av img{width:100%;height:100%;object-fit:cover;display:block}
+.mp-av .mp-cam{position:absolute;inset:auto 0 0 0;height:34%;display:grid;place-items:center;background:rgba(0,0,0,.45);color:#fff;opacity:0;transition:opacity .2s}
+.mp-av:hover .mp-cam{opacity:1}
+.mp-av .mp-cam svg{width:20px;height:20px}
+.mp-av.subindo::after{content:"";position:absolute;inset:0;border-radius:50%;border:4px solid transparent;border-top-color:#f0cb4e;animation:gira 1s linear infinite}
+.mp-av.subindo img{opacity:.6}
+.mp-txt b{display:block;font:700 .95rem var(--titulo)}.mp-txt small{display:block;color:var(--txt3);font-size:.78rem;margin-top:2px}
+.btn label,.btn.v{cursor:pointer}
 .foto-ed .av{width:84px;height:84px;font-size:1.4rem}
 /* ═════════ REDE SOCIAL (como a simulação): bolinhas/stories, compositor, post, Shorts ═════════ */
 .arq-in{position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0}
@@ -810,25 +820,48 @@ async function abrirPerfil(login) {
   } catch (_) {}
 }
 function editarMeuPerfil() {
-  let foto = S.eu.foto || null;
-  const md = A.modal({ titulo: "Meu perfil", icone: "usuario", cor: "#f0cb4e", largura: 640, html: `<div class="foto-ed" id="mpFoto"></div><input type="file" id="mpF" class="arq-in" accept="image/*">
+  // A foto é salva SOZINHA assim que termina de enviar (antes, quem clicava em Salvar com a foto ainda subindo perdia a foto)
+  let foto = S.eu.foto || null, prev = "", enviando = null, msg = "";
+  const campos = () => ({ cargo: $("#mpCargo", md.el).value, setor: $("#mpSetor", md.el).value, bio: $("#mpBio", md.el).value });
+  const salvar = async (corpo) => { await api("/perfil", { method: "PUT", body: corpo }); Object.assign(S.eu, corpo); await carregarGente(); desenharShell(); };
+  const md = A.modal({ titulo: "Meu perfil", icone: "usuario", cor: "#f0cb4e", largura: 640, html: `<div class="foto-ed solta-w" id="mpFoto"></div>
       <div class="lin2"><label class="campo">Cargo<input id="mpCargo" maxlength="60" value="${esc(S.eu.cargo || "")}" placeholder="Ex.: Analista de qualidade"></label>
       <label class="campo">Setor<input id="mpSetor" maxlength="60" list="mpSets" value="${esc(S.eu.setor || "")}" placeholder="Ex.: Qualidade"><datalist id="mpSets">${(S.setores || []).map((x) => `<option value="${esc(x)}">`).join("")}</datalist></label></div>
       <label class="campo">Sobre você<textarea id="mpBio" rows="3" maxlength="400" placeholder="O que você faz, no que pode ajudar a equipe">${esc(S.eu.bio || "")}</textarea></label>`,
-    botoes: [{ rotulo: "Cancelar" }, { rotulo: "Salvar", icone: "check", classe: "btn", principal: true, acao: async () => {
-      const corpo = { foto, cargo: $("#mpCargo").value, setor: $("#mpSetor").value, bio: $("#mpBio").value };
-      try { await api("/perfil", { method: "PUT", body: corpo }); Object.assign(S.eu, corpo); await carregarGente(); desenharShell(); A.toast("Perfil atualizado."); if (S.sub === "pessoas") telaPessoas(); }
+    botoes: [{ rotulo: "Fechar" }, { rotulo: "Salvar", icone: "check", classe: "btn", principal: true, acao: async () => {
+      if (enviando) { A.toast("Terminando de enviar a foto…"); await enviando.catch(() => {}); }
+      try { await salvar({ foto, ...campos() }); A.toast("Perfil atualizado."); if (S.sub === "pessoas") telaPessoas(); }
       catch (e) { A.toast("⚠️ " + esc(e.message)); return false; }
     } }] });
   const pintar = () => {
-    $("#mpFoto", md.el).innerHTML = `${avatar({ nome: S.eu.nome, login: S.eu.login + " ", foto }, false, true)}<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn v" id="mpB">${svg("imagem")}${foto ? "Trocar foto" : "Enviar foto"}</button>${foto ? `<button type="button" class="btn v" id="mpX">${svg("fechar")}Tirar</button>` : ""}</div>`;
-    $("#mpB", md.el).onclick = () => $("#mpF", md.el).click();
-    $("#mpX", md.el)?.addEventListener("click", () => { foto = null; pintar(); });
+    const img = prev || (foto ? urlArq(foto) : "");
+    $("#mpFoto", md.el).innerHTML = `<label class="mp-av${enviando ? " subindo" : ""}" title="Escolher foto">${img ? `<img src="${img}" alt="">` : `<span>${esc(A.iniciais ? A.iniciais(S.eu.nome) : "")}</span>`}
+        <span class="mp-cam">${svg("camera")}</span><input type="file" id="mpF" class="arq-in" accept="image/*"></label>
+      <div class="mp-txt"><b>Foto do perfil</b><small>${msg || "Clique na foto, arraste uma imagem para cá ou cole um print (Ctrl+V)."}</small>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><label class="btn v" role="button">${svg("imagem")}${foto ? "Trocar foto" : "Enviar foto"}<input type="file" id="mpF2" class="arq-in" accept="image/*"></label>
+        ${foto && !enviando ? `<button type="button" class="btn v" id="mpX">${svg("fechar")}Tirar</button>` : ""}</div></div>
+      <div class="solta-veu">${svg("imagem")}Solte a foto aqui</div>`;
+    ["#mpF", "#mpF2"].forEach((id) => { $(id, md.el).onchange = (e) => { const f = e.target.files[0]; e.target.value = ""; subir(f); }; });
+    $("#mpX", md.el)?.addEventListener("click", async () => { foto = null; prev = ""; msg = "Foto retirada."; pintar(); try { await salvar({ foto: null, ...campos() }); } catch (e) { A.toast("⚠️ " + esc(e.message)); } });
+  };
+  const subir = (f) => {
+    if (!f) return;
+    if (enviando) return A.toast("Espere a foto atual terminar de enviar.");
+    prev = URL.createObjectURL(f); msg = "Enviando a foto…";
+    enviando = (async () => {
+      try {
+        const id = (await subirArquivo(f, "foto", 640)).id;
+        await salvar({ foto: id, ...campos() });
+        foto = id; msg = "✓ Foto salva no seu perfil."; A.toast("Foto do perfil atualizada.");
+      } catch (err) { prev = ""; msg = "⚠️ " + err.message; A.toast("⚠️ " + esc(err.message)); }
+      enviando = null; pintar();
+    })();
+    pintar();
+    return enviando;
   };
   pintar();
-  const subir = async (f) => { if (!f) return; try { A.toast("Enviando a foto…"); foto = (await subirArquivo(f, "foto")).id; pintar(); } catch (err) { A.toast("⚠️ " + esc(err.message)); } };
-  $("#mpF", md.el).onchange = (e) => { const f = e.target.files[0]; e.target.value = ""; subir(f); };
-  soltar(md.el, (fs) => subir(fs.find((f) => !ehPdf(f))));
+  soltar($("#mpFoto", md.el), (fs) => subir(fs.find((f) => !ehPdf(f))));
+  md.el.addEventListener("paste", (e) => { const f = [...(e.clipboardData?.files || [])].find((x) => x.type.startsWith("image/")); if (f) { e.preventDefault(); subir(f); } });
 }
 document.addEventListener("click", (e) => {
   const s = e.target.closest("[data-seguir]"); if (s) { e.stopPropagation(); return seguir(s.dataset.seguir, s); }
@@ -1062,11 +1095,11 @@ function editor(box, post, aoSalvar, fechar, tipo) {
   };
 }
 /** foto: reduz para no máx. 1600 px e JPEG ~82% (GIF vai como está) — cabe folgado no banco */
-async function comprimir(f) {
+async function comprimir(f, max = 1600) {
   if (f.type === "image/gif" && f.size < 2.8e6) return { blob: f, tipo: f.type };
   const img = await new Promise((ok, erro) => { const i = new Image(); i.onload = () => ok(i);
     i.onerror = () => erro(new Error(/hei[cf]/i.test(f.type + f.name) ? `“${f.name}” está em HEIC (iPhone), que este navegador não abre. Envie em JPG/PNG (ou tire um print).` : `Não consegui abrir “${f.name}” como imagem.`)); i.src = URL.createObjectURL(f); });
-  const k = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+  const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
   const w = Math.round(img.naturalWidth * k), h = Math.round(img.naturalHeight * k);
   const c = document.createElement("canvas"); c.width = w; c.height = h;
   const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, w, h); g.drawImage(img, 0, 0, w, h);
@@ -1847,9 +1880,9 @@ async function turma(C) {
 
 /* ── editor de curso ── */
 /** envia 1 arquivo (foto já comprimida no navegador). Com prazo: nada fica "enviando…" para sempre. */
-async function subirArquivo(f, kind) {
+async function subirArquivo(f, kind, max = 1600) {
   if (kind === "foto" && f.type && !f.type.startsWith("image/") && !/hei[cf]/i.test(f.name)) throw new Error(`“${f.name}” não é uma imagem.`);
-  const corpo = kind === "foto" ? await comprimir(f) : { blob: f, tipo: "application/pdf" };
+  const corpo = kind === "foto" ? await comprimir(f, max) : { blob: f, tipo: "application/pdf" };
   if (kind === "pdf" && f.size > 15e6) throw new Error("PDF grande demais (máx. 15 MB).");
   const ctl = new AbortController(), prazo = setTimeout(() => ctl.abort(), 120000);
   let r;
