@@ -289,6 +289,23 @@ class _Base:
 BASE = banco.por_empresa(_Base)   # um cache por empresa
 
 
+NOME_PRINCIPAL, NUMERO_PRINCIPAL = "Parque Aliança", "72249"
+
+
+def identidade() -> dict:
+    """Nome e número da congregação mostrados no app Relatórios e no Secretário.
+    Ajustes › Congregação; se vazio: Parque Aliança · 72249 na principal, o nome da empresa nas outras."""
+    cfg = BASE.config()
+    nome, num = str(cfg.get("congregacao_nome") or "").strip(), str(cfg.get("congregacao_numero") or "").strip()
+    if not nome:
+        if banco.empresa_atual() == banco.PRINCIPAL:
+            nome, num = NOME_PRINCIPAL, num or NUMERO_PRINCIPAL
+        else:
+            nome = str((acesso.EMPRESAS.obter(banco.empresa_atual()) or {}).get("nome") or banco.empresa_atual())
+            nome = re.sub(r"^congrega[çc][ãa]o\s+", "", nome, flags=re.I).strip() or nome
+    return {"nome": nome, "numero": num}
+
+
 def _mes_atual() -> str:
     return R.chave_por_data(datetime.now(R.FUSO), BASE.config().get("corte_dia", R.CORTE_DIA_PADRAO))
 
@@ -372,7 +389,7 @@ def base(request: Request, mes: str = "", recarregar: int = 0):
     fech = BASE.todos_fechamentos().get(ch)
     return _json({
         "perm": p, "usuario": acesso.publico(u), "mes": ch, "mes_atual": atual, "mes_calendario": datetime.now(R.FUSO).strftime("%Y-%m"), "meses": meses,
-        "config": {k: v for k, v in cfg.items()},
+        "config": {k: v for k, v in cfg.items()}, "identidade": identidade(),
         "opcoes": {"generos": GENEROS, "classes": CLASSES, "cargos": CARGOS, "categorias": R.CATEGORIAS},
         "membros": [_membro_saida(mid, m, p, part.get(mid, set()), ch) for mid, m in membros.items()],
         "relatorios": [_linha_saida(ln, p) for ln in do_mes if ln["situacao"] == "IDENTIFICADO"],
@@ -824,6 +841,10 @@ async def salvar_config(request: Request):
     for campo in ("territorios_total", "territorios_nao_trabalhados"):
         if campo in c:
             novo[campo] = _int(c[campo], 0, 10000)
+    if "congregacao_nome" in c:
+        novo["congregacao_nome"] = " ".join(str(c["congregacao_nome"] or "").split())[:80]
+    if "congregacao_numero" in c:
+        novo["congregacao_numero"] = re.sub(r"[^0-9A-Za-z-]", "", str(c["congregacao_numero"] or ""))[:20]
     if "visita_ultima" in c:
         novo["visita_ultima"] = str(c["visita_ultima"] or "")[:10]
     BASE.salvar_config(novo)

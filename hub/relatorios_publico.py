@@ -27,7 +27,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 import acesso
 import banco
@@ -51,13 +51,15 @@ def _sem_barra():
 
 @router.get("/relatorios/", include_in_schema=False)
 def pagina():
-    return FileResponse(PASTA / "index.html", media_type="text/html; charset=utf-8",
-                        headers={"Cache-Control": "no-cache"})
+    return HTMLResponse(_com_nome((PASTA / "index.html").read_text(encoding="utf-8")), headers={"Cache-Control": "no-cache"})
 
 
 @router.get("/relatorios/manifest.webmanifest", include_in_schema=False)
 def manifesto():
-    return acesso.manifesto_publico(PASTA / "manifest.webmanifest", "/relatorios/")
+    r = acesso.manifesto_publico(PASTA / "manifest.webmanifest", "/relatorios/")
+    r.body = _com_nome(r.body.decode()).encode()
+    r.headers["content-length"] = str(len(r.body))
+    return r
 
 
 @router.get("/relatorios/sw.js", include_in_schema=False)
@@ -105,7 +107,18 @@ def _int(v, lo, hi) -> int:
 @router.get("/api/relatorios-publico/info")
 def info():
     ch = _mes_chave()
-    return {"mes_chave": ch, "mes": R.rotulo(ch), "congregacao": "Parque Aliança", "numero": "72249"}
+    idt = secretaria.identidade()
+    return {"mes_chave": ch, "mes": R.rotulo(ch), "congregacao": idt["nome"], "numero": idt["numero"]}
+
+
+def _com_nome(txt: str) -> str:
+    """Troca Parque Aliança · 72249 pelo nome/número da congregação desta empresa (a principal fica igual)."""
+    idt = secretaria.identidade()
+    if (idt["nome"], idt["numero"]) == (secretaria.NOME_PRINCIPAL, secretaria.NUMERO_PRINCIPAL):
+        return txt
+    nome = html.escape(idt["nome"])
+    txt = txt.replace(" · " + secretaria.NUMERO_PRINCIPAL, (" · " + html.escape(idt["numero"])) if idt["numero"] else "")
+    return txt.replace(secretaria.NOME_PRINCIPAL, nome)
 
 
 @router.post("/api/relatorios-publico/enviar")
