@@ -28,12 +28,14 @@
 ═══════════════════════════════════════════════════════════════════════════════
  weduca.html — WEDUCA · a rede de conhecimento da King Star (kit Aurora)
 ───────────────────────────────────────────────────────────────────────────────
+ Etapa 2 — APRENDIZAGEM: cursos da equipe (aulas de vídeo/leitura/PDF/fotos), progresso,
+ avaliação com nota mínima, certificado e turma; aulas + dúvidas entram na base da IA.
  Etapa 1 — FEED: postagens com texto, fotos, PDFs e vídeos do YouTube (canal da
  empresa), curtidas, comentários, salvos, busca e novidades em tempo real.
  Tudo o que é publicado (com os comentários) vira BASE DE CONHECIMENTO da IA do
  topo na hora. Quem publica pode deixar a postagem "só no feed". 👎 numa resposta
  que veio daqui deixa a postagem EM ANÁLISE e cai nas pendências do agente.
- Próximas etapas: Aprendizagem → Notícias → Pesquisas → Documentos → Resultados → Relatórios.
+ Próximas etapas: Notícias → Pesquisas → Documentos → Resultados → Relatórios.
  API: /api/weduca (hub/weduca.py) · IA: /api/agente (hub/agente.py)
 ═══════════════════════════════════════════════════════════════════════════════
 -->
@@ -60,6 +62,7 @@ html:not([data-claro]){--ou-t:#f0cb4e}
 .sync.salvando i{background:var(--ouro);box-shadow:0 0 8px var(--ouro);animation:aurRespira 1s infinite}
 .sync.erro i{background:var(--rosa);box-shadow:0 0 8px var(--rosa)}
 main{margin-top:16px;display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:18px;align-items:start}
+main.unica{display:block}
 .pilha{display:flex;flex-direction:column;gap:14px;min-width:0}
 .lado{position:sticky;top:92px;display:flex;flex-direction:column;gap:14px;max-height:calc(100vh - 106px);overflow-y:auto}
 .caixa{border-radius:22px;padding:16px}
@@ -220,6 +223,103 @@ details.transc p{white-space:pre-wrap;margin:8px 0 0;line-height:1.55}
 .menu-lista button:hover{background:var(--sup2)}
 .menu-lista button.perigo{color:var(--rosa)}
 .menu-lista svg.i{width:16px;height:16px}
+/* ═════════ APRENDIZAGEM ═════════ */
+.chk{display:flex;gap:8px;align-items:center;font-size:.84rem;cursor:pointer}
+.btn.p{padding:6px 10px;font-size:.72rem}
+html:not([data-eduking]){--edk-l:255,255,255;--edk-sup:#131316;--edk-texto-ouro:#f0cb4e;--edk-vidro:rgba(22,22,26,.6);
+  --edk-sombra:linear-gradient(0deg,rgba(0,0,0,.92),rgba(0,0,0,.25) 55%,rgba(0,0,0,0));--edk-a1:#0b0b0d;--edk-a2:#1a160b;--edk-a3:#09090b}
+html:not([data-eduking])[data-claro]{--edk-l:17,17,17;--edk-sup:#fff;--edk-texto-ouro:#8f6b08;--edk-vidro:rgba(255,255,255,.75);
+  --edk-sombra:linear-gradient(0deg,rgba(255,255,255,.97),rgba(255,255,255,.6) 55%,rgba(255,255,255,0));--edk-a1:#fffdf6;--edk-a2:#f8e7aa;--edk-a3:#fbf6e6}
+.apr{display:flex;flex-direction:column;gap:6px}
+.apr-hero{position:relative;border-radius:26px;overflow:hidden;min-height:260px;display:flex;align-items:flex-end;margin-bottom:14px}
+.apr-hero .edk-arte,.apr-hero .capa-img{position:absolute;inset:0}
+.capa-img{width:100%;height:100%;object-fit:cover}
+.apr-hero::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,var(--noite) 0%,color-mix(in srgb,var(--noite) 70%,transparent) 45%,transparent),linear-gradient(0deg,var(--noite),transparent 60%)}
+.apr-hero .txt{position:relative;z-index:2;padding:26px clamp(18px,3vw,34px);max-width:640px}
+.apr-hero .rotulo{display:inline-flex;align-items:center;gap:6px;font-size:.68rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase;padding:4px 11px;border-radius:99px;
+  background:linear-gradient(135deg,#f0cb4e,#d2ae34);color:#1a1204}
+.apr-hero h2{margin:10px 0 6px;font:800 clamp(22px,2.6vw,34px)/1.1 var(--titulo)}
+.apr-hero p{margin:0 0 14px;color:var(--txt2);font-size:.92rem;max-width:560px}
+.apr-hero .acoes{display:flex;gap:10px;flex-wrap:wrap}
+.barra-prog{height:6px;border-radius:9px;background:rgba(var(--edk-l),.14);overflow:hidden}
+.barra-prog i{display:block;height:100%;border-radius:9px;background:linear-gradient(90deg,#d2ae34,#f0cb4e);box-shadow:0 0 10px rgba(240,203,78,.6);transition:width .5s}
+.apr-hero .barra-prog{max-width:360px;margin:-4px 0 14px}
+.apr-ferr{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:4px 0 6px}
+.apr-ferr .busca{flex:1;min-width:200px;position:relative}
+.apr-ferr .busca input{padding-left:36px}
+.apr-ferr .busca svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--txt3)}
+.edk-card .cprog{position:absolute;left:0;right:0;bottom:0;height:4px;z-index:3;background:rgba(var(--edk-l),.15)}
+.edk-card .cprog i{display:block;height:100%;background:#f0cb4e}
+.edk-card .capa-img{position:absolute;inset:0}
+.nota.ok{color:var(--verde)!important}.nota.obr{color:#fb7185!important}.nota.ras{color:var(--txt2)!important}
+.certs{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.cert-c{display:flex;gap:12px;align-items:center;padding:14px;border-radius:18px;text-align:left;width:100%}
+.cert-c .ic{width:46px;height:46px;border-radius:14px;display:grid;place-items:center;background:linear-gradient(135deg,#f0cb4e,#d2ae34);color:#1a1204;flex:none}
+.cert-c b{display:block;font:700 .9rem var(--titulo)}.cert-c small{color:var(--txt3);font-size:.72rem}
+/* curso */
+.cur-cab{position:relative;border-radius:22px;overflow:hidden;min-height:220px;display:flex;align-items:flex-end;margin-bottom:16px}
+.cur-cab .edk-arte,.cur-cab .capa-img{position:absolute;inset:0}
+.cur-cab::after{content:"";position:absolute;inset:0;background:linear-gradient(0deg,var(--noite),color-mix(in srgb,var(--noite) 40%,transparent) 60%,transparent)}
+.cur-cab .txt{position:relative;z-index:2;padding:22px}
+.cur-cab h2{margin:6px 0;font:800 clamp(22px,2.4vw,32px) var(--titulo)}
+.cur-meta{display:flex;flex-wrap:wrap;gap:8px 14px;font-size:.8rem;color:var(--txt2)}
+.cur-grade{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:18px;align-items:start}
+.cur-desc{white-space:pre-wrap;line-height:1.6;color:var(--txt2);margin:0 0 14px}
+.aulas-l{display:flex;flex-direction:column;gap:6px}
+.aula-i{display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:12px;align-items:center;padding:11px 12px;border-radius:14px;background:var(--sup);border:1px solid var(--linha);text-align:left;width:100%;transition:.2s}
+.aula-i:hover{border-color:rgba(240,203,78,.45);transform:translateX(3px)}
+.aula-i.atual{border-color:#f0cb4e;box-shadow:0 0 0 1px #f0cb4e}
+.aula-i .n{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;font:800 .8rem var(--titulo);background:var(--sup2);color:var(--txt2)}
+.aula-i.feita .n{background:var(--verde);color:#04140b}
+.aula-i b{display:block;font-size:.88rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.aula-i small{color:var(--txt3);font-size:.72rem;display:flex;gap:6px;align-items:center}
+.aula-i small svg{width:13px;height:13px}
+.lado-cur{display:flex;flex-direction:column;gap:12px;position:sticky;top:0}
+.box{border-radius:18px;padding:14px;background:var(--sup);border:1px solid var(--linha)}
+.box h4{margin:0 0 8px;font:700 .9rem var(--titulo);display:flex;gap:8px;align-items:center}
+.pct-g{font:800 2rem var(--titulo)}
+/* player */
+.player{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:18px;align-items:start}
+.aula-tit{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.aula-tit h3{margin:0;font:800 1.3rem var(--titulo)}
+.aula-corpo{font-size:.95rem;line-height:1.65;white-space:pre-wrap;word-wrap:break-word}
+.pdf-v{width:100%;height:70vh;border:0;border-radius:14px;background:#fff}
+.aula-pe{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:16px 0;padding:14px;border-radius:16px;background:var(--sup);border:1px solid var(--linha)}
+.aula-pe .esp{flex:1}
+.duvidas h4{margin:18px 0 8px;font:700 .95rem var(--titulo);display:flex;gap:8px;align-items:center}
+/* avaliação */
+.quiz-q{padding:16px;border-radius:18px;background:var(--sup);border:1px solid var(--linha);margin-bottom:12px}
+.quiz-q b{display:block;margin-bottom:10px;font:700 .98rem var(--titulo)}
+.quiz-q label{display:flex;gap:10px;align-items:center;padding:10px 12px;border-radius:12px;cursor:pointer;border:1px solid transparent;margin-bottom:4px}
+.quiz-q label:hover{background:var(--sup2)}
+.quiz-q label:has(input:checked){border-color:#f0cb4e;background:rgba(240,203,78,.1)}
+.quiz-q label.certa{border-color:var(--verde)!important;background:color-mix(in srgb,var(--verde) 12%,transparent)!important}
+.quiz-q input{accent-color:#f0cb4e;width:18px;height:18px}
+.resultado{text-align:center;padding:26px;border-radius:22px;margin-bottom:16px}
+.resultado .nota-g{font:800 3.4rem var(--titulo)}
+.resultado.ok .nota-g{color:var(--verde)}.resultado.mal .nota-g{color:var(--rosa)}
+/* editor */
+.ed-grade{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:18px;align-items:start}
+.ed-sec{border-radius:18px;padding:16px;background:var(--sup);border:1px solid var(--linha);margin-bottom:14px}
+.ed-sec h4{margin:0 0 12px;font:700 .95rem var(--titulo);display:flex;gap:8px;align-items:center}
+.ed-sec h4 .btn,.ed-sec h4 .btn.v{margin-left:auto}
+.lin2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.capa-ed{position:relative;border-radius:14px;overflow:hidden;aspect-ratio:16/7;background:var(--sup2);margin-bottom:8px}
+.capa-ed .edk-arte,.capa-ed img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.capa-ed .bts{position:absolute;right:8px;bottom:8px;display:flex;gap:6px;z-index:2}
+.aula-ed{display:grid;grid-template-columns:30px minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px 10px;border-radius:12px;background:var(--sup);border:1px solid var(--linha);margin-bottom:6px}
+.aula-ed .acs{display:flex;gap:4px}
+.aula-ed .acs .btn-ic{width:32px;height:32px}
+.perg-ed{padding:12px;border-radius:14px;border:1px solid var(--linha);margin-bottom:10px;background:var(--sup)}
+.perg-ed .op{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:center;margin-top:6px}
+.perg-ed .op input[type=radio]{accent-color:#f0cb4e;width:18px;height:18px}
+.seg-tipo{display:flex;gap:6px;margin-bottom:10px}
+.seg-tipo button{flex:1;display:flex;gap:6px;align-items:center;justify-content:center;padding:10px;border-radius:12px;background:var(--sup);border:1px solid var(--linha);font-weight:700;font-size:.82rem;color:var(--txt2)}
+.seg-tipo button.ativo{border-color:#f0cb4e;background:rgba(240,203,78,.13);color:var(--txt)}
+.tbl{width:100%;border-collapse:collapse;font-size:.84rem}
+.tbl th{text-align:left;font-size:.66rem;letter-spacing:.08em;text-transform:uppercase;color:var(--txt3);padding:8px;border-bottom:1px solid var(--linha)}
+.tbl td{padding:9px 8px;border-bottom:1px solid var(--linha)}
+@media (max-width:1000px){.cur-grade,.player,.ed-grade{grid-template-columns:1fr}.lado-cur{position:static}}
 @media (max-width:1000px){main{grid-template-columns:1fr}.lado{position:static;max-height:none;order:-1}.lado .so-pc{display:none}}
 @media (max-width:820px){.topo{position:relative;top:0}.nav{order:3;width:100%;overflow-x:auto;flex-wrap:nowrap;margin:0}.novas{top:10px}}
 @media (max-width:560px){body{padding:8px}.nav button .rot,.nav button .breve{display:none}.comp{grid-template-columns:1fr}.comp>.av{display:none}.comp-pe .ferr span{display:none}.post{padding:13px 12px 8px}}
@@ -265,9 +365,9 @@ function $$(s, r = document) { return [...r.querySelectorAll(s)]; }
 
 /* ═════════ estado ═════════ */
 const API = "/api/weduca";
-const S = { eu: null, posts: [], mais: false, carregando: false, agora: "", filtro: "", q: "", destaques: null, conv: [], iaOk: true };
+const S = { aba: lsGet("wd.weduca.aba", "feed"), eu: null, posts: [], mais: false, carregando: false, agora: "", filtro: "", q: "", destaques: null, conv: [], iaOk: true };
 const SECOES = [
-  ["feed", "Feed", "feed", true], ["aprendizagem", "Aprendizagem", "livro"], ["noticias", "Notícias", "jornal"], ["pesquisas", "Pesquisas", "enquete"],
+  ["feed", "Feed", "feed", true], ["aprendizagem", "Aprendizagem", "livro", true], ["noticias", "Notícias", "jornal"], ["pesquisas", "Pesquisas", "enquete"],
   ["documentos", "Documentos", "pasta2"], ["resultados", "Resultados", "trofeu"], ["relatorios", "Relatórios", "grafico"],
 ];
 const FILTROS = [["", "Tudo"], ["foto", "Fotos"], ["pdf", "PDFs"], ["video", "Vídeos"], ["salvos", "Salvos"], ["meus", "Meus"]];
@@ -305,9 +405,20 @@ const urlArq = (id) => `${API}/arquivos/${encodeURIComponent(id)}`;
 const pode = (a) => !!(S.eu && S.eu.pode && S.eu.pode[a]);
 
 /* ═════════ topo (abas) ═════════ */
+function lsGet(k, d) { try { return localStorage.getItem(k) || d; } catch (_) { return d; } }
 function topo() {
   $("#nav").innerHTML = SECOES.map(([id, rot, ic, pronta]) =>
-    `<button type="button" class="${id === "feed" ? "ativo" : ""}" ${pronta ? "" : "disabled"} title="${pronta ? rot : rot + " — em construção (próxima etapa)"}">${svg(ic)}<span class="rot">${rot}</span></button>`).join("");
+    `<button type="button" data-s="${id}" class="${id === S.aba ? "ativo" : ""}" ${pronta ? "" : "disabled"} title="${pronta ? rot : rot + " — em construção (próxima etapa)"}">${svg(ic)}<span class="rot">${rot}</span></button>`).join("");
+}
+
+$("#nav").addEventListener("click", (e) => { const b = e.target.closest("[data-s]"); if (b && !b.disabled) irAba(b.dataset.s); });
+function irAba(a) {
+  if (a === S.aba && $("#main").childElementCount) return;
+  S.aba = a; try { localStorage.setItem("wd.weduca.aba", a); } catch (_) {}
+  $$("#nav [data-s]").forEach((b) => b.classList.toggle("ativo", b.dataset.s === a));
+  const m = $("#main"); m.classList.toggle("unica", a !== "feed");
+  m.animate?.([{ opacity: 0, transform: "translateY(10px)" }, { opacity: 1, transform: "none" }], { duration: 380, easing: "cubic-bezier(.16,1,.3,1)" });
+  if (a === "feed") { tela(); carregar(false); carregarDestaques(); } else telaAprender();
 }
 
 /* ═════════ tela ═════════ */
@@ -512,7 +623,7 @@ document.addEventListener("click", async (e) => {
     }
   } catch (err) { A.toast("⚠️ " + esc(err.message)); }
 });
-document.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && e.target.matches(".com-novo input")) { e.preventDefault(); const art = e.target.closest(".post"); comentar(postDe(art), art); } });
+document.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && e.target.matches(".post .com-novo input")) { e.preventDefault(); const art = e.target.closest(".post"); comentar(postDe(art), art); } });
 async function comentar(p, art) {
   const i = art.querySelector(".com-novo input"), t = i.value.trim();
   if (!t) return i.focus();
@@ -545,7 +656,13 @@ async function abrirPost(id) {
     A.modal({ titulo: "Postagem de " + ((p.autor || {}).nome || ""), icone: "chapeu", cor: "#f0cb4e", largura: 760, html: `<div class="pilha">${htmlPost(p)}</div>`, aoFechar: () => { S.aberto = null; } });
   } catch (e) { A.toast("⚠️ " + esc(e.message)); }
 }
-function lerHash() { const m = /post=([\w-]+)/.exec(location.hash); if (m) { abrirPost(m[1]); history.replaceState(null, "", location.pathname); } }
+function lerHash() {
+  const m = /post=([\w-]+)/.exec(location.hash), c = /curso=([\w-]+)(?:&aula=([\w-]+))?/.exec(location.hash), au = /^#?aula=([\w-]+)/.exec(location.hash);
+  if (m) { if (S.aba !== "feed") irAba("feed"); abrirPost(m[1]); }
+  else if (c) { if (S.aba !== "aprendizagem") irAba("aprendizagem"); abrirCurso(c[1], c[2]); }
+  else if (au) { if (S.aba !== "aprendizagem") irAba("aprendizagem"); api(`/aulas/${au[1]}`).then((x) => abrirCurso(x.curso_id, au[1])).catch((e) => A.toast("⚠️ " + esc(e.message))); }
+  if (m || c || au) history.replaceState(null, "", location.pathname);
+}
 addEventListener("hashchange", lerHash);
 
 /* ═════════ carregar / tempo real ═════════ */
@@ -564,7 +681,7 @@ async function carregar(maisAntigas) {
 }
 function recarregar() { $("#novas").classList.remove("on"); return carregar(false); }
 async function novidades() {
-  if (document.hidden || !S.agora || S.q || S.filtro) return;
+  if (document.hidden || S.aba !== "feed" || !S.agora || S.q || S.filtro || !$("#novas")) return;
   try {
     const r = await A.api(`${API}/novidades?desde=${encodeURIComponent(S.agora)}`);
     const b = $("#novas");
@@ -618,12 +735,12 @@ async function perguntar(q) {
     if (r.tipo === "resposta") {
       const f = r.fonte || {}, corpo = r.passos ? `<ol>${r.passos.map((p) => `<li>${esc(p)}</li>`).join("")}</ol>` : textoIA(r.texto);
       const fonte = f.origem === "weduca"
-        ? `📣 Fonte: <button type="button" data-post="${esc(f.post_id)}">postagem de ${esc(f.por || "")} no WEDUCA</button>`
+        ? `📣 Fonte: <button type="button" data-hash="${esc(f.hash || "post=" + f.post_id)}">${String(f.hash || "").startsWith("curso=") ? "aula" : "postagem"} de ${esc(f.por || "")} no WEDUCA</button>`
         : `📄 Fonte: <b>${esc(f.titulo)}</b> (artigo da base)`;
       d.innerHTML = `${r.modo === "ia" || f.origem === "weduca" ? "" : `<p><b>${esc(r.titulo)}</b></p>`}${corpo}<span class="fonte">${fonte}</span>
         <div class="fb"><button type="button" data-u="1">👍 Resolveu</button><button type="button" data-u="0">👎 Não resolveu</button></div>`;
       S.conv.push({ p: q, r: r.texto || (r.passos || []).slice(0, 4).join(" ") }); if (S.conv.length > 3) S.conv.shift();
-      d.querySelector("[data-post]")?.addEventListener("click", (e) => abrirPost(e.currentTarget.dataset.post));
+      d.querySelector("[data-hash]")?.addEventListener("click", (e) => { location.hash = e.currentTarget.dataset.hash; });
       d.querySelectorAll("[data-u]").forEach((b) => b.addEventListener("click", async () => {
         const util = b.dataset.u === "1";
         let obs = "";
@@ -652,8 +769,439 @@ function pedirObs() {
   });
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   APRENDIZAGEM — cursos feitos pela equipe, progresso, avaliação e certificado
+   ═══════════════════════════════════════════════════════════════════════════ */
+const AP = { cursos: [], certs: [], filtro: "", q: "", pode_criar: false, categorias: [] };
+function rnd(seed, n) { const x = Math.sin(seed * 9301 + n * 49297) * 233280; return x - Math.floor(x); }
+/** capa gerada (sem foto): luz dourada, anéis e o ícone grande — igual ao início do hub */
+function arte(chave, icone, tom = 0) {
+  const s = hashS(chave) % 9973, r = (n) => rnd(s, n);
+  const pal = [["240,203,78", "210,174,52"], ["247,230,163", "240,203,78"], ["210,174,52", "120,88,18"], ["255,255,255", "240,203,78"]][(s + tom) % 4];
+  const t = 38 + r(7) * 26;
+  return `<div class="edk-arte" style="background:radial-gradient(${55 + r(1) * 30}% ${70 + r(2) * 30}% at ${Math.round(r(3) * 100)}% ${Math.round(r(4) * 100)}%, rgba(${pal[0]},.55), transparent 62%),
+    radial-gradient(45% 60% at ${Math.round(r(5) * 100)}% ${Math.round(r(6) * 100)}%, rgba(${pal[1]},.38), transparent 66%),
+    linear-gradient(${Math.round(r(10) * 360)}deg,var(--edk-a1),var(--edk-a2) 55%,var(--edk-a3))">
+    <span class="anel" style="width:${120 + r(11) * 160}%;aspect-ratio:1;left:${-40 + r(12) * 60}%;top:${-60 + r(13) * 40}%"></span>
+    <span class="anel" style="width:${60 + r(14) * 80}%;aspect-ratio:1;left:${30 + r(15) * 40}%;top:${10 + r(16) * 40}%"></span>
+    ${icone ? `<span class="ico" style="width:${t}%;aspect-ratio:1;left:${52 + r(8) * 30}%;top:${8 + r(9) * 40}%">${svg(icone)}</span>` : ""}</div>`;
+}
+const capaDe = (c, tom) => c.capa ? `<img class="capa-img" src="${urlArq(c.capa)}" alt="" loading="lazy">` : arte(c.id, "livro", tom);
+const durTxt = (m) => !m ? "" : m >= 60 ? `${Math.floor(m / 60)} h${m % 60 ? " " + (m % 60) + " min" : ""}` : `${m} min`;
+const ICT = { video: "youtube", texto: "documento", pdf: "pdf" };
+const ROT_T = { video: "Vídeo", texto: "Leitura", pdf: "PDF" };
+
+async function telaAprender() {
+  const m = $("#main");
+  m.innerHTML = `<div class="apr" id="apr"><div class="carregar">carregando cursos…</div></div>`;
+  try {
+    const [r, c] = await Promise.all([api("/cursos"), api("/certificados")]);
+    Object.assign(AP, { cursos: r.cursos, pode_criar: r.pode_criar, categorias: r.categorias, certs: c.certificados });
+  } catch (e) { m.innerHTML = `<div class="vazio vidro">${svg("atencao")}<b>Não consegui carregar a Aprendizagem</b>${esc(e.message)}</div>`; return; }
+  desenharApr();
+}
+function cardCurso(c, tom = 0) {
+  const selo = c.status !== "publicado" ? `<span class="nota ras">${c.status}</span>` : c.concluido_em ? `<span class="nota ok">✓ concluído</span>`
+    : c.obrigatorio ? `<span class="nota obr">obrigatório</span>` : `<span class="nota">${c.n_aulas} ${c.n_aulas === 1 ? "aula" : "aulas"}</span>`;
+  return `<button type="button" class="edk-card" data-curso="${esc(c.id)}" title="${esc(c.titulo)}">${capaDe(c, tom)}<span class="sombra"></span>
+    <span class="topo-c">${selo}${c.tem_quiz ? `<span class="nota">avaliação</span>` : ""}</span>
+    <span class="info"><span class="cat">${esc(c.categoria)}</span><h3>${esc(c.titulo)}</h3>
+      <span class="ctr"><span class="bts"><span class="play">${svg("seta")}</span></span><small>${c.pct ? `${c.pct}% feito` : c.iniciado ? "começou" : "Começar"}${c.minutos ? " · " + durTxt(c.minutos) : ""}</small></span></span>
+    ${c.pct ? `<span class="cprog"><i style="width:${c.pct}%"></i></span>` : ""}</button>`;
+}
+function fileiraA(titulo, selo, itens) {
+  if (!itens.length) return "";
+  const id = "fa" + hashS(titulo + itens.length);
+  return `<section class="edk-fil"><div class="edk-fil-cab"><h2>${titulo}${selo ? `<span class="edk-selo">${selo}</span>` : ""}</h2>
+    <div class="edk-setas"><button type="button" data-sc="${id}" data-d="-1">${svg("voltar")}</button><button type="button" data-sc="${id}" data-d="1">${svg("avancar")}</button></div></div>
+    <div class="edk-rel"><div class="edk-trilho" id="${id}">${itens.join("")}</div></div></section>`;
+}
+function desenharApr() {
+  const q = AP.q.toLowerCase();
+  let lst = AP.cursos.filter((c) => !q || (c.titulo + " " + c.descricao + " " + c.categoria).toLowerCase().includes(q));
+  if (AP.filtro === "andamento") lst = lst.filter((c) => c.iniciado && !c.concluido_em);
+  else if (AP.filtro === "concluidos") lst = lst.filter((c) => c.concluido_em);
+  else if (AP.filtro === "obrigatorios") lst = lst.filter((c) => c.obrigatorio);
+  else if (AP.filtro === "meus") lst = lst.filter((c) => (c.autor || {}).login === S.eu.login);
+  const pub = lst.filter((c) => c.status === "publicado");
+  const andando = pub.filter((c) => c.iniciado && !c.concluido_em).sort((a, b) => b.pct - a.pct);
+  const destaque = andando[0] || pub.find((c) => c.obrigatorio && !c.concluido_em) || pub.find((c) => !c.concluido_em) || pub[0];
+  let h = "";
+  if (destaque) {
+    h += `<section class="apr-hero">${capaDe(destaque)}<div class="txt"><span class="rotulo">${destaque.concluido_em ? "Você concluiu ✓" : andando[0] === destaque ? "Continue de onde parou" : destaque.obrigatorio ? "Obrigatório" : "Comece por aqui"}</span>
+      <h2>${esc(destaque.titulo)}</h2><p>${esc((destaque.descricao || "").slice(0, 220))}</p>
+      ${destaque.pct ? `<div class="barra-prog"><i style="width:${destaque.pct}%"></i></div>` : ""}
+      <div class="acoes"><button type="button" class="btn" data-curso="${esc(destaque.id)}" data-ir="1">${svg("seta")}${destaque.concluido_em ? "Rever" : destaque.pct ? "Continuar" : "Começar"}</button>
+      <button type="button" class="btn v" data-curso="${esc(destaque.id)}">${svg("olho")}Ver o curso</button></div></div></section>`;
+  } else if (!AP.q && !AP.filtro) {
+    h += `<div class="vazio vidro">${A.orbe("livro", "#f0cb4e")}<b>Nenhum curso ainda</b>${AP.pode_criar ? "Crie o primeiro curso: aulas em vídeo do canal, leitura, PDF e fotos, com avaliação e certificado. Tudo vira base da IA." : "Quando a equipe publicar cursos, eles aparecem aqui."}
+      ${AP.pode_criar ? `<button type="button" class="btn" data-novo-curso>${svg("mais")}Criar curso</button>` : ""}</div>`;
+  }
+  if (AP.cursos.length || AP.q || AP.filtro) h += `<div class="apr-ferr"><div class="chips" id="aprF">${[["", "Todos"], ["obrigatorios", "Obrigatórios"], ["andamento", "Em andamento"], ["concluidos", "Concluídos"], ...(AP.pode_criar ? [["meus", "Meus cursos"]] : [])]
+      .map(([f, r]) => `<button type="button" class="chip ${f === AP.filtro ? "ativo" : ""}" data-af="${f}">${r}</button>`).join("")}</div>
+    <label class="busca">${svg("busca")}<input class="entrada" id="aprQ" placeholder="Buscar curso" value="${esc(AP.q)}" autocomplete="off"></label>
+    ${AP.pode_criar ? `<button type="button" class="btn" data-novo-curso>${svg("mais")}Criar curso</button>` : ""}</div>`;
+  if (andando.length) h += fileiraA("Continue assistindo", `${andando.length}`, andando.map((c) => cardCurso(c, 1)));
+  const obr = pub.filter((c) => c.obrigatorio && !c.concluido_em);
+  if (obr.length) h += fileiraA("Obrigatórios para você", `${obr.length}`, obr.map((c) => cardCurso(c, 2)));
+  const cats = [...new Set(pub.map((c) => c.categoria))].sort();
+  for (const cat of cats) { const it = pub.filter((c) => c.categoria === cat); h += fileiraA(esc(cat), `${it.length} ${it.length === 1 ? "curso" : "cursos"}`, it.map((c) => cardCurso(c))); }
+  const ras = lst.filter((c) => c.status !== "publicado");
+  if (ras.length) h += fileiraA("Rascunhos e arquivados", "só quem edita vê", ras.map((c) => cardCurso(c, 3)));
+  if (!lst.length && (AP.q || AP.filtro)) h += `<div class="vazio vidro"><b>Nada encontrado</b>Tente outra busca ou outro filtro.</div>`;
+  if (AP.certs.length) h += `<section class="edk-fil"><div class="edk-fil-cab"><h2>Meus certificados<span class="edk-selo">${AP.certs.length}</span></h2></div>
+    <div class="certs">${AP.certs.map((x) => `<button type="button" class="cert-c vidro" data-cert="${esc(x.curso_id)}"><span class="ic">${svg("trofeu")}</span><span><b>${esc(x.curso)}</b><small>${new Date(x.concluido_em).toLocaleDateString("pt-BR")} · código ${esc(x.codigo)}${x.nota != null ? " · nota " + x.nota : ""}</small></span></button>`).join("")}</div></section>`;
+  $("#apr").innerHTML = h;
+  const qi = $("#aprQ"); let tq;
+  qi?.addEventListener("input", () => { clearTimeout(tq); tq = setTimeout(() => { AP.q = qi.value.trim(); desenharApr(); const n = $("#aprQ"); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 300); });
+}
+document.addEventListener("click", (e) => {
+  if (!e.target.closest("#apr")) return;
+  const sc = e.target.closest("[data-sc]");
+  if (sc) { const t = document.getElementById(sc.dataset.sc); t && t.scrollBy({ left: +sc.dataset.d * t.clientWidth * 0.8, behavior: "smooth" }); return; }
+  const f = e.target.closest("[data-af]");
+  if (f) { AP.filtro = f.dataset.af; desenharApr(); return; }
+  if (e.target.closest("[data-novo-curso]")) return editorCurso(null);
+  const ct = e.target.closest("[data-cert]");
+  if (ct) return certificado(AP.certs.find((x) => x.curso_id === ct.dataset.cert));
+  const c = e.target.closest("[data-curso]");
+  if (c) abrirCurso(c.dataset.curso, c.dataset.ir ? "continuar" : null);
+});
+function atualizarResumo(c) { const i = AP.cursos.findIndex((x) => x.id === c.id); if (i >= 0) AP.cursos[i] = { ...AP.cursos[i], ...c }; }
+
+/* ── o curso (tela cheia) ── */
+async function abrirCurso(cid, aula) {
+  let C;
+  try { C = await api(`/cursos/${encodeURIComponent(cid)}`); } catch (e) { return A.toast("⚠️ " + esc(e.message)); }
+  const md = A.modal({ titulo: C.titulo, icone: "livro", cor: "#f0cb4e", largura: 1180, html: `<div id="curBox"></div>`,
+    aoFechar: () => { if (S.aba === "aprendizagem") telaAprender(); } });
+  const box = md.el.querySelector("#curBox");
+  const V = { C, md, box };
+  if (aula === "continuar") aula = C.ultima_aula && C.aulas.some((a) => a.id === C.ultima_aula) ? C.ultima_aula : (C.aulas.find((a) => !C.feitas.includes(a.id)) || C.aulas[0] || {}).id;
+  if (aula && C.aulas.some((a) => a.id === aula)) player(V, aula); else visaoCurso(V);
+}
+function visaoCurso(V) {
+  const { C, box } = V;
+  const prox = C.aulas.find((a) => !C.feitas.includes(a.id));
+  const tudo = C.aulas.length && !prox;
+  box.innerHTML = `<div class="cur-cab">${capaDe(C)}<div class="txt"><span class="cat" style="font-size:.7rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--edk-texto-ouro)">${esc(C.categoria)}${C.obrigatorio ? " · obrigatório" : ""}${C.status !== "publicado" ? " · " + esc(C.status) : ""}</span>
+      <h2>${esc(C.titulo)}</h2><div class="cur-meta"><span>${svg("usuario")} ${esc((C.autor || {}).nome || "")}</span><span>${C.n_aulas} ${C.n_aulas === 1 ? "aula" : "aulas"}</span>${C.minutos ? `<span>${durTxt(C.minutos)}</span>` : ""}${C.tem_quiz ? `<span>avaliação · nota mínima ${C.nota_min}</span>` : ""}</div></div></div>
+    <div class="cur-grade"><div>
+      ${C.descricao ? `<p class="cur-desc">${rico(C.descricao)}</p>` : ""}
+      <h4 style="margin:0 0 10px;font:700 1rem var(--titulo)">Aulas</h4>
+      <div class="aulas-l">${C.aulas.length ? C.aulas.map((a, i) => `<button type="button" class="aula-i ${C.feitas.includes(a.id) ? "feita" : ""}" data-aula="${esc(a.id)}"><span class="n">${C.feitas.includes(a.id) ? "✓" : i + 1}</span>
+        <span style="min-width:0"><b>${esc(a.titulo)}</b><small>${svg(ICT[a.tipo])}${ROT_T[a.tipo]}${a.minutos ? " · " + durTxt(a.minutos) : ""}${a.n_duvidas ? ` · ${a.n_duvidas} dúvida(s)` : ""}${a.analise ? ' · <span style="color:var(--rosa)">em análise</span>' : ""}</small></span>${svg("avancar")}</button>`).join("")
+        : `<div class="box">Este curso ainda não tem aulas.${C.pode_editar ? " Clique em Editar para adicionar." : ""}</div>`}</div>
+    </div><aside class="lado-cur">
+      <div class="box"><h4>${svg("grafico")}Seu progresso</h4><div class="pct-g">${C.pct}%</div><div class="barra-prog" style="margin:8px 0 12px"><i style="width:${C.pct}%"></i></div>
+        ${C.concluido_em ? `<div style="color:var(--verde);font-weight:700;margin-bottom:10px">✓ Concluído em ${new Date(C.concluido_em).toLocaleDateString("pt-BR")}</div>` : ""}
+        ${C.aulas.length ? `<button type="button" class="btn" style="width:100%" data-c="ir">${svg("seta")}${C.pct ? (prox ? "Continuar" : "Rever as aulas") : "Começar"}</button>` : ""}
+        ${C.tem_quiz && tudo && !C.concluido_em ? `<button type="button" class="btn" style="width:100%;margin-top:8px" data-c="quiz">${svg("check")}Fazer a avaliação</button>` : ""}
+        ${C.tem_quiz && !tudo ? `<small style="display:block;margin-top:10px;color:var(--txt3)">A avaliação libera quando você concluir todas as aulas.</small>` : ""}
+        ${C.quiz_resultado ? `<small style="display:block;margin-top:10px;color:var(--txt2)">Avaliação: melhor nota ${C.quiz_resultado.nota} (${C.quiz_resultado.tentativas} tentativa(s))</small>` : ""}
+        ${C.concluido_em ? `<button type="button" class="btn v" style="width:100%;margin-top:8px" data-c="cert">${svg("trofeu")}Certificado</button>` : ""}</div>
+      ${C.pode_editar ? `<div class="box"><h4>${svg("lapis")}Quem cuida do curso</h4><button type="button" class="btn v" style="width:100%" data-c="editar">${svg("lapis")}Editar curso e aulas</button>
+        <button type="button" class="btn v" style="width:100%;margin-top:8px" data-c="turma">${svg("usuarios")}Turma (quem fez)</button></div>` : ""}
+      ${C.base && C.status === "publicado" ? `<div class="box" style="font-size:.8rem;color:var(--txt2)">${svg("ia")} As aulas deste curso fazem parte da <b>base de conhecimento da IA</b> (a avaliação não).</div>` : ""}
+    </aside></div>`;
+  box.onclick = (e) => {
+    const a = e.target.closest("[data-aula]"); if (a) return player(V, a.dataset.aula);
+    const b = e.target.closest("[data-c]"); if (!b) return;
+    const k = b.dataset.c;
+    if (k === "ir") player(V, (prox || C.aulas[0]).id);
+    else if (k === "quiz") avaliacao(V);
+    else if (k === "cert") certificado({ curso_id: C.id, curso: C.titulo, codigo: (AP.certs.find((x) => x.curso_id === C.id) || {}).codigo, concluido_em: C.concluido_em, nome: S.eu.nome, minutos: C.minutos, nota: (C.quiz_resultado || {}).nota });
+    else if (k === "editar") { V.md.fechar(); editorCurso(C.id); }
+    else if (k === "turma") turma(C);
+  };
+  box.scrollIntoView?.({ block: "start" });
+}
+async function recarregarCurso(V) { V.C = await api(`/cursos/${encodeURIComponent(V.C.id)}`); atualizarResumo(V.C); }
+
+/* ── a aula ── */
+function player(V, aid) {
+  const { C, box } = V;
+  const i = C.aulas.findIndex((a) => a.id === aid), a = C.aulas[i], prox = C.aulas[i + 1];
+  const feita = C.feitas.includes(aid);
+  api(`/aulas/${aid}/visto`, { method: "POST" }).catch(() => {});
+  const fotos = (a.midias || []).filter((m) => m.kind === "foto"), pdfs = (a.midias || []).filter((m) => m.kind === "pdf");
+  box.innerHTML = `<div class="player"><div>
+      <div class="aula-tit"><button type="button" class="btn v" data-p="voltar">${svg("voltar")}Curso</button><span class="selo base">${svg(ICT[a.tipo])}${ROT_T[a.tipo]}</span><h3>${i + 1}. ${esc(a.titulo)}</h3></div>
+      ${(a.correcoes || []).map((c) => `<div class="correcao"><b>Correção</b> · ${esc((c.por || {}).nome || "")} · ${quando(c.em)}<br>${esc(c.texto)}</div>`).join("")}
+      ${a.analise ? `<div class="analise">👎 Alguém disse que uma resposta da IA baseada nesta aula não resolveu${a.analise.obs ? `: “${esc(a.analise.obs)}”` : ""}. Está nas pendências do agente.</div>` : ""}
+      ${a.video ? `<div class="video" style="margin-top:0"><iframe src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(a.video.id)}?rel=0" allow="encrypted-media; picture-in-picture; fullscreen" allowfullscreen title="${esc(a.titulo)}"></iframe></div>
+        ${a.video.titulo ? `<div class="v-tit">${svg("youtube")}${esc(a.video.titulo)}</div>` : ""}` : ""}
+      ${a.texto ? `<div class="aula-corpo" style="margin-top:14px">${rico(a.texto)}</div>` : ""}
+      ${pdfs.map((m) => `<iframe class="pdf-v" style="margin-top:14px" src="${urlArq(m.id)}#view=FitH" title="${esc(m.nome)}"></iframe><a class="pdf-c" style="margin-top:8px" href="${urlArq(m.id)}" target="_blank" rel="noopener"><span class="ic">PDF</span><span><b>${esc(m.nome)}</b><small>abrir em outra aba${m.paginas ? " · " + m.paginas + " páginas" : ""}</small></span></a>`).join("")}
+      ${fotos.length ? `<div class="fotos n${Math.min(fotos.length, 4)}">${fotos.slice(0, 4).map((m, k) => `<button type="button" data-fa="${k}"><img src="${urlArq(m.id)}" alt="" loading="lazy">${k === 3 && fotos.length > 4 ? `<span class="resto">+${fotos.length - 4}</span>` : ""}</button>`).join("")}</div>` : ""}
+      ${a.transcricao ? `<details class="transc"><summary>Descrição / transcrição do vídeo</summary><p>${esc(a.transcricao)}</p></details>` : ""}
+      <div class="aula-pe">${i > 0 ? `<button type="button" class="btn v" data-p="ant">${svg("voltar")}Anterior</button>` : ""}<span class="esp"></span>
+        ${C.status === "publicado" || C.pode_editar ? `<button type="button" class="btn ${feita ? "v" : ""}" data-p="concluir">${svg("check")}${feita ? "Concluída ✓" : prox ? "Concluir e ir para a próxima" : "Concluir a aula"}</button>` : ""}
+        ${prox ? `<button type="button" class="btn v" data-p="prox">Próxima${svg("avancar")}</button>` : ""}</div>
+      <div class="duvidas"><h4>${svg("balao")}Dúvidas e comentários da aula <small style="font-weight:500;color:var(--txt3)">(públicos — entram na base da IA)</small></h4><div class="coments" id="duvL"><div class="carregar">carregando…</div></div>
+        ${pode("comentar") ? `<div class="com-novo">${avatar(S.eu, true)}<input class="entrada" id="duvIn" placeholder="Pergunte ou complemente a aula… (Enter envia)" maxlength="3000"><button type="button" class="btn-ic" data-p="duv">${svg("seta")}</button></div>` : ""}</div>
+    </div>
+    <aside class="lado-cur"><div class="box"><h4>${svg("livro")}${esc(C.titulo)}</h4><div class="barra-prog" style="margin-bottom:10px"><i style="width:${C.pct}%"></i></div>
+      <div class="aulas-l">${C.aulas.map((x, k) => `<button type="button" class="aula-i ${C.feitas.includes(x.id) ? "feita" : ""} ${x.id === aid ? "atual" : ""}" data-aula="${esc(x.id)}"><span class="n">${C.feitas.includes(x.id) ? "✓" : k + 1}</span><span style="min-width:0"><b>${esc(x.titulo)}</b><small>${ROT_T[x.tipo]}${x.minutos ? " · " + durTxt(x.minutos) : ""}</small></span></button>`).join("")}</div>
+      ${C.tem_quiz ? `<button type="button" class="btn ${C.pct === 100 && !C.concluido_em ? "" : "v"}" style="width:100%;margin-top:10px" data-p="quiz" ${C.pct === 100 ? "" : "disabled"}>${svg("check")}Avaliação</button>` : ""}</div></aside></div>`;
+  box.closest(".aur-modal-corpo")?.scrollTo({ top: 0, behavior: "smooth" });
+  const duvidas = async () => {
+    try { const d = await api(`/aulas/${aid}/duvidas`); $("#duvL", box).innerHTML = d.duvidas.length ? d.duvidas.map(htmlCom).join("") : `<small style="color:var(--txt3)">Nenhuma dúvida ainda.</small>`; } catch (_) {}
+  };
+  duvidas();
+  const enviarDuv = async () => {
+    const inp = $("#duvIn", box), t = inp.value.trim(); if (!t) return inp.focus();
+    inp.disabled = true;
+    try { await api(`/aulas/${aid}/duvidas`, { method: "POST", body: { texto: t } }); inp.value = ""; await duvidas(); } catch (e) { A.toast("⚠️ " + esc(e.message)); }
+    inp.disabled = false; inp.focus();
+  };
+  $("#duvIn", box)?.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); enviarDuv(); } });
+  box.onclick = async (e) => {
+    const fa = e.target.closest("[data-fa]"); if (fa) return luz(fotos, +fa.dataset.fa);
+    const xc = e.target.closest('[data-a="xcom"]');
+    if (xc) { if (await A.confirmar("Apagar este comentário?", { titulo: "Apagar", rotulo: "Apagar", perigo: true })) { await api(`/comentarios/${xc.closest("[data-c]").dataset.c}`, { method: "DELETE" }); duvidas(); } return; }
+    const au = e.target.closest("[data-aula]"); if (au) return player(V, au.dataset.aula);
+    const b = e.target.closest("[data-p]"); if (!b) return;
+    const k = b.dataset.p;
+    if (k === "voltar") visaoCurso(V);
+    else if (k === "ant") player(V, C.aulas[i - 1].id);
+    else if (k === "prox") player(V, prox.id);
+    else if (k === "duv") enviarDuv();
+    else if (k === "quiz") avaliacao(V);
+    else if (k === "concluir") {
+      b.disabled = true;
+      try {
+        const r = await api(`/aulas/${aid}/concluir`, { method: "POST", body: { feita: !feita } });
+        V.C.feitas = r.feitas; V.C.pct = r.pct; V.C.concluido_em = r.concluido_em; atualizarResumo({ id: C.id, pct: r.pct, iniciado: true, concluido_em: r.concluido_em });
+        if (r.certificado && !feita) { await recarregarCurso(V); A.toast("🎉 Curso concluído! Seu certificado está pronto."); AP.certs = (await api("/certificados")).certificados; return visaoCurso(V); }
+        if (!feita && prox) player(V, prox.id);
+        else if (!feita && C.tem_quiz && r.pct === 100) { A.toast("Todas as aulas concluídas — agora a avaliação."); avaliacao(V); }
+        else player(V, aid);
+      } catch (err) { A.toast("⚠️ " + esc(err.message)); b.disabled = false; }
+    }
+  };
+}
+
+/* ── avaliação ── */
+function avaliacao(V) {
+  const { C, box } = V;
+  const qs = (C.quiz || {}).perguntas || [];
+  box.innerHTML = `<div style="max-width:780px;margin:0 auto"><div class="aula-tit"><button type="button" class="btn v" data-q="voltar">${svg("voltar")}Curso</button><h3>Avaliação · ${esc(C.titulo)}</h3></div>
+    <p style="color:var(--txt2);margin:0 0 14px">${qs.length} ${qs.length === 1 ? "pergunta" : "perguntas"} · nota mínima <b>${C.nota_min}</b>. Pode refazer quantas vezes precisar; vale a melhor nota.</p>
+    <form id="quizF">${qs.map((q, k) => `<div class="quiz-q" data-q="${esc(q.id)}"><b>${k + 1}. ${esc(q.texto)}</b>${q.opcoes.map((o, j) => `<label><input type="radio" name="q_${esc(q.id)}" value="${j}">${esc(o)}</label>`).join("")}</div>`).join("")}
+    <div class="aula-pe"><span class="esp"></span><button type="submit" class="btn">${svg("check")}Enviar respostas</button></div></form></div>`;
+  box.querySelector('[data-q="voltar"]').onclick = () => visaoCurso(V);
+  box.onclick = null;
+  $("#quizF", box).addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const resp = {}; let falta = 0;
+    qs.forEach((q) => { const m = box.querySelector(`input[name="q_${CSS.escape(q.id)}"]:checked`); if (m) resp[q.id] = +m.value; else falta++; });
+    if (falta && !(await A.confirmar(`Faltam ${falta} pergunta(s) sem resposta — elas contam como erradas. Enviar assim?`, { titulo: "Enviar avaliação", rotulo: "Enviar" }))) return;
+    try {
+      const r = await api(`/cursos/${C.id}/avaliacao`, { method: "POST", body: { respostas: resp } });
+      await recarregarCurso(V);
+      if (r.aprovado) AP.certs = (await api("/certificados")).certificados;
+      const res = document.createElement("div");
+      res.className = "resultado vidro " + (r.aprovado ? "ok" : "mal");
+      res.innerHTML = `<div class="nota-g">${r.nota}</div><b>${r.aprovado ? "Aprovado! 🎉" : "Ainda não foi desta vez"}</b><p style="color:var(--txt2)">${r.certas} de ${r.total} certas · mínimo ${r.minimo}</p>
+        ${r.aprovado ? `<button type="button" class="btn" data-r="cert">${svg("trofeu")}Ver o certificado</button>` : `<button type="button" class="btn v" data-r="rever">${svg("livro")}Rever as aulas</button> <button type="button" class="btn" data-r="refazer">${svg("repetir")}Refazer</button>`}`;
+      box.firstElementChild.prepend(res);
+      if (r.gabarito) Object.entries(r.gabarito).forEach(([id, g]) => { const l = box.querySelectorAll(`.quiz-q[data-q="${CSS.escape(id)}"] label`)[g.certa]; l && l.classList.add("certa"); });
+      box.querySelectorAll("#quizF input").forEach((x) => { x.disabled = true; });
+      box.querySelector("#quizF .aula-pe").hidden = true;
+      res.addEventListener("click", (ev) => {
+        const k = ev.target.closest("[data-r]")?.dataset.r;
+        if (k === "cert") certificado({ curso_id: C.id, curso: C.titulo, codigo: r.certificado, concluido_em: r.concluido_em, nome: S.eu.nome, minutos: V.C.minutos, nota: r.nota });
+        else if (k === "rever") visaoCurso(V); else if (k === "refazer") avaliacao(V);
+      });
+      box.closest(".aur-modal-corpo")?.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (err) { A.toast("⚠️ " + esc(err.message)); }
+  });
+}
+
+/* ── certificado (abre para imprimir ou salvar em PDF) ── */
+function certificado(x) {
+  if (!x || !x.codigo) return A.toast("Certificado ainda não emitido.");
+  const w = window.open("", "_blank");
+  if (!w) return A.toast("Libere os pop-ups para abrir o certificado.");
+  const dt = new Date(x.concluido_em).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+  w.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Certificado · ${esc(x.curso)}</title>
+    <style>@page{size:A4 landscape;margin:0}body{margin:0;font-family:Georgia,serif;background:#efefef;display:grid;place-items:center;min-height:100vh}
+    .c{width:277mm;height:190mm;box-sizing:border-box;background:#fff;border:3mm solid #d2ae34;outline:1mm solid #f0cb4e;outline-offset:-7mm;padding:24mm 26mm;text-align:center;position:relative;color:#111}
+    .m{font:700 13px/1 Arial,sans-serif;letter-spacing:.3em;color:#8f6b08;text-transform:uppercase}
+    h1{font-size:44px;margin:14px 0 6px;letter-spacing:.02em}.n{font-size:34px;font-style:italic;margin:18px 0 6px;color:#8f6b08}
+    p{font-size:17px;line-height:1.6;margin:6px 0}.r{position:absolute;left:26mm;right:26mm;bottom:20mm;display:flex;justify-content:space-between;font:12px Arial,sans-serif;color:#555}
+    .bt{position:fixed;top:14px;right:14px;font:700 14px Arial;padding:10px 16px;border-radius:10px;border:0;background:#f0cb4e;cursor:pointer}@media print{.bt{display:none}body{background:#fff}}</style></head>
+    <body><button class="bt" onclick="print()">Imprimir / salvar PDF</button><div class="c"><div class="m">King Star Colchões · WEDUCA</div><h1>Certificado de conclusão</h1>
+    <p>Certificamos que</p><div class="n">${esc(x.nome || S.eu.nome)}</div><p>concluiu o curso <b>${esc(x.curso)}</b>${x.minutos ? `, com carga de ${esc(durTxt(x.minutos))}` : ""}${x.nota != null ? `, com nota ${esc(x.nota)} na avaliação` : ""},</p>
+    <p>em ${esc(dt)}.</p><div class="r"><span>Código de verificação: <b>${esc(x.codigo)}</b></span><span>WEDUCA · Conhecimento King Star</span></div></div></body></html>`);
+  w.document.close();
+}
+
+/* ── turma ── */
+async function turma(C) {
+  let t; try { t = (await api(`/cursos/${C.id}/turma`)).turma; } catch (e) { return A.toast("⚠️ " + esc(e.message)); }
+  A.modal({ titulo: "Turma · " + C.titulo, icone: "usuarios", largura: 820, html: t.length ? `<table class="tbl"><thead><tr><th>Pessoa</th><th>Progresso</th><th>Avaliação</th><th>Concluiu</th><th>Última vez</th></tr></thead><tbody>
+    ${t.map((x) => `<tr><td><b>${esc(x.nome)}</b></td><td><div class="barra-prog" style="width:120px;display:inline-block;vertical-align:middle"><i style="width:${x.pct}%"></i></div> ${x.pct}%</td>
+      <td>${x.nota != null ? `${x.nota} (${x.tentativas}x)` : "—"}</td><td>${x.concluido_em ? new Date(x.concluido_em).toLocaleDateString("pt-BR") : "—"}</td><td>${quando(x.atualizado_em)}</td></tr>`).join("")}</tbody></table>`
+    : `<div class="vazio">Ninguém começou este curso ainda.</div>` });
+}
+
+/* ── editor de curso ── */
+async function subirArquivo(f, kind) {
+  const corpo = kind === "foto" ? await comprimir(f) : { blob: f, tipo: "application/pdf" };
+  if (kind === "pdf" && f.size > 15e6) throw new Error("PDF grande demais (máx. 15 MB).");
+  const r = await fetch(`${API}/arquivos`, { method: "POST", credentials: "same-origin", body: corpo.blob,
+    headers: { "Content-Type": corpo.tipo, "X-Nome": encodeURIComponent(f.name), ...(corpo.w ? { "X-Largura": String(corpo.w), "X-Altura": String(corpo.h) } : {}) } });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.detail || "Falha no envio");
+  return d;
+}
+async function editorCurso(cid) {
+  let C = cid ? await api(`/cursos/${encodeURIComponent(cid)}`).catch((e) => { A.toast("⚠️ " + esc(e.message)); return null; }) : null;
+  if (cid && !C) return;
+  C = C || { titulo: "", descricao: "", categoria: "", capa: null, obrigatorio: false, status: "rascunho", base: true, aulas: [], quiz: { nota_min: 70, perguntas: [] } };
+  const Q = { nota_min: (C.quiz || {}).nota_min || 70, perguntas: JSON.parse(JSON.stringify((C.quiz || {}).perguntas || [])) };
+  let capa = C.capa;
+  const md = A.modal({ titulo: cid ? "Editar curso" : "Novo curso", icone: "lapis", cor: "#f0cb4e", largura: 1180, html: `<div id="edC"></div>`,
+    esquerda: cid ? [{ rotulo: "Excluir curso", icone: "lixo", classe: "btn perigo", acao: async () => {
+      if (!(await A.confirmar("Excluir este curso? Ele some da Aprendizagem e da base da IA (progresso e certificados ficam guardados).", { titulo: "Excluir curso", rotulo: "Excluir", perigo: true }))) return false;
+      await api(`/cursos/${cid}`, { method: "DELETE" }); A.toast("Curso excluído."); telaAprender(); } }] : [],
+    botoes: [{ rotulo: "Fechar" }, { rotulo: cid ? "Salvar curso" : "Criar e adicionar aulas", icone: "check", classe: "btn", principal: true, acao: () => salvar() }],
+    aoFechar: () => { if (S.aba === "aprendizagem") telaAprender(); } });
+  const box = md.el.querySelector("#edC");
+  const cats = AP.categorias.map((c) => `<option value="${esc(c)}">`).join("");
+  box.innerHTML = `<div class="ed-grade"><div>
+      <div class="ed-sec"><h4>${svg("livro")}O curso</h4>
+        <label class="campo">Título<input id="eTit" maxlength="140" value="${esc(C.titulo)}" placeholder="Ex.: Montagem do palete sem avaria"></label>
+        <div class="lin2"><label class="campo">Categoria<input id="eCat" list="eCats" maxlength="60" value="${esc(C.categoria === "Geral" && !cid ? "" : C.categoria)}" placeholder="Ex.: Logística"><datalist id="eCats">${cats}</datalist></label>
+          <label class="campo">Situação<select id="eSt">${[["rascunho", "Rascunho (só quem edita vê)"], ["publicado", "Publicado (todos veem)"], ["arquivado", "Arquivado"]].map(([v, r]) => `<option value="${v}" ${C.status === v ? "selected" : ""}>${r}</option>`).join("")}</select></label></div>
+        <label class="campo">Descrição<textarea id="eDesc" rows="4" maxlength="4000" placeholder="Para que serve, para quem é, o que a pessoa vai saber fazer no fim">${esc(C.descricao || "")}</textarea></label>
+        <label class="chk" style="margin:8px 0"><span class="chave"><input type="checkbox" id="eObr" ${C.obrigatorio ? "checked" : ""}><span class="trilho"></span></span>Obrigatório (aparece em destaque para todos)</label>
+        <label class="chk"><span class="chave"><input type="checkbox" id="eBase" ${C.base !== false ? "checked" : ""}><span class="trilho"></span></span>As aulas entram na base de conhecimento da IA</label></div>
+      <div class="ed-sec"><h4>${svg("imagem")}Capa</h4><div class="capa-ed" id="eCapa"></div><input type="file" id="eCapaF" accept="image/*" hidden>
+        <small style="color:var(--txt3)">Sem foto, a capa é gerada automaticamente.</small></div>
+    </div><div>
+      <div class="ed-sec"><h4>${svg("lista")}Aulas ${cid ? `<button type="button" class="btn" id="eNovaAula">${svg("mais")}Aula</button>` : ""}</h4><div id="eAulas"></div></div>
+      <div class="ed-sec"><h4>${svg("check")}Avaliação <small style="font-weight:500;color:var(--txt3)">(opcional · não vai para a IA)</small><button type="button" class="btn v" id="eNovaP">${svg("mais")}Pergunta</button></h4>
+        <label class="campo" style="max-width:200px">Nota mínima (0–100)<input id="eNota" type="number" min="0" max="100" value="${Q.nota_min}"></label><div id="ePergs"></div></div>
+    </div></div>`;
+  const desCapa = () => {
+    $("#eCapa", box).innerHTML = `${capa ? `<img src="${urlArq(capa)}" alt="">` : arte(cid || "novo", "livro")}<span class="bts"><button type="button" class="btn v p" id="eCapaB">${svg("imagem")}${capa ? "Trocar" : "Enviar foto"}</button>${capa ? `<button type="button" class="btn v p" id="eCapaX">${svg("fechar")}</button>` : ""}</span>`;
+    $("#eCapaB", box).onclick = () => $("#eCapaF", box).click();
+    $("#eCapaX", box)?.addEventListener("click", () => { capa = null; desCapa(); });
+  };
+  desCapa();
+  $("#eCapaF", box).onchange = async (e) => { const f = e.target.files[0]; e.target.value = ""; if (!f) return; try { A.toast("Enviando a capa…"); capa = (await subirArquivo(f, "foto")).id; desCapa(); } catch (err) { A.toast("⚠️ " + esc(err.message)); } };
+  const desAulas = () => {
+    $("#eAulas", box).innerHTML = !cid ? `<small style="color:var(--txt3)">Crie o curso primeiro; depois as aulas são adicionadas aqui.</small>`
+      : C.aulas.length ? C.aulas.map((a, k) => `<div class="aula-ed" data-k="${k}"><span class="n" style="font-weight:800;color:var(--txt3)">${k + 1}</span><span style="min-width:0"><b style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.titulo)}</b><small style="color:var(--txt3)">${ROT_T[a.tipo]}${a.minutos ? " · " + durTxt(a.minutos) : ""}${a.base === false ? " · fora da IA" : ""}</small></span>
+        <span class="acs"><button type="button" class="btn-ic" data-ea="sobe" title="Subir" ${k ? "" : "disabled"}>↑</button><button type="button" class="btn-ic" data-ea="desce" title="Descer" ${k < C.aulas.length - 1 ? "" : "disabled"}>↓</button>
+        <button type="button" class="btn-ic" data-ea="edit" title="Editar">${svg("lapis")}</button><button type="button" class="btn-ic" data-ea="del" title="Excluir">${svg("lixo")}</button></span></div>`).join("")
+      : `<small style="color:var(--txt3)">Nenhuma aula ainda. Clique em “+ Aula”.</small>`;
+  };
+  desAulas();
+  $("#eAulas", box).addEventListener("click", async (e) => {
+    const b = e.target.closest("[data-ea]"); if (!b) return;
+    const k = +b.closest("[data-k]").dataset.k, a = C.aulas[k];
+    try {
+      if (b.dataset.ea === "edit") return editorAula(cid, a, async () => { C = await api(`/cursos/${cid}`); desAulas(); });
+      if (b.dataset.ea === "del") {
+        if (!(await A.confirmar(`Excluir a aula “${esc(a.titulo)}”?`, { titulo: "Excluir aula", rotulo: "Excluir", perigo: true }))) return;
+        await api(`/aulas/${a.id}`, { method: "DELETE" });
+      } else {
+        const ids = C.aulas.map((x) => x.id), j = b.dataset.ea === "sobe" ? k - 1 : k + 1;
+        [ids[k], ids[j]] = [ids[j], ids[k]];
+        await api(`/cursos/${cid}/ordem`, { method: "POST", body: { aulas: ids } });
+      }
+      C = await api(`/cursos/${cid}`); desAulas();
+    } catch (err) { A.toast("⚠️ " + esc(err.message)); }
+  });
+  $("#eNovaAula", box)?.addEventListener("click", () => editorAula(cid, null, async () => { C = await api(`/cursos/${cid}`); desAulas(); }));
+  const lerPergs = () => {
+    $$(".perg-ed", box).forEach((el, k) => {
+      const q = Q.perguntas[k]; q.texto = el.querySelector(".pt").value;
+      q.opcoes = [...el.querySelectorAll(".po")].map((x) => x.value);
+      const c = el.querySelector("input[type=radio]:checked"); q.correta = c ? +c.value : -1;
+    });
+  };
+  const desPergs = () => {
+    $("#ePergs", box).innerHTML = Q.perguntas.length ? Q.perguntas.map((q, k) => `<div class="perg-ed" data-k="${k}"><div style="display:flex;gap:8px;align-items:center"><b style="color:var(--txt3)">${k + 1}.</b>
+        <input class="entrada pt" value="${esc(q.texto)}" placeholder="Enunciado da pergunta" maxlength="600"><button type="button" class="btn-ic" data-pq="del" title="Excluir pergunta">${svg("lixo")}</button></div>
+        ${q.opcoes.map((o, j) => `<div class="op"><input type="radio" name="pc${k}" value="${j}" ${q.correta === j ? "checked" : ""} title="Esta é a certa"><input class="entrada po" value="${esc(o)}" placeholder="Alternativa ${j + 1}" maxlength="300">
+          <button type="button" class="btn-ic" data-pq="delop" data-j="${j}" title="Tirar alternativa" ${q.opcoes.length > 2 ? "" : "disabled"}>${svg("fechar")}</button></div>`).join("")}
+        ${q.opcoes.length < 6 ? `<button type="button" class="btn v p" style="margin-top:8px" data-pq="op">${svg("mais")}Alternativa</button>` : ""}<small style="display:block;margin-top:6px;color:var(--txt3)">Marque a bolinha da alternativa certa.</small></div>`).join("")
+      : `<small style="color:var(--txt3)">Sem avaliação: o curso termina quando todas as aulas são concluídas.</small>`;
+  };
+  desPergs();
+  $("#eNovaP", box).onclick = () => { lerPergs(); Q.perguntas.push({ texto: "", opcoes: ["", ""], correta: -1 }); desPergs(); $$(".perg-ed .pt", box).pop()?.focus(); };
+  $("#ePergs", box).addEventListener("click", (e) => {
+    const b = e.target.closest("[data-pq]"); if (!b) return;
+    lerPergs();
+    const k = +b.closest("[data-k]").dataset.k, q = Q.perguntas[k];
+    if (b.dataset.pq === "del") Q.perguntas.splice(k, 1);
+    else if (b.dataset.pq === "op") q.opcoes.push("");
+    else if (b.dataset.pq === "delop") { const j = +b.dataset.j; q.opcoes.splice(j, 1); if (q.correta === j) q.correta = -1; else if (q.correta > j) q.correta--; }
+    desPergs();
+  });
+  async function salvar() {
+    lerPergs();
+    const ruim = Q.perguntas.findIndex((q) => !q.texto.trim() || q.opcoes.filter((o) => o.trim()).length < 2 || q.correta < 0 || !String(q.opcoes[q.correta] || "").trim());
+    if (ruim >= 0) { A.toast(`Pergunta ${ruim + 1}: escreva o enunciado, pelo menos 2 alternativas e marque a certa.`); return false; }
+    const corpo = { titulo: $("#eTit", box).value, categoria: $("#eCat", box).value || "Geral", descricao: $("#eDesc", box).value, capa, obrigatorio: $("#eObr", box).checked,
+      status: $("#eSt", box).value, base: $("#eBase", box).checked,
+      quiz: { nota_min: +$("#eNota", box).value || 0, perguntas: Q.perguntas.map((q) => { const ops = q.opcoes.map((o, j) => [o.trim(), j]).filter(([o]) => o); return { texto: q.texto, opcoes: ops.map(([o]) => o), correta: ops.findIndex(([, j]) => j === q.correta) }; }) } };
+    if (!corpo.titulo.trim()) { $("#eTit", box).focus(); A.toast("Dê um título ao curso."); return false; }
+    try {
+      const r = await api(cid ? `/cursos/${cid}` : "/cursos", { method: cid ? "PUT" : "POST", body: corpo });
+      if (!cid) { A.toast("Curso criado como rascunho. Agora adicione as aulas."); md.fechar(); setTimeout(() => editorCurso(r.id), 380); return false; }
+      A.toast(r.status === "publicado" ? "Curso salvo e publicado." : "Curso salvo.");
+    } catch (err) { A.toast("⚠️ " + esc(err.message)); return false; }
+  }
+}
+function editorAula(cid, a, depois) {
+  const st = { tipo: (a && a.tipo) || "video", midias: [...((a && a.midias) || [])], enviando: 0 };
+  const md = A.modal({ titulo: a ? "Editar aula" : "Nova aula", icone: "livro", cor: "#f0cb4e", largura: 860, html: `<div id="edA"></div>`,
+    botoes: [{ rotulo: "Cancelar" }, { rotulo: "Salvar aula", icone: "check", classe: "btn", principal: true, acao: () => salvar() }] });
+  const box = md.el.querySelector("#edA");
+  box.innerHTML = `<div class="seg-tipo">${Object.entries(ROT_T).map(([k, r]) => `<button type="button" data-t="${k}" class="${k === st.tipo ? "ativo" : ""}">${svg(ICT[k])}${r}</button>`).join("")}</div>
+    <div class="lin2"><label class="campo">Título da aula<input id="aTit" maxlength="140" value="${esc((a && a.titulo) || "")}" placeholder="Ex.: Como posicionar o colchão"></label>
+      <label class="campo">Duração (minutos)<input id="aMin" type="number" min="0" max="600" value="${(a && a.minutos) || ""}" placeholder="opcional"></label></div>
+    <div id="aVid"><label class="campo">Link do vídeo no YouTube<input id="aUrl" value="${esc((a && a.video && a.video.url) || "")}" placeholder="https://youtu.be/…"></label>
+      <label class="campo">Descrição / transcrição do vídeo (é o que a IA lê)<textarea id="aTr" rows="4">${esc((a && a.transcricao) || "")}</textarea></label></div>
+    <label class="campo">Conteúdo / texto da aula<textarea id="aTx" rows="8" placeholder="Escreva o passo a passo, as regras, os cuidados…">${esc((a && a.texto) || "")}</textarea></label>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0"><button type="button" class="btn v" id="aFoto">${svg("imagem")}Fotos</button><button type="button" class="btn v" id="aPdf">${svg("pdf")}PDF</button>
+      <label class="chk" style="margin-left:auto"><span class="chave"><input type="checkbox" id="aBase" ${!a || a.base !== false ? "checked" : ""}><span class="trilho"></span></span>Entra na base da IA</label></div>
+    <div class="anexos" id="aAnx"></div><input type="file" id="aFF" accept="image/*" multiple hidden><input type="file" id="aPF" accept="application/pdf,.pdf" multiple hidden>`;
+  const tipo = () => { $$(".seg-tipo button", box).forEach((b) => b.classList.toggle("ativo", b.dataset.t === st.tipo)); $("#aVid", box).hidden = st.tipo !== "video"; };
+  tipo();
+  $(".seg-tipo", box).onclick = (e) => { const b = e.target.closest("[data-t]"); if (b) { st.tipo = b.dataset.t; tipo(); } };
+  const anexos = () => { $("#aAnx", box).innerHTML = st.midias.map((m, i) => `<div class="anexo ${m._envio ? "envio" : ""}">${m.kind === "foto" ? `<img src="${m._prev || urlArq(m.id)}" alt="">` : `<span class="pdf">PDF</span>`}<span>${esc(m.nome)}<small>${m.tam ? tam(m.tam) : ""}${m.paginas ? " · " + m.paginas + " pág." : ""}</small></span><button type="button" class="x" data-i="${i}">${svg("fechar")}</button></div>`).join(""); };
+  anexos();
+  $("#aAnx", box).onclick = (e) => { const b = e.target.closest("[data-i]"); if (b) { st.midias.splice(+b.dataset.i, 1); anexos(); } };
+  const enviar = async (fs, kind) => {
+    for (const f of fs) {
+      const tmp = { kind, nome: f.name, tam: f.size, _envio: true, _prev: kind === "foto" ? URL.createObjectURL(f) : "" };
+      st.midias.push(tmp); st.enviando++; anexos();
+      try { const d = await subirArquivo(f, kind); Object.assign(tmp, d, { _envio: false }); if (kind === "pdf" && !d.tem_texto) A.toast(`“${esc(f.name)}” parece escaneado: a IA não consegue ler o texto dele.`); }
+      catch (err) { st.midias.splice(st.midias.indexOf(tmp), 1); A.toast("⚠️ " + esc(err.message)); }
+      st.enviando--; anexos();
+    }
+  };
+  $("#aFoto", box).onclick = () => $("#aFF", box).click(); $("#aPdf", box).onclick = () => $("#aPF", box).click();
+  $("#aFF", box).onchange = (e) => { enviar([...e.target.files], "foto"); e.target.value = ""; };
+  $("#aPF", box).onchange = (e) => { enviar([...e.target.files], "pdf"); e.target.value = ""; };
+  async function salvar() {
+    if (st.enviando) { A.toast("Espere os anexos terminarem de enviar."); return false; }
+    const corpo = { titulo: $("#aTit", box).value, tipo: st.tipo, texto: $("#aTx", box).value, video_url: st.tipo === "video" ? $("#aUrl", box).value.trim() : "",
+      transcricao: st.tipo === "video" ? $("#aTr", box).value : "", midias: st.midias.map((m) => m.id), minutos: +$("#aMin", box).value || 0, base: $("#aBase", box).checked };
+    try { await api(a ? `/aulas/${a.id}` : `/cursos/${cid}/aulas`, { method: a ? "PUT" : "POST", body: corpo }); A.toast("Aula salva."); depois && depois(); }
+    catch (err) { A.toast("⚠️ " + esc(err.message)); return false; }
+  }
+}
+
 /* ═════════ início ═════════ */
-$("#btAtualizar").addEventListener("click", () => { recarregar(); carregarDestaques(); });
+$("#btAtualizar").addEventListener("click", () => { if (S.aba === "feed") { recarregar(); carregarDestaques(); } else telaAprender(); });
 (async () => {
   topo();
   try { S.eu = await api("/me"); }
@@ -661,9 +1209,8 @@ $("#btAtualizar").addEventListener("click", () => { recarregar(); carregarDestaq
     $("#main").innerHTML = `<div class="vazio vidro" style="grid-column:1/-1">${svg("cadeado")}<b>${e.status === 403 ? "Sem acesso ao WEDUCA" : "WEDUCA indisponível"}</b>${esc(e.message)}${e.status === 403 ? "<br>Peça ao administrador em Configurações → Usuários." : ""}</div>`;
     return;
   }
-  tela();
-  await carregar(false);
-  carregarDestaques();
+  if (/curso=|aula=/.test(location.hash)) S.aba = "aprendizagem";
+  irAba(S.aba);
   lerHash();
   try { parent.postMessage({ hub: "titulo", texto: "WEDUCA" }, location.origin); } catch (_) {}
 })();
