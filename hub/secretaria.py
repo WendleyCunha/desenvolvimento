@@ -72,7 +72,8 @@ ITS_PADRAO = [
 CONFIG_PADRAO = {"limite_aux": R.LIMITE_AUX_PADRAO, "corte_dia": R.CORTE_DIA_PADRAO, "grupos": [], "pastas": [],
                  "dia_meio": -1, "dia_fim": -1, "meta_regular": 600,
                  "its": ITS_PADRAO, "territorios_total": 0, "territorios_nao_trabalhados": 0, "visita_ultima": "",
-                 "pedir_dados_publicador": True}
+                 "pedir_dados_publicador": True,
+                 "campos_publicador": ["data_nascimento", "data_batismo", "telefone_emergencia", "genero", "grupo"]}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -449,10 +450,13 @@ def membro_certo(nome: str) -> str | None:
 
 def _faltando_publicador(m: dict) -> list[dict]:
     """Campos que a pessoa pode preencher: só os que estão VAZIOS na ficha."""
-    grupos = BASE.config().get("grupos") or []
+    cfg = BASE.config()
+    grupos = cfg.get("grupos") or []
+    marcados = cfg.get("campos_publicador")
+    marcados = [k for k, _ in CAMPOS_PUBLICADOR] if marcados is None else marcados
     out = []
     for campo, rot in CAMPOS_PUBLICADOR:
-        if str(m.get(campo) or "").strip():
+        if campo not in marcados or str(m.get(campo) or "").strip():
             continue
         if campo == "grupo":
             if not grupos:
@@ -581,6 +585,7 @@ def base(request: Request, mes: str = "", recarregar: int = 0):
     return _json({
         "perm": p, "usuario": acesso.publico(u), "mes": ch, "mes_atual": atual, "mes_calendario": datetime.now(R.FUSO).strftime("%Y-%m"), "meses": meses,
         "config": {k: v for k, v in cfg.items()}, "identidade": identidade(),
+        "campos_publicador": [{"campo": k, "rotulo": r} for k, r in CAMPOS_PUBLICADOR],
         "opcoes": {"generos": GENEROS, "classes": CLASSES, "cargos": CARGOS, "categorias": R.CATEGORIAS},
         "membros": [_membro_saida(mid, m, p, part.get(mid, set()), ch) for mid, m in membros.items()],
         "relatorios": [_linha_saida(ln, p) for ln in do_mes if ln["situacao"] == "IDENTIFICADO"],
@@ -1066,6 +1071,9 @@ async def salvar_config(request: Request):
         novo["visita_ultima"] = str(c["visita_ultima"] or "")[:10]
     if "pedir_dados_publicador" in c:
         novo["pedir_dados_publicador"] = bool(c["pedir_dados_publicador"])
+    if "campos_publicador" in c:
+        validos = [k for k, _ in CAMPOS_PUBLICADOR]
+        novo["campos_publicador"] = [k for k in validos if k in (c["campos_publicador"] or [])]
     BASE.salvar_config(novo)
     return {"ok": True, "config": BASE.config()}
 

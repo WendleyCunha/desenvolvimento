@@ -58,3 +58,15 @@ def test_nome_em_duvida_ou_desligado_nao_pede(hub):
     assert _enviar(c, "Pessoa Desconhecida")["completar"] is None
     _prep(secretaria, ligado=False)
     assert _enviar(c, "Carla Souza Lima")["completar"] is None       # Ajustes › desligado
+
+
+def test_ajustes_escolhe_campos(hub):
+    import secretaria
+    c = hub()
+    _prep(secretaria)
+    secretaria.BASE.cfg["campos_publicador"] = ["telefone_emergencia"]
+    r = _enviar(c, "Carla Souza Lima")
+    assert [x["campo"] for x in r["completar"]["campos"]] == ["telefone_emergencia"]
+    assert c.post("/api/relatorios-publico/completar", json={"passe": r["completar"]["passe"], "dados": {"data_nascimento": "10/05/1990"}}).status_code == 422
+    secretaria.BASE.cfg["campos_publicador"] = []
+    assert _enviar(c, "Carla Souza Lima")["completar"] is None
