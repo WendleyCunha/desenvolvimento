@@ -216,7 +216,7 @@ def buscar(pergunta: str, limite: int = 3) -> list:
 def fonte(a: dict) -> dict:
     return {"id": a.get("id"), "titulo": a.get("titulo"), "versao": a.get("versao", 1),
             "atualizado_em": a.get("atualizado_em"), "por": (a.get("atualizado_por") or {}).get("nome"),
-            "origem": a.get("origem") or "base", "post_id": a.get("post_id")}
+            "origem": a.get("origem") or "base", "post_id": a.get("post_id"), "hash": a.get("hash")}
 
 
 # ══════════════════════════════════════════════════════════════════════════

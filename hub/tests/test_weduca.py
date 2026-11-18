@@ -189,3 +189,112 @@ def test_pdf_e_foto(t, monkeypatch):
     assert t.post("/api/weduca/arquivos", content=b"MZ...", headers={"Content-Type": "application/x-msdownload"}).status_code == 415
     assert t.post("/api/weduca/arquivos", content=b"nao e pdf", headers={"Content-Type": "application/pdf"}).status_code == 400
     assert p["midias"][0]["kind"] == "pdf"
+
+
+# ══════════════════════════ APRENDIZAGEM ══════════════════════════
+CRIADOR = {"acessar": True, "publicar": True, "comentar": True, "cursos": True}
+
+
+def _curso(t, **kw):
+    corpo = {"titulo": "Montagem do palete", "descricao": "Como montar sem avaria", "categoria": "Logística", **kw}
+    r = t.post("/api/weduca/cursos", json=corpo)
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def _aula(t, cid, **kw):
+    r = t.post(f"/api/weduca/cursos/{cid}/aulas", json={"titulo": "Aula", "tipo": "texto", "texto": "conteúdo", **kw})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+QUIZ = {"nota_min": 70, "perguntas": [{"texto": "Colchão vai como?", "opcoes": ["Deitado", "Em pé"], "correta": 1},
+                                      {"texto": "Quantas bases no máximo?", "opcoes": ["3", "5", "8"], "correta": 0}]}
+
+
+def test_curso_criar_publicar_e_permissoes(t):
+    como("ana")                                                    # sem "cursos"
+    assert t.post("/api/weduca/cursos", json={"titulo": "x"}).status_code == 403
+    como("edu", **CRIADOR)
+    c = _curso(t, status="publicado")
+    assert c["status"] == "rascunho"                               # sem aula não publica
+    body = {"titulo": c["titulo"], "status": "publicado"}
+    assert t.put(f"/api/weduca/cursos/{c['id']}", json=body).status_code == 400
+    _aula(t, c["id"], titulo="Colchão em pé", texto="O colchão vai sempre em pé no palete.", minutos=5)
+    assert t.put(f"/api/weduca/cursos/{c['id']}", json=body).json()["status"] == "publicado"
+    como("bia")                                                    # aluna: vê só publicados
+    lst = t.get("/api/weduca/cursos").json()
+    assert [x["id"] for x in lst["cursos"]] == [c["id"]] and lst["pode_criar"] is False
+    assert t.put(f"/api/weduca/cursos/{c['id']}", json=body).status_code == 403
+    como("edu", **CRIADOR)
+    r2 = _curso(t, titulo="Rascunho meu")
+    como("bia")
+    assert t.get(f"/api/weduca/cursos/{r2['id']}").status_code == 404   # rascunho dos outros não aparece
+
+
+def test_aulas_entram_na_base_e_avaliacao_nao(t):
+    como("edu", **CRIADOR)
+    c = _curso(t, quiz=QUIZ)
+    a = _aula(t, c["id"], titulo="Base box", texto="A base box vai deitada por baixo, no máximo três por palete.")
+    assert W.aulas_na_base() == []                                 # rascunho ainda não é base
+    t.put(f"/api/weduca/cursos/{c['id']}", json={"titulo": c["titulo"], "status": "publicado", "quiz": QUIZ})
+    base = W.aulas_na_base()
+    assert len(base) == 1 and base[0]["hash"] == f"curso={c['id']}&aula={a['id']}"
+    assert not any("Quantas bases" in x for x in base[0]["passos"])   # avaliação fora da IA
+    como("bia")
+    t.post(f"/api/weduca/aulas/{a['id']}/duvidas", json={"texto": "E se o palete for menor?"})
+    assert any("palete for menor" in x for x in W.aulas_na_base()[0]["passos"])
+    r = t.post("/api/agente/perguntar", json={"pergunta": "quantas base box por palete deitada?"}).json()
+    assert r["fonte"]["id"] == f"weduca:aula:{a['id']}" and r["fonte"]["hash"].startswith("curso=")
+    t.post("/api/agente/retorno", json={"pergunta_id": r["pergunta_id"], "util": False, "obs": "mudou"})
+    assert BANCO[W.COL_AULA][a["id"]]["analise"]["obs"] == "mudou"
+    como("chefe")
+    t.post("/api/agente/ajustar", json={"artigo_id": f"weduca:aula:{a['id']}", "de": "três", "para": "duas"})
+    assert "duas" in BANCO[W.COL_AULA][a["id"]]["correcoes"][0]["texto"]
+    # aluna não vê o gabarito
+    como("bia")
+    q = t.get(f"/api/weduca/cursos/{c['id']}").json()["quiz"]["perguntas"]
+    assert all("correta" not in x for x in q)
+
+
+def test_progresso_avaliacao_e_certificado(t):
+    como("edu", **CRIADOR)
+    c = _curso(t, quiz=QUIZ)
+    a1 = _aula(t, c["id"], titulo="A1", minutos=10)
+    a2 = _aula(t, c["id"], titulo="A2", minutos=5)
+    t.put(f"/api/weduca/cursos/{c['id']}", json={"titulo": c["titulo"], "status": "publicado", "quiz": QUIZ})
+    perg = t.get(f"/api/weduca/cursos/{c['id']}").json()["quiz"]["perguntas"]
+    como("bia")
+    assert t.post(f"/api/weduca/cursos/{c['id']}/avaliacao", json={"respostas": {}}).status_code == 400   # falta aula
+    r = t.post(f"/api/weduca/aulas/{a1['id']}/concluir", json={"feita": True}).json()
+    assert r["pct"] == 50 and r["concluido_em"] is None
+    t.post(f"/api/weduca/aulas/{a2['id']}/concluir", json={"feita": True})
+    assert t.get("/api/weduca/cursos").json()["cursos"][0]["pct"] == 100
+    ruim = t.post(f"/api/weduca/cursos/{c['id']}/avaliacao", json={"respostas": {perg[0]["id"]: 0, perg[1]["id"]: 0}}).json()
+    assert ruim["nota"] == 50 and not ruim["aprovado"] and ruim["gabarito"] is None and ruim["certificado"] is None
+    boa = t.post(f"/api/weduca/cursos/{c['id']}/avaliacao", json={"respostas": {perg[0]["id"]: 1, perg[1]["id"]: 0}}).json()
+    assert boa["aprovado"] and boa["certificado"] and boa["concluido_em"]
+    cert = t.get("/api/weduca/certificados").json()["certificados"]
+    assert cert[0]["codigo"] == boa["certificado"] and cert[0]["minutos"] == 15 and cert[0]["nota"] == 100
+    como("edu", **CRIADOR)
+    turma = t.get(f"/api/weduca/cursos/{c['id']}/turma").json()["turma"]
+    assert turma[0]["login"] == "bia" and turma[0]["pct"] == 100 and turma[0]["tentativas"] == 2
+
+
+def test_ordem_excluir_e_curso_sem_avaliacao(t):
+    como("edu", **CRIADOR)
+    c = _curso(t)
+    a1, a2 = _aula(t, c["id"], titulo="A1"), _aula(t, c["id"], titulo="A2")
+    assert t.post(f"/api/weduca/cursos/{c['id']}/ordem", json={"aulas": [a2["id"], a1["id"]]}).status_code == 200
+    assert [x["id"] for x in t.get(f"/api/weduca/cursos/{c['id']}").json()["aulas"]] == [a2["id"], a1["id"]]
+    assert t.post(f"/api/weduca/cursos/{c['id']}/aulas", json={"titulo": "v", "tipo": "video"}).status_code == 400
+    assert t.post(f"/api/weduca/cursos/{c['id']}/aulas", json={"titulo": "p", "tipo": "pdf"}).status_code == 400
+    t.put(f"/api/weduca/cursos/{c['id']}", json={"titulo": c["titulo"], "status": "publicado"})
+    assert t.delete(f"/api/weduca/aulas/{a1['id']}").status_code == 200
+    assert t.delete(f"/api/weduca/aulas/{a2['id']}").status_code == 400            # última aula de curso publicado
+    como("bia")
+    r = t.post(f"/api/weduca/aulas/{a2['id']}/concluir", json={"feita": True}).json()
+    assert r["concluido_em"] and r["certificado"]                                 # sem avaliação: concluiu as aulas, concluiu o curso
+    como("edu", **CRIADOR)
+    assert t.delete(f"/api/weduca/cursos/{c['id']}").status_code == 200
+    assert t.get("/api/weduca/cursos").json()["cursos"] == [] and W.aulas_na_base() == []
