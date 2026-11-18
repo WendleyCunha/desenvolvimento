@@ -15,7 +15,8 @@
     "acessar": "Abrir o WEDUCA (ler o feed, curtir e salvar)",
     "publicar": "Publicar no feed (texto, fotos, PDFs e vídeos)",
     "comentar": "Comentar",
-    "moderar": "Moderar: editar, revisar, tirar da base e excluir de qualquer pessoa"
+    "moderar": "Moderar: editar, revisar, tirar da base e excluir de qualquer pessoa",
+    "cursos": "Criar cursos na Aprendizagem"
   }
 }
 </script>
@@ -28,6 +29,9 @@
 ═══════════════════════════════════════════════════════════════════════════════
  weduca.html — WEDUCA · a rede de conhecimento da King Star (kit Aurora)
 ───────────────────────────────────────────────────────────────────────────────
+ Rede social: bolinhas/stories (24 h, fora da IA), Seguir, curtir (2 toques), comentar e curtir
+ comentário, compartilhar link, conquistas, SHORTS (uma postagem por tela) e Aprendizagem com
+ cartaz que rola, Top 10 e ranking do mês.
  Etapa 2 — APRENDIZAGEM: cursos da equipe (aulas de vídeo/leitura/PDF/fotos), progresso,
  avaliação com nota mínima, certificado e turma; aulas + dúvidas entram na base da IA.
  Etapa 1 — FEED: postagens com texto, fotos, PDFs e vídeos do YouTube (canal da
@@ -416,9 +420,204 @@ b[data-perfil]:hover{text-decoration:underline}
 .perfil-nums b{font:800 1.05rem var(--titulo);color:var(--txt);margin-right:4px}
 .foto-ed{display:flex;align-items:center;gap:16px;margin-bottom:12px}
 .foto-ed .av{width:84px;height:84px;font-size:1.4rem}
+/* ═════════ REDE SOCIAL (como a simulação): bolinhas/stories, compositor, post, Shorts ═════════ */
+.arq-in{position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0}
+.stories-w{position:relative}
+.stories{display:flex;gap:16px;overflow-x:auto;padding:6px 4px 14px;scrollbar-width:none;scroll-behavior:smooth}
+.stories::-webkit-scrollbar{display:none}
+.story{flex:none;width:80px;display:grid;justify-items:center;gap:7px;font-size:.74rem;color:var(--txt2);transition:transform .3s cubic-bezier(.16,1,.3,1);position:relative}
+.story:hover{transform:translateY(-4px) scale(1.05)}
+.story>span:last-child{max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.story .anel-s{width:74px;height:74px;border-radius:50%;padding:3px;background:transparent;box-shadow:inset 0 0 0 1.5px rgba(var(--edk-l),.14)}
+.story.tem .anel-s{background:conic-gradient(from 210deg,#f0cb4e,#f7e6a3,#d2ae34,#fff,#f0cb4e);box-shadow:none}
+.story.visto .anel-s{background:rgba(var(--edk-l),.22);box-shadow:none}
+.story .anel-s .av{width:100%;height:100%;box-shadow:0 0 0 3px var(--noite);font-size:1.05rem}
+.story.add .anel-s{background:none;border:2px dashed #d2ae34;box-shadow:none;display:grid;place-items:center;color:#d2ae34}
+.story.add .anel-s svg{width:24px;height:24px}
+.story .mais-s{position:absolute;top:52px;right:6px;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:#f0cb4e;color:#1a1204;box-shadow:0 0 0 3px var(--noite)}
+.story .mais-s svg{width:13px;height:13px}
+.story.sem-acesso{opacity:.55}
+.st-setas{position:absolute;inset:0 -10px 14px;display:flex;justify-content:space-between;align-items:center;pointer-events:none}
+.st-setas button{pointer-events:auto;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;opacity:0;transition:.25s}
+.stories-w:hover .st-setas button{opacity:1}
+.compor{border-radius:22px;padding:16px;display:grid;gap:12px}
+.compor .linha1{display:flex;gap:12px;align-items:center}
+.compor .falso{flex:1;border:1px solid rgba(var(--edk-l),.14);border-radius:99px;padding:12px 18px;color:var(--txt3);background:rgba(var(--edk-l),.05);text-align:left;font-size:.92rem;transition:.2s}
+.compor .falso:hover{border-color:rgba(240,203,78,.5);color:var(--txt2)}
+.compor .tipos{display:flex;gap:8px;flex-wrap:wrap}
+.compor .tipos button{border-radius:11px;padding:8px 12px;font-weight:600;font-size:.8rem;display:inline-flex;gap:7px;align-items:center;color:var(--txt2);background:rgba(var(--edk-l),.05);border:1px solid rgba(var(--edk-l),.1);transition:.2s}
+.compor .tipos button:hover{color:var(--txt);border-color:rgba(240,203,78,.5)}
+.compor .tipos button svg.i{width:16px;height:16px}
+.compor .tipos .dir{margin-left:auto;background:linear-gradient(135deg,#f7e6a3,#f0cb4e 50%,#d2ae34);color:#1a1204;border:0}
+.post{padding:0;overflow:hidden}
+.post .p-cab{padding:16px 18px 0}
+.post .p-cab small .cs{color:var(--txt3)}
+.post .p-texto{margin:12px 18px 4px}.post .mais-txt{margin:0 16px}
+.post .correcao,.post .analise,.post .pdfs,.post .v-tit,.post details.transc,.post .conquista{margin-left:18px;margin-right:18px}
+.post .fotos,.post .video{border-radius:0;margin-top:12px}
+.post .p-barra{padding:8px 12px 2px;border-top:0}
+.post .curtiram{padding:0 18px 4px;font-size:.8rem;color:var(--txt2)}
+.post .curtiram b{color:var(--txt);cursor:pointer}
+.post .coments,.post .com-novo{padding-left:18px;padding-right:18px}
+.post .com-novo{padding-bottom:12px}
+.btn-seg{margin-left:auto;padding:7px 14px;border-radius:11px;font-size:.78rem;font-weight:700;color:#1a1204;background:linear-gradient(135deg,#f7e6a3,#f0cb4e 50%,#d2ae34);box-shadow:0 6px 18px -8px rgba(240,203,78,.9)}
+.btn-seg.on{background:rgba(var(--edk-l),.07);color:var(--txt2);box-shadow:inset 0 0 0 1px rgba(var(--edk-l),.14)}
+.p-cab .btn-seg+.menu-p{margin-left:2px}
+.conquista{margin-top:12px;border-radius:18px;padding:18px;display:flex;gap:16px;align-items:center;background:linear-gradient(135deg,rgba(240,203,78,.18),rgba(240,203,78,.04));border:1px solid rgba(240,203,78,.35)}
+.medalha{width:62px;height:62px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff3c4,#f0cb4e 45%,#d2ae34);display:grid;place-items:center;color:#000;flex:none;box-shadow:0 0 0 5px rgba(240,203,78,.18),0 0 30px rgba(240,203,78,.4)}
+.medalha svg{width:28px;height:28px}
+.conquista small{color:var(--ou-t);font-weight:800;letter-spacing:.12em;font-size:.68rem}
+.conquista b{display:block;font:800 1.05rem var(--titulo)}
+.p-barra .compart:hover svg{color:var(--ou-t)}
+.com .bal .cc{display:inline-flex;align-items:center;gap:4px;margin-top:3px;font-size:.7rem;font-weight:700;color:var(--txt3)}
+.com .bal .cc svg{width:13px;height:13px}
+.com .bal .cc.on{color:#fb7185}.com .bal .cc.on svg{fill:#fb7185;stroke:#fb7185}
+.coracao-voa{position:absolute;left:50%;top:50%;z-index:5;width:110px;height:110px;margin:-55px 0 0 -55px;pointer-events:none;color:#fff;filter:drop-shadow(0 6px 24px rgba(251,113,133,.8));animation:voa .9s cubic-bezier(.16,1,.3,1) forwards}
+.coracao-voa svg{width:100%;height:100%;fill:#fb7185;stroke:#fff}
+@keyframes voa{0%{opacity:0;transform:scale(.3)}25%{opacity:1;transform:scale(1.15)}60%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1.25) translateY(-30px)}}
+.fotos,.video{position:relative}
+.fotos.n1 button{overflow:hidden;background:#000}
+.fotos .fundo-b{position:absolute;inset:-30px;background-size:cover;background-position:center;filter:blur(26px) brightness(.75)}
+.fotos.n1 img{position:relative;z-index:1;background:none!important}
+.st-card::before{content:"";position:absolute;inset:0 0 auto;height:120px;background:linear-gradient(rgba(0,0,0,.5),transparent);z-index:3;pointer-events:none}
+/* coluna da direita */
+.ranking{display:grid;gap:4px}
+.rk{display:flex;align-items:center;gap:10px;padding:8px;border-radius:12px;transition:background .2s}
+.rk:hover{background:rgba(var(--edk-l),.05)}
+.rk.eu{background:rgba(240,203,78,.12);border:1px solid rgba(240,203,78,.3)}
+.rk .pos{width:28px;font:800 .95rem var(--titulo);text-align:center;color:var(--txt3)}
+.rk .pos.p1{color:var(--ou-t)}
+.rk .av{width:34px;height:34px;font-size:.7rem}
+.rk b{font-size:.84rem}.rk small{display:block;color:var(--txt3);font-size:.7rem}
+.rk .pts{margin-left:auto;font-weight:800;font-size:.84rem}
+.sug{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--linha)}
+.sug:first-of-type{border-top:0}
+.sug b{display:block;font-size:.84rem}.sug small{display:block;color:var(--txt3);font-size:.7rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sug>span:not(.av){min-width:0;flex:1}
+.sug .btn-seg{padding:6px 11px}
+/* soltar arquivos (arrastar) */
+.solta-w{position:relative}
+.solta-veu{position:absolute;inset:0;z-index:20;display:none;place-items:center;border-radius:18px;border:2px dashed #f0cb4e;background:color-mix(in srgb,var(--noite) 82%,rgba(240,203,78,.25));
+  font:800 1.05rem var(--titulo);color:var(--ou-t);text-align:center;padding:20px;pointer-events:none}
+.solta-veu svg{width:34px;height:34px;display:block;margin:0 auto 8px}
+.solta-w.arrastando .solta-veu{display:grid}
+.dica-solta{font-size:.72rem;color:var(--txt3);margin:2px 0 0}
+.conq-campos{margin-bottom:10px}
+/* stories: criar e ver */
+.st-tela{position:fixed;inset:0;z-index:300;display:grid;place-items:center;background:rgba(0,0,0,.88);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);animation:aparece .3s both}
+@keyframes aparece{from{opacity:0}}
+.st-card{position:relative;width:min(420px,92vw);aspect-ratio:9/16;max-height:92vh;border-radius:26px;overflow:hidden;background:#111;box-shadow:0 30px 80px -20px rgba(240,203,78,.35);animation:expande .45s cubic-bezier(.16,1,.3,1);user-select:none}
+@keyframes expande{from{transform:scale(.88);opacity:0}}
+.st-card>img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
+.st-card .fundo-b{position:absolute;inset:-20px;background-size:cover;background-position:center;filter:blur(24px) brightness(.55)}
+.st-card .txt-s{position:absolute;inset:0;display:grid;place-items:center;padding:34px;text-align:center;font:800 clamp(20px,4.6vw,30px)/1.2 var(--titulo);color:#fff;white-space:pre-wrap;word-break:break-word}
+.st-card .leg-s{position:absolute;left:0;right:0;bottom:0;padding:60px 20px 22px;background:linear-gradient(0deg,rgba(0,0,0,.8),transparent);color:#fff;font-weight:600;white-space:pre-wrap}
+.st-barras{position:absolute;top:12px;left:12px;right:12px;display:flex;gap:4px;z-index:4}
+.st-barras span{flex:1;height:3px;border-radius:9px;background:rgba(255,255,255,.3);overflow:hidden}
+.st-barras i{display:block;height:100%;width:0;background:#fff}
+.st-barras .feita i{width:100%}
+.st-quem{position:absolute;top:24px;left:14px;right:14px;display:flex;gap:10px;align-items:center;z-index:4;color:#fff}
+.st-quem b{font-size:.9rem}.st-quem small{color:rgba(255,255,255,.7);font-size:.74rem}
+.st-quem .av{width:36px;height:36px;font-size:.72rem}
+.st-quem .acs{margin-left:auto;display:flex;gap:6px}
+.st-quem .acs button{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;color:#fff;background:rgba(0,0,0,.35)}
+.st-quem .acs svg{width:17px;height:17px}
+.st-lado{position:absolute;top:0;bottom:0;width:35%;z-index:3}
+.st-lado.esq{left:0}.st-lado.dir{right:0}
+.st-pe{position:absolute;left:0;right:0;bottom:14px;z-index:4;display:flex;justify-content:center}
+.st-pe button{color:#fff;font-size:.78rem;font-weight:700;padding:7px 14px;border-radius:99px;background:rgba(0,0,0,.45)}
+.st-fecha{position:fixed;top:18px;right:18px;z-index:301;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;color:#fff;background:rgba(255,255,255,.12)}
+.st-nav{position:fixed;top:50%;z-index:301;width:46px;height:46px;margin-top:-23px;border-radius:50%;display:grid;place-items:center;color:#fff;background:rgba(255,255,255,.12)}
+.st-nav.ant{left:max(14px,calc(50% - 280px))}.st-nav.prox{right:max(14px,calc(50% - 280px))}
+.st-novo{display:grid;grid-template-columns:minmax(0,300px) minmax(0,1fr);gap:22px;align-items:start}
+.st-novo .st-card{width:100%;animation:none;box-shadow:none;cursor:pointer}
+.st-novo .st-card .vazio-s{position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:rgba(255,255,255,.75);font-weight:700;padding:20px}
+.st-novo .st-card .vazio-s svg{width:40px;height:40px;display:block;margin:0 auto 8px}
+.fundos{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+.fundos button{width:34px;height:34px;border-radius:50%;box-shadow:inset 0 0 0 2px rgba(255,255,255,.3)}
+.fundos button.ativo{box-shadow:0 0 0 3px #f0cb4e}
+/* SHORTS: tela cheia, rolar para baixo troca a postagem */
+.shorts{position:fixed;top:84px;left:0;right:0;bottom:0;overflow-y:auto;overflow-anchor:none;scroll-snap-type:y mandatory;scrollbar-width:none;overscroll-behavior:contain}
+.shorts::-webkit-scrollbar{display:none}
+.short{height:calc(100vh - 84px);scroll-snap-align:start;scroll-snap-stop:always;display:grid;place-items:center;padding:10px 0 14px;position:relative}
+.sh-card{position:relative;height:100%;aspect-ratio:9/16;max-width:94vw;border-radius:26px;overflow:hidden;background:#0b0b0d;box-shadow:0 30px 80px -30px rgba(0,0,0,.6),0 0 0 1px rgba(var(--edk-l),.1)}
+.sh-card.larga{aspect-ratio:auto;width:min(980px,94vw)}
+.sh-card .edk-arte,.sh-card .fundo-b{position:absolute;inset:0}
+.sh-card .fundo-b{inset:-30px;background-size:cover;background-position:center;filter:blur(26px) brightness(.5)}
+.sh-card>img.foto-s{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+.sh-card .yt{position:absolute;inset:0;z-index:1}
+.sh-card iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.sh-card .yt-capa{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.sh-card .yt-play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:78px;height:56px;border-radius:16px;background:#f00;display:grid;place-items:center;z-index:2}
+.sh-card .yt-play::after{content:"";border-left:20px solid #fff;border-top:12px solid transparent;border-bottom:12px solid transparent;margin-left:5px}
+.sh-card .txt-sh{position:absolute;inset:0;display:grid;place-items:center;padding:40px 30px 150px;text-align:center;font:800 clamp(18px,2.6vh,30px)/1.25 var(--titulo);color:var(--txt);white-space:pre-wrap;word-break:break-word;z-index:1}
+.sh-card .conq-sh{position:absolute;inset:0;display:grid;place-items:center;align-content:center;gap:16px;text-align:center;padding:30px;z-index:1}
+.sh-card .conq-sh .medalha{width:110px;height:110px}.sh-card .conq-sh .medalha svg{width:48px;height:48px}
+.sh-card .conq-sh b{font:800 1.5rem/1.2 var(--titulo)}
+.sh-info{position:absolute;left:0;right:0;bottom:0;z-index:3;padding:90px 86px 20px 18px;background:linear-gradient(0deg,rgba(0,0,0,.82),rgba(0,0,0,.4) 60%,transparent);color:#fff}
+.sh-quem{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.sh-quem b{font-size:.94rem}.sh-quem small{display:block;color:rgba(255,255,255,.7);font-size:.72rem}
+.sh-quem .btn-seg{margin-left:6px;padding:5px 11px;font-size:.72rem}
+.sh-quem .btn-seg.on{color:#fff;background:rgba(255,255,255,.15);box-shadow:inset 0 0 0 1px rgba(255,255,255,.3)}
+.sh-txt{font-size:.9rem;line-height:1.45;max-height:4.4em;overflow:hidden;white-space:pre-wrap;cursor:pointer}
+.sh-txt.aberto{max-height:40vh;overflow-y:auto}
+.sh-txt .tag,.sh-txt .mencao,.sh-txt a{color:#f7e6a3;font-weight:700}
+.sh-acoes{position:absolute;right:10px;bottom:22px;z-index:4;display:grid;gap:14px;justify-items:center}
+.sh-acoes button{display:grid;justify-items:center;gap:3px;color:#fff;font-size:.72rem;font-weight:700;text-shadow:0 1px 6px rgba(0,0,0,.6)}
+.sh-acoes .n,.sh-acoes .r{padding:1px 8px;border-radius:99px;background:rgba(0,0,0,.45)}
+.sh-acoes button span.c{width:50px;height:50px;border-radius:50%;display:grid;place-items:center;background:rgba(0,0,0,.4);backdrop-filter:blur(8px);transition:transform .2s}
+.sh-acoes button:hover span.c{transform:scale(1.1)}
+.sh-acoes button svg{width:24px;height:24px}
+.sh-acoes .on.curtir svg{fill:#fb7185;stroke:#fb7185}
+.sh-acoes .on.salvar svg{fill:#f0cb4e;stroke:#f0cb4e}
+.sh-dica{position:fixed;right:22px;bottom:22px;z-index:20;display:grid;gap:8px}
+.sh-dica button{width:46px;height:46px;border-radius:50%;display:grid;place-items:center}
+.sh-fim{height:calc(100vh - 84px);scroll-snap-align:start;display:grid;place-items:center;text-align:center;color:var(--txt3)}
+.sh-fim b{display:block;color:var(--txt);font:800 1.3rem var(--titulo);margin-bottom:6px}
+.quem-lista{display:grid;gap:4px}
+.quem-lista .sug{border-top:1px solid var(--linha)}
+/* ═════════ APRENDIZAGEM estilo Netflix: cartaz grande que rola, Top 10, ranking ═════════ */
+.bill{position:relative}
+.bill-trilho{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;overscroll-behavior-x:contain}
+.bill-trilho::-webkit-scrollbar{display:none}
+.bill-slide{flex:0 0 100%;scroll-snap-align:start;min-height:min(72vh,640px)!important}
+.bill-slide .wrap{grid-template-columns:minmax(0,7fr) minmax(0,5fr)}
+.bill-slide .capa-img{position:absolute;inset:0}
+.bill-slide .edk-cartao h1{font-size:clamp(30px,4vw,58px)}
+.bill-lado{position:absolute;z-index:4;right:clamp(16px,3vw,48px);top:50%;transform:translateY(-38%);width:min(500px,34vw)}
+.bill-seta{position:absolute;z-index:5;top:50%;margin-top:-24px;width:48px;height:48px;border-radius:50%;display:grid;place-items:center;
+  background:rgba(var(--edk-l),.1);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(var(--edk-l),.16);color:var(--txt);opacity:0;transition:opacity .3s,transform .3s}
+.bill:hover .bill-seta{opacity:1}
+.bill-seta:hover{transform:scale(1.1)}
+.bill-seta.esq{left:12px}.bill-seta.dir{right:12px}
+.bill-pontos{position:absolute;z-index:5;left:50%;bottom:62px;transform:translateX(-50%);display:flex;gap:8px}
+.bill-pontos button{width:26px;height:6px;border-radius:9px;background:rgba(var(--edk-l),.25);overflow:hidden;padding:0;transition:width .4s}
+.bill-pontos button.on{width:46px;background:rgba(var(--edk-l),.3)}
+.bill-pontos button i{display:block;height:100%;width:0;background:#f0cb4e}
+.bill-pontos button.on i{width:100%;animation:enche 7s linear}
+@keyframes enche{from{width:0}}
+.bill+.cont{margin-top:-46px;position:relative;z-index:6}
+.t10{display:flex;align-items:flex-end;flex:none}
+.t10-n{font:900 clamp(120px,11vw,190px)/.78 var(--titulo);color:transparent;-webkit-text-stroke:3px rgba(240,203,78,.85);margin-right:-26px;letter-spacing:-.06em;position:relative;z-index:0;user-select:none;
+  text-shadow:0 10px 40px rgba(240,203,78,.25)}
+.t10 .edk-card{position:relative;z-index:1}
+.edk-fil.top .edk-trilho{gap:34px;padding-left:6px}
+.podio{display:flex;justify-content:center;align-items:flex-end;gap:clamp(10px,3vw,40px);margin:10px 0 0}
+.pod{display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;width:min(220px,30vw);position:relative}
+.pod .av{width:84px;height:84px;font-size:1.3rem}
+.pod.p1 .av{width:112px;height:112px;font-size:1.7rem;box-shadow:0 0 0 4px var(--noite),0 0 0 7px #f0cb4e,0 0 40px rgba(240,203,78,.6)}
+.pod b{font:800 1rem var(--titulo)}.pod small{color:var(--txt3);font-size:.76rem}
+.pod .coroa{color:#f0cb4e;margin-bottom:-6px}.pod .coroa svg{width:34px;height:34px;filter:drop-shadow(0 4px 12px rgba(240,203,78,.7))}
+.pod .degrau{width:100%;margin-top:8px;border-radius:18px 18px 6px 6px;display:grid;place-items:center;font:900 2rem var(--titulo);color:#1a1204;
+  background:linear-gradient(180deg,#f7e6a3,#f0cb4e 55%,#d2ae34);box-shadow:0 18px 40px -16px rgba(240,203,78,.8)}
+.pod.p1 .degrau{height:140px}.pod.p2 .degrau{height:100px;filter:saturate(.35) brightness(1.08)}.pod.p3 .degrau{height:72px;filter:saturate(.6) hue-rotate(-14deg) brightness(.92)}
+@media (max-width:1100px){.bill-lado{display:none}.bill-slide .wrap{grid-template-columns:1fr}}
+@media (max-width:820px){.bill-slide{min-height:auto!important}.bill-pontos{bottom:58px}.t10-n{font-size:110px;margin-right:-18px}}
 @media (max-width:820px){.w-nav{left:70px;right:8px;padding:6px;gap:6px}.w-secao{display:none}.w-dir .sync{display:none}.w-abas button{padding:7px 10px;font-size:.78rem}}
 @media (max-width:1000px){.feed-grade{grid-template-columns:1fr}.lado{position:static;max-height:none}}
 @media (max-width:820px){.topo{position:relative;top:0}.nav{order:3;width:100%;overflow-x:auto;flex-wrap:nowrap;margin:0}.novas{top:10px}}
+@media (max-width:820px){.shorts{top:70px}.short,.sh-fim{height:calc(100vh - 70px)}.sh-card{border-radius:18px}.st-novo{grid-template-columns:1fr}.st-nav{display:none}}
+@media (max-width:560px){.sh-card{max-width:100vw;border-radius:0}.short{padding:0}.compor .tipos .dir{margin-left:0}.sh-dica,.bill-seta{display:none}}
 @media (max-width:560px){body{padding:8px}.nav button .rot,.nav button .breve{display:none}.comp{grid-template-columns:1fr}.comp>.av{display:none}.comp-pe .ferr span{display:none}.post{padding:13px 12px 8px}}
 </style>
 </head>
@@ -450,6 +649,12 @@ Object.assign(A.ICONES, {
   marcador: '<path d="M6 3h12v18l-6-4-6 4z"/>',
   ia: '<path d="M12 3l1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8z"/><path d="M19 15l.8 1.9 1.9.8-1.9.8L19 20.4l-.8-1.9-1.9-.8 1.9-.8z"/>',
   olho: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  play: '<path d="M8 5.5v13l10.5-6.5z"/>',
+  compart: '<circle cx="18" cy="5" r="2.6"/><circle cx="6" cy="12" r="2.6"/><circle cx="18" cy="19" r="2.6"/><path d="m8.4 13.3 7.2 4.3M15.6 6.4l-7.2 4.3"/>',
+  texto: '<path d="M5 7V5h14v2M12 5v14M9 19h6"/>',
+  camera: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
+  coroa: '<path d="m3 8 4.5 4L12 5l4.5 7L21 8l-2 11H5z"/>',
+  baixo: '<path d="m6 9 6 6 6-6"/>', cima: '<path d="m6 15 6-6 6 6"/>',
 });
 A.fundo();
 document.querySelector('link[rel="icon"]').href = A.ATOMO_SVG;
@@ -508,9 +713,9 @@ const pode = (a) => !!(S.eu && S.eu.pode && S.eu.pode[a]);
    de SEÇÕES (sidebar só do WEDUCA) e a barra de cima mostra a seção e as abas dela. */
 function lsGet(k, d) { try { return localStorage.getItem(k) || d; } catch (_) { return d; } }
 function subsDe(aba) {
-  if (aba === "aprendizagem") return [["vitrine", "Para você"], ["andamento", "Em andamento"], ["concluidos", "Concluídos"], ["certificados", "Certificados"],
+  if (aba === "aprendizagem") return [["vitrine", "Para você"], ["obrigatorios", "Obrigatórios"], ["andamento", "Em andamento"], ["concluidos", "Concluídos"], ["certificados", "Certificados"], ["ranking", "Ranking"],
     ...(pode("cursos") || pode("moderar") ? [["meus", "Meus cursos"]] : [])];
-  return [["tudo", "Para você"], ["seguindo", "Seguindo"], ["meus", "Meus posts"], ["salvos", "Salvos"], ["pessoas", "Pessoas"], ...(pode("moderar") ? [["analise", "Em análise"]] : [])];
+  return [["tudo", "Para você"], ["shorts", "Shorts"], ["seguindo", "Seguindo"], ["meus", "Meus posts"], ["salvos", "Salvos"], ["pessoas", "Pessoas"], ...(pode("moderar") ? [["analise", "Em análise"]] : [])];
 }
 const secaoDe = (id) => SECOES.find((s) => s[0] === id) || SECOES[0];
 function desenharShell() {
@@ -550,6 +755,7 @@ function irSub(id) {
   try { localStorage.setItem("wd.weduca.aba", S.aba); } catch (_) {}
   desenharShell();
   scrollTo({ top: 0 });
+  SH.obs?.disconnect(); SH.ativo = false; clearInterval(AP.giro);
   if (S.aba === "feed") telaFeed(); else telaAprender();
 }
 /** leva para outra seção do WEDUCA, direto num item (#post=… / #curso=…) */
@@ -572,7 +778,7 @@ async function telaPessoas() {
     $("#pLista").innerHTML = r.pessoas.length ? r.pessoas.map((p) => `<div class="pessoa-c vidro" data-perfil="${esc(p.login)}">${avatar(p)}<b>${esc(p.nome)}${p.sou_eu ? " (você)" : ""}</b>
       <small>${esc([p.cargo, p.setor].filter(Boolean).join(" · ") || "—")}</small>${p.bio ? `<p>${esc(p.bio)}</p>` : ""}
       <span class="nums">${p.posts} ${p.posts === 1 ? "publicação" : "publicações"} · ${p.seguidores} ${p.seguidores === 1 ? "seguidor" : "seguidores"}</span>
-      ${p.sou_eu ? `<button type="button" class="btn v p" data-meu-perfil>${svg("lapis")}Editar</button>` : `<button type="button" class="btn ${p.sigo ? "v" : ""} p" data-seguir="${esc(p.login)}">${p.sigo ? "Seguindo ✓" : "Seguir"}</button>`}</div>`).join("")
+      ${p.sou_eu ? `<button type="button" class="btn v p" data-meu-perfil>${svg("lapis")}Editar</button>` : `<button type="button" class="btn ${p.sigo ? "v" : ""} p" data-seguir="${esc(p.login)}">${p.sigo ? "Seguindo" : "Seguir"}</button>`}${p.acesso === false ? `<small style="font-size:.68rem;color:var(--txt3)">ainda sem acesso ao WEDUCA</small>` : ""}</div>`).join("")
       : `<div class="vazio vidro"><b>Ninguém encontrado</b>Tente outro nome ou setor.</div>`;
   };
   $("#pSet").addEventListener("click", (e) => { const b = e.target.closest("[data-set]"); if (b) { S.pset = b.dataset.set; pintar(); } });
@@ -583,7 +789,7 @@ async function seguir(login, b) {
   try {
     const r = await api(`/perfis/${encodeURIComponent(login)}/seguir`, { method: "POST" });
     if (S.gente[login]) S.gente[login].sigo = r.sigo;
-    if (b) { b.textContent = r.sigo ? "Seguindo ✓" : "Seguir"; b.classList.toggle("v", r.sigo); }
+    $$(`[data-seguir="${CSS.escape(login)}"]`).forEach((x) => { x.textContent = r.sigo ? "Seguindo" : "Seguir"; x.classList.toggle(x.classList.contains("btn-seg") ? "on" : "v", r.sigo); });
     A.toast(r.sigo ? `Seguindo ${esc((S.gente[login] || {}).nome || login)} — as publicações aparecem em “Seguindo”.` : "Deixou de seguir.");
   } catch (e) { A.toast("⚠️ " + esc(e.message)); }
 }
@@ -591,7 +797,7 @@ async function abrirPerfil(login) {
   let p; try { p = await api(`/perfis/${encodeURIComponent(login)}`); } catch (e) { return A.toast("⚠️ " + esc(e.message)); }
   const md = A.modal({ titulo: p.nome, icone: "usuario", cor: "#f0cb4e", largura: 1000, html: `<div class="perfil-cab">${arte("perfil" + p.login, "usuario")}</div>
     <div class="perfil-top">${avatar(p, false, true)}<div><h2>${esc(p.nome)}</h2><div style="color:var(--txt2)">${esc([p.cargo, p.setor].filter(Boolean).join(" · ") || "Sem cargo/setor ainda")}</div></div>
-      <div class="acs">${p.sou_eu ? `<button type="button" class="btn" data-meu-perfil>${svg("lapis")}Editar perfil</button>` : `<button type="button" class="btn ${p.sigo ? "v" : ""}" data-seguir="${esc(p.login)}">${p.sigo ? "Seguindo ✓" : "Seguir"}</button>`}</div></div>
+      <div class="acs">${p.sou_eu ? `<button type="button" class="btn" data-meu-perfil>${svg("lapis")}Editar perfil</button>` : `<button type="button" class="btn ${p.sigo ? "v" : ""}" data-seguir="${esc(p.login)}">${p.sigo ? "Seguindo" : "Seguir"}</button>`}</div></div>
     ${p.bio ? `<p style="margin:0 0 6px;color:var(--txt2);white-space:pre-wrap">${esc(p.bio)}</p>` : ""}
     <div class="perfil-nums"><span><b>${p.posts}</b>publicações</span><span><b>${p.curtidas}</b>curtidas recebidas</span><span><b>${p.seguidores}</b>seguidores</span><span><b>${p.seguindo}</b>seguindo</span>
       <span><b>${p.na_base}</b>na base da IA</span>${p.cursos_criados ? `<span><b>${p.cursos_criados}</b>cursos criados</span>` : ""}<span><b>${p.certificados.length}</b>certificados</span></div>
@@ -605,7 +811,7 @@ async function abrirPerfil(login) {
 }
 function editarMeuPerfil() {
   let foto = S.eu.foto || null;
-  const md = A.modal({ titulo: "Meu perfil", icone: "usuario", cor: "#f0cb4e", largura: 640, html: `<div class="foto-ed" id="mpFoto"></div><input type="file" id="mpF" accept="image/*" hidden>
+  const md = A.modal({ titulo: "Meu perfil", icone: "usuario", cor: "#f0cb4e", largura: 640, html: `<div class="foto-ed" id="mpFoto"></div><input type="file" id="mpF" class="arq-in" accept="image/*">
       <div class="lin2"><label class="campo">Cargo<input id="mpCargo" maxlength="60" value="${esc(S.eu.cargo || "")}" placeholder="Ex.: Analista de qualidade"></label>
       <label class="campo">Setor<input id="mpSetor" maxlength="60" list="mpSets" value="${esc(S.eu.setor || "")}" placeholder="Ex.: Qualidade"><datalist id="mpSets">${(S.setores || []).map((x) => `<option value="${esc(x)}">`).join("")}</datalist></label></div>
       <label class="campo">Sobre você<textarea id="mpBio" rows="3" maxlength="400" placeholder="O que você faz, no que pode ajudar a equipe">${esc(S.eu.bio || "")}</textarea></label>`,
@@ -620,7 +826,9 @@ function editarMeuPerfil() {
     $("#mpX", md.el)?.addEventListener("click", () => { foto = null; pintar(); });
   };
   pintar();
-  $("#mpF", md.el).onchange = async (e) => { const f = e.target.files[0]; e.target.value = ""; if (!f) return; try { A.toast("Enviando a foto…"); foto = (await subirArquivo(f, "foto")).id; pintar(); } catch (err) { A.toast("⚠️ " + esc(err.message)); } };
+  const subir = async (f) => { if (!f) return; try { A.toast("Enviando a foto…"); foto = (await subirArquivo(f, "foto")).id; pintar(); } catch (err) { A.toast("⚠️ " + esc(err.message)); } };
+  $("#mpF", md.el).onchange = (e) => { const f = e.target.files[0]; e.target.value = ""; subir(f); };
+  soltar(md.el, (fs) => subir(fs.find((f) => !ehPdf(f))));
 }
 document.addEventListener("click", (e) => {
   const s = e.target.closest("[data-seguir]"); if (s) { e.stopPropagation(); return seguir(s.dataset.seguir, s); }
@@ -686,28 +894,56 @@ function pendencias(cursos, d) {
   if (d && d.em_analise) lst.push(`<button type="button" class="edk-pend" data-sub-ir="analise"><span class="ic">${svg("atencao")}</span><span><b>${d.em_analise} ${d.em_analise === 1 ? "publicação" : "publicações"} em análise</b><small>👎 de quem perguntou à IA · revisar</small></span></button>`);
   return `<div class="edk-mini vidro"><h3>${svg("alvo")}Suas pendências</h3>${lst.join("") || `<div class="edk-pend" style="cursor:default"><span class="ic">${svg("check")}</span><span><b>Nada pendente</b><small>Cursos obrigatórios e o que você começou aparecem aqui</small></span></div>`}</div>`;
 }
+const primeiro = (n) => String(n || "").trim().split(/\s+/)[0] || "";
+function compor() {
+  return `<div class="compor vidro"><div class="linha1">${avatar(S.eu, false, true)}<button type="button" class="falso" data-nova="texto">No que você está pensando, ${esc(primeiro(S.eu.nome))}?</button></div>
+    <div class="tipos"><button type="button" data-nova="foto">${svg("imagem")}Foto</button><button type="button" data-nova="video">${svg("youtube")}Vídeo</button>
+      <button type="button" data-nova="pdf">${svg("pdf")}PDF</button><button type="button" data-nova="conquista">${svg("trofeu")}Conquista</button><button type="button" data-nova="texto">${svg("texto")}Texto</button>
+      <button type="button" class="dir" data-sub-ir="shorts">${svg("play")}Assistir em Shorts</button></div></div>`;
+}
 async function telaFeed() {
   if (S.sub === "pessoas") return telaPessoas();
+  if (S.sub === "shorts") return telaShorts();
   const tudo = S.sub === "tudo";
   S.filtro = tudo ? (S.tipo || "") : S.sub; S.posts = []; S.mais = false;
   const titulo = { seguindo: "Seguindo", meus: "Meus posts", salvos: "Salvos", analise: "Em análise" }[S.sub];
+  const comStories = tudo || S.sub === "seguindo";
   $("#main").innerHTML = `${tudo ? `<section class="edk-hero" id="fHero"><div class="carregar" style="position:relative;z-index:2">carregando…</div></section>` : ""}
-    <div class="cont">${titulo ? `<div class="cab-sec"><h2>${titulo}</h2>${pode("publicar") ? `<button type="button" class="btn" data-nova>${svg("mais")}Nova publicação</button>` : ""}</div>` : ""}
+    <div class="cont">${titulo ? `<div class="cab-sec"><h2>${titulo}</h2></div>` : ""}
       ${tudo ? `<div id="fAlta"></div>` : ""}
       <div class="feed-grade"><section class="pilha">
-        ${tudo ? `<div class="edk-fil-cab" style="margin:0"><h2>Tudo no feed</h2>${pode("publicar") ? `<button type="button" class="btn" data-nova>${svg("mais")}Nova publicação</button>` : ""}</div>` : ""}
+        ${comStories ? `<div class="stories-w"><div class="stories" id="stories"></div><div class="st-setas"><button type="button" class="btn-ic" data-st-rola="-1" aria-label="Voltar">${svg("voltar")}</button><button type="button" class="btn-ic" data-st-rola="1" aria-label="Avançar">${svg("avancar")}</button></div></div>` : ""}
+        ${pode("publicar") && ["tudo", "seguindo", "meus"].includes(S.sub) ? compor() : ""}
         <div class="filtros">${tudo ? `<div class="chips" id="filtros">${FILTROS.map(([f, r]) => `<button type="button" class="chip ${f === (S.tipo || "") ? "ativo" : ""}" data-f="${f}">${r}</button>`).join("")}</div>` : ""}
           <label class="busca">${svg("busca")}<input class="entrada" id="busca" placeholder="Buscar (texto, pessoa, PDF, comentário…)" value="${esc(S.q)}" autocomplete="off"></label></div>
         <button type="button" class="novas" id="novas">${svg("subir")}<span></span></button>
         <div class="pilha" id="lista"><div class="carregar">carregando…</div></div><div class="carregar" id="fim"></div>
       </section>
-      <aside class="lado" id="lado"><div class="caixa vidro" id="numeros"></div><div class="caixa vidro" id="pessoas"></div></aside></div></div>`;
+      <aside class="lado" id="lado"><div class="caixa vidro" id="rank"></div><div class="caixa vidro" id="sugest"></div><div class="caixa vidro" id="numeros"></div></aside></div></div>`;
   $("#filtros")?.addEventListener("click", (e) => { const b = e.target.closest("[data-f]"); if (!b) return; S.tipo = S.filtro = b.dataset.f; $$("#filtros .chip").forEach((x) => x.classList.toggle("ativo", x === b)); recarregar(); });
   let tb; $("#busca").addEventListener("input", (e) => { clearTimeout(tb); tb = setTimeout(() => { S.q = e.target.value.trim(); recarregar(); }, 350); });
   $("#novas").addEventListener("click", () => { $("#novas").classList.remove("on"); recarregar(); $("#lista").scrollIntoView({ behavior: "smooth" }); });
   new IntersectionObserver((es) => { if (es[0].isIntersecting && S.mais && !S.carregando) carregar(true); }, { rootMargin: "600px" }).observe($("#fim"));
   carregar(false);
   carregarDestaques();
+  if (comStories) carregarStories();
+  carregarRanking(); desenharSugestoes();
+}
+/** coluna da direita: ranking do mês (cursos concluídos) */
+async function carregarRanking() {
+  const box = $("#rank"); if (!box) return;
+  let r; try { r = await api("/ranking"); } catch (_) { box.remove(); return; }
+  const lst = r.lista.slice(0, 5);
+  if (r.eu && !lst.some((x) => x.login === r.eu.login)) lst.push(r.eu);
+  box.innerHTML = `<h3>${svg("trofeu")}Ranking do mês<small>cursos</small></h3>${lst.length ? `<div class="ranking">${lst.map((x) => `<div class="rk${x.login === S.eu.login ? " eu" : ""}" data-perfil="${esc(x.login)}"><span class="pos${x.pos === 1 ? " p1" : ""}">${x.pos}º</span>${avatar(x, true, true)}<div><b>${esc(primeiro(x.nome))}</b><small>${x.cursos} ${x.cursos === 1 ? "curso" : "cursos"}</small></div><span class="pts">${x.pontos}</span></div>`).join("")}</div>`
+    : `<div style="color:var(--txt3);font-size:.8rem">Ninguém concluiu curso este mês ainda. Conclua um na Aprendizagem e apareça aqui.</div>`}`;
+}
+/** coluna da direita: pessoas para seguir (do hub, que eu ainda não sigo) */
+function desenharSugestoes() {
+  const box = $("#sugest"); if (!box) return;
+  const lst = Object.values(S.gente || {}).filter((p) => !p.sou_eu && !p.sigo && p.acesso !== false).sort((a, b) => (b.posts - a.posts) || (b.seguidores - a.seguidores)).slice(0, 5);
+  if (!lst.length) { box.remove(); return; }
+  box.innerHTML = `<h3>${svg("usuarios")}Pessoas para seguir<small><button type="button" data-sub-ir="pessoas" style="color:var(--ou-t);font-weight:700">ver todas</button></small></h3>${lst.map((p) => `<div class="sug">${avatar(p, true)}<span><b data-perfil="${esc(p.login)}">${esc(p.nome)}</b><small>${esc([p.cargo, p.setor].filter(Boolean).join(" · ") || (p.posts ? `${p.posts} ${p.posts === 1 ? "publicação" : "publicações"}` : "no hub"))}</small></span><button type="button" class="btn-seg" data-seguir="${esc(p.login)}">Seguir</button></div>`).join("")}`;
 }
 async function carregarDestaques() {
   let d, cursos = [];
@@ -716,7 +952,8 @@ async function carregarDestaques() {
     const p = d.alta[0];
     const anexo = p && (p.video ? ["youtube", "Vídeo", p.video.titulo || "do canal"] : (p.midias || []).find((m) => m.kind === "pdf") ? ["pdf", "PDF", p.midias.find((m) => m.kind === "pdf").nome]
       : (p.midias || []).length ? ["imagem", "Fotos", `${p.midias.length} ${p.midias.length === 1 ? "foto" : "fotos"}`] : null);
-    $("#fHero").innerHTML = `<div class="bg">${p ? arte(p.id, ICP(p)) : arte("weduca-feed", "feed")}</div><div class="wrap">
+    const fotoH = p && (p.midias || []).find((m) => m.kind === "foto");
+    $("#fHero").innerHTML = `<div class="bg">${fotoH ? `<img class="capa-img" src="${urlArq(fotoH.id)}" alt="" style="position:absolute;inset:0">` : p ? arte(p.id, ICP(p)) : arte("weduca-feed", "feed")}</div><div class="wrap">
       <div class="edk-cartao vidro">${p ? `<div class="edk-chips"><span class="edk-chip forte">${svg("estrela")}${p.curtidas || p.n_coment ? "Em alta no time" : "Mais recente"}</span>${tagDe(p) ? `<span class="edk-chip">${esc(tagDe(p))}</span>` : ""}</div>
         <h1>${esc(tituloDe(p))}</h1>
         <div class="meta">${avatar(p.autor, true)}<b>${esc((p.autor || {}).nome || "")}</b><span>· ${quando(p.em)}</span><span class="edk-chip">♥ ${p.curtidas || 0}</span><span class="edk-chip">${p.n_coment} ${p.n_coment === 1 ? "comentário" : "comentários"}</span></div>
@@ -731,15 +968,16 @@ async function carregarDestaques() {
   if ($("#fAlta")) $("#fAlta").innerHTML = d.alta.length > 1 ? fileiraA("Em alta no time", d.alta.some((p) => p.curtidas) ? "mais curtidos" : "recentes", d.alta.map((p, i) => cardPost(p, i % 4))) : "";
   if ($("#numeros")) $("#numeros").innerHTML = `<h3>${svg("ia")}Base de conhecimento</h3><div class="num"><div><b>${d.na_base}</b><small>publicações na base da IA</small></div><div><b>${d.total}</b><small>no feed</small></div></div>
     <small style="display:block;margin-top:10px;color:var(--txt3);font-size:.74rem">Pergunte no Agente do topo: ele responde com o que a equipe publicou.</small>`;
-  if ($("#pessoas")) $("#pessoas").innerHTML = `<h3>${svg("usuarios")}Quem mais compartilha</h3>${d.pessoas.length ? d.pessoas.map((x) => `<div class="pessoa">${avatar({ nome: x.nome, login: x.login }, true)}<span><b>${esc(x.nome)}</b><small>${x.posts} ${x.posts === 1 ? "publicação" : "publicações"} · ${x.curtidas} ♥</small></span></div>`).join("")
-    : `<div style="color:var(--txt3);font-size:.8rem">Ainda ninguém. Seja a primeira pessoa!</div>`}`;
 }
-function novaPublicacao() {
-  const md = A.modal({ titulo: "Nova publicação", icone: "feed", cor: "#f0cb4e", largura: 760, html: `<div id="npBox"></div>`,
-    aoAbrir: (cx) => { editor($("#npBox", cx), null, (p) => { md.fechar(); if (S.aba === "feed" && ["tudo", "meus"].includes(S.sub)) { S.posts.unshift(p); desenharLista(); setTimeout(() => flash(p.id), 400); carregarDestaques(); } }, () => md.fechar()); setTimeout(() => $("#tx", cx)?.focus(), 80); } });
+function novaPublicacao(tipo) {
+  if (!pode("publicar")) return A.toast("Publicar não está liberado para você.");
+  const md = A.modal({ titulo: tipo === "conquista" ? "Compartilhar uma conquista" : "Nova publicação", icone: tipo === "conquista" ? "trofeu" : "feed", cor: "#f0cb4e", largura: 760, html: `<div id="npBox"></div>`,
+    aoAbrir: (cx) => { editor($("#npBox", cx), null, (p) => { md.fechar(); if (S.aba === "feed" && ["tudo", "meus"].includes(S.sub)) { S.posts.unshift(p); desenharLista(); setTimeout(() => flash(p.id), 400); carregarDestaques(); } }, () => md.fechar(), tipo);
+      if (!["foto", "pdf"].includes(tipo)) setTimeout(() => $(tipo === "conquista" ? "#conq" : tipo === "video" ? "#vurl" : "#tx", cx)?.focus(), 80); } });
 }
 document.addEventListener("click", (e) => {
-  if (e.target.closest("[data-nova]")) return novaPublicacao();
+  const nv = e.target.closest("[data-nova]"); if (nv) return novaPublicacao(nv.dataset.nova);
+  const sr = e.target.closest("[data-st-rola]"); if (sr) { const t = $("#stories"); t && t.scrollBy({ left: +sr.dataset.stRola * t.clientWidth * 0.7, behavior: "smooth" }); return; }
   const v = e.target.closest("[data-ver]"); if (v) return abrirPost(v.dataset.ver);
   const ci = e.target.closest("[data-curso-ir]"); if (ci) return irPara("aprendizagem", "curso=" + ci.dataset.cursoIr);
   const si = e.target.closest("[data-sub-ir]"); if (si) return irSub(si.dataset.subIr);
@@ -748,25 +986,31 @@ document.addEventListener("click", (e) => {
 });
 
 /* ═════════ editor de postagem (compositor e edição) ═════════ */
-function editor(box, post, aoSalvar, fechar) {
-  const st = { midias: [...((post && post.midias) || [])], enviando: 0, video: !!(post && post.video) };
-  box.innerHTML = `<div class="comp">${avatar(S.eu, false, true)}<div>
-      <textarea id="tx" placeholder="Compartilhe um conhecimento, uma dica, um procedimento… Use #assunto para organizar.">${esc((post && post.texto) || "")}</textarea>
+function editor(box, post, aoSalvar, fechar, tipo) {
+  const st = { midias: [...((post && post.midias) || [])], enviando: 0, video: !!(post && post.video) || tipo === "video" };
+  const conq = (post && post.conquista && post.conquista.titulo) || "";
+  const meusCerts = (AP.certs || []).map((c) => `Concluí o curso ${c.curso}`);
+  if (!AP.certs.length) api("/certificados").then((r) => { AP.certs = r.certificados; const l = $("#conqL", box); if (l) l.innerHTML = AP.certs.map((c) => `<option value="${esc("Concluí o curso " + c.curso)}">`).join(""); }).catch(() => {});
+  box.innerHTML = `<div class="comp solta-w">${avatar(S.eu, false, true)}<div>
+      <div class="conq-campos" ${conq || tipo === "conquista" ? "" : "hidden"}><input class="entrada" id="conq" maxlength="120" list="conqL" placeholder="Qual a conquista? Ex.: Concluí o curso LGPD, 1 ano de casa, bati a meta do mês" value="${esc(conq)}">
+        <datalist id="conqL">${meusCerts.map((x) => `<option value="${esc(x)}">`).join("")}</datalist></div>
+      <textarea id="tx" placeholder="${tipo === "conquista" ? "Conte como foi (opcional)…" : "Compartilhe um conhecimento, uma dica, um procedimento… Use #assunto para organizar."}">${esc((post && post.texto) || "")}</textarea>
       <div class="video-campos" ${st.video ? "" : "hidden"}>
         <input class="entrada" id="vurl" placeholder="Link do vídeo no YouTube (canal da King Star)" value="${esc((post && post.video && post.video.url) || "")}">
         <textarea class="entrada" id="vtr" rows="3" placeholder="Descrição ou transcrição do vídeo — é isso que a IA usa para responder sobre o vídeo">${esc((post && post.transcricao) || "")}</textarea>
       </div>
       <div class="anexos" id="anx"></div>
+      <p class="dica-solta">Dica: arraste fotos e PDFs para cá ou cole um print (Ctrl+V).</p>
       <div class="comp-pe">
-        <button type="button" class="ferr foto" id="bFoto">${svg("imagem")}<span>Foto</span></button>
-        <button type="button" class="ferr pdfb" id="bPdf">${svg("pdf")}<span>PDF</span></button>
+        <label class="ferr foto" id="bFoto" role="button" tabindex="0">${svg("imagem")}<span>Foto</span><input type="file" id="fFoto" class="arq-in" accept="image/*" multiple></label>
+        <label class="ferr pdfb" id="bPdf" role="button" tabindex="0">${svg("pdf")}<span>PDF</span><input type="file" id="fPdf" class="arq-in" accept="application/pdf,.pdf" multiple></label>
         <button type="button" class="ferr vid" id="bVid">${svg("youtube")}<span>Vídeo</span></button>
+        <button type="button" class="ferr" id="bConq">${svg("trofeu")}<span>Conquista</span></button>
         <label class="base" title="Entra na base de conhecimento: a IA do hub usa esta postagem (e os comentários) para responder"><span class="chave"><input type="checkbox" id="base" ${!post || post.base ? "checked" : ""}><span class="trilho"></span></span>Base da IA</label>
         ${fechar ? `<button type="button" class="btn v" id="bCanc">Cancelar</button>` : ""}
         <button type="button" class="btn" id="bPub">${svg("check")}${post ? "Salvar" : "Publicar"}</button>
       </div>
-      <input type="file" id="fFoto" accept="image/*" multiple hidden><input type="file" id="fPdf" accept="application/pdf,.pdf" multiple hidden>
-    </div></div>`;
+    </div><div class="solta-veu">${svg("imagem")}Solte aqui as fotos ou os PDFs</div></div>`;
   const tx = $("#tx", box), cresce = () => { tx.style.height = "auto"; tx.style.height = Math.min(tx.scrollHeight, 320) + "px"; };
   tx.addEventListener("input", cresce); setTimeout(cresce);
   const anexos = () => {
@@ -776,21 +1020,17 @@ function editor(box, post, aoSalvar, fechar) {
   };
   anexos();
   $("#anx", box).addEventListener("click", (e) => { const b = e.target.closest("[data-i]"); if (b) { st.midias.splice(+b.dataset.i, 1); anexos(); } });
-  $("#bFoto", box).onclick = () => $("#fFoto", box).click();
-  $("#bPdf", box).onclick = () => $("#fPdf", box).click();
+  // a <label> abre o seletor sozinha (sem .click() em input escondido — trava em alguns navegadores); Enter/Espaço pelo teclado
+  $$("label.ferr", box).forEach((l) => l.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); l.querySelector("input").click(); } }));
   $("#bVid", box).onclick = () => { const v = $(".video-campos", box); v.hidden = !v.hidden; if (!v.hidden) $("#vurl", box).focus(); };
+  $("#bConq", box).onclick = () => { const v = $(".conq-campos", box); v.hidden = !v.hidden; if (!v.hidden) $("#conq", box).focus(); else $("#conq", box).value = ""; };
   const enviar = async (arqs, kind) => {
     for (const f of arqs) {
       if (st.midias.length >= 10) { A.toast("Até 10 anexos por postagem."); break; }
       const tmp = { kind, nome: f.name, tam: f.size, _envio: true, _prev: kind === "foto" ? URL.createObjectURL(f) : "" };
       st.midias.push(tmp); st.enviando++; anexos();
       try {
-        const corpo = kind === "foto" ? await comprimir(f) : { blob: f, tipo: "application/pdf" };
-        if (kind === "pdf" && f.size > 15e6) throw new Error("PDF grande demais (máx. 15 MB).");
-        const r = await fetch(`${API}/arquivos`, { method: "POST", credentials: "same-origin", body: corpo.blob,
-          headers: { "Content-Type": corpo.tipo, "X-Nome": encodeURIComponent(f.name), ...(corpo.w ? { "X-Largura": String(corpo.w), "X-Altura": String(corpo.h) } : {}) } });
-        const d = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(d.detail || "Falha no envio");
+        const d = await subirArquivo(f, kind);
         Object.assign(tmp, d, { _envio: false });
         if (kind === "pdf" && !d.tem_texto) A.toast(`“${esc(f.name)}” parece escaneado: vai como anexo, mas a IA não consegue ler o texto dele.`, [], { duracao: 7000 });
       } catch (e) { st.midias.splice(st.midias.indexOf(tmp), 1); A.toast("⚠️ " + esc(e.message)); }
@@ -801,16 +1041,20 @@ function editor(box, post, aoSalvar, fechar) {
   $("#fPdf", box).onchange = (e) => { enviar([...e.target.files], "pdf"); e.target.value = ""; };
   // colar imagem direto no texto (print da tela)
   tx.addEventListener("paste", (e) => { const fs = [...(e.clipboardData?.files || [])].filter((f) => f.type.startsWith("image/")); if (fs.length) { e.preventDefault(); enviar(fs, "foto"); } });
+  // arrastar e soltar fotos/PDFs em cima do editor
+  soltar($(".solta-w", box), (fs) => { const pdfs = fs.filter(ehPdf), fotos = fs.filter((f) => !ehPdf(f)); if (fotos.length) enviar(fotos, "foto"); if (pdfs.length) enviar(pdfs, "pdf"); });
+  if (tipo === "foto") $("#fFoto", box).click();          // veio do botão "Foto" (ainda no mesmo clique: o navegador deixa abrir)
+  if (tipo === "pdf") $("#fPdf", box).click();
   if (fechar) $("#bCanc", box).onclick = fechar;
   $("#bPub", box).onclick = async () => {
     if (st.enviando) return A.toast("Espere os anexos terminarem de enviar.");
     const corpo = { texto: tx.value, midias: st.midias.map((m) => m.id), video_url: $(".video-campos", box).hidden ? "" : $("#vurl", box).value.trim(),
-      transcricao: $(".video-campos", box).hidden ? "" : $("#vtr", box).value, base: $("#base", box).checked };
-    if (!corpo.texto.trim() && !corpo.midias.length && !corpo.video_url) return tx.focus();
+      transcricao: $(".video-campos", box).hidden ? "" : $("#vtr", box).value, base: $("#base", box).checked, conquista: $(".conq-campos", box).hidden ? "" : $("#conq", box).value.trim() };
+    if (!corpo.texto.trim() && !corpo.midias.length && !corpo.video_url && !corpo.conquista) return tx.focus();
     const b = $("#bPub", box); b.disabled = true;
     try {
       const p = await api(post ? `/posts/${post.id}` : "/posts", { method: post ? "PUT" : "POST", body: corpo });
-      if (!post) { tx.value = ""; st.midias = []; anexos(); cresce(); $(".video-campos", box).hidden = true; $("#vurl", box).value = ""; $("#vtr", box).value = ""; }
+      if (!post) { tx.value = ""; st.midias = []; anexos(); cresce(); $(".video-campos", box).hidden = true; $("#vurl", box).value = ""; $("#vtr", box).value = ""; $("#conq", box).value = ""; }
       A.toast(corpo.base ? "Publicado — já faz parte da base de conhecimento da IA." : "Publicado (só no feed).");
       aoSalvar && aoSalvar(p);
     } catch (e) { A.toast("⚠️ " + esc(e.message)); }
@@ -820,7 +1064,8 @@ function editor(box, post, aoSalvar, fechar) {
 /** foto: reduz para no máx. 1600 px e JPEG ~82% (GIF vai como está) — cabe folgado no banco */
 async function comprimir(f) {
   if (f.type === "image/gif" && f.size < 2.8e6) return { blob: f, tipo: f.type };
-  const img = await new Promise((ok, erro) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => erro(new Error("Não consegui abrir a imagem.")); i.src = URL.createObjectURL(f); });
+  const img = await new Promise((ok, erro) => { const i = new Image(); i.onload = () => ok(i);
+    i.onerror = () => erro(new Error(/hei[cf]/i.test(f.type + f.name) ? `“${f.name}” está em HEIC (iPhone), que este navegador não abre. Envie em JPG/PNG (ou tire um print).` : `Não consegui abrir “${f.name}” como imagem.`)); i.src = URL.createObjectURL(f); });
   const k = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
   const w = Math.round(img.naturalWidth * k), h = Math.round(img.naturalHeight * k);
   const c = document.createElement("canvas"); c.width = w; c.height = h;
@@ -834,30 +1079,34 @@ function htmlPost(p) {
   const fotos = p.midias.filter((m) => m.kind === "foto"), pdfs = p.midias.filter((m) => m.kind === "pdf");
   const nf = Math.min(fotos.length, 4);
   const longo = (p.texto || "").length > 520 || (p.texto || "").split("\n").length > 7;
+  const lg = (p.autor || {}).login || "", g = (S.gente || {})[lg] || {}, cs = [g.cargo, g.setor].filter(Boolean).join(" · ");
+  const seg = lg && lg !== S.eu.login && S.gente[lg] ? `<button type="button" class="btn-seg ${g.sigo ? "on" : ""}" data-seguir="${esc(lg)}">${g.sigo ? "Seguindo" : "Seguir"}</button>` : "";
   return `<article class="post vidro" data-id="${esc(p.id)}">
-    <div class="p-cab">${avatar(p.autor)}<div class="quem"><b data-perfil="${esc((p.autor || {}).login || "")}">${esc((p.autor || {}).nome)}</b>
-      <small>${quando(p.em)}${p.editado_em ? " · editado" : ""}
+    <div class="p-cab">${avatar(p.autor)}<div class="quem"><b data-perfil="${esc(lg)}">${esc((p.autor || {}).nome)}</b>
+      <small>${cs ? `<span class="cs">${esc(cs)} ·</span>` : ""}${quando(p.em)}${p.editado_em ? " · editado" : ""}
         ${p.base ? `<span class="selo base" title="A IA do hub usa esta postagem para responder">${svg("ia")}base da IA</span>` : `<span class="selo feed">só no feed</span>`}
         ${p.revisado ? `<span class="selo rev">revisada</span>` : ""}${p.analise ? `<span class="selo ana">em análise</span>` : ""}</small></div>
-      ${p.pode_mexer || pode("moderar") ? `<div class="menu-p"><button type="button" class="btn-ic" data-menu title="Opções">${svg("reticencias")}</button>
+      ${seg}${p.pode_mexer || pode("moderar") ? `<div class="menu-p"><button type="button" class="btn-ic" data-menu title="Opções">${svg("reticencias")}</button>
         <div class="menu-lista vidro">${p.pode_mexer ? `<button type="button" data-a="editar">${svg("lapis")}Editar</button>
           <button type="button" data-a="base">${svg("ia")}${p.base ? "Tirar da base da IA" : "Pôr na base da IA"}</button>` : ""}
           ${pode("moderar") ? `<button type="button" data-a="revisar">${svg("check")}${p.revisado ? "Revisar de novo" : "Marcar como revisada"}</button>` : ""}
           ${p.pode_mexer ? `<button type="button" class="perigo" data-a="excluir">${svg("lixo")}Excluir</button>` : ""}</div></div>` : ""}
     </div>
     ${p.texto ? `<div class="p-texto ${longo ? "corta" : ""}">${rico(p.texto)}</div>${longo ? `<button type="button" class="mais-txt" data-a="mais">ver mais</button>` : ""}` : ""}
+    ${p.conquista ? `<div class="conquista"><span class="medalha">${svg("trofeu")}</span><div><small>CONQUISTA</small><b>${esc(p.conquista.titulo)}</b></div></div>` : ""}
     ${(p.correcoes || []).map((c) => `<div class="correcao"><b>Correção</b> · ${esc((c.por || {}).nome || "")} · ${quando(c.em)}<br>${esc(c.texto)}</div>`).join("")}
     ${p.analise && typeof p.analise === "object" ? `<div class="analise">👎 Alguém disse que a resposta da IA baseada nesta postagem não resolveu${p.analise.obs ? `: “${esc(p.analise.obs)}”` : ""}. Está nas pendências do agente para ajuste.</div>` : ""}
     ${p.video ? `<div class="video" data-v="${esc(p.video.id)}"><button type="button" data-a="play" aria-label="Assistir"><img src="https://i.ytimg.com/vi/${esc(p.video.id)}/hqdefault.jpg" alt="" loading="lazy" onerror="this.style.opacity=0"><span class="play"></span></button></div>
       ${p.video.titulo ? `<div class="v-tit">${svg("youtube")}${esc(p.video.titulo)}</div>` : ""}
       ${p.transcricao ? `<details class="transc"><summary>Descrição / transcrição</summary><p>${esc(p.transcricao)}</p></details>` : ""}` : ""}
-    ${nf ? `<div class="fotos n${nf}">${fotos.slice(0, 4).map((m, i) => `<button type="button" data-foto="${i}"><img src="${urlArq(m.id)}" alt="${esc(m.nome)}" loading="lazy">${i === 3 && fotos.length > 4 ? `<span class="resto">+${fotos.length - 4}</span>` : ""}</button>`).join("")}</div>` : ""}
+    ${nf ? `<div class="fotos n${nf}">${fotos.slice(0, 4).map((m, i) => `<button type="button" data-foto="${i}">${nf === 1 ? `<span class="fundo-b" style="background-image:url('${urlArq(m.id)}')"></span>` : ""}<img src="${urlArq(m.id)}" alt="${esc(m.nome)}" loading="lazy">${i === 3 && fotos.length > 4 ? `<span class="resto">+${fotos.length - 4}</span>` : ""}</button>`).join("")}</div>` : ""}
     ${pdfs.length ? `<div class="pdfs">${pdfs.map((m) => `<a class="pdf-c" href="${urlArq(m.id)}" target="_blank" rel="noopener"><span class="ic">PDF</span><span style="min-width:0"><b>${esc(m.nome)}</b><small>${m.paginas ? m.paginas + " páginas · " : ""}${tam(m.tam || 0)}</small></span><span class="ab">${svg("olho")}</span></a>`).join("")}</div>` : ""}
     <div class="p-barra">
-      <button type="button" class="curtir ${p.curti ? "on" : ""}" data-a="curtir">${svg("coracao")}<span>${p.curtidas || ""}</span></button>
-      <button type="button" data-a="comentar">${svg("balao")}<span>${p.n_coment || ""}</span></button>
+      <button type="button" class="curtir ${p.curti ? "on" : ""}" data-a="curtir" title="Curtir">${svg("coracao")}<span>${p.curtidas || ""}</span></button>
+      <button type="button" data-a="comentar" title="Comentar">${svg("balao")}<span>${p.n_coment || ""}</span></button>
+      <button type="button" class="compart" data-a="compart" title="Compartilhar (copia o link)">${svg("compart")}</button>
       <button type="button" class="salvar ${p.salvei ? "on" : ""}" data-a="salvar" title="Salvar">${svg("marcador")}</button>
-    </div>
+    </div>${curtiramHtml(p)}
     <div class="coments">${p.n_coment > p.comentarios.length ? `<button type="button" class="ver-todos" data-a="todos">Ver os ${p.n_coment} comentários</button>` : ""}
       ${p.comentarios.map(htmlCom).join("")}</div>
     ${pode("comentar") ? `<div class="com-novo">${avatar(S.eu, true, true)}<input class="entrada" placeholder="Escreva um comentário… (Enter envia)" maxlength="3000"><button type="button" class="btn-ic" data-a="enviar" title="Enviar">${svg("seta")}</button></div>` : ""}
@@ -865,7 +1114,41 @@ function htmlPost(p) {
 }
 function htmlCom(c) {
   return `<div class="com" data-c="${esc(c.id)}">${avatar(c.autor, true)}<div class="bal"><b data-perfil="${esc((c.autor || {}).login || "")}">${esc((c.autor || {}).nome)}</b><small>${quando(c.em)}</small>
-    ${c.pode_mexer ? `<button type="button" class="xc" data-a="xcom" title="Apagar comentário">×</button>` : ""}<p>${rico(c.texto)}</p></div></div>`;
+    ${c.pode_mexer ? `<button type="button" class="xc" data-a="xcom" title="Apagar comentário">×</button>` : ""}<p>${rico(c.texto)}</p>
+    <button type="button" class="cc ${c.curti ? "on" : ""}" data-a="ccom" title="Curtir o comentário">${svg("coracao")}${c.curtidas ? `<span>${c.curtidas}</span>` : "Curtir"}</button></div></div>`;
+}
+/** "Curtido por Ana e mais 3" */
+function curtiramHtml(p) {
+  if (!p.curtidas) return "";
+  const nomes = (p.curtiram || []).map((lg) => ((S.gente || {})[lg] || {}).nome || lg).map(primeiro);
+  if (p.curti) nomes.unshift("você");
+  const um = nomes[0] || "", resto = p.curtidas - (um ? 1 : 0);
+  return `<div class="curtiram" data-a="quem">Curtido por <b>${esc(um || `${p.curtidas} pessoas`)}</b>${um && resto > 0 ? ` e <b>mais ${resto}</b>` : ""}</div>`;
+}
+async function quemCurtiu(p) {
+  try {
+    const r = await api(`/posts/${p.id}/curtidas`);
+    A.modal({ titulo: `Curtidas · ${r.pessoas.length}`, icone: "coracao", cor: "#fb7185", largura: 520, html: `<div class="quem-lista">${r.pessoas.map((x) => { const g = S.gente[x.login] || x;
+      return `<div class="sug">${avatar({ ...x, foto: g.foto }, true)}<span><b data-perfil="${esc(x.login)}">${esc(x.nome)}</b><small>${esc([g.cargo, g.setor].filter(Boolean).join(" · "))}</small></span>${x.login !== S.eu.login && S.gente[x.login] ? `<button type="button" class="btn-seg ${g.sigo ? "on" : ""}" data-seguir="${esc(x.login)}">${g.sigo ? "Seguindo" : "Seguir"}</button>` : ""}</div>`; }).join("")}</div>` });
+  } catch (e) { A.toast("⚠️ " + esc(e.message)); }
+}
+/** link da postagem para mandar a alguém (abre o hub direto nela) */
+async function compartilhar(p) {
+  let base = location.origin; try { base = window.top.location.origin; } catch (_) {}
+  const url = `${base}/#/weduca?post=${p.id}`;
+  try {
+    if (navigator.share && matchMedia("(pointer:coarse)").matches) { await navigator.share({ title: "WEDUCA", text: tituloDe(p), url }); return; }
+    await navigator.clipboard.writeText(url); A.toast("Link da postagem copiado — cole onde quiser.");
+  } catch (_) { A.toast(`Copie o link: <b style="user-select:all">${esc(url)}</b>`, [], { duracao: 12000 }); }
+}
+/** curtir com 2 cliques na foto/vídeo: coração voando */
+function coracaoVoa(el) { const c = document.createElement("span"); c.className = "coracao-voa"; c.innerHTML = svg("coracao"); el.appendChild(c); setTimeout(() => c.remove(), 950); }
+async function curtirPost(p, on) {
+  if (on && p.curti) return p;
+  const r = await api(`/posts/${p.id}/curtir`, { method: "POST" });
+  p.curti = r.ligado; p.curtidas = r.total;
+  if (r.ligado && !(p.curtiram || []).length) p.curtiram = [];
+  return p;
 }
 function desenharLista() {
   const l = $("#lista");
@@ -890,7 +1173,7 @@ document.addEventListener("click", async (e) => {
   const tag = e.target.closest("[data-tag]");
   if (tag) { S.q = "#" + tag.dataset.tag; $("#busca").value = S.q; recarregar(); scrollTo({ top: 0, behavior: "smooth" }); A.modalAberto?.() && document.querySelector(".aur-modal [data-fechar]")?.click(); return; }
   const f = e.target.closest("[data-foto]");
-  if (f) { const p = postDe(f); return luz(p.midias.filter((x) => x.kind === "foto"), +f.dataset.foto); }
+  if (f) { clearTimeout(S.tFoto); if (e.detail > 1) return; const p = postDe(f); S.tFoto = setTimeout(() => luz(p.midias.filter((x) => x.kind === "foto"), +f.dataset.foto), 280); return; }
   const b = e.target.closest("[data-a]");
   if (!b || !b.closest(".post")) return;
   const p = postDe(b), art = b.closest(".post");
@@ -900,9 +1183,18 @@ document.addEventListener("click", async (e) => {
     if (a === "mais") { art.querySelector(".p-texto").classList.remove("corta"); b.remove(); }
     else if (a === "play") { b.closest(".video").innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(p.video.id)}?autoplay=1&rel=0" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen title="${esc(p.video.titulo || "Vídeo")}"></iframe>`; }
     else if (a === "curtir") {
-      const r = await api(`/posts/${p.id}/curtir`, { method: "POST" });
-      p.curti = r.ligado; p.curtidas = r.total; b.classList.toggle("on", r.ligado); b.querySelector("span").textContent = r.total || "";
-      b.querySelector("svg").classList.remove("pop"); void b.offsetWidth; if (r.ligado) b.querySelector("svg").classList.add("pop");
+      await curtirPost(p);
+      b.classList.toggle("on", p.curti); b.querySelector("span").textContent = p.curtidas || "";
+      b.querySelector("svg").classList.remove("pop"); void b.offsetWidth; if (p.curti) b.querySelector("svg").classList.add("pop");
+      art.querySelector(".curtiram")?.remove(); art.querySelector(".p-barra").insertAdjacentHTML("afterend", curtiramHtml(p));
+    }
+    else if (a === "compart") compartilhar(p);
+    else if (a === "quem") quemCurtiu(p);
+    else if (a === "ccom") {
+      const cid = b.closest("[data-c]").dataset.c, c = (p.comentarios || []).find((x) => x.id === cid);
+      const r = await api(`/comentarios/${cid}/curtir`, { method: "POST" });
+      if (c) Object.assign(c, { curti: r.ligado, curtidas: r.total });
+      b.classList.toggle("on", r.ligado); b.innerHTML = `${svg("coracao")}${r.total ? `<span>${r.total}</span>` : "Curtir"}`;
     }
     else if (a === "salvar") { const r = await api(`/posts/${p.id}/salvar`, { method: "POST" }); p.salvei = r.ligado; b.classList.toggle("on", r.ligado); A.toast(r.ligado ? "Salvo — veja em “Salvos”." : "Removido dos salvos."); }
     else if (a === "comentar") { const i = art.querySelector(".com-novo input"); i ? i.focus() : A.toast("Comentar não está liberado para você."); }
@@ -922,6 +1214,14 @@ document.addEventListener("click", async (e) => {
       document.querySelector(".aur-modal [data-fechar]")?.click();
     }
   } catch (err) { A.toast("⚠️ " + esc(err.message)); }
+});
+document.addEventListener("dblclick", async (e) => {
+  const m = e.target.closest(".post .fotos, .post .conquista"); if (!m) return;
+  clearTimeout(S.tFoto);
+  const art = m.closest(".post"), p = postDe(art); if (!p) return;
+  e.preventDefault(); coracaoVoa(m);
+  try { await curtirPost(p, true); const b = art.querySelector('[data-a="curtir"]'); b.classList.add("on"); b.querySelector("span").textContent = p.curtidas || "";
+    art.querySelector(".curtiram")?.remove(); art.querySelector(".p-barra").insertAdjacentHTML("afterend", curtiramHtml(p)); } catch (err) { A.toast("⚠️ " + esc(err.message)); }
 });
 document.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && e.target.matches(".post .com-novo input")) { e.preventDefault(); const art = e.target.closest(".post"); comentar(postDe(art), art); } });
 async function comentar(p, art) {
@@ -967,6 +1267,234 @@ function lerHash() {
 }
 addEventListener("hashchange", lerHash);
 
+/* ═════════ STORIES — as bolinhas do topo: quem tem story ganha o anel dourado; os outros abrem o perfil ═════════ */
+const ST = { grupos: [] };
+const FUNDOS = ["linear-gradient(135deg,#f7e6a3,#f0cb4e 45%,#d2ae34)", "linear-gradient(135deg,#0b0b0d,#2a1f06)", "linear-gradient(135deg,#fb7185,#f59e0b)",
+  "linear-gradient(135deg,#22d3ee,#6366f1)", "linear-gradient(135deg,#34d399,#0ea5e9)", "linear-gradient(135deg,#a78bfa,#ec4899)"];
+const COR_TXT = ["#1a1204", "#f7e6a3", "#fff", "#fff", "#fff", "#fff"];
+const ST_DUR = 5500;
+async function carregarStories() {
+  try { ST.grupos = (await api("/stories")).grupos; } catch (_) { ST.grupos = []; }
+  desenharStories();
+}
+function desenharStories() {
+  const el = $("#stories"); if (!el) return;
+  const idx = Object.fromEntries(ST.grupos.map((g, i) => [g.login, i]));
+  const eu = S.eu.login, meu = idx[eu];
+  let h = "";
+  if (meu != null) h += `<button type="button" class="story tem${ST.grupos[meu].todos_vistos ? " visto" : ""}" data-st="${meu}"><span class="anel-s">${avatar(S.eu, false, true)}</span>${pode("publicar") ? `<span class="mais-s" data-st-novo title="Novo story">${svg("mais")}</span>` : ""}<span>Seu story</span></button>`;
+  else if (pode("publicar")) h += `<button type="button" class="story add" data-st-novo><span class="anel-s">${svg("mais")}</span><span>Seu story</span></button>`;
+  ST.grupos.forEach((g, i) => {
+    if (g.login === eu) return;
+    const p = { ...(S.gente[g.login] || {}), login: g.login, nome: g.nome };
+    h += `<button type="button" class="story tem${g.todos_vistos ? " visto" : ""}" data-st="${i}" title="${esc(g.nome)}"><span class="anel-s">${avatar(p, false, true)}</span><span>${esc(primeiro(g.nome))}</span></button>`;
+  });
+  // o resto do pessoal do hub (sem story agora): a bolinha abre o perfil
+  const outros = Object.values(S.gente || {}).filter((p) => !p.sou_eu && idx[p.login] == null && (S.sub !== "seguindo" || p.sigo))
+    .sort((a, b) => (b.sigo - a.sigo) || ((a.acesso === false) - (b.acesso === false)) || (b.posts - a.posts) || String(a.nome).localeCompare(String(b.nome)));
+  for (const p of outros) h += `<button type="button" class="story${p.acesso === false ? " sem-acesso" : ""}" data-perfil="${esc(p.login)}" title="${esc(p.nome)}${p.acesso === false ? " · ainda sem acesso ao WEDUCA" : ""}"><span class="anel-s">${avatar(p, false, true)}</span><span>${esc(primeiro(p.nome))}</span></button>`;
+  el.innerHTML = h || `<div style="color:var(--txt3);font-size:.82rem;padding:20px 4px">Siga pessoas em “Pessoas” para ver as bolinhas delas aqui.</div>`;
+}
+document.addEventListener("click", (e) => {
+  if (e.target.closest("[data-st-novo]")) { e.stopPropagation(); return novoStory(); }
+  const b = e.target.closest("[data-st]"); if (b) verStories(+b.dataset.st);
+});
+function verStories(gi) {
+  let g = gi, k = Math.max(0, ST.grupos[gi].stories.findIndex((x) => !x.vi)), anim = null;
+  const tela = document.createElement("div"); tela.className = "st-tela";
+  tela.innerHTML = `<button type="button" class="st-fecha" aria-label="Fechar">${svg("fechar")}</button><button type="button" class="st-nav ant" aria-label="Anterior">${svg("voltar")}</button>
+    <button type="button" class="st-nav prox" aria-label="Próximo">${svg("avancar")}</button><div class="st-card"></div>`;
+  document.body.appendChild(tela);
+  const card = $(".st-card", tela);
+  const fechar = () => { anim?.cancel(); tela.remove(); removeEventListener("keydown", tecla, true); desenharStories(); };
+  const ir = (d) => { k += d; mostrar(); };
+  function mostrar() {
+    anim?.cancel();
+    if (g >= ST.grupos.length) return fechar();
+    if (k >= ST.grupos[g].stories.length) { g++; k = 0; return mostrar(); }
+    if (k < 0) { if (g === 0) k = 0; else { g--; k = ST.grupos[g].stories.length - 1; } }
+    const gr = ST.grupos[g], s = gr.stories[k];
+    if (!s.vi) { s.vi = true; gr.todos_vistos = gr.stories.every((x) => x.vi); api(`/stories/${s.id}/visto`, { method: "POST" }).catch(() => {}); }
+    const p = { ...(S.gente[gr.login] || {}), login: gr.login, nome: gr.nome };
+    card.innerHTML = `${s.foto ? `<span class="fundo-b" style="background-image:url('${urlArq(s.foto)}')"></span><img src="${urlArq(s.foto)}" alt="">${s.texto ? `<div class="leg-s">${esc(s.texto)}</div>` : ""}`
+      : `<span class="fundo-b" style="background:${FUNDOS[s.fundo] || FUNDOS[0]};filter:none;inset:0"></span><div class="txt-s" style="color:${COR_TXT[s.fundo] || "#fff"}">${esc(s.texto)}</div>`}
+      <div class="st-barras">${gr.stories.map((_, j) => `<span class="${j < k ? "feita" : ""}"><i${j === k ? ' class="agora"' : ""}></i></span>`).join("")}</div>
+      <div class="st-quem">${avatar(p, true, true)}<span><b data-st-perfil="${esc(gr.login)}" style="cursor:pointer">${esc(gr.nome)}</b><br><small>${quando(s.em)}</small></span>
+        <span class="acs">${s.pode_mexer ? `<button type="button" data-st-x title="Apagar este story">${svg("lixo")}</button>` : ""}</span></div>
+      <div class="st-lado esq"></div><div class="st-lado dir"></div>
+      ${s.n_vistos != null ? `<div class="st-pe"><button type="button" data-st-vistos>${svg("olho")} visto por ${s.n_vistos}</button></div>` : ""}`;
+    anim = $(".agora", card).animate([{ width: "0%" }, { width: "100%" }], { duration: ST_DUR, fill: "forwards" });
+    anim.onfinish = () => ir(1);
+  }
+  // segurar pausa; toque rápido na esquerda/direita volta/avança
+  let t0 = 0;
+  card.addEventListener("pointerdown", () => { t0 = Date.now(); anim?.pause(); });
+  card.addEventListener("pointerup", (e) => {
+    const rapido = Date.now() - t0 < 260;
+    if (rapido && e.target.closest(".st-lado.esq")) return ir(-1);
+    if (rapido && e.target.closest(".st-lado.dir")) return ir(1);
+    anim?.play();
+  });
+  card.addEventListener("click", async (e) => {
+    const s = ST.grupos[g].stories[k];
+    if (e.target.closest("[data-st-perfil]")) { const lg = e.target.closest("[data-st-perfil]").dataset.stPerfil; fechar(); return abrirPerfil(lg); }
+    if (e.target.closest("[data-st-vistos]")) {
+      anim?.pause();
+      try { const r = await api(`/stories/${s.id}/vistos`);
+        $(".st-pe", card).innerHTML = `<div class="vidro" style="border-radius:16px;padding:10px 14px;max-height:40%;overflow:auto;color:var(--txt);font-size:.82rem;width:86%">${r.pessoas.length ? r.pessoas.map((x) => `<div style="padding:3px 0">${esc(x.nome)}</div>`).join("") : "Ninguém viu ainda."}</div>`;
+      } catch (err) { A.toast("⚠️ " + esc(err.message)); }
+      return;
+    }
+    if (e.target.closest("[data-st-x]")) {
+      anim?.pause();
+      try { await api(`/stories/${s.id}`, { method: "DELETE" }); } catch (err) { anim?.play(); return A.toast("⚠️ " + esc(err.message)); }
+      ST.grupos[g].stories.splice(k, 1);
+      if (!ST.grupos[g].stories.length) { ST.grupos.splice(g, 1); k = 0; } 
+      A.toast("Story apagado."); mostrar();
+    }
+  });
+  $(".st-fecha", tela).onclick = fechar;
+  $(".st-nav.ant", tela).onclick = () => ir(-1);
+  $(".st-nav.prox", tela).onclick = () => ir(1);
+  tela.addEventListener("pointerdown", (e) => { if (e.target === tela) fechar(); });
+  const tecla = (e) => { if (e.key === "Escape") { e.stopPropagation(); fechar(); } else if (e.key === "ArrowRight") ir(1); else if (e.key === "ArrowLeft") ir(-1); };
+  addEventListener("keydown", tecla, true);
+  mostrar();
+}
+function novoStory() {
+  if (!pode("publicar")) return A.toast("Publicar não está liberado para você.");
+  const st = { foto: null, prev: "", fundo: 0, enviando: false };
+  const md = A.modal({ titulo: "Novo story", icone: "camera", cor: "#f0cb4e", largura: 780, html: `<div class="st-novo">
+      <label class="st-card solta-w" id="snCard" title="Escolher foto"><input type="file" id="snF" class="arq-in" accept="image/*"><div id="snPrev"></div><div class="solta-veu">${svg("imagem")}Solte a foto aqui</div></label>
+      <div><label class="campo">Texto<textarea id="snTx" rows="4" maxlength="300" placeholder="Escreva algo (com foto vira legenda)"></textarea></label>
+        <div style="font-size:.78rem;font-weight:700;color:var(--txt2);margin-top:6px">Fundo (story só de texto)</div>
+        <div class="fundos" id="snFundos">${FUNDOS.map((f, i) => `<button type="button" data-fd="${i}" class="${i ? "" : "ativo"}" style="background:${f}" aria-label="Fundo ${i + 1}"></button>`).join("")}</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><label class="btn v" role="button">${svg("imagem")}Escolher foto<input type="file" id="snF2" class="arq-in" accept="image/*"></label><button type="button" class="btn v" id="snTira" hidden>${svg("fechar")}Tirar foto</button></div>
+        <p class="dica-solta" style="margin-top:12px">O story aparece na sua bolinha do topo e <b>some em 24 horas</b>. Não entra na base da IA. Você vê quem visualizou.</p></div></div>`,
+    botoes: [{ rotulo: "Cancelar" }, { rotulo: "Publicar story", icone: "check", classe: "btn", principal: true, acao: async () => {
+      if (st.enviando) { A.toast("Espere a foto terminar de enviar."); return false; }
+      const texto = $("#snTx", md.el).value.trim();
+      if (!st.foto && !texto) { A.toast("Escolha uma foto ou escreva um texto."); return false; }
+      try { await api("/stories", { method: "POST", body: { texto, foto: st.foto, fundo: st.fundo } }); A.toast("Story publicado — some em 24 h."); carregarStories(); }
+      catch (e) { A.toast("⚠️ " + esc(e.message)); return false; }
+    } }] });
+  const prev = () => {
+    const t = $("#snTx", md.el).value.trim();
+    $("#snPrev", md.el).innerHTML = st.prev ? `<span class="fundo-b" style="background-image:url('${st.prev}')"></span><img src="${st.prev}" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain">${t ? `<div class="leg-s">${esc(t)}</div>` : ""}${st.enviando ? `<div class="leg-s" style="top:0;bottom:auto;background:none">enviando…</div>` : ""}`
+      : t ? `<span class="fundo-b" style="background:${FUNDOS[st.fundo]};filter:none;inset:0"></span><div class="txt-s" style="color:${COR_TXT[st.fundo]}">${esc(t)}</div>`
+      : `<div class="vazio-s"><span>${svg("camera")}Toque para escolher uma foto<br><small style="font-weight:500">ou arraste aqui</small></span></div>`;
+    $("#snTira", md.el).hidden = !st.prev;
+  };
+  const subir = async (f) => {
+    if (!f) return;
+    st.prev = URL.createObjectURL(f); st.enviando = true; prev();
+    try { st.foto = (await subirArquivo(f, "foto")).id; } catch (e) { st.prev = ""; st.foto = null; A.toast("⚠️ " + esc(e.message)); }
+    st.enviando = false; prev();
+  };
+  ["#snF", "#snF2"].forEach((id) => ($(id, md.el).onchange = (e) => { const f = e.target.files[0]; e.target.value = ""; subir(f); }));
+  soltar($("#snCard", md.el), (fs) => subir(fs.find((f) => !ehPdf(f))));
+  $("#snTx", md.el).addEventListener("input", prev);
+  $("#snTira", md.el).onclick = () => { st.foto = null; st.prev = ""; prev(); };
+  $("#snFundos", md.el).addEventListener("click", (e) => { const b = e.target.closest("[data-fd]"); if (!b) return; st.fundo = +b.dataset.fd; $$("[data-fd]", md.el).forEach((x) => x.classList.toggle("ativo", x === b)); prev(); });
+  prev();
+}
+
+/* ═════════ SHORTS — uma postagem por tela; rolar para baixo (ou ↓) troca; ♥ com 2 toques ═════════ */
+const SH = { posts: [], mais: true, carregando: false, obs: null, ativo: false };
+async function telaShorts() {
+  Object.assign(SH, { posts: [], mais: true, carregando: false, ativo: true });
+  $("#main").innerHTML = `<div class="shorts" id="shorts" tabindex="-1"><div class="sh-fim" id="shFim"><div><b>Carregando…</b></div></div></div>
+    <div class="sh-dica"><button type="button" class="btn-ic vidro" data-sh-ir="-1" title="Anterior (↑)">${svg("cima")}</button><button type="button" class="btn-ic vidro" data-sh-ir="1" title="Próxima (↓)">${svg("baixo")}</button></div>`;
+  SH.obs?.disconnect();
+  SH.obs = new IntersectionObserver((es) => es.forEach((x) => ativarShort(x.target, x.isIntersecting)), { root: $("#shorts"), threshold: 0.6 });
+  await maisShorts();
+  $("#shorts")?.focus({ preventScroll: true });
+}
+async function maisShorts() {
+  if (SH.carregando || !SH.mais || !$("#shorts")) return;
+  SH.carregando = true;
+  try {
+    const qs = new URLSearchParams({ filtro: "", n: "8", ...(SH.posts.length ? { antes: SH.posts[SH.posts.length - 1].em } : {}) });
+    const r = await api("/feed?" + qs);
+    SH.posts.push(...r.posts); SH.mais = r.mais;
+    const fim = $("#shFim");
+    const primeira = SH.posts.length === r.posts.length;
+    fim.insertAdjacentHTML("beforebegin", r.posts.map(htmlShort).join(""));
+    if (primeira) { const box = $("#shorts"); box.style.scrollSnapType = "none"; box.scrollTop = 0; void box.offsetHeight; box.style.scrollSnapType = ""; }   // o "snap" ficava preso no fim
+    $$(".short:not([data-obs])").forEach((el) => { el.dataset.obs = "1"; SH.obs.observe(el); });
+    fim.innerHTML = SH.mais ? `<div><b>Carregando…</b></div>` : `<div>${SH.posts.length ? `<b>Você viu tudo 🎉</b>Volte mais tarde para ver o que a equipe publicar.` : `<b>Nada para assistir ainda</b>Quando a equipe publicar, aparece aqui.`}
+      <div style="display:flex;gap:8px;justify-content:center;margin-top:14px"><button type="button" class="btn v" data-sub-ir="tudo">Voltar ao feed</button>${pode("publicar") ? `<button type="button" class="btn" data-nova="foto">${svg("mais")}Publicar</button>` : ""}</div></div>`;
+  } catch (e) { $("#shFim").innerHTML = `<div><b>Não consegui carregar</b>${esc(e.message)}</div>`; }
+  SH.carregando = false;
+}
+function htmlShort(p) {
+  const fotos = (p.midias || []).filter((m) => m.kind === "foto"), pdf = (p.midias || []).find((m) => m.kind === "pdf");
+  const lg = (p.autor || {}).login || "", g = (S.gente || {})[lg] || {};
+  let fundo, centro = false;
+  if (p.video) fundo = `<span class="fundo-b" style="background-image:url('https://i.ytimg.com/vi/${esc(p.video.id)}/hqdefault.jpg')"></span><div class="yt" data-yt="${esc(p.video.id)}"><img class="yt-capa" src="https://i.ytimg.com/vi/${esc(p.video.id)}/hqdefault.jpg" alt="" style="object-fit:contain"><span class="yt-play" data-s="play"></span></div>`;
+  else if (fotos.length) fundo = `<span class="fundo-b" style="background-image:url('${urlArq(fotos[0].id)}')"></span><img class="foto-s" src="${urlArq(fotos[0].id)}" alt="" loading="lazy">`;
+  else if (p.conquista) { fundo = `${arte(p.id, "trofeu")}<div class="conq-sh"><span class="medalha">${svg("trofeu")}</span><small style="color:var(--ou-t);font-weight:800;letter-spacing:.14em;font-size:.72rem">CONQUISTA</small><b>${esc(p.conquista.titulo)}</b></div>`; }
+  else { fundo = `${arte(p.id, pdf ? "pdf" : "feed")}<div class="txt-sh">${rico((p.texto || (pdf ? pdf.nome : "")).slice(0, 360))}${(p.texto || "").length > 360 ? "…" : ""}</div>`; centro = true; }
+  const txt = centro ? "" : (p.texto || "");
+  return `<section class="short" data-sid="${esc(p.id)}"><div class="sh-card">${fundo}
+    <div class="sh-info"><div class="sh-quem">${avatar(p.autor, true)}<span><b data-perfil="${esc(lg)}">${esc((p.autor || {}).nome || "")}</b><small>${esc([g.cargo, g.setor].filter(Boolean).join(" · ") || quando(p.em))}</small></span>
+      ${lg && lg !== S.eu.login && S.gente[lg] ? `<button type="button" class="btn-seg ${g.sigo ? "on" : ""}" data-seguir="${esc(lg)}">${g.sigo ? "Seguindo" : "Seguir"}</button>` : ""}</div>
+      ${txt ? `<div class="sh-txt" data-s="txt">${rico(txt)}</div>` : ""}${fotos.length > 1 ? `<button type="button" class="edk-chip" data-s="fotos" style="margin-top:8px">${svg("imagem")} ${fotos.length} fotos</button>` : ""}
+      ${pdf ? `<a class="edk-chip" href="${urlArq(pdf.id)}" target="_blank" rel="noopener" style="margin-top:8px;display:inline-flex;gap:6px">${svg("pdf")} ${esc(pdf.nome)}</a>` : ""}</div>
+    <div class="sh-acoes">
+      <button type="button" class="curtir ${p.curti ? "on" : ""}" data-s="curtir"><span class="c">${svg("coracao")}</span><span class="n">${p.curtidas || 0}</span></button>
+      <button type="button" data-s="coment"><span class="c">${svg("balao")}</span><span class="n">${p.n_coment || 0}</span></button>
+      <button type="button" data-s="compart"><span class="c">${svg("compart")}</span><span class="r">Enviar</span></button>
+      <button type="button" class="salvar ${p.salvei ? "on" : ""}" data-s="salvar"><span class="c">${svg("marcador")}</span><span class="r">Salvar</span></button>
+    </div></div></section>`;
+}
+/** ao parar numa postagem: o vídeo começa sozinho (sem som); ao sair, para */
+function ativarShort(el, visivel) {
+  const yt = $(".yt", el); if (!yt) { if (visivel) aoChegar(el); return; }
+  if (visivel) { yt.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(yt.dataset.yt)}?autoplay=1&mute=1&playsinline=1&rel=0&loop=1&playlist=${encodeURIComponent(yt.dataset.yt)}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen title="Vídeo"></iframe>`; aoChegar(el); }
+  else if ($("iframe", yt)) yt.innerHTML = `<img class="yt-capa" src="https://i.ytimg.com/vi/${esc(yt.dataset.yt)}/hqdefault.jpg" alt="" style="object-fit:contain"><span class="yt-play" data-s="play"></span>`;
+}
+function aoChegar(el) { const i = $$(".short").indexOf(el); if (i >= SH.posts.length - 3) maisShorts(); }
+const shortDe = (el) => SH.posts.find((p) => p.id === el.closest("[data-sid]")?.dataset.sid);
+function pintarAcoesShort(el, p) {
+  const c = $('[data-s="curtir"]', el); c.classList.toggle("on", !!p.curti); $(".n", c).textContent = p.curtidas || 0;
+  $('[data-s="coment"] .n', el).textContent = p.n_coment || 0; $('[data-s="salvar"]', el).classList.toggle("on", !!p.salvei);
+}
+function irShort(d) {
+  const box = $("#shorts"); if (!box) return;
+  box.scrollBy({ top: d * box.clientHeight, behavior: "smooth" });
+}
+document.addEventListener("click", async (e) => {
+  const ir = e.target.closest("[data-sh-ir]"); if (ir) return irShort(+ir.dataset.shIr);
+  const b = e.target.closest(".short [data-s]"); if (!b) return;
+  const el = b.closest(".short"), p = shortDe(el); if (!p) return;
+  const a = b.dataset.s;
+  try {
+    if (a === "curtir") { await curtirPost(p); pintarAcoesShort(el, p); if (p.curti) b.querySelector("svg").animate([{ transform: "scale(1)" }, { transform: "scale(1.4)" }, { transform: "scale(1)" }], { duration: 400 }); }
+    else if (a === "salvar") { const r = await api(`/posts/${p.id}/salvar`, { method: "POST" }); p.salvei = r.ligado; pintarAcoesShort(el, p); A.toast(r.ligado ? "Salvo — veja em “Salvos”." : "Removido dos salvos."); }
+    else if (a === "compart") compartilhar(p);
+    else if (a === "txt") b.classList.toggle("aberto");
+    else if (a === "fotos") luz(p.midias.filter((x) => x.kind === "foto"), 0);
+    else if (a === "play") { const yt = b.closest(".yt"); yt.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(yt.dataset.yt)}?autoplay=1&playsinline=1&rel=0" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen title="Vídeo"></iframe>`; }
+    else if (a === "coment") {
+      const t = await api(`/posts/${p.id}`); Object.assign(p, t); S.aberto = p;
+      A.modal({ titulo: "Comentários · " + ((p.autor || {}).nome || ""), icone: "balao", cor: "#f0cb4e", largura: 760, html: `<div class="pilha">${htmlPost(p)}</div>`,
+        aoAbrir: (cx) => setTimeout(() => $(".com-novo input", cx)?.focus(), 120), aoFechar: () => { S.aberto = null; pintarAcoesShort(el, p); } });
+    }
+  } catch (err) { A.toast("⚠️ " + esc(err.message)); }
+});
+document.addEventListener("dblclick", async (e) => {
+  const c = e.target.closest(".short .sh-card"); if (!c || e.target.closest(".sh-acoes, .sh-info, iframe")) return;
+  const el = c.closest(".short"), p = shortDe(el); if (!p) return;
+  coracaoVoa(c);
+  try { await curtirPost(p, true); pintarAcoesShort(el, p); } catch (err) { A.toast("⚠️ " + esc(err.message)); }
+});
+addEventListener("keydown", (e) => {
+  if (S.sub !== "shorts" || !SH.ativo || e.target.matches("input, textarea") || document.querySelector(".aur-modal-fundo, .st-tela")) return;
+  if (["ArrowDown", "PageDown", "j"].includes(e.key)) { e.preventDefault(); irShort(1); }
+  else if (["ArrowUp", "PageUp", "k"].includes(e.key)) { e.preventDefault(); irShort(-1); }
+});
+
 /* ═════════ carregar / tempo real ═════════ */
 async function carregar(maisAntigas) {
   if (S.carregando) return;
@@ -994,7 +1522,7 @@ setInterval(novidades, 20000);
 /* ═══════════════════════════════════════════════════════════════════════════
    APRENDIZAGEM — cursos feitos pela equipe, progresso, avaliação e certificado
    ═══════════════════════════════════════════════════════════════════════════ */
-const AP = { cursos: [], certs: [], filtro: "", q: "", pode_criar: false, categorias: [] };
+const AP = { cursos: [], certs: [], filtro: "", q: "", pode_criar: false, categorias: [], giro: 0, per: "mes" };
 function rnd(seed, n) { const x = Math.sin(seed * 9301 + n * 49297) * 233280; return x - Math.floor(x); }
 /** capa gerada (sem foto): luz dourada, anéis e o ícone grande — igual ao início do hub */
 function arte(chave, icone, tom = 0) {
@@ -1031,10 +1559,10 @@ function cardCurso(c, tom = 0) {
       <span class="ctr"><span class="bts"><span class="play">${svg("seta")}</span></span><small>${c.pct ? `${c.pct}% feito` : c.iniciado ? "começou" : "Começar"}${c.minutos ? " · " + durTxt(c.minutos) : ""}</small></span></span>
     ${c.pct ? `<span class="cprog"><i style="width:${c.pct}%"></i></span>` : ""}</button>`;
 }
-function fileiraA(titulo, selo, itens) {
+function fileiraA(titulo, selo, itens, classe = "") {
   if (!itens.length) return "";
   const id = "fa" + hashS(titulo + itens.length + Math.random());
-  return `<section class="edk-fil"><div class="edk-fil-cab"><h2>${titulo}${selo ? `<span class="edk-selo">${selo}</span>` : ""}</h2>
+  return `<section class="edk-fil ${classe}"><div class="edk-fil-cab"><h2>${titulo}${selo ? `<span class="edk-selo">${selo}</span>` : ""}</h2>
     <div class="edk-setas"><button type="button" data-sc="${id}" data-d="-1" aria-label="Voltar">${svg("voltar")}</button><button type="button" data-sc="${id}" data-d="1" aria-label="Avançar">${svg("avancar")}</button></div></div>
     <div class="edk-rel"><div class="edk-trilho" id="${id}">${itens.join("")}</div></div></section>`;
 }
@@ -1047,30 +1575,46 @@ function desenharApr() {
   let h = "";
   if (S.sub === "vitrine") {
     const andando = pub.filter((c) => c.iniciado && !c.concluido_em).sort((a, b) => b.pct - a.pct);
-    const d = andando[0] || pub.find((c) => c.obrigatorio && !c.concluido_em) || pub.find((c) => !c.concluido_em) || pub[0];
-    h += `<section class="edk-hero"><div class="bg">${d ? capaDe(d) : arte("weduca-aprender", "livro")}</div><div class="wrap"><div class="edk-cartao vidro">${d
-      ? `<div class="edk-chips"><span class="edk-chip forte">${svg("estrela")}${d.concluido_em ? "Você concluiu" : andando[0] === d ? "Continue de onde parou" : d.obrigatorio ? "Obrigatório" : "Comece por aqui"}</span><span class="edk-chip">${esc(d.categoria)}</span></div>
-        <h1>${esc(d.titulo)}</h1><div class="meta"><span>${d.n_aulas} ${d.n_aulas === 1 ? "aula" : "aulas"}</span>${d.minutos ? `<span>· ${durTxt(d.minutos)}</span>` : ""}<span>· ${esc((d.autor || {}).nome || "")}</span>${d.tem_quiz ? `<span class="edk-chip">avaliação · nota ${d.nota_min}</span>` : ""}</div>
+    const obr = pub.filter((c) => c.obrigatorio && !c.concluido_em);
+    const pop = [...pub].filter((c) => c.alunos).sort((a, b) => (b.concluintes - a.concluintes) || (b.alunos - a.alunos));
+    const novos = [...pub].sort((a, b) => String(b.em || "").localeCompare(String(a.em || "")));
+    // o CARTAZ grande do topo: rola entre os destaques (continuar, obrigatórios, em alta, novos)
+    const dest = [], ja = new Set(), rot = {};
+    const por = (lst, r, n) => lst.slice(0, n).forEach((c) => { if (!ja.has(c.id) && dest.length < 6) { ja.add(c.id); dest.push(c); rot[c.id] = r; } });
+    por(andando, "Continue de onde parou", 2); por(obr, "Obrigatório para você", 2); por(pop, "Em alta no time", 2); por(novos, "Novo", 3);
+    h += dest.length ? `<div class="bill" id="bill"><div class="bill-trilho" id="billT">${dest.map((d, i) => `<section class="edk-hero bill-slide" data-i="${i}"><div class="bg">${capaDe(d, i)}</div><div class="wrap"><div class="edk-cartao vidro">
+        <div class="edk-chips"><span class="edk-chip forte">${svg(rot[d.id] === "Em alta no time" ? "estrela" : rot[d.id] === "Obrigatório para você" ? "escudo" : rot[d.id] === "Novo" ? "raio" : "seta")}${rot[d.id]}</span><span class="edk-chip">${esc(d.categoria)}</span>${d.concluintes ? `<span class="edk-chip">${d.concluintes} ${d.concluintes === 1 ? "concluiu" : "concluíram"}</span>` : ""}</div>
+        <h1>${esc(d.titulo)}</h1><div class="meta"><span>${d.n_aulas} ${d.n_aulas === 1 ? "aula" : "aulas"}</span>${d.minutos ? `<span>· ${durTxt(d.minutos)}</span>` : ""}<span>· por ${esc((d.autor || {}).nome || "")}</span>${d.tem_quiz ? `<span class="edk-chip">avaliação · nota ${d.nota_min}</span>` : ""}</div>
         ${d.descricao ? `<p>${esc(d.descricao.slice(0, 220))}${d.descricao.length > 220 ? "…" : ""}</p>` : ""}
         ${d.pct ? `<div class="edk-destaque"><span class="ic">${svg("grafico")}</span><span style="flex:1"><b>${d.pct}% concluído</b><div class="barra-prog" style="margin-top:6px"><i style="width:${d.pct}%"></i></div></span></div>` : ""}
-        <div class="edk-acoes"><button type="button" class="edk-bt preto" data-curso="${esc(d.id)}" data-ir="1">${svg("seta")}${d.concluido_em ? "Rever" : d.pct ? "Continuar" : "Começar"}</button>
-          <button type="button" class="edk-bt v" data-curso="${esc(d.id)}">${svg("olho")}Ver o curso</button></div>`
-      : `<div class="edk-chips"><span class="edk-chip forte">${svg("estrela")}Aprendizagem</span></div><h1>Nenhum curso ainda</h1>
+        <div class="edk-acoes"><button type="button" class="edk-bt preto" data-curso="${esc(d.id)}" data-ir="1">${svg("play")}${d.concluido_em ? "Rever" : d.pct ? "Continuar" : "Começar"}</button>
+          <button type="button" class="edk-bt v" data-curso="${esc(d.id)}">${svg("olho")}Mais informações</button>${AP.pode_criar && i === 0 ? `<button type="button" class="edk-bt v" data-novo-curso title="Criar curso">${svg("mais")}</button>` : ""}</div></div><div></div></div></section>`).join("")}</div>
+      <div class="bill-lado">${pendencias(AP.cursos, null)}</div>
+      ${dest.length > 1 ? `<button type="button" class="bill-seta esq" data-bill="-1" aria-label="Anterior">${svg("voltar")}</button><button type="button" class="bill-seta dir" data-bill="1" aria-label="Próximo">${svg("avancar")}</button>
+      <div class="bill-pontos">${dest.map((_, i) => `<button type="button" data-bill-i="${i}" class="${i ? "" : "on"}" aria-label="Destaque ${i + 1}"><i></i></button>`).join("")}</div>` : ""}</div>`
+      : `<section class="edk-hero"><div class="bg">${arte("weduca-aprender", "livro")}</div><div class="wrap"><div class="edk-cartao vidro"><div class="edk-chips"><span class="edk-chip forte">${svg("estrela")}Aprendizagem</span></div><h1>Nenhum curso ainda</h1>
         <p>${AP.pode_criar ? "Crie o primeiro curso: aulas em vídeo do canal, leitura, PDF e fotos, com avaliação e certificado. As aulas viram base da IA." : "Quando a equipe publicar cursos, eles aparecem aqui."}</p>
-        <div class="edk-acoes">${AP.pode_criar ? `<button type="button" class="edk-bt ouro" data-novo-curso>${svg("mais")}Criar curso</button>` : ""}</div>`}</div>
-      <div class="edk-lado">${pendencias(AP.cursos, null)}</div></div></section>`;
+        <div class="edk-acoes">${AP.pode_criar ? `<button type="button" class="edk-bt ouro" data-novo-curso>${svg("mais")}Criar curso</button>` : ""}</div></div><div class="edk-lado">${pendencias(AP.cursos, null)}</div></div></section>`;
     h += `<div class="cont">${AP.cursos.length ? ferr : ""}`;
     if (andando.length) h += fileiraA("Continue assistindo", `${andando.length}`, andando.map((c) => cardCurso(c, 1)));
-    const obr = pub.filter((c) => c.obrigatorio && !c.concluido_em);
-    if (obr.length) h += fileiraA("Obrigatórios para você", `${obr.length}`, obr.map((c) => cardCurso(c, 2)));
+    if (obr.length) h += fileiraA("Obrigatórios para você", "com prioridade", obr.map((c) => cardCurso(c, 2)));
+    if (pop.length >= 2) h += fileiraA("Top 10 no WEDUCA", "os mais feitos pelo time", pop.slice(0, 10).map((c, i) => `<div class="t10"><span class="t10-n">${i + 1}</span>${cardCurso(c, i % 4)}</div>`), "top");
+    const recentes = novos.filter((c) => c.em && Date.now() - new Date(c.em).getTime() < 30 * 864e5);
+    if (recentes.length) h += fileiraA("Novidades", "últimos 30 dias", recentes.map((c, i) => cardCurso(c, i % 4)));
     for (const cat of [...new Set(pub.map((c) => c.categoria))].sort()) { const it = pub.filter((c) => c.categoria === cat); h += fileiraA(esc(cat), `${it.length} ${it.length === 1 ? "curso" : "cursos"}`, it.map((c) => cardCurso(c))); }
+    const feitos = pub.filter((c) => c.concluido_em);
+    if (feitos.length) h += fileiraA("Você concluiu", "certificado", feitos.map((c) => cardCurso(c, 3)));
     if (!lst.length && AP.q) h += `<div class="vazio vidro"><b>Nada encontrado</b>Tente outra busca.</div>`;
     h += `</div>`;
+  } else if (S.sub === "ranking") {
+    h += `<div class="cont"><div class="cab-sec"><h2>${svg("trofeu")}Ranking</h2><div class="chips" id="rkPer"><button type="button" class="chip ${AP.per !== "tudo" ? "ativo" : ""}" data-per="mes">Este mês</button><button type="button" class="chip ${AP.per === "tudo" ? "ativo" : ""}" data-per="tudo">Desde o início</button></div></div>
+      <p style="margin:-6px 0 18px;color:var(--txt3);font-size:.84rem">100 pontos por curso concluído + a nota da avaliação (0 a 100).</p><div id="rkBox"><div class="carregar">carregando…</div></div></div>`;
   } else if (S.sub === "certificados") {
     h += `<div class="cont"><div class="cab-sec"><h2>Meus certificados</h2></div>${AP.certs.length ? `<div class="certs">${AP.certs.map((x) => `<button type="button" class="cert-c vidro" data-cert="${esc(x.curso_id)}"><span class="ic">${svg("trofeu")}</span><span><b>${esc(x.curso)}</b><small>${new Date(x.concluido_em).toLocaleDateString("pt-BR")} · código ${esc(x.codigo)}${x.nota != null ? " · nota " + x.nota : ""}</small></span></button>`).join("")}</div>`
       : `<div class="vazio vidro">${svg("trofeu")}<b>Nenhum certificado ainda</b>Conclua um curso (e a avaliação, quando houver) para receber o certificado.</div>`}</div>`;
   } else {
-    const [tit, f, vazio] = { andamento: ["Em andamento", (c) => c.iniciado && !c.concluido_em, "Você não tem curso em andamento."],
+    const [tit, f, vazio] = { obrigatorios: ["Obrigatórios", (c) => c.obrigatorio && c.status === "publicado", "Nenhum curso obrigatório agora."],
+      andamento: ["Em andamento", (c) => c.iniciado && !c.concluido_em, "Você não tem curso em andamento."],
       concluidos: ["Concluídos", (c) => c.concluido_em, "Você ainda não concluiu nenhum curso."],
       meus: ["Meus cursos", (c) => (c.autor || {}).login === S.eu.login, "Você ainda não criou nenhum curso."] }[S.sub];
     const it = lst.filter(f);
@@ -1078,9 +1622,39 @@ function desenharApr() {
       ${it.length ? `<div class="grade-cards">${it.map((c, i) => cardCurso(c, i % 4)).join("")}</div>` : `<div class="vazio vidro"><b>${vazio}</b></div>`}</div>`;
   }
   $("#main").innerHTML = `<div class="apr" id="apr">${h}</div>`;
+  ligarCartaz();
+  if (S.sub === "ranking") pintarRanking();
   const qi = $("#aprQ"); let tq;
   qi?.addEventListener("input", () => { clearTimeout(tq); tq = setTimeout(() => { AP.q = qi.value.trim(); desenharApr(); const n = $("#aprQ"); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 300); });
 }
+/** cartaz do topo: rola sozinho a cada 7 s (para quando o mouse está em cima); setas, bolinhas e arrastar */
+function ligarCartaz() {
+  clearInterval(AP.giro);
+  const t = $("#billT"); if (!t) return;
+  const n = t.children.length, idx = () => Math.round(t.scrollLeft / Math.max(1, t.clientWidth));
+  const ir = (i) => t.scrollTo({ left: ((i + n) % n) * t.clientWidth, behavior: "smooth" });
+  t.addEventListener("scroll", () => { const i = idx(); $$(".bill-pontos button").forEach((b, j) => b.classList.toggle("on", j === i)); }, { passive: true });
+  $("#bill").addEventListener("click", (e) => {
+    const s = e.target.closest("[data-bill]"); if (s) { ir(idx() + +s.dataset.bill); reiniciar(); }
+    const p = e.target.closest("[data-bill-i]"); if (p) { ir(+p.dataset.billI); reiniciar(); }
+  });
+  let parado = false;
+  $("#bill").addEventListener("mouseenter", () => (parado = true)); $("#bill").addEventListener("mouseleave", () => (parado = false));
+  const reiniciar = () => { clearInterval(AP.giro); if (n > 1) AP.giro = setInterval(() => { if (!parado && !document.hidden && S.sub === "vitrine" && $("#billT")) ir(idx() + 1); }, 7000); };
+  reiniciar();
+}
+async function pintarRanking() {
+  const box = $("#rkBox"); if (!box) return;
+  let r; try { r = await api(`/ranking?periodo=${AP.per === "tudo" ? "tudo" : "mes"}`); } catch (e) { box.innerHTML = `<div class="vazio vidro">${esc(e.message)}</div>`; return; }
+  if (!r.lista.length) { box.innerHTML = `<div class="vazio vidro">${svg("trofeu")}<b>Ninguém pontuou ${AP.per === "tudo" ? "ainda" : "este mês"}</b>Conclua um curso para aparecer aqui.</div>`; return; }
+  const pod = r.lista.slice(0, 3), ordem = [pod[1], pod[0], pod[2]].filter(Boolean);
+  box.innerHTML = `<div class="podio">${ordem.map((x) => `<div class="pod p${x.pos}" data-perfil="${esc(x.login)}">${x.pos === 1 ? `<span class="coroa">${svg("coroa")}</span>` : ""}${avatar({ ...x, foto: (S.gente[x.login] || {}).foto }, false, true)}<b>${esc(x.nome)}</b><small>${x.cursos} ${x.cursos === 1 ? "curso" : "cursos"} · ${x.pontos} pts</small><div class="degrau">${x.pos}º</div></div>`).join("")}</div>
+    <div class="caixa vidro" style="margin-top:18px"><div class="ranking">${r.lista.map((x) => `<div class="rk${x.login === S.eu.login ? " eu" : ""}" data-perfil="${esc(x.login)}"><span class="pos${x.pos === 1 ? " p1" : ""}">${x.pos}º</span>${avatar({ ...x, foto: (S.gente[x.login] || {}).foto }, true, true)}<div><b>${esc(x.nome)}</b><small>${esc(x.setor || "")}${x.setor ? " · " : ""}${x.cursos} ${x.cursos === 1 ? "curso concluído" : "cursos concluídos"}</small></div><span class="pts">${x.pontos} pts</span></div>`).join("")}</div></div>
+    ${r.eu ? "" : `<p style="color:var(--txt3);font-size:.82rem;margin-top:12px">Você ainda não pontuou ${AP.per === "tudo" ? "" : "este mês"} — conclua um curso para entrar no ranking.</p>`}`;
+}
+document.addEventListener("click", (e) => {
+  const pr = e.target.closest("#rkPer [data-per]"); if (pr) { AP.per = pr.dataset.per; $$("#rkPer .chip").forEach((x) => x.classList.toggle("ativo", x === pr)); pintarRanking(); return; }
+});
 document.addEventListener("click", (e) => {
   if (!e.target.closest("#apr")) return;
   const sc = e.target.closest("[data-sc]");
@@ -1272,15 +1846,36 @@ async function turma(C) {
 }
 
 /* ── editor de curso ── */
+/** envia 1 arquivo (foto já comprimida no navegador). Com prazo: nada fica "enviando…" para sempre. */
 async function subirArquivo(f, kind) {
+  if (kind === "foto" && f.type && !f.type.startsWith("image/") && !/hei[cf]/i.test(f.name)) throw new Error(`“${f.name}” não é uma imagem.`);
   const corpo = kind === "foto" ? await comprimir(f) : { blob: f, tipo: "application/pdf" };
   if (kind === "pdf" && f.size > 15e6) throw new Error("PDF grande demais (máx. 15 MB).");
-  const r = await fetch(`${API}/arquivos`, { method: "POST", credentials: "same-origin", body: corpo.blob,
-    headers: { "Content-Type": corpo.tipo, "X-Nome": encodeURIComponent(f.name), ...(corpo.w ? { "X-Largura": String(corpo.w), "X-Altura": String(corpo.h) } : {}) } });
+  const ctl = new AbortController(), prazo = setTimeout(() => ctl.abort(), 120000);
+  let r;
+  try {
+    r = await fetch(`${API}/arquivos`, { method: "POST", credentials: "same-origin", body: corpo.blob, signal: ctl.signal,
+      headers: { "Content-Type": corpo.tipo, "X-Nome": encodeURIComponent(f.name), ...(corpo.w ? { "X-Largura": String(corpo.w), "X-Altura": String(corpo.h) } : {}) } });
+  } catch (e) { throw new Error(e.name === "AbortError" ? `O envio de “${f.name}” demorou demais. Tente de novo.` : "Sem conexão para enviar o arquivo."); }
+  finally { clearTimeout(prazo); }
   const d = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(d.detail || "Falha no envio");
   return d;
 }
+const ehPdf = (f) => f.type === "application/pdf" || /\.pdf$/i.test(f.name);
+/** arrastar e soltar arquivos em cima de `el` (mostra o véu "Solte aqui") */
+function soltar(el, aoSoltar) {
+  if (!el) return;
+  let n = 0;
+  const tem = (e) => [...(e.dataTransfer?.types || [])].includes("Files");
+  el.addEventListener("dragenter", (e) => { if (!tem(e)) return; e.preventDefault(); n++; el.classList.add("arrastando"); });
+  el.addEventListener("dragover", (e) => { if (tem(e)) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } });
+  el.addEventListener("dragleave", () => { if (--n <= 0) { n = 0; el.classList.remove("arrastando"); } });
+  el.addEventListener("drop", (e) => { if (!tem(e)) return; e.preventDefault(); n = 0; el.classList.remove("arrastando"); const fs = [...e.dataTransfer.files]; if (fs.length) aoSoltar(fs); });
+}
+// soltar um arquivo fora da área certa não pode abrir o arquivo no lugar do WEDUCA
+addEventListener("dragover", (e) => e.preventDefault());
+addEventListener("drop", (e) => e.preventDefault());
 async function editorCurso(cid) {
   let C = cid ? await api(`/cursos/${encodeURIComponent(cid)}`).catch((e) => { A.toast("⚠️ " + esc(e.message)); return null; }) : null;
   if (cid && !C) return;
@@ -1303,7 +1898,7 @@ async function editorCurso(cid) {
         <label class="campo">Descrição<textarea id="eDesc" rows="4" maxlength="4000" placeholder="Para que serve, para quem é, o que a pessoa vai saber fazer no fim">${esc(C.descricao || "")}</textarea></label>
         <label class="chk" style="margin:8px 0"><span class="chave"><input type="checkbox" id="eObr" ${C.obrigatorio ? "checked" : ""}><span class="trilho"></span></span>Obrigatório (aparece em destaque para todos)</label>
         <label class="chk"><span class="chave"><input type="checkbox" id="eBase" ${C.base !== false ? "checked" : ""}><span class="trilho"></span></span>As aulas entram na base de conhecimento da IA</label></div>
-      <div class="ed-sec"><h4>${svg("imagem")}Capa</h4><div class="capa-ed" id="eCapa"></div><input type="file" id="eCapaF" accept="image/*" hidden>
+      <div class="ed-sec"><h4>${svg("imagem")}Capa</h4><div class="capa-ed" id="eCapa"></div><input type="file" id="eCapaF" class="arq-in" accept="image/*">
         <small style="color:var(--txt3)">Sem foto, a capa é gerada automaticamente.</small></div>
     </div><div>
       <div class="ed-sec"><h4>${svg("lista")}Aulas ${cid ? `<button type="button" class="btn" id="eNovaAula">${svg("mais")}Aula</button>` : ""}</h4><div id="eAulas"></div></div>
@@ -1316,7 +1911,9 @@ async function editorCurso(cid) {
     $("#eCapaX", box)?.addEventListener("click", () => { capa = null; desCapa(); });
   };
   desCapa();
-  $("#eCapaF", box).onchange = async (e) => { const f = e.target.files[0]; e.target.value = ""; if (!f) return; try { A.toast("Enviando a capa…"); capa = (await subirArquivo(f, "foto")).id; desCapa(); } catch (err) { A.toast("⚠️ " + esc(err.message)); } };
+  const subirCapa = async (f) => { if (!f) return; try { A.toast("Enviando a capa…"); capa = (await subirArquivo(f, "foto")).id; desCapa(); } catch (err) { A.toast("⚠️ " + esc(err.message)); } };
+  $("#eCapaF", box).onchange = (e) => { const f = e.target.files[0]; e.target.value = ""; subirCapa(f); };
+  soltar($("#eCapa", box), (fs) => subirCapa(fs.find((f) => !ehPdf(f))));
   const desAulas = () => {
     $("#eAulas", box).innerHTML = !cid ? `<small style="color:var(--txt3)">Crie o curso primeiro; depois as aulas são adicionadas aqui.</small>`
       : C.aulas.length ? C.aulas.map((a, k) => `<div class="aula-ed" data-k="${k}"><span class="n" style="font-weight:800;color:var(--txt3)">${k + 1}</span><span style="min-width:0"><b style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.titulo)}</b><small style="color:var(--txt3)">${ROT_T[a.tipo]}${a.minutos ? " · " + durTxt(a.minutos) : ""}${a.base === false ? " · fora da IA" : ""}</small></span>
@@ -1396,7 +1993,7 @@ function editorAula(cid, a, depois) {
     <label class="campo">Conteúdo / texto da aula<textarea id="aTx" rows="8" placeholder="Escreva o passo a passo, as regras, os cuidados…">${esc((a && a.texto) || "")}</textarea></label>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0"><button type="button" class="btn v" id="aFoto">${svg("imagem")}Fotos</button><button type="button" class="btn v" id="aPdf">${svg("pdf")}PDF</button>
       <label class="chk" style="margin-left:auto"><span class="chave"><input type="checkbox" id="aBase" ${!a || a.base !== false ? "checked" : ""}><span class="trilho"></span></span>Entra na base da IA</label></div>
-    <div class="anexos" id="aAnx"></div><input type="file" id="aFF" accept="image/*" multiple hidden><input type="file" id="aPF" accept="application/pdf,.pdf" multiple hidden>`;
+    <div class="anexos" id="aAnx"></div><input type="file" id="aFF" class="arq-in" accept="image/*" multiple><input type="file" id="aPF" class="arq-in" accept="application/pdf,.pdf" multiple>`;
   const tipo = () => { $$(".seg-tipo button", box).forEach((b) => b.classList.toggle("ativo", b.dataset.t === st.tipo)); $("#aVid", box).hidden = st.tipo !== "video"; };
   tipo();
   $(".seg-tipo", box).onclick = (e) => { const b = e.target.closest("[data-t]"); if (b) { st.tipo = b.dataset.t; tipo(); } };
@@ -1415,6 +2012,7 @@ function editorAula(cid, a, depois) {
   $("#aFoto", box).onclick = () => $("#aFF", box).click(); $("#aPdf", box).onclick = () => $("#aPF", box).click();
   $("#aFF", box).onchange = (e) => { enviar([...e.target.files], "foto"); e.target.value = ""; };
   $("#aPF", box).onchange = (e) => { enviar([...e.target.files], "pdf"); e.target.value = ""; };
+  soltar(box, (fs) => { const p = fs.filter(ehPdf), ft = fs.filter((f) => !ehPdf(f)); if (ft.length) enviar(ft, "foto"); if (p.length) enviar(p, "pdf"); });
   async function salvar() {
     if (st.enviando) { A.toast("Espere os anexos terminarem de enviar."); return false; }
     const corpo = { titulo: $("#aTit", box).value, tipo: st.tipo, texto: $("#aTx", box).value, video_url: st.tipo === "video" ? $("#aUrl", box).value.trim() : "",

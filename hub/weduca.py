@@ -44,6 +44,8 @@ MOD = "weduca"
 COL_POST, COL_COM, COL_ARQ, COL_PARTE = "weduca_posts", "weduca_coment", "weduca_arquivos", "weduca_partes"
 COL_CURSO, COL_AULA, COL_PROG = "weduca_cursos", "weduca_aulas", "weduca_progresso"   # Aprendizagem
 COL_PERFIL = "weduca_perfis"                                                             # perfis (foto, cargo, setor, bio, seguindo)
+COL_STORY = "weduca_stories"                                                             # stories: somem em 24 h e NUNCA entram na base da IA
+STORY_HORAS = 24
 
 PARTE = 700_000                     # bytes por pedaço (o documento do Firestore aceita até ~1 MB)
 MAX_FOTO = 3_000_000                # a foto já chega comprimida do navegador
@@ -264,6 +266,8 @@ def como_artigo(p: dict, comentarios: list) -> dict:
     rev = "revisada" if p.get("revisado") else "não revisada"
     tit = (p.get("video") or {}).get("titulo") or (_blocos(p.get("texto"), 90) or [""])[0] or "Postagem"
     passos = [f"Correção ({(c.get('por') or {}).get('nome', '')}): {c.get('texto')}" for c in (p.get("correcoes") or [])]
+    if (p.get("conquista") or {}).get("titulo"):
+        passos.append(f"Conquista: {p['conquista']['titulo']}")
     passos += _blocos(p.get("texto"))
     if p.get("transcricao"):
         passos += ["Vídeo — descrição/transcrição:"] + _blocos(p.get("transcricao"))
@@ -328,12 +332,14 @@ def publico(p: dict, u: dict, pode: dict, todos_coment: bool = False) -> dict:
             "transcricao": p.get("transcricao") or "", "base": p.get("base", True), "revisado": bool(p.get("revisado")),
             "analise": p.get("analise") if pode["moderar"] or (p.get("autor") or {}).get("login") == eu else bool(p.get("analise")),
             "correcoes": p.get("correcoes") or [], "curtidas": len(curt), "curti": eu in curt, "salvei": eu in (p.get("salvos") or []),
+            "curtiram": [x for x in reversed(curt) if x != eu][:3], "conquista": p.get("conquista"),
             "n_coment": len(com), "comentarios": [_com_publico(c, u, pode) for c in (com if todos_coment else com[-3:])],
             "pode_mexer": _pode_mexer(p, u, pode)}
 
 
 def _com_publico(c: dict, u: dict, pode: dict) -> dict:
-    return {"id": c["id"], "autor": c.get("autor"), "em": c.get("em"), "texto": c.get("texto"),
+    curt = list(c.get("curtidas") or [])
+    return {"id": c["id"], "autor": c.get("autor"), "em": c.get("em"), "texto": c.get("texto"), "curtidas": len(curt), "curti": _eu(u) in curt,
             "pode_mexer": pode["moderar"] or (c.get("autor") or {}).get("login") == _eu(u)}
 
 
@@ -439,6 +445,7 @@ class Post(BaseModel):
     video_url: Optional[str] = ""
     transcricao: Optional[str] = ""
     base: bool = True               # entra na base de conhecimento da IA
+    conquista: Optional[str] = ""   # "Concluí o curso X", "1 ano de casa"… (aparece como medalha no post)
 
     @field_validator("texto", "transcricao")
     @classmethod
@@ -465,9 +472,11 @@ def _montar(payload: Post, u: dict, p: dict) -> dict:
         midias.append(_midia_publica(m))
         if m.get("kind") == "pdf":
             pdfs.append({"nome": m.get("nome"), "texto": m.get("texto") or ""})
-    if not (payload.texto or midias or vid):
+    conq = re.sub(r"\s+", " ", str(payload.conquista or "")).strip()[:120]
+    if not (payload.texto or midias or vid or conq):
         raise HTTPException(400, "Escreva algo, anexe uma foto/PDF ou cole o link do vídeo.")
-    p.update(texto=payload.texto, midias=midias, pdfs_texto=pdfs, video=vid, transcricao=payload.transcricao or "", base=bool(payload.base))
+    p.update(texto=payload.texto, midias=midias, pdfs_texto=pdfs, video=vid, transcricao=payload.transcricao or "", base=bool(payload.base),
+             conquista={"titulo": conq} if conq else None)
     return p
 
 
@@ -573,6 +582,18 @@ def weduca_salvar(pid: str, request: Request):
     return _alternar(pid, request, "salvos")
 
 
+@router.get("/posts/{pid}/curtidas")
+def weduca_quem_curtiu(pid: str, request: Request):
+    """Quem curtiu (o "curtido por Ana e mais 3")."""
+    _ctx(request)
+    p = P["ler"](COL_POST, pid)
+    if not p or p.get("status", "ativo") != "ativo":
+        raise HTTPException(404, "Postagem não encontrada.")
+    gente = _pessoas()
+    return {"pessoas": [{"login": lg, "nome": (gente.get(lg) or {}).get("nome") or lg, "foto": (gente.get(lg) or {}).get("foto")}
+                        for lg in reversed(list(p.get("curtidas") or []))]}
+
+
 class Comentario(BaseModel):
     texto: str
 
@@ -612,13 +633,29 @@ def weduca_apagar_comentario(cid: str, request: Request):
     return {"ok": True}
 
 
+@router.post("/comentarios/{cid}/curtir")
+def weduca_curtir_comentario(cid: str, request: Request):
+    u, _ = _ctx(request)
+    c = P["ler"](COL_COM, cid)
+    if not c or c.get("status", "ativo") != "ativo":
+        raise HTTPException(404, "Comentário não encontrado.")
+    eu = _eu(u)
+    ligar = eu not in (c.get("curtidas") or [])
+    P["marcar"](COL_COM, cid, "curtidas", eu, ligar)
+    lst = [x for x in (c.get("curtidas") or []) if x != eu] + ([eu] if ligar else [])
+    for x in _cache["com"]:
+        if x.get("id") == cid:
+            x["curtidas"] = lst
+    return {"ligado": ligar, "total": len(lst)}
+
+
 # ── anexos ──
 @router.post("/arquivos")
 async def weduca_enviar(request: Request):
     """Corpo = o arquivo cru (sem multipart). Cabeçalhos: Content-Type e X-Nome (nome do arquivo, URL-encoded)."""
     u, pode = _ctx(request)
-    if not (pode["publicar"] or pode["cursos"]):
-        raise HTTPException(403, "Sem permissão para enviar arquivos.")
+    if not (pode["publicar"] or pode["cursos"]) and not (request.headers.get("content-type") or "").lower().startswith("image/"):
+        raise HTTPException(403, "Sem permissão para enviar arquivos (só a foto do perfil).")
     dados = await request.body()
     nome = urllib.parse.unquote(request.headers.get("x-nome") or "arquivo")
     meta = gravar_arquivo(u, nome, request.headers.get("content-type") or "", dados)
@@ -824,8 +861,14 @@ def _curso_ou_404(cid: str) -> dict:
 def weduca_cursos(request: Request):
     u, pode = _ctx(request)
     eu = _eu(u)
-    progs = {p.get("curso_id"): p for p in _progresso_de(eu)}
-    lst = [_resumo_curso(c, u, pode, progs.get(c["id"])) for c in cursos_todos() if c.get("status") != "excluido" and _visivel(c, u, pode)]
+    todos = P["listar"](COL_PROG)
+    progs = {p.get("curso_id"): p for p in todos if p.get("login") == eu}
+    alunos: dict = {}
+    for p in todos:   # quantas pessoas começaram / concluíram (o "Top 10" e o "em alta" da vitrine)
+        x = alunos.setdefault(p.get("curso_id"), [0, 0])
+        x[0] += 1; x[1] += 1 if p.get("concluido_em") else 0
+    lst = [{**_resumo_curso(c, u, pode, progs.get(c["id"])), "alunos": alunos.get(c["id"], [0, 0])[0], "concluintes": alunos.get(c["id"], [0, 0])[1]}
+           for c in cursos_todos() if c.get("status") != "excluido" and _visivel(c, u, pode)]
     lst.sort(key=lambda c: c.get("atualizado_em") or c.get("em") or "", reverse=True)        # mais recentes primeiro…
     lst.sort(key=lambda c: (c["status"] != "publicado", not c["obrigatorio"]))              # …publicados e obrigatórios na frente
     return {"cursos": lst, "pode_criar": pode["cursos"] or pode["moderar"],
@@ -1150,7 +1193,7 @@ def weduca_nova_duvida(aid: str, payload: Comentario, request: Request):
 
 # ══════════════════════════════════════════════════════════════════════════
 # PERFIS — cada pessoa cuida do próprio (foto, cargo, setor, bio); seguir; buscar pessoas
-# Quem aparece: usuários ativos do hub com acesso ao WEDUCA + quem já publicou ou tem perfil.
+# Quem aparece: TODOS os usuários ativos do hub (com a marca de quem ainda não tem o WEDUCA) + quem publicou ou tem perfil.
 # ══════════════════════════════════════════════════════════════════════════
 def _pessoas() -> dict:
     """login → {login, nome, foto, cargo, setor, bio, seguindo}"""
@@ -1163,16 +1206,15 @@ def _pessoas() -> dict:
     for login, x in contas.items():
         if x.get("ativo", True) is False:
             continue
-        lg = str(login).lower()
-        if acesso.pode_acessar({**x, "login": lg}, MOD):
-            out[lg] = {"login": lg, "nome": x.get("nome") or lg}
+        lg = str(login).lower()   # todo mundo do hub aparece; quem ainda não tem o WEDUCA liberado vem marcado
+        out[lg] = {"login": lg, "nome": x.get("nome") or lg, "acesso": acesso.pode_acessar({**x, "login": lg}, MOD)}
     for p in posts_ativos():
         a = p.get("autor") or {}
         if a.get("login"):
-            out.setdefault(a["login"], {"login": a["login"], "nome": a.get("nome") or a["login"]})
+            out.setdefault(a["login"], {"login": a["login"], "nome": a.get("nome") or a["login"], "acesso": True})
     for pf in P["listar"](COL_PERFIL):
         lg = pf.get("id")
-        base = out.setdefault(lg, {"login": lg, "nome": pf.get("nome") or lg})
+        base = out.setdefault(lg, {"login": lg, "nome": pf.get("nome") or lg, "acesso": True})
         base.update({k: pf.get(k) for k in ("foto", "cargo", "setor", "bio", "seguindo") if pf.get(k) is not None})
         if pf.get("nome"):
             base["nome"] = pf["nome"]
@@ -1182,7 +1224,7 @@ def _pessoas() -> dict:
 def _resumo_pessoa(x: dict, eu: str, seguidores: dict, posts_por: dict) -> dict:
     return {"login": x["login"], "nome": x.get("nome"), "foto": x.get("foto"), "cargo": x.get("cargo") or "", "setor": x.get("setor") or "",
             "bio": x.get("bio") or "", "posts": posts_por.get(x["login"], 0), "seguidores": len(seguidores.get(x["login"], [])),
-            "sigo": eu in seguidores.get(x["login"], []), "sou_eu": x["login"] == eu}
+            "sigo": eu in seguidores.get(x["login"], []), "sou_eu": x["login"] == eu, "acesso": x.get("acesso", True)}
 
 
 def _indices(gente: dict) -> tuple:
@@ -1285,3 +1327,129 @@ def weduca_seguir(login: str, request: Request):
     ligar = login not in (pf.get("seguindo") or [])
     P["marcar"](COL_PERFIL, eu, "seguindo", login, ligar)
     return {"sigo": ligar}
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# STORIES — as "bolinhas" do topo do feed. Somem em 24 h e NÃO entram na base da IA.
+# ══════════════════════════════════════════════════════════════════════════
+class Story(BaseModel):
+    texto: str = ""
+    foto: Optional[str] = None      # id de foto em /arquivos
+    fundo: int = 0                  # cor do fundo quando é só texto
+
+    @field_validator("texto")
+    @classmethod
+    def _t(cls, v):
+        return str(v or "").strip()[:300]
+
+
+def _stories_ativos() -> list:
+    agora_ = agora()
+    return [s for s in P["listar"](COL_STORY) if s.get("status", "ativo") == "ativo" and (s.get("expira") or "") > agora_]
+
+
+def _story_publico(s: dict, eu: str, pode: dict) -> dict:
+    vistos = list(s.get("vistos") or [])
+    meu = (s.get("autor") or {}).get("login") == eu
+    return {"id": s["id"], "autor": s.get("autor"), "em": s.get("em"), "expira": s.get("expira"), "texto": s.get("texto") or "",
+            "foto": s.get("foto"), "fundo": int(s.get("fundo") or 0), "vi": eu in vistos,
+            "n_vistos": len([x for x in vistos if x != eu]) if meu else None, "pode_mexer": meu or pode["moderar"]}
+
+
+@router.get("/stories")
+def weduca_stories(request: Request):
+    """Agrupado por pessoa: os meus primeiro, depois quem tem story que eu não vi, depois os já vistos."""
+    u, pode = _ctx(request)
+    eu = _eu(u)
+    grupos: dict = {}
+    for s in sorted(_stories_ativos(), key=lambda s: s.get("em") or ""):
+        lg = (s.get("autor") or {}).get("login")
+        grupos.setdefault(lg, {"login": lg, "nome": (s.get("autor") or {}).get("nome"), "stories": []})["stories"].append(_story_publico(s, eu, pode))
+    for g in grupos.values():
+        g["todos_vistos"] = all(x["vi"] for x in g["stories"])
+        g["ultimo"] = g["stories"][-1]["em"]
+    lst = list(grupos.values())
+    # dentro de "não vistos" e "vistos", o mais recente primeiro
+    eu_g = [g for g in lst if g["login"] == eu]
+    nv = sorted((g for g in lst if g["login"] != eu and not g["todos_vistos"]), key=lambda g: g["ultimo"] or "", reverse=True)
+    vs = sorted((g for g in lst if g["login"] != eu and g["todos_vistos"]), key=lambda g: g["ultimo"] or "", reverse=True)
+    return {"grupos": eu_g + nv + vs}
+
+
+@router.post("/stories")
+def weduca_novo_story(payload: Story, request: Request):
+    u, pode = _ctx(request, "publicar", "publicar")
+    if not (payload.texto or payload.foto):
+        raise HTTPException(400, "Escolha uma foto ou escreva um texto para o story.")
+    sid = novo_id()
+    if payload.foto:
+        m = P["ler"](COL_ARQ, payload.foto)
+        if not m or m.get("kind") != "foto":
+            raise HTTPException(400, "A foto do story precisa ser uma imagem enviada pelo WEDUCA.")
+        m["post_id"] = f"story:{sid}"; P["gravar"](COL_ARQ, m["id"], m)
+    from datetime import timedelta
+    s = {"id": sid, "autor": _quem(u), "em": agora(), "expira": (datetime.now() + timedelta(hours=STORY_HORAS)).isoformat(timespec="seconds"),
+         "texto": payload.texto, "foto": payload.foto, "fundo": max(0, min(int(payload.fundo or 0), 5)), "vistos": [], "status": "ativo"}
+    P["gravar"](COL_STORY, sid, s)
+    return _story_publico(s, _eu(u), pode)
+
+
+@router.post("/stories/{sid}/visto")
+def weduca_story_visto(sid: str, request: Request):
+    u, _ = _ctx(request)
+    s = P["ler"](COL_STORY, sid)
+    if not s:
+        raise HTTPException(404, "Story não encontrado.")
+    if _eu(u) not in (s.get("vistos") or []):
+        P["marcar"](COL_STORY, sid, "vistos", _eu(u), True)
+    return {"ok": True}
+
+
+@router.get("/stories/{sid}/vistos")
+def weduca_story_quem_viu(sid: str, request: Request):
+    u, pode = _ctx(request)
+    s = P["ler"](COL_STORY, sid)
+    if not s:
+        raise HTTPException(404, "Story não encontrado.")
+    if (s.get("autor") or {}).get("login") != _eu(u) and not pode["moderar"]:
+        raise HTTPException(403, "Só quem publicou vê quem visualizou.")
+    gente = _pessoas()
+    return {"pessoas": [{"login": lg, "nome": (gente.get(lg) or {}).get("nome") or lg} for lg in s.get("vistos") or [] if lg != _eu(u)]}
+
+
+@router.delete("/stories/{sid}")
+def weduca_apagar_story(sid: str, request: Request):
+    u, pode = _ctx(request)
+    s = P["ler"](COL_STORY, sid)
+    if not s:
+        raise HTTPException(404, "Story não encontrado.")
+    if (s.get("autor") or {}).get("login") != _eu(u) and not pode["moderar"]:
+        raise HTTPException(403, "Só quem publicou apaga o story.")
+    s.update(status="removido", removido_em=agora())
+    P["gravar"](COL_STORY, sid, s)
+    return {"ok": True}
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# RANKING — quem mais aprendeu: 100 pontos por curso concluído + a nota da avaliação (0–100)
+# ══════════════════════════════════════════════════════════════════════════
+@router.get("/ranking")
+def weduca_ranking(request: Request, periodo: str = "mes"):
+    u, _ = _ctx(request)
+    eu = _eu(u)
+    mes = datetime.now().strftime("%Y-%m")
+    gente = _pessoas()
+    por: dict = {}
+    for p in P["listar"](COL_PROG):
+        if not p.get("concluido_em") or (periodo == "mes" and not str(p["concluido_em"]).startswith(mes)):
+            continue
+        lg = p.get("login")
+        x = por.setdefault(lg, {"login": lg, "nome": (gente.get(lg) or {}).get("nome") or p.get("nome") or lg,
+                                "setor": (gente.get(lg) or {}).get("setor") or "", "cursos": 0, "pontos": 0})
+        x["cursos"] += 1
+        x["pontos"] += 100 + int((p.get("quiz") or {}).get("nota") or 0)
+    lst = sorted(por.values(), key=lambda x: (-x["pontos"], -x["cursos"], str(x["nome"]).lower()))
+    for i, x in enumerate(lst):
+        x["pos"] = i + 1
+    return {"periodo": "mes" if periodo == "mes" else "tudo", "mes": mes, "lista": lst[:50],
+            "eu": next((x for x in lst if x["login"] == eu), None)}

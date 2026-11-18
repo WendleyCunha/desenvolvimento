@@ -1169,9 +1169,20 @@ kbd{font:600 .64rem var(--sans);color:var(--txt3);border:1px solid var(--vidro-b
     } else if (e.key.toLowerCase() === "w" && estado.ativa !== INICIO) { e.preventDefault(); fechar(estado.ativa); }
     else if (e.key.toLowerCase() === "r" && estado.ativa !== INICIO) { e.preventDefault(); recarregar(); }
   });
+  /** abre o módulo e, com {hash}, leva direto a um item (ex.: ERP abre um ticket; link compartilhado de uma postagem do WEDUCA) */
+  function abrirEm(id, hash) {
+    abrir(id);
+    const alvo = abaDe(idReal(id));
+    if (hash && alvo?.iframe) {
+      const h = "#" + String(hash).replace(/^#/, "");
+      try { if (alvo.carregado) alvo.iframe.contentWindow.location.hash = h; else alvo.iframe.src = urlDo(estado.porId.get(alvo.id)) + h; } catch (_) {}
+    }
+  }
+  /** link do hub: #/modulo  ou  #/modulo?item (ex.: #/weduca?post=abc) */
+  const doHash = () => { const [id, h] = decodeURIComponent(location.hash.replace(/^#\/?/, "")).split("?"); return [id, h || ""]; };
   addEventListener("hashchange", () => {
-    const id = decodeURIComponent(location.hash.replace(/^#\/?/, ""));
-    if (id && id !== estado.ativa) abrir(id);
+    const [id, h] = doHash();
+    if (id && (id !== estado.ativa || h)) abrirEm(id, h);
   });
 
   /* módulos da MESMA origem conversam com o túnel */
@@ -1180,15 +1191,7 @@ kbd{font:600 .64rem var(--sans);color:var(--txt3);border:1px solid var(--vidro-b
     const d = e.data;
     if (!d || typeof d !== "object" || !d.hub) return;
     const origem = estado.abas.find((a) => a.iframe && a.iframe.contentWindow === e.source);
-    if (d.hub === "abrir" && d.id) {
-      abrir(String(d.id));
-      // {hash} → leva o módulo direto a um item (ex.: ERP abre um ticket específico no módulo Tickets)
-      const alvo = abaDe(idReal(String(d.id)));
-      if (d.hash && alvo?.iframe) {
-        const h = "#" + String(d.hash).replace(/^#/, "");
-        try { if (alvo.carregado) alvo.iframe.contentWindow.location.hash = h; else alvo.iframe.src = urlDo(estado.porId.get(alvo.id)) + h; } catch (_) {}
-      }
-    }
+    if (d.hub === "abrir" && d.id) abrirEm(String(d.id), d.hash);
     else if (d.hub === "titulo" && origem && d.texto) {
       origem.titulo = String(d.texto).slice(0, 60); renderAbas();
       if (estado.ativa === origem.id) document.title = origem.titulo + " · Wendley Desenvolvimento";
@@ -1224,9 +1227,9 @@ kbd{font:600 .64rem var(--sans);color:var(--txt3);border:1px solid var(--vidro-b
       if (item && !abaDe(id)) estado.abas.push({ id, titulo: item.titulo, painel: null, iframe: null, carregado: false });
     }
     renderInicio();
-    const doLink = decodeURIComponent(location.hash.replace(/^#\/?/, ""));
+    const [doLink, hLink] = doHash();
     const salva = ler(CHAVE.ativa, INICIO);
-    if (doLink && estado.porId.has(idReal(doLink))) abrir(doLink);
+    if (doLink && estado.porId.has(idReal(doLink))) abrirEm(doLink, hLink);
     else if (salva !== INICIO && abaDe(salva)) ativar(salva);
     else ativar(INICIO);
     try { if (edk() && estado.ativa === INICIO && !sessionStorage.getItem("edk.sis")) { sessionStorage.setItem("edk.sis", "1"); setTimeout(abrirSistemas, 450); } } catch (_) {}
