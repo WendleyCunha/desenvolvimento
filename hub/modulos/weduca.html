@@ -385,6 +385,79 @@ body.sb-on .w-sis{opacity:1;transform:none}
 .w-abas button.ativa{color:#000}
 .w-ind{position:absolute;z-index:0;top:4px;bottom:4px;left:0;width:0;border-radius:10px;background:linear-gradient(135deg,#f7e6a3,#f0cb4e 50%,#d2ae34);box-shadow:0 6px 18px -6px rgba(240,203,78,.8);transition:left .45s cubic-bezier(.16,1,.3,1),width .45s cubic-bezier(.16,1,.3,1)}
 .w-dir{display:flex;align-items:center;gap:8px}
+/* sininho e Direct: botões com contador */
+.w-dir .btn-ic{position:relative}
+.w-bdg{position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;padding:0 5px;border-radius:99px;background:#ef4444;color:#fff;font:800 10px/18px var(--sans);text-align:center;box-shadow:0 0 0 2px var(--fundo,#0b0b0f);display:none;pointer-events:none}
+.w-bdg.on{display:block;animation:bdgPop .4s cubic-bezier(.16,1,.3,1)}
+@keyframes bdgPop{from{transform:scale(0)}}
+.w-sis .w-bdg{position:static;margin-left:auto;box-shadow:none;flex:none}
+.nt-pn{position:fixed;top:72px;right:14px;z-index:120;width:min(400px,calc(100vw - 20px));max-height:min(72vh,620px);display:none;flex-direction:column;border-radius:20px;overflow:hidden}
+.nt-pn.on{display:flex;animation:ntIn .3s cubic-bezier(.16,1,.3,1)}
+@keyframes ntIn{from{opacity:0;transform:translateY(-8px) scale(.98)}}
+.nt-pn h4{display:flex;align-items:center;gap:8px;margin:0;padding:14px 16px 10px;font:800 1rem var(--titulo)}
+.nt-pn h4 small{margin-left:auto;font:600 .72rem var(--sans);color:var(--txt3)}
+.nt-lst{overflow-y:auto;padding:0 6px 8px}
+.nt-it{display:flex;gap:11px;align-items:flex-start;width:100%;padding:10px;border-radius:14px;text-align:left;font-size:.85rem;line-height:1.35}
+.nt-it:hover{background:var(--sup2)}
+.nt-it.nova{background:rgba(240,203,78,.09)}
+.nt-it.nova::after{content:"";flex:none;width:8px;height:8px;margin-top:6px;border-radius:50%;background:var(--ou)}
+.nt-it>span:not(.av){flex:1;min-width:0}
+.nt-it q{display:block;color:var(--txt3);font-size:.78rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;quotes:"“" "”"}
+.nt-it small{display:block;color:var(--txt3);font-size:.7rem;margin-top:2px}
+.nt-it .tp{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;margin-right:5px;vertical-align:-4px;background:var(--ou);color:#000}
+.nt-it .tp svg{width:11px;height:11px}
+/* Direct */
+.dm-cont{padding-bottom:16px!important}
+.dm-g{display:grid;grid-template-columns:330px minmax(0,1fr);gap:14px;height:calc(100dvh - 120px);min-height:420px}
+.dm-col{display:flex;flex-direction:column;min-height:0;border-radius:22px;overflow:hidden}
+.dm-cab{display:flex;align-items:center;gap:10px;padding:14px 14px 10px;border-bottom:1px solid var(--linha)}
+.dm-cab h3{margin:0;font:800 1.1rem var(--titulo);flex:1;min-width:0}
+.dm-cab h3 small{display:block;font:500 .74rem var(--sans);color:var(--txt3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dm-lst{flex:1;overflow-y:auto;padding:6px}
+.dm-c{display:flex;align-items:center;gap:11px;width:100%;padding:10px;border-radius:14px;text-align:left}
+.dm-c:hover{background:var(--sup2)}.dm-c.ativa{background:rgba(240,203,78,.12)}
+.dm-c>span:not(.av){flex:1;min-width:0}
+.dm-c b{display:flex;gap:6px;font-size:.88rem}.dm-c b small{margin-left:auto;font-weight:500;font-size:.7rem;color:var(--txt3);flex:none}
+.dm-c p{margin:2px 0 0;font-size:.78rem;color:var(--txt3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dm-c.nova p{color:var(--txt);font-weight:700}
+.dm-c.nova::after{content:"";flex:none;width:9px;height:9px;border-radius:50%;background:var(--ou)}
+.dm-msgs{flex:1;overflow-y:auto;padding:16px 16px 8px;display:flex;flex-direction:column;gap:4px}
+.dm-dia{align-self:center;margin:10px 0 6px;padding:3px 10px;border-radius:99px;font-size:.7rem;font-weight:700;color:var(--txt3);background:var(--sup2)}
+.dm-m{display:flex;flex-direction:column;align-items:flex-start;max-width:min(78%,560px)}
+.dm-m.eu{align-self:flex-end;align-items:flex-end}
+.dm-b{padding:9px 13px;border-radius:18px 18px 18px 6px;background:var(--sup2);font-size:.9rem;line-height:1.4;white-space:pre-wrap;word-break:break-word}
+.dm-m.eu .dm-b{border-radius:18px 18px 6px 18px;background:linear-gradient(135deg,#f7e6a3,#f0cb4e 60%,#d9b53c);color:#1a1204}
+.dm-m.eu .dm-b a{color:#1a1204}
+.dm-b img{display:block;width:min(240px,55vw);height:auto;max-height:300px;border-radius:12px;margin:0;object-fit:cover}
+.dm-b img+*,.dm-b a+a{margin-top:6px}
+.dm-b.so{padding:4px}.dm-b.so .dm-pdf{margin:0}
+.dm-b .dm-pdf{display:flex;align-items:center;gap:8px;padding:7px 10px;margin:2px 0 6px;border-radius:12px;background:rgba(0,0,0,.08);font-weight:700;font-size:.8rem;text-decoration:none;color:inherit}
+.dm-m small{font-size:.66rem;color:var(--txt3);margin:2px 6px 6px}
+.dm-nova{animation:dmIn .35s cubic-bezier(.16,1,.3,1)}
+@keyframes dmIn{from{opacity:0;transform:translateY(8px)}}
+.dm-pe{border-top:1px solid var(--linha);padding:10px 12px 12px}
+.dm-anx{display:flex;gap:8px;flex-wrap:wrap}.dm-anx:not(:empty){margin-bottom:8px}
+.dm-anx span{position:relative;display:flex;align-items:center;gap:6px;padding:4px 26px 4px 4px;border-radius:10px;background:var(--sup2);font-size:.74rem;max-width:200px}
+.dm-anx span.envio{opacity:.55}
+.dm-anx img{width:34px;height:34px;border-radius:8px;object-fit:cover}
+.dm-anx i{font-style:normal;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dm-anx button{position:absolute;right:4px;top:50%;translate:0 -50%;width:18px;height:18px;display:grid;place-items:center}
+.dm-anx button svg{width:12px;height:12px}
+.dm-comp{display:flex;align-items:flex-end;gap:8px}
+.dm-comp textarea{flex:1;resize:none;max-height:140px;min-height:42px;padding:10px 14px;border-radius:20px;line-height:1.35}
+.dm-comp label.btn-ic{cursor:pointer;flex:none}
+.dm-env{flex:none;width:42px;height:42px;border-radius:50%;display:grid;place-items:center;background:var(--ou);color:#000}
+.dm-env:disabled{opacity:.4}
+.dm-priv{display:flex;align-items:center;gap:6px;justify-content:center;margin-top:7px;font-size:.68rem;color:var(--txt3)}
+.dm-priv svg{width:12px;height:12px}
+.dm-vazio{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;color:var(--txt3);padding:30px}
+.dm-vazio .ic{width:74px;height:74px;border-radius:50%;display:grid;place-items:center;background:rgba(240,203,78,.12);color:var(--ou-t)}
+.dm-vazio .ic svg{width:34px;height:34px}
+.dm-vazio b{color:var(--txt);font:800 1.15rem var(--titulo)}
+.dm-volta{display:none}
+.dm-col.arrastando{outline:2px dashed var(--ou);outline-offset:-6px}
+.dm-pick{display:flex;flex-direction:column;gap:2px;max-height:52vh;overflow-y:auto;margin-top:10px}
+@media (max-width:760px){.dm-g{grid-template-columns:1fr;height:calc(100dvh - 110px)}.dm-g:not(.chat-on) .dm-chat,.dm-g.chat-on .dm-esq{display:none}.dm-volta{display:grid}}
 .w-av{padding:0;border-radius:50%}
 /* conteúdo começa abaixo da barra (o hero passa por baixo dela, como no início do hub) */
 #main>.cont:first-child,#main>.apr>.cont:first-child{padding-top:92px}
@@ -626,7 +699,8 @@ b[data-perfil]:hover{text-decoration:underline}
 <aside class="w-sb" id="wSb" aria-label="Seções do WEDUCA"><div class="w-marca"><b>WEDUCA</b><small>seções</small></div><nav class="w-lista" id="wLista"></nav><button type="button" class="w-eu" id="wEu"></button></aside>
 <div class="w-veu" id="wVeu"></div>
 <header class="w-nav vidro" id="wNav"><button type="button" class="w-secao" id="wSecao" title="Seções do WEDUCA"></button><div class="w-abas" id="wAbas" role="tablist"></div>
-  <div class="w-dir"><span class="sync" id="sync"><i></i><span>conectando…</span></span><button type="button" class="btn-ic" id="btAtualizar" title="Recarregar"></button><button type="button" class="w-av" id="wAv" title="Meu perfil"></button></div></header>
+  <div class="w-dir"><span class="sync" id="sync"><i></i><span>conectando…</span></span><button type="button" class="btn-ic" id="btAtualizar" title="Recarregar"></button><button type="button" class="btn-ic" id="btDm" title="Mensagens (Direct)" aria-label="Mensagens"></button><button type="button" class="btn-ic" id="btSino" title="Notificações" aria-label="Notificações"></button><button type="button" class="w-av" id="wAv" title="Meu perfil"></button></div></header>
+<div class="nt-pn vidro" id="ntPn" role="dialog" aria-label="Notificações"><h4>Notificações<small id="ntSub"></small></h4><div class="nt-lst" id="ntLst"></div></div>
 <div class="app"><main id="main"></main></div>
 <script src="/static/aurora.js?v=6"></script>
 <script>
@@ -655,10 +729,17 @@ Object.assign(A.ICONES, {
   camera: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
   coroa: '<path d="m3 8 4.5 4L12 5l4.5 7L21 8l-2 11H5z"/>',
   baixo: '<path d="m6 9 6 6 6-6"/>', cima: '<path d="m6 15 6-6 6 6"/>',
+  sino: A.ICONES.sino || '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
+  aviao: '<path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/>',
+  clipe: '<path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/>',
+  voltar: '<path d="m15 18-6-6 6-6"/>',
+  pessoa_mais: '<circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0 1 14 0M19 8v6M16 11h6"/>',
 });
 A.fundo();
 document.querySelector('link[rel="icon"]').href = A.ATOMO_SVG;
 $("#btAtualizar").innerHTML = svg("repetir");
+$("#btSino").innerHTML = svg("sino") + '<span class="w-bdg" id="bdSino"></span>';
+$("#btDm").innerHTML = svg("aviao") + '<span class="w-bdg" id="bdDm"></span>';
 function $(s, r = document) { return r.querySelector(s); }
 function $$(s, r = document) { return [...r.querySelectorAll(s)]; }
 
@@ -667,6 +748,7 @@ const API = "/api/weduca";
 const S = { aba: "feed", sub: "", tipo: "", gente: {}, setores: [], extra: [], eu: null, posts: [], mais: false, carregando: false, agora: "", filtro: "", q: "" };
 const SECOES = [   // [id, nome, ícone, descrição, pronta]
   ["feed", "Feed", "feed", "Publicações da equipe", true], ["aprendizagem", "Aprendizagem", "livro", "Cursos, avaliação e certificado", true],
+  ["direct", "Mensagens", "aviao", "Direct: conversa privada", true],
   ["noticias", "Notícias", "jornal", "Comunicados da empresa"], ["pesquisas", "Pesquisas", "enquete", "Enquetes e pesquisas"],
   ["documentos", "Documentos", "pasta2", "Normas, ITs e documentos ISO"], ["resultados", "Resultados", "trofeu", "Metas e indicadores"],
   ["relatorios", "Relatórios", "grafico", "Números do WEDUCA"]];
@@ -713,6 +795,7 @@ const pode = (a) => !!(S.eu && S.eu.pode && S.eu.pode[a]);
    de SEÇÕES (sidebar só do WEDUCA) e a barra de cima mostra a seção e as abas dela. */
 function lsGet(k, d) { try { return localStorage.getItem(k) || d; } catch (_) { return d; } }
 function subsDe(aba) {
+  if (aba === "direct") return [["caixa", "Conversas"]];
   if (aba === "aprendizagem") return [["vitrine", "Para você"], ["obrigatorios", "Obrigatórios"], ["andamento", "Em andamento"], ["concluidos", "Concluídos"], ["certificados", "Certificados"], ["ranking", "Ranking"],
     ...(pode("cursos") || pode("moderar") ? [["meus", "Meus cursos"]] : [])];
   return [["tudo", "Para você"], ["shorts", "Shorts"], ["seguindo", "Seguindo"], ["meus", "Meus posts"], ["salvos", "Salvos"], ["pessoas", "Pessoas"], ...(pode("moderar") ? [["analise", "Em análise"]] : [])];
@@ -727,7 +810,7 @@ function desenharShell() {
   if (de && de[1]) { const n = $("#wInd"); n.style.transition = "none"; n.style.left = de[0]; n.style.width = de[1]; void n.offsetWidth; n.style.transition = ""; }
   posInd(); requestAnimationFrame(posInd);
   $("#wLista").innerHTML = SECOES.map(([id, r, ic, desc, pronta], i) => `<button type="button" class="w-sis ${id === S.aba ? "ativo" : ""}" data-sec="${id}" style="--i:${i}" ${pronta ? "" : "disabled"}>
-    <span class="ic">${svg(ic)}</span><span style="min-width:0"><b>${r}</b><small>${desc}</small></span>${pronta ? "" : '<span class="breve">em breve</span>'}</button>`).join("");
+    <span class="ic">${svg(ic)}</span><span style="min-width:0"><b>${r}</b><small>${desc}</small></span>${pronta ? "" : '<span class="breve">em breve</span>'}${id === "direct" ? `<span class="w-bdg ${CT.direct ? "on" : ""}" id="sbDm">${CT.direct || ""}</span>` : ""}</button>`).join("");
   $("#wEu").innerHTML = `${avatar(S.eu, true, true)}<span><b>${esc(S.eu.nome)}</b><small>${esc([S.eu.cargo, S.eu.setor].filter(Boolean).join(" · ") || "Meu perfil")}</small></span>`;
   $("#wAv").innerHTML = avatar(S.eu, true, true);
 }
@@ -755,8 +838,8 @@ function irSub(id) {
   try { localStorage.setItem("wd.weduca.aba", S.aba); } catch (_) {}
   desenharShell();
   scrollTo({ top: 0 });
-  SH.obs?.disconnect(); SH.ativo = false; clearInterval(AP.giro);
-  if (S.aba === "feed") telaFeed(); else telaAprender();
+  SH.obs?.disconnect(); SH.ativo = false; clearInterval(AP.giro); clearInterval(DM.timer);
+  if (S.aba === "feed") telaFeed(); else if (S.aba === "direct") telaDirect(); else telaAprender();
 }
 /** leva para outra seção do WEDUCA, direto num item (#post=… / #curso=…) */
 function irPara(sec, hash) {
@@ -778,7 +861,7 @@ async function telaPessoas() {
     $("#pLista").innerHTML = r.pessoas.length ? r.pessoas.map((p) => `<div class="pessoa-c vidro" data-perfil="${esc(p.login)}">${avatar(p)}<b>${esc(p.nome)}${p.sou_eu ? " (você)" : ""}</b>
       <small>${esc([p.cargo, p.setor].filter(Boolean).join(" · ") || "—")}</small>${p.bio ? `<p>${esc(p.bio)}</p>` : ""}
       <span class="nums">${p.posts} ${p.posts === 1 ? "publicação" : "publicações"} · ${p.seguidores} ${p.seguidores === 1 ? "seguidor" : "seguidores"}</span>
-      ${p.sou_eu ? `<button type="button" class="btn v p" data-meu-perfil>${svg("lapis")}Editar</button>` : `<button type="button" class="btn ${p.sigo ? "v" : ""} p" data-seguir="${esc(p.login)}">${p.sigo ? "Seguindo" : "Seguir"}</button>`}${p.acesso === false ? `<small style="font-size:.68rem;color:var(--txt3)">ainda sem acesso ao WEDUCA</small>` : ""}</div>`).join("")
+      ${p.sou_eu ? `<button type="button" class="btn v p" data-meu-perfil>${svg("lapis")}Editar</button>` : `<span style="display:flex;gap:6px"><button type="button" class="btn ${p.sigo ? "v" : ""} p" data-seguir="${esc(p.login)}">${p.sigo ? "Seguindo" : "Seguir"}</button>${p.acesso !== false ? `<button type="button" class="btn v p" data-dm="${esc(p.login)}" title="Mandar mensagem">${svg("aviao")}</button>` : ""}</span>`}${p.acesso === false ? `<small style="font-size:.68rem;color:var(--txt3)">ainda sem acesso ao WEDUCA</small>` : ""}</div>`).join("")
       : `<div class="vazio vidro"><b>Ninguém encontrado</b>Tente outro nome ou setor.</div>`;
   };
   $("#pSet").addEventListener("click", (e) => { const b = e.target.closest("[data-set]"); if (b) { S.pset = b.dataset.set; pintar(); } });
@@ -797,7 +880,7 @@ async function abrirPerfil(login) {
   let p; try { p = await api(`/perfis/${encodeURIComponent(login)}`); } catch (e) { return A.toast("⚠️ " + esc(e.message)); }
   const md = A.modal({ titulo: p.nome, icone: "usuario", cor: "#f0cb4e", largura: 1000, html: `<div class="perfil-cab">${arte("perfil" + p.login, "usuario")}</div>
     <div class="perfil-top">${avatar(p, false, true)}<div><h2>${esc(p.nome)}</h2><div style="color:var(--txt2)">${esc([p.cargo, p.setor].filter(Boolean).join(" · ") || "Sem cargo/setor ainda")}</div></div>
-      <div class="acs">${p.sou_eu ? `<button type="button" class="btn" data-meu-perfil>${svg("lapis")}Editar perfil</button>` : `<button type="button" class="btn ${p.sigo ? "v" : ""}" data-seguir="${esc(p.login)}">${p.sigo ? "Seguindo" : "Seguir"}</button>`}</div></div>
+      <div class="acs">${p.sou_eu ? `<button type="button" class="btn" data-meu-perfil>${svg("lapis")}Editar perfil</button>` : `<button type="button" class="btn ${p.sigo ? "v" : ""}" data-seguir="${esc(p.login)}">${p.sigo ? "Seguindo" : "Seguir"}</button>${p.acesso !== false && (S.gente[p.login] || {}).acesso !== false ? `<button type="button" class="btn v" data-dm="${esc(p.login)}">${svg("aviao")}Mensagem</button>` : ""}`}</div></div>
     ${p.bio ? `<p style="margin:0 0 6px;color:var(--txt2);white-space:pre-wrap">${esc(p.bio)}</p>` : ""}
     <div class="perfil-nums"><span><b>${p.posts}</b>publicações</span><span><b>${p.curtidas}</b>curtidas recebidas</span><span><b>${p.seguidores}</b>seguidores</span><span><b>${p.seguindo}</b>seguindo</span>
       <span><b>${p.na_base}</b>na base da IA</span>${p.cursos_criados ? `<span><b>${p.cursos_criados}</b>cursos criados</span>` : ""}<span><b>${p.certificados.length}</b>certificados</span></div>
@@ -832,6 +915,7 @@ function editarMeuPerfil() {
 }
 document.addEventListener("click", (e) => {
   const s = e.target.closest("[data-seguir]"); if (s) { e.stopPropagation(); return seguir(s.dataset.seguir, s); }
+  const dm = e.target.closest("[data-dm]"); if (dm) { e.stopPropagation(); return abrirDirect(dm.dataset.dm); }
   if (e.target.closest("[data-meu-perfil]")) { e.stopPropagation(); return editarMeuPerfil(); }
   const pf = e.target.closest("[data-perfil]"); if (pf) return abrirPerfil(pf.dataset.perfil);
 }, true);
@@ -1258,7 +1342,8 @@ async function abrirPost(id) {
 }
 function lerHash() {
   const h = location.hash.replace(/^#/, "");
-  const m = /post=([\w-]+)/.exec(h), c = /curso=([\w-]+)(?:&aula=([\w-]+))?/.exec(h), au = /^aula=([\w-]+)/.exec(h);
+  const m = /post=([\w-]+)/.exec(h), c = /curso=([\w-]+)(?:&aula=([\w-]+))?/.exec(h), au = /^aula=([\w-]+)/.exec(h), dm = /^dm=([\w.-]+)/.exec(h);
+  if (dm) { history.replaceState(null, "", location.pathname + location.search); return abrirDirect(dm[1]); }
   if (!(m || c || au)) return;
   history.replaceState(null, "", location.pathname + location.search);
   if (m) { if (S.aba !== "feed") return irPara("feed", h); abrirPost(m[1]); }
@@ -1511,11 +1596,13 @@ async function carregar(maisAntigas) {
 }
 function recarregar() { $("#novas").classList.remove("on"); return carregar(false); }
 async function novidades() {
-  if (document.hidden || S.aba !== "feed" || S.sub !== "tudo" || !S.agora || S.q || S.filtro || !$("#novas")) return;
+  if (document.hidden || !S.eu) return;
+  const noFeed = S.aba === "feed" && S.sub === "tudo" && S.agora && !S.q && !S.filtro && $("#novas");
   try {
-    const r = await A.api(`${API}/novidades?desde=${encodeURIComponent(S.agora)}`);
+    const r = await A.api(`${API}/novidades?desde=${encodeURIComponent(noFeed ? S.agora : "9999")}`);
+    contadores(r);
     const b = $("#novas");
-    if (r.novas) { b.querySelector("span").textContent = r.novas === 1 ? "1 nova postagem" : `${r.novas} novas postagens`; b.classList.add("on"); }
+    if (noFeed && r.novas) { b.querySelector("span").textContent = r.novas === 1 ? "1 nova postagem" : `${r.novas} novas postagens`; b.classList.add("on"); }
   } catch (_) {}
 }
 setInterval(novidades, 20000);
@@ -2022,6 +2109,204 @@ function editorAula(cid, a, depois) {
   }
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   NOTIFICAÇÕES (sininho) e DIRECT (conversa privada — nunca entra na base da IA)
+   ═══════════════════════════════════════════════════════════════════════════ */
+const CT = { notif: 0, direct: 0 };
+function badge(el, n) { if (!el) return; el.textContent = n > 99 ? "99+" : n || ""; el.classList.toggle("on", !!n); }
+function contadores(r) {
+  if (typeof r.notif === "number") CT.notif = r.notif;
+  if (typeof r.direct === "number") CT.direct = r.direct;
+  badge($("#bdSino"), CT.notif); badge($("#bdDm"), CT.direct); badge($("#sbDm"), CT.direct);
+}
+addEventListener("visibilitychange", () => { if (!document.hidden) novidades(); });
+
+const NT_TXT = { curtida: ["coracao", "curtiu sua publicação"], comentario: ["balao", "comentou na sua publicação"], mencao: ["usuario", "mencionou você"],
+  seguidor: ["pessoa_mais", "começou a seguir você"], curtida_com: ["coracao", "curtiu seu comentário"] };
+async function abrirNotif() {
+  const pn = $("#ntPn");
+  if (pn.classList.contains("on")) return pn.classList.remove("on");
+  pn.classList.add("on");
+  $("#ntLst").innerHTML = `<div class="carregar">carregando…</div>`;
+  let r; try { r = await api("/notificacoes"); } catch (e) { $("#ntLst").innerHTML = `<div class="vazio">${esc(e.message)}</div>`; return; }
+  $("#ntSub").textContent = r.nao_lidas ? `${r.nao_lidas} ${r.nao_lidas === 1 ? "nova" : "novas"}` : "";
+  $("#ntLst").innerHTML = r.notificacoes.length ? r.notificacoes.map((n) => {
+    const [ic, txt] = NT_TXT[n.tipo] || ["sino", ""];
+    return `<button type="button" class="nt-it ${n.lida ? "" : "nova"}" data-nt-post="${esc(n.post_id || "")}" data-nt-de="${esc((n.de || {}).login || "")}">${avatar(n.de || {}, true, true)}
+      <span><span class="tp">${svg(ic)}</span><b>${esc((n.de || {}).nome || "")}</b> ${txt}${n.texto && n.tipo !== "seguidor" ? `<q>${esc(n.texto)}</q>` : ""}<small>${quando(n.em)}</small></span></button>`;
+  }).join("") : `<div class="vazio" style="padding:30px 14px">${svg("sino")}<b>Nada por aqui ainda</b>Quando curtirem, comentarem, mencionarem ou seguirem você, aparece aqui.</div>`;
+  if (r.nao_lidas) { api("/notificacoes/lidas", { method: "POST", body: {} }).catch(() => {}); contadores({ notif: 0 }); }
+}
+$("#btSino").onclick = (e) => { e.stopPropagation(); abrirNotif(); };
+$("#ntLst").addEventListener("click", (e) => {
+  const b = e.target.closest(".nt-it"); if (!b) return;
+  $("#ntPn").classList.remove("on");
+  if (b.dataset.ntPost) location.hash = "post=" + b.dataset.ntPost; else if (b.dataset.ntDe) abrirPerfil(b.dataset.ntDe);
+});
+document.addEventListener("pointerdown", (e) => { if ($("#ntPn").classList.contains("on") && !e.target.closest("#ntPn,#btSino")) $("#ntPn").classList.remove("on"); });
+addEventListener("keydown", (e) => { if (e.key === "Escape") $("#ntPn").classList.remove("on"); });
+$("#btDm").onclick = () => { if (S.aba !== "direct") { S.aba = "direct"; trocar(""); } };
+
+/* ── Direct ── */
+const DM = { convs: [], atual: null, msgs: [], ids: new Set(), ultimo: "", visto: "", timer: 0, tique: 0, anexos: [], abrir: null };
+/** abre (ou cria) a conversa com `login` e leva para a seção Mensagens */
+async function abrirDirect(login) {
+  if (!login || login === (S.eu || {}).login) return;
+  let c; try { c = await api(`/direct/com/${encodeURIComponent(login)}`, { method: "POST" }); } catch (e) { return A.toast("⚠️ " + esc(e.message)); }
+  $$(".aur-modal [data-fechar]").forEach((b) => b.click());
+  DM.abrir = c;
+  if (S.aba !== "direct") { S.aba = "direct"; trocar(""); } else entrarConversa(c);
+}
+function dmData(iso) {
+  const d = new Date(iso), h = new Date(); const ontem = new Date(h); ontem.setDate(h.getDate() - 1);
+  if (d.toDateString() === h.toDateString()) return "Hoje";
+  if (d.toDateString() === ontem.toDateString()) return "Ontem";
+  return d.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short" });
+}
+async function telaDirect() {
+  $("#main").innerHTML = `<div class="cont dm-cont"><div class="dm-g" id="dmG">
+    <section class="dm-col dm-esq vidro"><div class="dm-cab"><h3>Mensagens<small>Conversas privadas da equipe</small></h3><button type="button" class="btn-ic" id="dmNova" title="Nova conversa">${svg("lapis")}</button></div>
+      <div class="dm-lst" id="dmLst"><div class="carregar">carregando…</div></div></section>
+    <section class="dm-col dm-chat vidro" id="dmChat"></section></div></div>`;
+  $("#dmNova").onclick = novaConversa;
+  $("#dmLst").addEventListener("click", (e) => { const b = e.target.closest("[data-conv]"); if (b) entrarConversa(DM.convs.find((c) => c.id === b.dataset.conv)); });
+  DM.atual = null; chatVazio();
+  await listarConversas();
+  const alvo = DM.abrir; DM.abrir = null;
+  if (alvo) entrarConversa(alvo);
+  DM.timer = setInterval(pulsoDirect, 4000);
+}
+function chatVazio() {
+  $("#dmG")?.classList.remove("chat-on");
+  $("#dmChat").innerHTML = `<div class="dm-vazio"><span class="ic">${svg("aviao")}</span><b>Suas mensagens</b>Converse em particular com qualquer pessoa da equipe.<br>O que é dito aqui fica só entre vocês dois — não entra na base da IA.
+    <button type="button" class="btn" id="dmNova2" style="margin-top:6px">${svg("lapis")}Nova conversa</button></div>`;
+  $("#dmNova2").onclick = novaConversa;
+}
+async function listarConversas() {
+  let r; try { r = await api("/direct"); } catch (e) { if ($("#dmLst")) $("#dmLst").innerHTML = `<div class="vazio">${esc(e.message)}</div>`; return; }
+  DM.convs = r.conversas; contadores({ direct: r.nao_lidas });
+  if (DM.atual && !DM.convs.some((c) => c.id === DM.atual.id)) DM.convs.unshift(DM.atual);   // conversa nova, ainda sem mensagem
+  pintarConversas();
+}
+function pintarConversas() {
+  const el = $("#dmLst"); if (!el) return;
+  el.innerHTML = DM.convs.length ? DM.convs.map((c) => { const u = c.ultima || {};
+    return `<button type="button" class="dm-c ${DM.atual && DM.atual.id === c.id ? "ativa" : ""} ${c.nao_lida && !(DM.atual && DM.atual.id === c.id) ? "nova" : ""}" data-conv="${esc(c.id)}">${avatar(c.com, true, true)}
+      <span><b>${esc(c.com.nome)}<small>${u.em ? quando(u.em) : ""}</small></b><p>${u.em ? (u.de === S.eu.login ? "Você: " : "") + esc(u.texto || "") : "Nova conversa"}</p></span></button>`; }).join("")
+    : `<div class="vazio" style="padding:30px 10px">${svg("aviao")}<b>Nenhuma conversa</b>Toque no lápis ou em “Mensagem” no perfil de alguém.</div>`;
+}
+function novaConversa() {
+  const gente = Object.values(S.gente || {}).filter((p) => p.login !== S.eu.login && p.acesso !== false).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+  const md = A.modal({ titulo: "Nova mensagem", icone: "aviao", cor: "#f0cb4e", largura: 480, html: `<label class="busca">${svg("busca")}<input class="entrada" id="dmQ" placeholder="Buscar pessoa por nome, cargo ou setor" autocomplete="off"></label><div class="dm-pick" id="dmPick"></div>` });
+  const pintar = (q = "") => {
+    const t = q.toLowerCase(), lst = gente.filter((p) => !t || [p.nome, p.cargo, p.setor, p.login].join(" ").toLowerCase().includes(t));
+    $("#dmPick", md.el).innerHTML = lst.length ? lst.map((p) => `<button type="button" class="dm-c" data-pick="${esc(p.login)}">${avatar(p, true, true)}<span><b>${esc(p.nome)}</b><p>${esc([p.cargo, p.setor].filter(Boolean).join(" · ") || "—")}</p></span></button>`).join("") : `<div class="vazio">Ninguém encontrado.</div>`;
+  };
+  pintar();
+  $("#dmQ", md.el).addEventListener("input", (e) => pintar(e.target.value.trim()));
+  $("#dmPick", md.el).addEventListener("click", (e) => { const b = e.target.closest("[data-pick]"); if (b) { md.fechar(); abrirDirect(b.dataset.pick); } });
+  setTimeout(() => $("#dmQ", md.el)?.focus(), 60);
+}
+async function entrarConversa(c) {
+  if (!c || !$("#dmChat")) return;
+  DM.atual = c; DM.msgs = []; DM.ids = new Set(); DM.ultimo = ""; DM.visto = ""; DM.anexos = [];
+  if (!DM.convs.some((x) => x.id === c.id)) DM.convs.unshift(c);
+  c.nao_lida = false; pintarConversas();
+  $("#dmG").classList.add("chat-on");
+  const g = S.gente[c.com.login] || c.com;
+  $("#dmChat").innerHTML = `<div class="dm-cab"><button type="button" class="btn-ic dm-volta" id="dmVolta" title="Voltar">${svg("voltar")}</button>${avatar({ ...c.com, foto: g.foto || c.com.foto }, true)}
+      <h3 data-perfil="${esc(c.com.login)}">${esc(c.com.nome)}<small>${esc([g.cargo, g.setor].filter(Boolean).join(" · ") || "ver perfil")}</small></h3></div>
+    <div class="dm-msgs" id="dmMsgs"><div class="carregar">carregando…</div></div>
+    <div class="dm-pe"><div class="dm-anx" id="dmAnx"></div><div class="dm-comp">
+      <label class="btn-ic" title="Anexar foto ou PDF">${svg("clipe")}<input type="file" class="arq-in" id="dmArq" accept="image/*,application/pdf" multiple></label>
+      <textarea class="entrada" id="dmTx" rows="1" maxlength="4000" placeholder="Mensagem para ${esc(c.com.nome.split(" ")[0])}…"></textarea>
+      <button type="button" class="dm-env" id="dmEnv" title="Enviar">${svg("aviao")}</button></div>
+      <div class="dm-priv">${svg("cadeado")}Conversa privada — só vocês dois veem. Não entra na base da IA.</div></div>`;
+  $("#dmVolta").onclick = () => { DM.atual = null; chatVazio(); pintarConversas(); };
+  const tx = $("#dmTx");
+  tx.addEventListener("input", () => { tx.style.height = "auto"; tx.style.height = Math.min(tx.scrollHeight, 140) + "px"; });
+  tx.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); enviarDm(); } });
+  tx.addEventListener("paste", (e) => { const fs = [...(e.clipboardData?.files || [])]; if (fs.length) { e.preventDefault(); anexarDm(fs); } });
+  $("#dmArq").onchange = (e) => { anexarDm([...e.target.files]); e.target.value = ""; };
+  $("#dmEnv").onclick = enviarDm;
+  soltar($("#dmChat"), anexarDm);
+  if (matchMedia("(pointer:fine)").matches) tx.focus();
+  await lerMensagens(true);
+}
+function pintarAnexosDm() {
+  const el = $("#dmAnx"); if (!el) return;
+  el.innerHTML = DM.anexos.map((a, i) => `<span class="${a._envio ? "envio" : ""}">${a.kind === "foto" ? `<img src="${a._prev || urlArq(a.id)}" alt="">` : `<b class="pdf" style="padding:0 6px">PDF</b>`}<i>${esc(a.nome)}</i><button type="button" data-i="${i}" title="Tirar">${svg("fechar")}</button></span>`).join("");
+  el.onclick = (e) => { const b = e.target.closest("[data-i]"); if (b) { DM.anexos.splice(+b.dataset.i, 1); pintarAnexosDm(); } };
+}
+async function anexarDm(fs) {
+  for (const f of fs.slice(0, 6 - DM.anexos.length)) {
+    const kind = ehPdf(f) ? "pdf" : "foto";
+    const tmp = { kind, nome: f.name, _envio: true, _prev: kind === "foto" ? URL.createObjectURL(f) : "" };
+    DM.anexos.push(tmp); pintarAnexosDm();
+    try { Object.assign(tmp, await subirArquivo(f, kind), { _envio: false }); } catch (err) { DM.anexos.splice(DM.anexos.indexOf(tmp), 1); A.toast("⚠️ " + esc(err.message)); }
+    pintarAnexosDm();
+  }
+}
+async function enviarDm() {
+  const c = DM.atual, tx = $("#dmTx"); if (!c || !tx) return;
+  if (DM.anexos.some((a) => a._envio)) return A.toast("Espere o anexo terminar de enviar.");
+  const texto = tx.value.trim(); if (!texto && !DM.anexos.length) return;
+  const b = $("#dmEnv"); b.disabled = true;
+  try {
+    const m = await api(`/direct/${encodeURIComponent(c.id)}`, { method: "POST", body: { texto, midias: DM.anexos.map((a) => a.id) } });
+    tx.value = ""; tx.style.height = ""; DM.anexos = []; pintarAnexosDm();
+    juntarMsgs([m]);
+    c.ultima = { de: S.eu.login, em: m.em, texto: m.texto || "📎 anexo" };
+    DM.convs = [c, ...DM.convs.filter((x) => x.id !== c.id)]; pintarConversas();
+  } catch (e) { A.toast("⚠️ " + esc(e.message)); }
+  b.disabled = false; tx.focus();
+}
+function htmlMsg(m) {
+  const md = (m.midias || []).map((x) => x.kind === "foto" ? `<a href="${urlArq(x.id)}" target="_blank" rel="noopener"><img src="${urlArq(x.id)}" alt="${esc(x.nome || "")}"${x.w && x.h ? ` width="${+x.w}" height="${+x.h}"` : ""}></a>`
+    : `<a class="dm-pdf" href="${urlArq(x.id)}" target="_blank" rel="noopener">${svg("pdf")}${esc(x.nome || "PDF")}</a>`).join("");
+  return `<div class="dm-m ${m.minha ? "eu" : ""}" data-em="${esc(m.em)}"><div class="dm-b ${m.texto ? "" : "so"}">${md}${m.texto ? rico(m.texto) : ""}</div><small>${new Date(m.em).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</small></div>`;
+}
+/** acrescenta mensagens novas (sem repetir) e desce a conversa se a pessoa já estava no fim */
+function juntarMsgs(novas, primeira) {
+  const el = $("#dmMsgs"); if (!el) return;
+  novas = novas.filter((m) => !DM.ids.has(m.id));
+  if (primeira) el.innerHTML = "";
+  if (primeira && !novas.length) { el.innerHTML = `<div class="dm-vazio"><span class="ic">${svg("aviao")}</span><b>Comece a conversa</b>Diga um oi para ${esc(DM.atual.com.nome.split(" ")[0])}.</div>`; return; }
+  if (!novas.length) return;
+  el.querySelector(".dm-vazio")?.remove();
+  const noFim = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  let html = "", dia = DM.msgs.length ? dmData(DM.msgs[DM.msgs.length - 1].em) : "";
+  for (const m of novas) { DM.ids.add(m.id); DM.msgs.push(m); const d = dmData(m.em); if (d !== dia) { html += `<div class="dm-dia">${d}</div>`; dia = d; } html += htmlMsg(m); if (m.em > DM.ultimo) DM.ultimo = m.em; }
+  el.querySelector(".dm-visto")?.remove();
+  el.insertAdjacentHTML("beforeend", html);
+  if (!primeira) [...el.querySelectorAll(".dm-m")].slice(-novas.length).forEach((x) => x.classList.add("dm-nova"));
+  if (primeira || noFim || novas.some((m) => m.minha)) {
+    el.scrollTop = el.scrollHeight;
+    el.querySelectorAll("img").forEach((i) => { if (!i.complete) i.addEventListener("load", () => { el.scrollTop = el.scrollHeight; }, { once: true }); });
+  }
+  pintarVisto();
+}
+function pintarVisto() {
+  const el = $("#dmMsgs"); if (!el) return;
+  el.querySelector(".dm-visto")?.remove();
+  const ult = DM.msgs[DM.msgs.length - 1];
+  if (ult && ult.minha && DM.visto && DM.visto >= ult.em) el.insertAdjacentHTML("beforeend", `<small class="dm-visto" style="align-self:flex-end;font-size:.66rem;color:var(--txt3);margin:-4px 6px 4px">Visto</small>`);
+}
+async function lerMensagens(primeira) {
+  const c = DM.atual; if (!c) return;
+  let r; try { r = await A.api(`${API}/direct/${encodeURIComponent(c.id)}?desde=${encodeURIComponent(primeira ? "" : DM.ultimo)}`); } catch (e) { if (primeira && $("#dmMsgs")) $("#dmMsgs").innerHTML = `<div class="vazio">${esc(e.message)}</div>`; return; }
+  if (DM.atual !== c) return;
+  const mudouVisto = r.visto_ate !== DM.visto; DM.visto = r.visto_ate || "";
+  juntarMsgs(r.mensagens, primeira);
+  if (mudouVisto) pintarVisto();
+  if (primeira || r.mensagens.some((m) => !m.minha)) { A.api(`${API}/direct/${encodeURIComponent(c.id)}/lida`, { method: "POST" }).then(() => novidades()).catch(() => {}); }
+}
+function pulsoDirect() {
+  if (document.hidden || S.aba !== "direct") return;
+  if (DM.atual) lerMensagens(false);
+  if (++DM.tique % 3 === 0 || !DM.atual) listarConversas();
+}
+
 /* ═════════ início ═════════ */
 $("#btAtualizar").addEventListener("click", async () => { await carregarGente(); irSub(S.sub); });
 (async () => {
@@ -2036,6 +2321,7 @@ $("#btAtualizar").addEventListener("click", async () => { await carregarGente();
   if (!SECOES.some((x) => x[0] === S.aba && x[4])) S.aba = "feed";
   irSub("");
   lerHash();
+  novidades();
 })();
 })();
 </script>

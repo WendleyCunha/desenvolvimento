@@ -46,6 +46,8 @@ COL_CURSO, COL_AULA, COL_PROG = "weduca_cursos", "weduca_aulas", "weduca_progres
 COL_PERFIL = "weduca_perfis"                                                             # perfis (foto, cargo, setor, bio, seguindo)
 COL_STORY = "weduca_stories"                                                             # stories: somem em 24 h e NUNCA entram na base da IA
 STORY_HORAS = 24
+COL_NOTIF = "weduca_notif"                                                               # notificações (sininho)
+COL_CONV, COL_MSG = "weduca_conversas", "weduca_mensagens"                               # Direct: conversas privadas — NUNCA entram na base da IA
 
 PARTE = 700_000                     # bytes por pedaço (o documento do Firestore aceita até ~1 MB)
 MAX_FOTO = 3_000_000                # a foto já chega comprimida do navegador
@@ -82,7 +84,21 @@ def _fs_usuarios() -> dict:
     return acesso.USUARIOS.todos() if banco.configurado() else {}
 
 
+def _fs_onde(col: str, campo: str, op: str, valor) -> list:
+    from google.cloud.firestore_v1.base_query import FieldFilter
+    q = banco.db().collection(col).where(filter=FieldFilter(campo, op, valor))
+    return [{**(d.to_dict() or {}), "id": d.id} for d in q.stream(timeout=banco.TIMEOUT)]
+
+
 P = {"listar": _fs_listar, "ler": _fs_ler, "gravar": _fs_gravar, "marcar": _fs_marcar, "usuarios": _fs_usuarios}
+
+
+def onde(col: str, campo: str, op: str, valor) -> list:
+    """Busca filtrada: no Firestore usa a consulta (lê só o que precisa); com o banco trocado (testes), filtra aqui."""
+    if P["listar"] is _fs_listar:
+        return _fs_onde(col, campo, op, valor)
+    ok = {"==": lambda v: v == valor, "array_contains": lambda v: valor in (v or [])}[op]
+    return [d for d in P["listar"](col) if ok(d.get(campo))]
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -90,6 +106,11 @@ P = {"listar": _fs_listar, "ler": _fs_ler, "gravar": _fs_gravar, "marcar": _fs_m
 # ══════════════════════════════════════════════════════════════════════════
 def agora() -> str:
     return datetime.now().isoformat(timespec="seconds")
+
+
+def agora_ms() -> str:
+    """Com milissegundos — mensagens e notificações chegam várias no mesmo segundo e precisam de ordem."""
+    return datetime.now().isoformat(timespec="milliseconds")
 
 
 def novo_id() -> str:
@@ -350,6 +371,29 @@ def _tipo(p: dict) -> set:
     return t
 
 
+# ── notificações (sininho) ──
+def notificar(para: str, de: dict, tipo: str, texto: str = "", post_id: str = "", extra: Optional[dict] = None) -> None:
+    """tipo: curtida · comentario · mencao · seguidor · curtida_com. Nunca notifica a própria pessoa."""
+    para = str(para or "").lower()
+    if not para or para == de.get("login"):
+        return
+    try:
+        nid = novo_id()
+        P["gravar"](COL_NOTIF, nid, {"para": para, "de": de, "tipo": tipo, "texto": (texto or "")[:160], "post_id": post_id,
+                                     "em": agora_ms(), "lida": False, **(extra or {})})
+    except Exception as e:   # noqa: BLE001 — notificação nunca derruba a ação principal
+        print(f"[weduca] notificação falhou: {type(e).__name__}: {e}")
+
+
+def mencionados(texto: str) -> set:
+    """@login no texto → logins que existem no WEDUCA."""
+    achados = {m.lower() for m in re.findall(r"(?:^|\s)@([\w.-]{2,40})", texto or "")}
+    if not achados:
+        return set()
+    gente = _pessoas()
+    return {a for a in achados if a in gente and gente[a].get("acesso") is not False}
+
+
 @router.get("/me")
 def weduca_me(request: Request):
     u, pode = _ctx(request)
@@ -399,7 +443,7 @@ def weduca_novidades(request: Request, desde: str = ""):
     u, _ = _ctx(request)
     eu = _eu(u)
     novas = [p for p in posts_ativos() if (p.get("em") or "") > desde and (p.get("autor") or {}).get("login") != eu]
-    return {"novas": len(novas), "agora": agora()}
+    return {"novas": len(novas), "agora": agora(), "notif": _nao_lidas(eu), "direct": _dm_nao_lidas(eu)}
 
 
 @router.get("/destaques")
@@ -491,6 +535,8 @@ def weduca_postar(payload: Post, request: Request):
         meta = P["ler"](COL_ARQ, m["id"])
         if meta:
             meta["post_id"] = pid; P["gravar"](COL_ARQ, m["id"], meta)
+    for lg in mencionados(p.get("texto")):
+        notificar(lg, _quem(u), "mencao", p.get("texto"), pid)
     esquecer()
     return publico(p, u, pode)
 
@@ -574,7 +620,12 @@ def _alternar(pid: str, request: Request, campo: str) -> dict:
 
 @router.post("/posts/{pid}/curtir")
 def weduca_curtir(pid: str, request: Request):
-    return _alternar(pid, request, "curtidas")
+    r = _alternar(pid, request, "curtidas")
+    if r["ligado"]:
+        u = acesso.exigir_usuario(request)
+        p = P["ler"](COL_POST, pid) or {}
+        notificar((p.get("autor") or {}).get("login"), _quem(u), "curtida", p.get("texto") or (p.get("conquista") or {}).get("titulo") or "", pid)
+    return r
 
 
 @router.post("/posts/{pid}/salvar")
@@ -617,6 +668,10 @@ def weduca_comentar(pid: str, payload: Comentario, request: Request):
     P["gravar"](COL_COM, cid, c)
     _cache["com"].append(c)   # aparece na hora; a IA relê no próximo ciclo
     esquecer()
+    autor = (p.get("autor") or {}).get("login")
+    notificar(autor, _quem(u), "comentario", payload.texto, pid)
+    for lg in mencionados(payload.texto) - {autor}:
+        notificar(lg, _quem(u), "mencao", payload.texto, pid)
     return _com_publico(c, u, pode)
 
 
@@ -646,6 +701,8 @@ def weduca_curtir_comentario(cid: str, request: Request):
     for x in _cache["com"]:
         if x.get("id") == cid:
             x["curtidas"] = lst
+    if ligar:
+        notificar((c.get("autor") or {}).get("login"), _quem(u), "curtida_com", c.get("texto") or "", c.get("post_id") or "")
     return {"ligado": ligar, "total": len(lst)}
 
 
@@ -667,8 +724,13 @@ async def weduca_enviar(request: Request):
 
 @router.get("/arquivos/{aid}")
 def weduca_arquivo(aid: str, request: Request):
-    _ctx(request)
+    u, _ = _ctx(request)
     meta, dados = ler_arquivo(aid)
+    dono = str(meta.get("post_id") or "")
+    if dono.startswith("dm:"):   # anexo de conversa privada: só quem está na conversa abre
+        conv = P["ler"](COL_CONV, dono[3:]) or {}
+        if _eu(u) not in (conv.get("membros") or []):
+            raise HTTPException(404, "Arquivo não encontrado.")
     nome = urllib.parse.quote(meta.get("nome") or "arquivo")
     return Response(dados, media_type=meta.get("tipo") or "application/octet-stream",
                     headers={"Cache-Control": "private, max-age=86400", "Content-Disposition": f"inline; filename*=UTF-8''{nome}"})
@@ -1326,6 +1388,8 @@ def weduca_seguir(login: str, request: Request):
         P["gravar"](COL_PERFIL, eu, pf)
     ligar = login not in (pf.get("seguindo") or [])
     P["marcar"](COL_PERFIL, eu, "seguindo", login, ligar)
+    if ligar:
+        notificar(login, _quem(u), "seguidor")
     return {"sigo": ligar}
 
 
@@ -1453,3 +1517,164 @@ def weduca_ranking(request: Request, periodo: str = "mes"):
         x["pos"] = i + 1
     return {"periodo": "mes" if periodo == "mes" else "tudo", "mes": mes, "lista": lst[:50],
             "eu": next((x for x in lst if x["login"] == eu), None)}
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# NOTIFICAÇÕES (o sininho do WEDUCA)
+# ══════════════════════════════════════════════════════════════════════════
+def _minhas_notif(eu: str) -> list:
+    return sorted(onde(COL_NOTIF, "para", "==", eu), key=lambda n: n.get("em") or "", reverse=True)
+
+
+def _nao_lidas(eu: str) -> int:
+    try:
+        return sum(1 for n in onde(COL_NOTIF, "para", "==", eu) if not n.get("lida"))
+    except Exception:   # noqa: BLE001
+        return 0
+
+
+@router.get("/notificacoes")
+def weduca_notificacoes(request: Request, n: int = 40):
+    u, _ = _ctx(request)
+    lst = _minhas_notif(_eu(u))
+    return {"notificacoes": [{k: x.get(k) for k in ("id", "tipo", "de", "texto", "post_id", "em", "lida")} for x in lst[:max(1, min(int(n or 40), 100))]],
+            "nao_lidas": sum(1 for x in lst if not x.get("lida"))}
+
+
+class Lidas(BaseModel):
+    ids: List[str] = []             # vazio = todas
+
+
+@router.post("/notificacoes/lidas")
+def weduca_notif_lidas(payload: Lidas, request: Request):
+    u, _ = _ctx(request)
+    alvo = set(payload.ids)
+    for x in _minhas_notif(_eu(u)):
+        if not x.get("lida") and (not alvo or x["id"] in alvo):
+            x["lida"] = True
+            P["gravar"](COL_NOTIF, x["id"], x)
+    return {"ok": True}
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# DIRECT — conversa privada entre duas pessoas. Nunca entra na base da IA.
+# ══════════════════════════════════════════════════════════════════════════
+def _conv_id(a: str, b: str) -> str:
+    return "__".join(sorted([a.lower(), b.lower()]))
+
+
+def _minhas_conv(eu: str) -> list:
+    return onde(COL_CONV, "membros", "array_contains", eu)
+
+
+def _nao_lida(c: dict, eu: str) -> bool:
+    ult = c.get("ultima") or {}
+    return bool(ult.get("em")) and ult.get("de") != eu and (ult.get("em") or "") > ((c.get("lidas") or {}).get(eu) or "")
+
+
+def _dm_nao_lidas(eu: str) -> int:
+    try:
+        return sum(1 for c in _minhas_conv(eu) if _nao_lida(c, eu))
+    except Exception:   # noqa: BLE001
+        return 0
+
+
+def _conv_publica(c: dict, eu: str, gente: dict) -> dict:
+    outro = next((m for m in c.get("membros") or [] if m != eu), eu)
+    g = gente.get(outro) or {}
+    return {"id": c["id"], "com": {"login": outro, "nome": g.get("nome") or (c.get("nomes") or {}).get(outro) or outro, "foto": g.get("foto"),
+                                   "cargo": g.get("cargo") or "", "setor": g.get("setor") or ""},
+            "ultima": c.get("ultima"), "nao_lida": _nao_lida(c, eu)}
+
+
+def _minha_conv(cid: str, u: dict) -> dict:
+    c = P["ler"](COL_CONV, cid)
+    if not c or _eu(u) not in (c.get("membros") or []):
+        raise HTTPException(404, "Conversa não encontrada.")
+    return c
+
+
+@router.get("/direct")
+def weduca_direct(request: Request):
+    u, _ = _ctx(request)
+    eu, gente = _eu(u), _pessoas()
+    lst = [_conv_publica(c, eu, gente) for c in _minhas_conv(eu) if (c.get("ultima") or {}).get("em")]
+    lst.sort(key=lambda c: (c["ultima"] or {}).get("em") or "", reverse=True)
+    return {"conversas": lst, "nao_lidas": sum(1 for c in lst if c["nao_lida"])}
+
+
+@router.post("/direct/com/{login}")
+def weduca_direct_abrir(login: str, request: Request):
+    """Abre (ou cria) a conversa com uma pessoa do WEDUCA."""
+    u, _ = _ctx(request)
+    eu, login = _eu(u), login.lower()
+    if login == eu:
+        raise HTTPException(400, "Escolha outra pessoa.")
+    gente = _pessoas()
+    if login not in gente:
+        raise HTTPException(404, "Pessoa não encontrada.")
+    if gente[login].get("acesso") is False:
+        raise HTTPException(400, "Essa pessoa ainda não tem acesso ao WEDUCA.")
+    cid = _conv_id(eu, login)
+    c = P["ler"](COL_CONV, cid)
+    if not c:
+        c = {"id": cid, "membros": sorted([eu, login]), "nomes": {eu: u.get("nome") or eu, login: gente[login].get("nome") or login},
+             "criada_em": agora(), "ultima": None, "lidas": {}}
+        P["gravar"](COL_CONV, cid, c)
+    return _conv_publica(c, eu, gente)
+
+
+def _msg_publica(m: dict, eu: str) -> dict:
+    return {"id": m["id"], "de": m.get("de"), "texto": m.get("texto") or "", "midias": m.get("midias") or [], "em": m.get("em"), "minha": m.get("de") == eu}
+
+
+@router.get("/direct/{cid}")
+def weduca_direct_ler(cid: str, request: Request, desde: str = ""):
+    u, _ = _ctx(request)
+    c = _minha_conv(cid, u)
+    eu = _eu(u)
+    msgs = sorted((m for m in onde(COL_MSG, "conv", "==", cid) if (m.get("em") or "") > desde), key=lambda m: m.get("em") or "")
+    outro = next((m for m in c.get("membros") or [] if m != eu), eu)
+    return {"mensagens": [_msg_publica(m, eu) for m in msgs[-300:]], "agora": agora_ms(), "visto_ate": (c.get("lidas") or {}).get(outro)}
+
+
+class Mensagem(BaseModel):
+    texto: str = ""
+    midias: List[str] = []
+
+    @field_validator("texto")
+    @classmethod
+    def _t(cls, v):
+        return str(v or "").strip()[:4000]
+
+
+@router.post("/direct/{cid}")
+def weduca_direct_enviar(cid: str, payload: Mensagem, request: Request):
+    u, _ = _ctx(request)
+    c = _minha_conv(cid, u)
+    eu = _eu(u)
+    midias = []
+    for aid in payload.midias[:6]:
+        m = P["ler"](COL_ARQ, aid)
+        if not m or (m.get("dono") or {}).get("login") != eu or m.get("post_id") not in (None, f"dm:{cid}"):
+            raise HTTPException(400, "Um dos anexos não foi encontrado — envie de novo.")
+        m["post_id"] = f"dm:{cid}"; P["gravar"](COL_ARQ, aid, m)
+        midias.append(_midia_publica(m))
+    if not (payload.texto or midias):
+        raise HTTPException(400, "Escreva a mensagem ou anexe um arquivo.")
+    mid = novo_id()
+    msg = {"id": mid, "conv": cid, "de": eu, "texto": payload.texto, "midias": midias, "em": agora_ms()}
+    P["gravar"](COL_MSG, mid, msg)
+    c["ultima"] = {"de": eu, "em": msg["em"], "texto": payload.texto[:120] or ("📎 anexo" if midias else "")}
+    c.setdefault("lidas", {})[eu] = msg["em"]
+    P["gravar"](COL_CONV, cid, c)
+    return _msg_publica(msg, eu)
+
+
+@router.post("/direct/{cid}/lida")
+def weduca_direct_lida(cid: str, request: Request):
+    u, _ = _ctx(request)
+    c = _minha_conv(cid, u)
+    c.setdefault("lidas", {})[_eu(u)] = agora_ms()
+    P["gravar"](COL_CONV, cid, c)
+    return {"ok": True}
