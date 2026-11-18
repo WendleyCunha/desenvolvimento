@@ -6,10 +6,9 @@
 <title>WEDUCA</title>
 <meta name="hub-icone" content="chapeu">
 <meta name="hub-cor" content="#f0cb4e">
-<meta name="hub-grupo" content="WEDUCA">
+<meta name="hub-grupo" content="Pessoas">
 <meta name="hub-ordem" content="1">
 <meta name="hub-descricao" content="O que a equipe publica vira a base da IA do hub.">
-<meta name="hub-secoes" content='[{"id":"feed","titulo":"Feed","icone":"mensagem","descricao":"Publicações da equipe — viram base da IA"},{"id":"aprendizagem","titulo":"Aprendizagem","icone":"estrela","descricao":"Cursos, avaliação e certificado"}]'>
 <script type="application/json" id="hub-permissoes">
 {
   "acoes": {
@@ -64,8 +63,6 @@ html:not([data-claro]){--ou-t:#f0cb4e}
 .sync.erro i{background:var(--rosa);box-shadow:0 0 8px var(--rosa)}
 main{display:block}
 /* mesmo padrão do hub (tema Eduking): largura total, hero com cartão de vidro, fileiras */
-.em-hub .topo{display:none}
-body:not(.em-hub) .topo{margin:14px 14px 0}
 .cont{max-width:1600px;margin:0 auto;padding:22px clamp(16px,3vw,48px) 90px}
 .edk-hero+.cont{margin-top:-46px;position:relative;z-index:3}
 .edk-hero{min-height:min(54vh,480px);padding:34px clamp(16px,3vw,48px) 64px}
@@ -339,20 +336,99 @@ html:not([data-eduking])[data-claro]{--edk-l:17,17,17;--edk-sup:#fff;--edk-texto
 .tbl th{text-align:left;font-size:.66rem;letter-spacing:.08em;text-transform:uppercase;color:var(--txt3);padding:8px;border-bottom:1px solid var(--linha)}
 .tbl td{padding:9px 8px;border-bottom:1px solid var(--linha)}
 @media (max-width:1000px){.cur-grade,.player,.ed-grade{grid-template-columns:1fr}.lado-cur{position:static}}
+/* ═════════ SHELL DO WEDUCA: a bolinha "E" abre o menu de seções (sidebar só do WEDUCA) ═════════ */
+.w-bolinha{position:fixed;top:14px;left:14px;z-index:70;width:48px;height:48px;border-radius:50%;border:0;padding:0;display:grid;place-items:center;cursor:pointer;
+  background:conic-gradient(from 0deg,#f0cb4e,#fff6cf,#d2ae34,#1a1a1a,#f0cb4e);box-shadow:0 0 0 3px rgba(240,203,78,.18),0 10px 30px -6px rgba(240,203,78,.6);
+  animation:wGira 9s linear infinite;transition:transform .3s cubic-bezier(.16,1,.3,1)}
+.w-bolinha span{width:38px;height:38px;border-radius:50%;background:#0b0b0d;display:grid;place-items:center;font:800 18px var(--titulo);color:#f0cb4e;animation:wGira 9s linear infinite reverse}
+.w-bolinha:hover{transform:scale(1.1)}
+body.sb-on .w-bolinha{animation-duration:2.5s}
+@keyframes wGira{to{transform:rotate(360deg)}}
+.w-sb{position:fixed;top:0;left:0;bottom:0;width:min(320px,86vw);z-index:65;display:flex;flex-direction:column;gap:6px;padding:84px 16px 16px;
+  background:var(--edk-vidro-forte,rgba(16,16,20,.9));backdrop-filter:blur(28px) saturate(170%);-webkit-backdrop-filter:blur(28px) saturate(170%);
+  border-right:1px solid var(--vidro-borda);clip-path:circle(0 at 38px 38px);transition:clip-path .6s cubic-bezier(.16,1,.3,1);pointer-events:none}
+html[data-claro] .w-sb{background:rgba(255,255,255,.94)}
+body.sb-on .w-sb{clip-path:circle(160% at 38px 38px);pointer-events:auto}
+.w-veu{position:fixed;inset:0;z-index:64;background:rgba(0,0,0,.45);opacity:0;pointer-events:none;transition:opacity .4s}
+html[data-claro] .w-veu{background:rgba(0,0,0,.15)}
+body.sb-on .w-veu{opacity:1;pointer-events:auto}
+.w-marca{position:absolute;top:20px;left:76px}
+.w-marca b{display:block;font:800 22px var(--titulo)}
+.w-marca small{display:block;font-size:10.5px;letter-spacing:.16em;font-weight:600;color:var(--txt3);text-transform:uppercase}
+.w-lista{display:grid;gap:4px;align-content:start;overflow-y:auto;flex:1}
+.w-sis{display:flex;align-items:center;gap:14px;padding:11px 12px;border-radius:14px;color:var(--txt2);font-weight:600;text-align:left;width:100%;
+  opacity:0;transform:translateX(-16px);transition:opacity .35s,transform .45s cubic-bezier(.16,1,.3,1),background .2s;transition-delay:calc(var(--i,0) * 40ms)}
+body.sb-on .w-sis{opacity:1;transform:none}
+.w-sis:hover:not(:disabled){background:rgba(var(--edk-l),.07);color:var(--txt)}
+.w-sis .ic{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;flex:none;background:rgba(var(--edk-l),.06);box-shadow:inset 0 0 0 1px rgba(var(--edk-l),.1)}
+.w-sis .ic svg.i{width:19px;height:19px}
+.w-sis b{display:block;font-size:.92rem;color:inherit}
+.w-sis small{display:block;font-weight:500;font-size:.74rem;color:var(--txt3)}
+.w-sis.ativo{background:rgba(240,203,78,.12);color:var(--txt)}
+.w-sis.ativo .ic{background:linear-gradient(135deg,#f0cb4e,#d2ae34);color:#000;box-shadow:none}
+.w-sis:disabled{cursor:default}.w-sis:disabled .ic,.w-sis:disabled b{opacity:.45}
+.w-sis .breve{margin-left:auto;white-space:nowrap;flex:none;font-size:.58rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--txt3);padding:2px 7px;border-radius:99px;border:1px solid var(--vidro-borda)}
+.w-eu{display:flex;align-items:center;gap:11px;padding:11px;border-radius:14px;background:rgba(var(--edk-l),.05);border:1px solid rgba(var(--edk-l),.08);text-align:left;width:100%;margin-top:6px}
+.w-eu:hover{border-color:rgba(240,203,78,.45)}
+.w-eu b{display:block;font-size:.88rem}.w-eu small{display:block;color:var(--txt3);font-size:.72rem}
+/* barra de cima do WEDUCA: seção + abas modernas (indicador dourado que desliza) */
+.w-nav{position:fixed;top:10px;left:76px;right:14px;z-index:50;display:flex;align-items:center;gap:14px;padding:8px 10px 8px 16px;border-radius:20px}
+.w-secao{display:flex;align-items:center;gap:10px;font:800 18px var(--titulo);white-space:nowrap;color:var(--txt);min-width:0}
+.w-secao small{font:600 11px var(--sans);color:var(--edk-texto-ouro);letter-spacing:.14em;text-transform:uppercase}
+.w-abas{position:relative;display:flex;gap:2px;padding:4px;margin:0 auto;border-radius:14px;background:rgba(var(--edk-l),.06);border:1px solid rgba(var(--edk-l),.1);overflow-x:auto;max-width:100%}
+.w-abas button{position:relative;z-index:1;padding:8px 14px;border-radius:10px;font-weight:600;font-size:.84rem;color:var(--txt3);white-space:nowrap;transition:color .25s}
+.w-abas button:hover{color:var(--txt)}
+.w-abas button.ativa{color:#000}
+.w-ind{position:absolute;z-index:0;top:4px;bottom:4px;left:0;width:0;border-radius:10px;background:linear-gradient(135deg,#f7e6a3,#f0cb4e 50%,#d2ae34);box-shadow:0 6px 18px -6px rgba(240,203,78,.8);transition:left .45s cubic-bezier(.16,1,.3,1),width .45s cubic-bezier(.16,1,.3,1)}
+.w-dir{display:flex;align-items:center;gap:8px}
+.w-av{padding:0;border-radius:50%}
+/* conteúdo começa abaixo da barra (o hero passa por baixo dela, como no início do hub) */
+#main>.cont:first-child,#main>.apr>.cont:first-child{padding-top:92px}
+.edk-hero{padding-top:96px!important}
+/* foto no avatar, menções, pessoas e perfil */
+.av.foto{padding:0;overflow:hidden;background:var(--sup2)}
+.av.foto img{width:100%;height:100%;object-fit:cover;display:block}
+[data-perfil]{cursor:pointer}
+b[data-perfil]:hover{text-decoration:underline}
+.mencao{color:var(--ou-t);font-weight:700;cursor:pointer}
+.mencoes{position:fixed;z-index:200;min-width:240px;max-width:320px;padding:6px;border-radius:14px;display:none}
+.mencoes.on{display:block}
+.mencoes button{display:flex;align-items:center;gap:10px;width:100%;padding:7px 9px;border-radius:10px;text-align:left;font-size:.84rem}
+.mencoes button:hover,.mencoes button.sel{background:var(--sup2)}
+.mencoes small{display:block;color:var(--txt3);font-size:.7rem}
+.pessoas-g{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:16px}
+.pessoa-c{display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;padding:20px 16px 16px;border-radius:22px;transition:transform .35s cubic-bezier(.2,.8,.2,1),border-color .35s}
+.pessoa-c:hover{transform:translateY(-6px);border-color:rgba(240,203,78,.45)!important}
+.pessoa-c .av{width:72px;height:72px;font-size:1.2rem}
+.pessoa-c b{font:700 1rem var(--titulo)}
+.pessoa-c small{color:var(--txt3);font-size:.78rem}
+.pessoa-c p{margin:4px 0;color:var(--txt2);font-size:.82rem;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.pessoa-c .nums{font-size:.74rem;color:var(--txt3)}
+.pessoa-c .btn{margin-top:6px}
+.perfil-cab{position:relative;border-radius:22px;overflow:hidden;height:170px}
+.perfil-cab .edk-arte{position:absolute;inset:0}
+.perfil-top{display:flex;align-items:flex-end;gap:18px;margin:-56px 0 14px 22px;position:relative;z-index:2;flex-wrap:wrap}
+.perfil-top .av{width:112px;height:112px;font-size:1.8rem;box-shadow:0 0 0 5px var(--noite),0 0 0 7px rgba(240,203,78,.7)}
+.perfil-top h2{margin:0;font:800 1.7rem var(--titulo)}
+.perfil-top .acs{margin-left:auto;margin-right:22px;display:flex;gap:8px}
+.perfil-nums{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 18px}
+.perfil-nums span{padding:8px 14px;border-radius:14px;background:var(--sup);border:1px solid var(--linha);font-size:.8rem;color:var(--txt2)}
+.perfil-nums b{font:800 1.05rem var(--titulo);color:var(--txt);margin-right:4px}
+.foto-ed{display:flex;align-items:center;gap:16px;margin-bottom:12px}
+.foto-ed .av{width:84px;height:84px;font-size:1.4rem}
+@media (max-width:820px){.w-nav{left:70px;right:8px;padding:6px;gap:6px}.w-secao{display:none}.w-dir .sync{display:none}.w-abas button{padding:7px 10px;font-size:.78rem}}
 @media (max-width:1000px){.feed-grade{grid-template-columns:1fr}.lado{position:static;max-height:none}}
 @media (max-width:820px){.topo{position:relative;top:0}.nav{order:3;width:100%;overflow-x:auto;flex-wrap:nowrap;margin:0}.novas{top:10px}}
 @media (max-width:560px){body{padding:8px}.nav button .rot,.nav button .breve{display:none}.comp{grid-template-columns:1fr}.comp>.av{display:none}.comp-pe .ferr span{display:none}.post{padding:13px 12px 8px}}
 </style>
 </head>
 <body>
-<div class="app">
-  <header class="topo vidro vidro-borda-viva">
-    <div class="marca"><span id="logo"></span><span><b>WEDUCA</b></span></div>
-    <nav class="nav" id="nav"></nav>
-    <div class="dir"><span id="secoes" style="display:flex;gap:6px"></span><span class="sync" id="sync"><i></i><span>conectando…</span></span><button type="button" class="btn-ic" id="btAtualizar" title="Recarregar"></button></div>
-  </header>
-  <main id="main"></main>
-</div>
+<button type="button" class="w-bolinha" id="wBol" title="Seções do WEDUCA" aria-label="Abrir as seções do WEDUCA"><span>E</span></button>
+<aside class="w-sb" id="wSb" aria-label="Seções do WEDUCA"><div class="w-marca"><b>WEDUCA</b><small>seções</small></div><nav class="w-lista" id="wLista"></nav><button type="button" class="w-eu" id="wEu"></button></aside>
+<div class="w-veu" id="wVeu"></div>
+<header class="w-nav vidro" id="wNav"><button type="button" class="w-secao" id="wSecao" title="Seções do WEDUCA"></button><div class="w-abas" id="wAbas" role="tablist"></div>
+  <div class="w-dir"><span class="sync" id="sync"><i></i><span>conectando…</span></span><button type="button" class="btn-ic" id="btAtualizar" title="Recarregar"></button><button type="button" class="w-av" id="wAv" title="Meu perfil"></button></div></header>
+<div class="app"><main id="main"></main></div>
 <script src="/static/aurora.js?v=6"></script>
 <script>
 (() => {
@@ -376,7 +452,6 @@ Object.assign(A.ICONES, {
   olho: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
 });
 A.fundo();
-document.getElementById("logo").outerHTML = A.orbe("chapeu", "#f0cb4e");
 document.querySelector('link[rel="icon"]').href = A.ATOMO_SVG;
 $("#btAtualizar").innerHTML = svg("repetir");
 function $(s, r = document) { return r.querySelector(s); }
@@ -384,8 +459,12 @@ function $$(s, r = document) { return [...r.querySelectorAll(s)]; }
 
 /* ═════════ estado ═════════ */
 const API = "/api/weduca";
-const S = { aba: "feed", sub: "", tipo: "", eu: null, posts: [], mais: false, carregando: false, agora: "", filtro: "", q: "" };
-const SECOES = [["feed", "Feed", "feed"], ["aprendizagem", "Aprendizagem", "livro"]];   // prontas (as próximas entram aqui e no <meta hub-secoes>)
+const S = { aba: "feed", sub: "", tipo: "", gente: {}, setores: [], extra: [], eu: null, posts: [], mais: false, carregando: false, agora: "", filtro: "", q: "" };
+const SECOES = [   // [id, nome, ícone, descrição, pronta]
+  ["feed", "Feed", "feed", "Publicações da equipe", true], ["aprendizagem", "Aprendizagem", "livro", "Cursos, avaliação e certificado", true],
+  ["noticias", "Notícias", "jornal", "Comunicados da empresa"], ["pesquisas", "Pesquisas", "enquete", "Enquetes e pesquisas"],
+  ["documentos", "Documentos", "pasta2", "Normas, ITs e documentos ISO"], ["resultados", "Resultados", "trofeu", "Metas e indicadores"],
+  ["relatorios", "Relatórios", "grafico", "Números do WEDUCA"]];
 const FILTROS = [["", "Tudo"], ["foto", "Fotos"], ["pdf", "PDFs"], ["video", "Vídeos"]];
 
 function sync(e, t) { const el = $("#sync"); if (!el) return; el.className = "sync " + (e || ""); el.lastElementChild.textContent = t; }
@@ -407,56 +486,180 @@ function quando(iso) {
 }
 const CORES = ["#f0cb4e", "#fb923c", "#34d399", "#22d3ee", "#a78bfa", "#fb7185", "#60a5fa", "#facc15"];
 function hashS(s) { let h = 0; for (const c of String(s || "")) h = (h * 31 + c.charCodeAt(0)) | 0; return Math.abs(h); }
-function avatar(p, pequeno) {
-  const nome = (p && p.nome) || "?";
-  return `<span class="av${pequeno ? " p" : ""}" style="--c:${CORES[hashS(p && p.login) % CORES.length]}" title="${esc(nome)}">${esc(A.iniciais ? A.iniciais(nome) : nome.slice(0, 2).toUpperCase())}</span>`;
+function avatar(p, pequeno, semLink) {
+  const nome = (p && p.nome) || "?", login = p && p.login;
+  const foto = (p && p.foto) || ((S.gente || {})[login] || {}).foto;
+  const link = login && !semLink ? ` data-perfil="${esc(login)}"` : "";
+  return foto ? `<span class="av foto${pequeno ? " p" : ""}"${link} title="${esc(nome)}"><img src="${urlArq(foto)}" alt="" loading="lazy"></span>`
+    : `<span class="av${pequeno ? " p" : ""}"${link} style="--c:${CORES[hashS(login) % CORES.length]}" title="${esc(nome)}">${esc(A.iniciais ? A.iniciais(nome) : nome.slice(0, 2).toUpperCase())}</span>`;
 }
 const tam = (n) => n > 1048576 ? (n / 1048576).toFixed(1).replace(".", ",") + " MB" : Math.max(1, Math.round(n / 1024)) + " KB";
 /** texto com links e #hashtags clicáveis (sempre escapado antes) */
 function rico(t) {
   return esc(t).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>')
-    .replace(/(^|\s)#([\p{L}\p{N}_]{2,40})/gu, '$1<span class="tag" data-tag="$2">#$2</span>');
+    .replace(/(^|\s)#([\p{L}\p{N}_]{2,40})/gu, '$1<span class="tag" data-tag="$2">#$2</span>')
+    .replace(/(^|\s)@([\w.-]{2,40})/g, (x, a, lg) => { const p = (S.gente || {})[lg.toLowerCase()]; return p ? `${a}<span class="mencao" data-perfil="${esc(p.login)}">@${esc(p.nome)}</span>` : x; });
 }
 const urlArq = (id) => `${API}/arquivos/${encodeURIComponent(id)}`;
 const pode = (a) => !!(S.eu && S.eu.pode && S.eu.pode[a]);
 
-/* ═════════ seções e abas ═════════
-   No hub, cada seção (Feed, Aprendizagem…) é um item do menu lateral (bolinha) e as ABAS da seção
-   sobem para a barra de cima do hub (postMessage {hub:"abas"}). Aberto fora do hub, as abas
-   aparecem no topo do próprio módulo. */
+/* ═════════ SHELL DO WEDUCA ═════════
+   O WEDUCA abre numa aba do hub como todo sistema. Dentro dele, a bolinha "E" abre o menu
+   de SEÇÕES (sidebar só do WEDUCA) e a barra de cima mostra a seção e as abas dela. */
 function lsGet(k, d) { try { return localStorage.getItem(k) || d; } catch (_) { return d; } }
-const EMB = !!A.embutido;
-document.body.classList.toggle("em-hub", EMB);
 function subsDe(aba) {
-  if (aba === "aprendizagem") return [["vitrine", "Para você", "livro"], ["andamento", "Em andamento", "relogio"], ["concluidos", "Concluídos", "check"],
-    ["certificados", "Certificados", "trofeu"], ...(pode("cursos") || pode("moderar") ? [["meus", "Meus cursos", "lapis"]] : [])];
-  return [["tudo", "Para você", "feed"], ["meus", "Meus posts", "usuario"], ["salvos", "Salvos", "marcador"], ...(pode("moderar") ? [["analise", "Em análise", "atencao"]] : [])];
+  if (aba === "aprendizagem") return [["vitrine", "Para você"], ["andamento", "Em andamento"], ["concluidos", "Concluídos"], ["certificados", "Certificados"],
+    ...(pode("cursos") || pode("moderar") ? [["meus", "Meus cursos"]] : [])];
+  return [["tudo", "Para você"], ["seguindo", "Seguindo"], ["meus", "Meus posts"], ["salvos", "Salvos"], ["pessoas", "Pessoas"], ...(pode("moderar") ? [["analise", "Em análise"]] : [])];
 }
-function publicarAbas() {
-  const itens = subsDe(S.aba).map(([id, rot, ic]) => ({ id, rot, ic, _ic: ic }));
-  const paraHub = itens.map(({ id, rot }) => ({ id, rot }));   // na barra do hub: só o texto, como no modelo
-  if (EMB) { try { parent.postMessage({ hub: "abas", itens: paraHub, ativa: S.sub }, location.origin); } catch (_) {} }
-  $("#nav").innerHTML = itens.map((s) => `<button type="button" data-sub="${s.id}" class="${s.id === S.sub ? "ativo" : ""}">${svg(s.ic)}<span class="rot">${s.rot}</span></button>`).join("");
-  $("#secoes").innerHTML = SECOES.map(([id, rot, ic]) => `<button type="button" class="btn ${id === S.aba ? "" : "v"} p" data-sec="${id}">${svg(ic)}${rot}</button>`).join("");
+const secaoDe = (id) => SECOES.find((s) => s[0] === id) || SECOES[0];
+function desenharShell() {
+  const [, rot] = secaoDe(S.aba);
+  $("#wSecao").innerHTML = `${svg("lista")}<span>${esc(rot)}</span><small>WEDUCA</small>`;
+  const subs = subsDe(S.aba);
+  const ind = $("#wInd"), de = ind ? [ind.style.left, ind.style.width] : null;
+  $("#wAbas").innerHTML = subs.map(([id, r]) => `<button type="button" data-sub="${id}" class="${id === S.sub ? "ativa" : ""}">${r}</button>`).join("") + `<span class="w-ind" id="wInd"></span>`;
+  if (de && de[1]) { const n = $("#wInd"); n.style.transition = "none"; n.style.left = de[0]; n.style.width = de[1]; void n.offsetWidth; n.style.transition = ""; }
+  posInd(); requestAnimationFrame(posInd);
+  $("#wLista").innerHTML = SECOES.map(([id, r, ic, desc, pronta], i) => `<button type="button" class="w-sis ${id === S.aba ? "ativo" : ""}" data-sec="${id}" style="--i:${i}" ${pronta ? "" : "disabled"}>
+    <span class="ic">${svg(ic)}</span><span style="min-width:0"><b>${r}</b><small>${desc}</small></span>${pronta ? "" : '<span class="breve">em breve</span>'}</button>`).join("");
+  $("#wEu").innerHTML = `${avatar(S.eu, true, true)}<span><b>${esc(S.eu.nome)}</b><small>${esc([S.eu.cargo, S.eu.setor].filter(Boolean).join(" · ") || "Meu perfil")}</small></span>`;
+  $("#wAv").innerHTML = avatar(S.eu, true, true);
 }
-$("#nav").addEventListener("click", (e) => { const b = e.target.closest("[data-sub]"); if (b) irSub(b.dataset.sub); });
-$("#secoes").addEventListener("click", (e) => { const b = e.target.closest("[data-sec]"); if (b) { S.aba = b.dataset.sec; S.sub = ""; irSub(""); } });
-addEventListener("message", (e) => { if (e.origin === location.origin && e.data && e.data.hub === "aba") irSub(String(e.data.id)); });
+function posInd() { const a = $("#wAbas .ativa"), n = $("#wInd"); if (a && n) { n.style.left = a.offsetLeft + "px"; n.style.width = a.offsetWidth + "px"; } }
+addEventListener("resize", posInd);
+const abrirSb = () => document.body.classList.add("sb-on"), fecharSb = () => document.body.classList.remove("sb-on");
+$("#wBol").onclick = () => (document.body.classList.contains("sb-on") ? fecharSb() : abrirSb());
+$("#wSecao").onclick = abrirSb;
+$("#wVeu").onclick = fecharSb;
+$("#wEu").onclick = () => { fecharSb(); abrirPerfil(S.eu.login); };
+$("#wAv").onclick = () => abrirPerfil(S.eu.login);
+addEventListener("keydown", (e) => { if (e.key === "Escape") fecharSb(); });
+$("#wLista").addEventListener("click", (e) => { const b = e.target.closest("[data-sec]"); if (!b || b.disabled) return; fecharSb(); if (b.dataset.sec !== S.aba) { S.aba = b.dataset.sec; trocar(""); } });
+$("#wAbas").addEventListener("click", (e) => { const b = e.target.closest("[data-sub]"); if (b && b.dataset.sub !== S.sub) trocar(b.dataset.sub); });
+/** troca de aba/seção: a tela atual ENCOLHE e a nova EXPANDE */
+async function trocar(id) {
+  const m = $("#main");
+  if (m.childElementCount && m.animate) await m.animate([{ opacity: 1, transform: "none", filter: "none" }, { opacity: 0, transform: "scale(.94)", filter: "blur(8px)" }], { duration: 240, easing: "cubic-bezier(.4,0,.2,1)" }).finished.catch(() => {});
+  irSub(id);
+  m.animate?.([{ opacity: 0, transform: "scale(1.05)", filter: "blur(8px)" }, { opacity: 1, transform: "none", filter: "none" }], { duration: 520, easing: "cubic-bezier(.16,1,.3,1)" });
+}
 function irSub(id) {
   const subs = subsDe(S.aba).map((x) => x[0]);
   S.sub = subs.includes(id) ? id : subs[0];
   try { localStorage.setItem("wd.weduca.aba", S.aba); } catch (_) {}
-  publicarAbas();
-  $("#main").animate?.([{ opacity: 0, transform: "scale(1.02)", filter: "blur(6px)" }, { opacity: 1, transform: "none", filter: "none" }], { duration: 450, easing: "cubic-bezier(.16,1,.3,1)" });
+  desenharShell();
   scrollTo({ top: 0 });
   if (S.aba === "feed") telaFeed(); else telaAprender();
 }
-/** leva para outra seção do WEDUCA (no hub: abre a aba daquela seção, direto no item) */
+/** leva para outra seção do WEDUCA, direto num item (#post=… / #curso=…) */
 function irPara(sec, hash) {
   if (sec === S.aba) { location.hash = hash; return; }
-  if (EMB) { try { parent.postMessage({ hub: "abrir", id: "weduca-" + sec, hash }, location.origin); } catch (_) {} return; }
-  S.aba = sec; irSub(""); setTimeout(() => { location.hash = hash; }, 300);
+  S.aba = sec; trocar(""); setTimeout(() => { location.hash = hash; }, 420);
 }
+
+/* ═════════ pessoas e perfis ═════════ */
+async function carregarGente() {
+  try { const r = await api("/perfis"); S.gente = Object.fromEntries(r.pessoas.map((p) => [p.login, p])); S.setores = r.setores; } catch (_) { S.gente = S.gente || {}; }
+}
+async function telaPessoas() {
+  $("#main").innerHTML = `<div class="cont"><div class="cab-sec"><h2>Pessoas</h2><button type="button" class="btn v" data-meu-perfil>${svg("lapis")}Meu perfil</button></div>
+    <div class="filtros"><div class="chips" id="pSet"></div><label class="busca">${svg("busca")}<input class="entrada" id="pQ" placeholder="Buscar por nome, cargo ou setor" autocomplete="off" value="${esc(S.pq || "")}"></label></div>
+    <div class="pessoas-g" id="pLista" style="margin-top:14px"><div class="carregar">carregando…</div></div></div>`;
+  const pintar = async () => {
+    let r; try { r = await api(`/perfis?q=${encodeURIComponent(S.pq || "")}&setor=${encodeURIComponent(S.pset || "")}`); } catch (e) { $("#pLista").innerHTML = `<div class="vazio vidro">${esc(e.message)}</div>`; return; }
+    $("#pSet").innerHTML = [["", "Todos"], ...r.setores.map((x) => [x, x])].map(([v, t]) => `<button type="button" class="chip ${v === (S.pset || "") ? "ativo" : ""}" data-set="${esc(v)}">${esc(t)}</button>`).join("");
+    $("#pLista").innerHTML = r.pessoas.length ? r.pessoas.map((p) => `<div class="pessoa-c vidro" data-perfil="${esc(p.login)}">${avatar(p)}<b>${esc(p.nome)}${p.sou_eu ? " (você)" : ""}</b>
+      <small>${esc([p.cargo, p.setor].filter(Boolean).join(" · ") || "—")}</small>${p.bio ? `<p>${esc(p.bio)}</p>` : ""}
+      <span class="nums">${p.posts} ${p.posts === 1 ? "publicação" : "publicações"} · ${p.seguidores} ${p.seguidores === 1 ? "seguidor" : "seguidores"}</span>
+      ${p.sou_eu ? `<button type="button" class="btn v p" data-meu-perfil>${svg("lapis")}Editar</button>` : `<button type="button" class="btn ${p.sigo ? "v" : ""} p" data-seguir="${esc(p.login)}">${p.sigo ? "Seguindo ✓" : "Seguir"}</button>`}</div>`).join("")
+      : `<div class="vazio vidro"><b>Ninguém encontrado</b>Tente outro nome ou setor.</div>`;
+  };
+  $("#pSet").addEventListener("click", (e) => { const b = e.target.closest("[data-set]"); if (b) { S.pset = b.dataset.set; pintar(); } });
+  let tq; $("#pQ").addEventListener("input", (e) => { clearTimeout(tq); tq = setTimeout(() => { S.pq = e.target.value.trim(); pintar(); }, 300); });
+  pintar();
+}
+async function seguir(login, b) {
+  try {
+    const r = await api(`/perfis/${encodeURIComponent(login)}/seguir`, { method: "POST" });
+    if (S.gente[login]) S.gente[login].sigo = r.sigo;
+    if (b) { b.textContent = r.sigo ? "Seguindo ✓" : "Seguir"; b.classList.toggle("v", r.sigo); }
+    A.toast(r.sigo ? `Seguindo ${esc((S.gente[login] || {}).nome || login)} — as publicações aparecem em “Seguindo”.` : "Deixou de seguir.");
+  } catch (e) { A.toast("⚠️ " + esc(e.message)); }
+}
+async function abrirPerfil(login) {
+  let p; try { p = await api(`/perfis/${encodeURIComponent(login)}`); } catch (e) { return A.toast("⚠️ " + esc(e.message)); }
+  const md = A.modal({ titulo: p.nome, icone: "usuario", cor: "#f0cb4e", largura: 1000, html: `<div class="perfil-cab">${arte("perfil" + p.login, "usuario")}</div>
+    <div class="perfil-top">${avatar(p, false, true)}<div><h2>${esc(p.nome)}</h2><div style="color:var(--txt2)">${esc([p.cargo, p.setor].filter(Boolean).join(" · ") || "Sem cargo/setor ainda")}</div></div>
+      <div class="acs">${p.sou_eu ? `<button type="button" class="btn" data-meu-perfil>${svg("lapis")}Editar perfil</button>` : `<button type="button" class="btn ${p.sigo ? "v" : ""}" data-seguir="${esc(p.login)}">${p.sigo ? "Seguindo ✓" : "Seguir"}</button>`}</div></div>
+    ${p.bio ? `<p style="margin:0 0 6px;color:var(--txt2);white-space:pre-wrap">${esc(p.bio)}</p>` : ""}
+    <div class="perfil-nums"><span><b>${p.posts}</b>publicações</span><span><b>${p.curtidas}</b>curtidas recebidas</span><span><b>${p.seguidores}</b>seguidores</span><span><b>${p.seguindo}</b>seguindo</span>
+      <span><b>${p.na_base}</b>na base da IA</span>${p.cursos_criados ? `<span><b>${p.cursos_criados}</b>cursos criados</span>` : ""}<span><b>${p.certificados.length}</b>certificados</span></div>
+    ${p.certificados.length ? `<h3 style="font:800 1.05rem var(--titulo);margin:0 0 10px">Certificados</h3><div class="certs" style="margin-bottom:18px">${p.certificados.map((c) => `<div class="cert-c vidro"><span class="ic">${svg("trofeu")}</span><span><b>${esc(c.curso || "")}</b><small>${new Date(c.concluido_em).toLocaleDateString("pt-BR")} · código ${esc(c.codigo || "")}</small></span></div>`).join("")}</div>` : ""}
+    <h3 style="font:800 1.05rem var(--titulo);margin:0 0 10px">Publicações</h3><div class="pilha" id="perfPosts"><div class="carregar">carregando…</div></div>` });
+  try {
+    const r = await api(`/feed?filtro=${encodeURIComponent("autor:" + p.login)}&n=20`);
+    S.extra = r.posts;
+    md.el.querySelector("#perfPosts").innerHTML = r.posts.length ? r.posts.map(htmlPost).join("") : `<div class="vazio">Nenhuma publicação ainda.</div>`;
+  } catch (_) {}
+}
+function editarMeuPerfil() {
+  let foto = S.eu.foto || null;
+  const md = A.modal({ titulo: "Meu perfil", icone: "usuario", cor: "#f0cb4e", largura: 640, html: `<div class="foto-ed" id="mpFoto"></div><input type="file" id="mpF" accept="image/*" hidden>
+      <div class="lin2"><label class="campo">Cargo<input id="mpCargo" maxlength="60" value="${esc(S.eu.cargo || "")}" placeholder="Ex.: Analista de qualidade"></label>
+      <label class="campo">Setor<input id="mpSetor" maxlength="60" list="mpSets" value="${esc(S.eu.setor || "")}" placeholder="Ex.: Qualidade"><datalist id="mpSets">${(S.setores || []).map((x) => `<option value="${esc(x)}">`).join("")}</datalist></label></div>
+      <label class="campo">Sobre você<textarea id="mpBio" rows="3" maxlength="400" placeholder="O que você faz, no que pode ajudar a equipe">${esc(S.eu.bio || "")}</textarea></label>`,
+    botoes: [{ rotulo: "Cancelar" }, { rotulo: "Salvar", icone: "check", classe: "btn", principal: true, acao: async () => {
+      const corpo = { foto, cargo: $("#mpCargo").value, setor: $("#mpSetor").value, bio: $("#mpBio").value };
+      try { await api("/perfil", { method: "PUT", body: corpo }); Object.assign(S.eu, corpo); await carregarGente(); desenharShell(); A.toast("Perfil atualizado."); if (S.sub === "pessoas") telaPessoas(); }
+      catch (e) { A.toast("⚠️ " + esc(e.message)); return false; }
+    } }] });
+  const pintar = () => {
+    $("#mpFoto", md.el).innerHTML = `${avatar({ nome: S.eu.nome, login: S.eu.login + " ", foto }, false, true)}<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn v" id="mpB">${svg("imagem")}${foto ? "Trocar foto" : "Enviar foto"}</button>${foto ? `<button type="button" class="btn v" id="mpX">${svg("fechar")}Tirar</button>` : ""}</div>`;
+    $("#mpB", md.el).onclick = () => $("#mpF", md.el).click();
+    $("#mpX", md.el)?.addEventListener("click", () => { foto = null; pintar(); });
+  };
+  pintar();
+  $("#mpF", md.el).onchange = async (e) => { const f = e.target.files[0]; e.target.value = ""; if (!f) return; try { A.toast("Enviando a foto…"); foto = (await subirArquivo(f, "foto")).id; pintar(); } catch (err) { A.toast("⚠️ " + esc(err.message)); } };
+}
+document.addEventListener("click", (e) => {
+  const s = e.target.closest("[data-seguir]"); if (s) { e.stopPropagation(); return seguir(s.dataset.seguir, s); }
+  if (e.target.closest("[data-meu-perfil]")) { e.stopPropagation(); return editarMeuPerfil(); }
+  const pf = e.target.closest("[data-perfil]"); if (pf) return abrirPerfil(pf.dataset.perfil);
+}, true);
+
+/* ═════════ @menção: digite @ no texto ou no comentário e escolha a pessoa ═════════ */
+const MEN = { el: null, lista: [], sel: 0 };
+const caixaMen = document.createElement("div"); caixaMen.className = "mencoes vidro"; document.body.appendChild(caixaMen);
+function fecharMen() { caixaMen.classList.remove("on"); MEN.el = null; }
+document.addEventListener("input", (e) => {
+  const el = e.target;
+  if (!el.matches("#tx, .com-novo input, #duvIn")) return;
+  const antes = el.value.slice(0, el.selectionStart), m = /(^|\s)@([\w.-]{0,30})$/.exec(antes);
+  if (!m) return fecharMen();
+  const q = m[2].toLowerCase();
+  MEN.lista = Object.values(S.gente || {}).filter((p) => !q || p.login.includes(q) || String(p.nome).toLowerCase().includes(q)).slice(0, 6);
+  if (!MEN.lista.length) return fecharMen();
+  MEN.el = el; MEN.sel = 0; MEN.ini = el.selectionStart - m[2].length - 1;
+  caixaMen.innerHTML = MEN.lista.map((p, i) => `<button type="button" class="${i ? "" : "sel"}" data-men="${i}">${avatar(p, true, true)}<span><b>${esc(p.nome)}</b><small>@${esc(p.login)}</small></span></button>`).join("");
+  const r = el.getBoundingClientRect();
+  Object.assign(caixaMen.style, { left: Math.min(r.left, innerWidth - 330) + "px", top: (r.bottom + 6 + 260 > innerHeight ? r.top - 6 - Math.min(260, MEN.lista.length * 50) : r.bottom + 6) + "px" });
+  caixaMen.classList.add("on");
+});
+function escolherMen(i) {
+  const el = MEN.el, p = MEN.lista[i]; if (!el || !p) return;
+  const fim = el.selectionStart;
+  el.value = el.value.slice(0, MEN.ini) + "@" + p.login + " " + el.value.slice(fim);
+  const pos = MEN.ini + p.login.length + 2; el.setSelectionRange(pos, pos); el.focus(); fecharMen();
+}
+caixaMen.addEventListener("mousedown", (e) => { const b = e.target.closest("[data-men]"); if (b) { e.preventDefault(); escolherMen(+b.dataset.men); } });
+document.addEventListener("keydown", (e) => {
+  if (!MEN.el || !caixaMen.classList.contains("on")) return;
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); MEN.sel = (MEN.sel + (e.key === "ArrowDown" ? 1 : -1) + MEN.lista.length) % MEN.lista.length; $$("[data-men]", caixaMen).forEach((b, i) => b.classList.toggle("sel", i === MEN.sel)); }
+  else if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); e.stopImmediatePropagation(); escolherMen(MEN.sel); }
+  else if (e.key === "Escape") fecharMen();
+}, true);
+document.addEventListener("focusout", () => setTimeout(() => { if (!caixaMen.matches(":hover")) fecharMen(); }, 150));
 
 /* ═════════ FEED ═════════ */
 const ICP = (p) => p.video ? "youtube" : (p.midias || []).some((m) => m.kind === "pdf") ? "pdf" : (p.midias || []).some((m) => m.kind === "foto") ? "imagem" : "feed";
@@ -484,9 +687,10 @@ function pendencias(cursos, d) {
   return `<div class="edk-mini vidro"><h3>${svg("alvo")}Suas pendências</h3>${lst.join("") || `<div class="edk-pend" style="cursor:default"><span class="ic">${svg("check")}</span><span><b>Nada pendente</b><small>Cursos obrigatórios e o que você começou aparecem aqui</small></span></div>`}</div>`;
 }
 async function telaFeed() {
+  if (S.sub === "pessoas") return telaPessoas();
   const tudo = S.sub === "tudo";
   S.filtro = tudo ? (S.tipo || "") : S.sub; S.posts = []; S.mais = false;
-  const titulo = { meus: "Meus posts", salvos: "Salvos", analise: "Em análise" }[S.sub];
+  const titulo = { seguindo: "Seguindo", meus: "Meus posts", salvos: "Salvos", analise: "Em análise" }[S.sub];
   $("#main").innerHTML = `${tudo ? `<section class="edk-hero" id="fHero"><div class="carregar" style="position:relative;z-index:2">carregando…</div></section>` : ""}
     <div class="cont">${titulo ? `<div class="cab-sec"><h2>${titulo}</h2>${pode("publicar") ? `<button type="button" class="btn" data-nova>${svg("mais")}Nova publicação</button>` : ""}</div>` : ""}
       ${tudo ? `<div id="fAlta"></div>` : ""}
@@ -546,7 +750,7 @@ document.addEventListener("click", (e) => {
 /* ═════════ editor de postagem (compositor e edição) ═════════ */
 function editor(box, post, aoSalvar, fechar) {
   const st = { midias: [...((post && post.midias) || [])], enviando: 0, video: !!(post && post.video) };
-  box.innerHTML = `<div class="comp">${avatar(S.eu)}<div>
+  box.innerHTML = `<div class="comp">${avatar(S.eu, false, true)}<div>
       <textarea id="tx" placeholder="Compartilhe um conhecimento, uma dica, um procedimento… Use #assunto para organizar.">${esc((post && post.texto) || "")}</textarea>
       <div class="video-campos" ${st.video ? "" : "hidden"}>
         <input class="entrada" id="vurl" placeholder="Link do vídeo no YouTube (canal da King Star)" value="${esc((post && post.video && post.video.url) || "")}">
@@ -631,7 +835,7 @@ function htmlPost(p) {
   const nf = Math.min(fotos.length, 4);
   const longo = (p.texto || "").length > 520 || (p.texto || "").split("\n").length > 7;
   return `<article class="post vidro" data-id="${esc(p.id)}">
-    <div class="p-cab">${avatar(p.autor)}<div class="quem"><b>${esc((p.autor || {}).nome)}</b>
+    <div class="p-cab">${avatar(p.autor)}<div class="quem"><b data-perfil="${esc((p.autor || {}).login || "")}">${esc((p.autor || {}).nome)}</b>
       <small>${quando(p.em)}${p.editado_em ? " · editado" : ""}
         ${p.base ? `<span class="selo base" title="A IA do hub usa esta postagem para responder">${svg("ia")}base da IA</span>` : `<span class="selo feed">só no feed</span>`}
         ${p.revisado ? `<span class="selo rev">revisada</span>` : ""}${p.analise ? `<span class="selo ana">em análise</span>` : ""}</small></div>
@@ -656,11 +860,11 @@ function htmlPost(p) {
     </div>
     <div class="coments">${p.n_coment > p.comentarios.length ? `<button type="button" class="ver-todos" data-a="todos">Ver os ${p.n_coment} comentários</button>` : ""}
       ${p.comentarios.map(htmlCom).join("")}</div>
-    ${pode("comentar") ? `<div class="com-novo">${avatar(S.eu, true)}<input class="entrada" placeholder="Escreva um comentário… (Enter envia)" maxlength="3000"><button type="button" class="btn-ic" data-a="enviar" title="Enviar">${svg("seta")}</button></div>` : ""}
+    ${pode("comentar") ? `<div class="com-novo">${avatar(S.eu, true, true)}<input class="entrada" placeholder="Escreva um comentário… (Enter envia)" maxlength="3000"><button type="button" class="btn-ic" data-a="enviar" title="Enviar">${svg("seta")}</button></div>` : ""}
   </article>`;
 }
 function htmlCom(c) {
-  return `<div class="com" data-c="${esc(c.id)}">${avatar(c.autor, true)}<div class="bal"><b>${esc((c.autor || {}).nome)}</b><small>${quando(c.em)}</small>
+  return `<div class="com" data-c="${esc(c.id)}">${avatar(c.autor, true)}<div class="bal"><b data-perfil="${esc((c.autor || {}).login || "")}">${esc((c.autor || {}).nome)}</b><small>${quando(c.em)}</small>
     ${c.pode_mexer ? `<button type="button" class="xc" data-a="xcom" title="Apagar comentário">×</button>` : ""}<p>${rico(c.texto)}</p></div></div>`;
 }
 function desenharLista() {
@@ -671,7 +875,7 @@ function desenharLista() {
   } else l.innerHTML = S.posts.map(htmlPost).join("");
   $("#fim").textContent = S.posts.length ? (S.mais ? "carregando mais…" : "Você viu tudo 🎉") : "";
 }
-const postDe = (el) => S.posts.find((p) => p.id === el.closest("[data-id]")?.dataset.id) || S.aberto;
+const postDe = (el) => { const id = el.closest("[data-id]")?.dataset.id; return S.posts.find((p) => p.id === id) || (S.extra || []).find((p) => p.id === id) || S.aberto; };
 function trocarPost(p) {
   const i = S.posts.findIndex((x) => x.id === p.id);
   if (i >= 0) S.posts[i] = p;
@@ -959,7 +1163,7 @@ function player(V, aid) {
         ${C.status === "publicado" || C.pode_editar ? `<button type="button" class="btn ${feita ? "v" : ""}" data-p="concluir">${svg("check")}${feita ? "Concluída ✓" : prox ? "Concluir e ir para a próxima" : "Concluir a aula"}</button>` : ""}
         ${prox ? `<button type="button" class="btn v" data-p="prox">Próxima${svg("avancar")}</button>` : ""}</div>
       <div class="duvidas"><h4>${svg("balao")}Dúvidas e comentários da aula <small style="font-weight:500;color:var(--txt3)">(públicos — entram na base da IA)</small></h4><div class="coments" id="duvL"><div class="carregar">carregando…</div></div>
-        ${pode("comentar") ? `<div class="com-novo">${avatar(S.eu, true)}<input class="entrada" id="duvIn" placeholder="Pergunte ou complemente a aula… (Enter envia)" maxlength="3000"><button type="button" class="btn-ic" data-p="duv">${svg("seta")}</button></div>` : ""}</div>
+        ${pode("comentar") ? `<div class="com-novo">${avatar(S.eu, true, true)}<input class="entrada" id="duvIn" placeholder="Pergunte ou complemente a aula… (Enter envia)" maxlength="3000"><button type="button" class="btn-ic" data-p="duv">${svg("seta")}</button></div>` : ""}</div>
     </div>
     <aside class="lado-cur"><div class="box"><h4>${svg("livro")}${esc(C.titulo)}</h4><div class="barra-prog" style="margin-bottom:10px"><i style="width:${C.pct}%"></i></div>
       <div class="aulas-l">${C.aulas.map((x, k) => `<button type="button" class="aula-i ${C.feitas.includes(x.id) ? "feita" : ""} ${x.id === aid ? "atual" : ""}" data-aula="${esc(x.id)}"><span class="n">${C.feitas.includes(x.id) ? "✓" : k + 1}</span><span style="min-width:0"><b>${esc(x.titulo)}</b><small>${ROT_T[x.tipo]}${x.minutos ? " · " + durTxt(x.minutos) : ""}</small></span></button>`).join("")}</div>
@@ -1221,15 +1425,17 @@ function editorAula(cid, a, depois) {
 }
 
 /* ═════════ início ═════════ */
-$("#btAtualizar").addEventListener("click", () => irSub(S.sub));
+$("#btAtualizar").addEventListener("click", async () => { await carregarGente(); irSub(S.sub); });
 (async () => {
   try { S.eu = await api("/me"); }
   catch (e) {
     $("#main").innerHTML = `<div class="cont"><div class="vazio vidro">${svg("cadeado")}<b>${e.status === 403 ? "Sem acesso ao WEDUCA" : "WEDUCA indisponível"}</b>${esc(e.message)}${e.status === 403 ? "<br>Peça ao administrador em Configurações → Usuários." : ""}</div></div>`;
     return;
   }
+  await carregarGente();
   const s = new URLSearchParams(location.search).get("s");
   S.aba = s === "aprendizagem" || (!s && /curso=|aula=/.test(location.hash)) ? "aprendizagem" : s === "feed" ? "feed" : lsGet("wd.weduca.aba", "feed");
+  if (!SECOES.some((x) => x[0] === S.aba && x[4])) S.aba = "feed";
   irSub("");
   lerHash();
 })();

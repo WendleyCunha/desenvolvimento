@@ -273,8 +273,7 @@ textarea.ag-f{min-height:130px;resize:vertical}
   /** abre a postagem no módulo WEDUCA (aba do túnel), direto nela */
   function abrirWeduca(h) {
     if (!h) return;
-    const sec = /^(curso|aula)=/.test(h) ? 'weduca-aprendizagem' : 'weduca-feed';   // cada seção do WEDUCA é um item do menu
-    try { window.postMessage({ hub: 'abrir', id: sec, hash: h }, location.origin); } catch (_) {}
+    try { window.postMessage({ hub: 'abrir', id: 'weduca', hash: h }, location.origin); } catch (_) {}   // o WEDUCA leva à seção certa
   }
 
   function bolha(cls, html) {
