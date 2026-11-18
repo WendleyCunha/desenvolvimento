@@ -52,7 +52,7 @@ import time
 from typing import Callable
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 import banco
 
@@ -203,6 +203,20 @@ class _Empresas:
 
 
 EMPRESAS = _Empresas()
+
+
+# Primeiros pedaços de endereço que o hub já usa (o main.py completa com as rotas): empresa não pode ter esses nomes
+RESERVADOS = {"api", "m", "static", "login", "configuracoes", "cliente", "motorista", "relatorios", "entrega", "web",
+              "healthz", "principal", "app", "admin", "super", "e"}
+
+
+def manifesto_publico(arquivo, raiz: str) -> Response:
+    """manifest.webmanifest de um app público, com o começo de link da empresa (o app instalado abre na empresa certa)."""
+    txt = arquivo.read_text(encoding="utf-8")
+    pre = banco.prefixo_publico()
+    if pre:
+        txt = txt.replace(f'"{raiz}', f'"{pre}{raiz}')
+    return Response(txt, media_type="application/manifest+json", headers={"Cache-Control": "no-cache"})
 
 
 def empresa_de(u: dict | None) -> str:
@@ -422,7 +436,7 @@ def eu(request: Request, modulo: str = ""):
     u = exigir_usuario(request)
     e = EMPRESAS.obter(banco.empresa_atual()) or {}
     saida = {"usuario": publico(u), "preferencias": u.get("preferencias") or {}, "banco": banco.configurado(),
-             "empresa": {"id": banco.empresa_atual(), "nome": e.get("nome") or banco.empresa_atual()}}
+             "empresa": {"id": banco.empresa_atual(), "nome": e.get("nome") or banco.empresa_atual(), "base": banco.prefixo_publico()}}
     if modulo:
         esq = obter_esquema(modulo)
         if esq is None:
@@ -582,7 +596,9 @@ async def admin_permissao(request: Request):
 # ── super ADM: empresas ("Duplicar sistema") ────────────────────────────────
 def _empresa_publica(eid: str, e: dict) -> dict:
     us = [u for u in USUARIOS.todos().values() if empresa_de(u) == eid] if banco.configurado() else []
+    pre = banco.prefixo_publico(eid)
     return {"id": eid, "nome": e.get("nome") or eid, "modulos": e.get("modulos"), "ativo": e.get("ativo", True),
+            "links": {"relatorios": f"{pre}/relatorios/", "motorista": f"{pre}/motorista/", "cliente": f"{pre}/cliente/"},
             "principal": eid == banco.PRINCIPAL, "usuarios": len(us), "admins": sum(1 for u in us if u.get("admin")),
             "criado_em": e.get("criado_em", ""), "criado_por": e.get("criado_por", "")}
 
@@ -616,7 +632,7 @@ async def super_criar_empresa(request: Request):
         raise HTTPException(409, "Já existe uma empresa com esse nome.")
     base = _slug_empresa(nome)
     eid, n = base, 2
-    while eid == banco.PRINCIPAL or EMPRESAS.obter(eid):
+    while eid == banco.PRINCIPAL or eid in RESERVADOS or EMPRESAS.obter(eid):
         eid, n = f"{base}-{n}", n + 1
     adm = c.get("admin") or {}
     login = str(adm.get("login", "")).strip().lower()

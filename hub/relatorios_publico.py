@@ -29,6 +29,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, RedirectResponse
 
+import acesso
 import banco
 import secretaria
 import secretaria_regras as R
@@ -45,7 +46,7 @@ CACHE_ANUNCIOS_S = 90         # poupa leitura do Firestore (plano gratuito)
 # ══════════════════════════════════════════════════════════════════════════════
 @router.get("/relatorios", include_in_schema=False)
 def _sem_barra():
-    return RedirectResponse("/relatorios/", status_code=307)
+    return RedirectResponse(banco.prefixo_publico() + "/relatorios/", status_code=307)
 
 
 @router.get("/relatorios/", include_in_schema=False)
@@ -56,14 +57,13 @@ def pagina():
 
 @router.get("/relatorios/manifest.webmanifest", include_in_schema=False)
 def manifesto():
-    return FileResponse(PASTA / "manifest.webmanifest", media_type="application/manifest+json",
-                        headers={"Cache-Control": "no-cache"})
+    return acesso.manifesto_publico(PASTA / "manifest.webmanifest", "/relatorios/")
 
 
 @router.get("/relatorios/sw.js", include_in_schema=False)
 def service_worker():
     return FileResponse(PASTA / "sw.js", media_type="application/javascript",
-                        headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/relatorios/"})
+                        headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": banco.prefixo_publico() + "/relatorios/"})
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -265,7 +265,7 @@ def _ctx_editar(request: Request):
 def anuncios_gestao(request: Request):
     secretaria._contexto(request)
     limpar_cache()
-    return {"anuncios": listar(100), "link": "/relatorios/"}
+    return {"anuncios": listar(100), "link": banco.prefixo_publico() + "/relatorios/"}
 
 
 @router.post("/api/secretaria/anuncios")

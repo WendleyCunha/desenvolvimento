@@ -92,6 +92,10 @@ body{padding:14px;min-height:100vh}
 .emp-c.off{opacity:.55}
 .emp-c .nums{display:flex;gap:14px;font-size:.76rem;color:var(--txt3)}.emp-c .nums b{color:var(--txt);font-size:.95rem;margin-right:3px}
 .emp-acs{display:flex;flex-wrap:wrap;gap:6px;margin-top:auto}
+.emp-links{display:flex;flex-direction:column;gap:5px}
+.emp-links button{display:flex;align-items:center;gap:8px;padding:6px 9px;border-radius:10px;border:1px solid var(--vidro-borda);background:rgba(255,255,255,.03);font-size:.74rem;color:var(--txt2);text-align:left;min-width:0}
+.emp-links button:hover{border-color:rgba(var(--ouro-rgb),.5);color:var(--txt)}
+.emp-links b{flex:none;width:74px;color:var(--txt3);font-weight:600}.emp-links code{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ouro2)}
 .mods-emp{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px;margin-top:10px}
 .mods-emp label{display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:12px;background:rgba(255,255,255,.035);border:1px solid var(--vidro-borda);font-size:.84rem;cursor:pointer}
 .mods-emp label small{display:block;color:var(--txt3);font-size:.7rem}
@@ -531,12 +535,14 @@ async function rDuplicar() {
   elC.innerHTML = `<section class="secao vidro vidro-borda-viva">
     <div class="cab">${A.orbe("copiar", "#f472b6")}<h2>Duplicar sistema</h2>${BANCO ? `<button type="button" class="btn" id="eNova">${svg("mais")}Nova empresa</button>` : ""}</div>
     <p class="desc">Cada empresa é um sistema próprio: <b>os mesmos módulos, mas vazios</b> — sem dados e sem usuários das outras. Você cria a empresa e o <b>administrador dela</b>; ele cuida dos usuários e permissões só de lá.
-      Você, super administrador, entra em qualquer empresa sem sair do sistema (ícone de prédio no topo) e pode mexer em tudo. O login é único no hub inteiro: o mesmo login não pode existir em duas empresas.</p>
+      Você, super administrador, entra em qualquer empresa sem sair do sistema (ícone de prédio no topo) e pode mexer em tudo. O login é único no hub inteiro: o mesmo login não pode existir em duas empresas.
+      Cada empresa tem os <b>próprios links</b> de relatórios, motorista e cliente (com o nome dela no começo) — os da principal continuam os de sempre.</p>
     ${BANCO ? "" : `<div class="alerta"><b>Falta o banco de dados.</b> Configure <code>FIRESTORE_CREDS</code> no Render.</div>`}
     <div class="emp-g">${d.empresas.map((e) => `<div class="emp-c luz ${e.id === d.atual ? "atual" : ""} ${e.ativo ? "" : "off"}">
         <div class="u-top"><span class="av">${A.iniciais(e.nome)}</span><div><b>${esc(e.nome)}</b><small>${e.principal ? "empresa principal · tudo ligado" : esc(e.id) + (e.criado_em ? " · criada em " + esc(e.criado_em.slice(0, 10).split("-").reverse().join("/")) : "")}</small></div>
           ${e.id === d.atual ? `<span class="etq" style="--c:#e8b33d">Você está aqui</span>` : ""}${e.ativo ? "" : `<span class="etq" style="--c:#fb7185">Desativada</span>`}</div>
         <div class="nums"><span><b>${e.usuarios}</b>usuário(s)</span><span><b>${e.admins}</b>admin(s)</span><span><b>${e.principal ? d.modulos.length : (e.modulos || []).length}</b>módulo(s)</span></div>
+        ${e.links ? `<div class="emp-links">${[["relatorios", "Relatórios"], ["motorista", "Motorista"], ["cliente", "Cliente"]].map(([k, t]) => `<button type="button" data-link="${esc(location.origin + e.links[k])}" title="Copiar o link"><b>${t}</b><code>${esc(e.links[k])}</code>${svg("copiar")}</button>`).join("")}</div>` : ""}
         <div class="emp-acs">${e.id === d.atual ? "" : `<button type="button" class="btn p" data-entrar="${esc(e.id)}">${svg("avancar")}Entrar</button>`}
           ${e.principal ? "" : `<button type="button" class="btn v p" data-mods="${esc(e.id)}">${svg("grade")}Módulos</button>`}
           <button type="button" class="btn v p" data-nome="${esc(e.id)}">${svg("lapis")}Renomear</button>
@@ -544,6 +550,10 @@ async function rDuplicar() {
   </section>`;
   const por = (id) => d.empresas.find((x) => x.id === id);
   elC.querySelector("#eNova")?.addEventListener("click", () => novaEmpresa());
+  elC.querySelectorAll("[data-link]").forEach((b) => (b.onclick = async () => {
+    try { await navigator.clipboard.writeText(b.dataset.link); A.toast("✓ Link copiado: " + esc(b.dataset.link), [], { cor: "var(--verde)" }); }
+    catch (_) { A.toast(esc(b.dataset.link)); }
+  }));
   elC.querySelectorAll("[data-entrar]").forEach((b) => (b.onclick = () => entrarEmpresa(b.dataset.entrar)));
   elC.querySelectorAll("[data-mods]").forEach((b) => (b.onclick = () => modulosEmpresa(por(b.dataset.mods), d.modulos)));
   elC.querySelectorAll("[data-nome]").forEach((b) => (b.onclick = () => {

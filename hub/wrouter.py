@@ -460,7 +460,7 @@ def _cookie(resp, pl: str, versao: int, request: Request):
 
 @router.get("/motorista", include_in_schema=False)
 def _mot_barra():
-    return RedirectResponse("/motorista/", status_code=307)
+    return RedirectResponse(banco.prefixo_publico() + "/motorista/", status_code=307)
 
 
 @router.get("/motorista/", include_in_schema=False)
@@ -470,12 +470,12 @@ def pagina_motorista():
 
 @router.get("/motorista/manifest.webmanifest", include_in_schema=False)
 def manifesto_motorista():
-    return FileResponse(PASTA / "manifest.webmanifest", media_type="application/manifest+json", headers={"Cache-Control": "no-cache"})
+    return acesso.manifesto_publico(PASTA / "manifest.webmanifest", "/motorista/")
 
 
 @router.get("/motorista/sw.js", include_in_schema=False)
 def sw_motorista():
-    return FileResponse(PASTA / "sw.js", media_type="application/javascript", headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/motorista/"})
+    return FileResponse(PASTA / "sw.js", media_type="application/javascript", headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": banco.prefixo_publico() + "/motorista/"})
 
 
 @router.post("/api/wrouter/app/login")
@@ -1124,7 +1124,7 @@ def _cargas_do_dia(dia: str) -> list:
 @router.get("/api/wrouter/eu")
 def eu(request: Request):
     q, p = _ctx(request)
-    return {"eu": q, "perm": p}
+    return {"eu": q, "perm": p, "base": banco.prefixo_publico()}   # "" na principal, "/<empresa>" nas outras
 
 
 @router.get("/api/wrouter/ao-vivo")
@@ -1485,7 +1485,7 @@ def links_do_dia(request: Request, data: str = ""):
             for pid in car.get("pedidos") or []:
                 t = link_do_pedido(car, pid)
                 ped = E.ST.dados["pedidos"].get(pid) or {}
-                out.append({"carga": car.get("numero"), "pid": pid, "numero": ped.get("numero"), "cliente": ped.get("cliente_nome"), "link": f"{base}/entrega/{t}" if t else ""})
+                out.append({"carga": car.get("numero"), "pid": pid, "numero": ped.get("numero"), "cliente": ped.get("cliente_nome"), "link": f"{base}{banco.prefixo_publico()}/entrega/{t}" if t else ""})
     return out
 
 

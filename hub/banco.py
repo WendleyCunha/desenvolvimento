@@ -123,6 +123,12 @@ def usar_empresa(eid: str | None):
         _EMPRESA.reset(tk)
 
 
+def prefixo_publico(eid: str | None = None) -> str:
+    """Começo dos links públicos (app do cliente, motorista, relatórios, entrega): "" na principal, "/<empresa>" nas outras."""
+    eid = eid or empresa_atual()
+    return "" if eid == PRINCIPAL else f"/{eid}"
+
+
 def nome_colecao(nome: str, eid: str | None = None) -> str:
     eid = eid or empresa_atual()
     if eid == PRINCIPAL or nome in GLOBAIS:

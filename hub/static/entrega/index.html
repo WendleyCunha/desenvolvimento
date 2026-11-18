@@ -8,6 +8,10 @@
 <meta name="referrer" content="no-referrer">
 <title>Sua entrega</title>
 <link rel="icon" href="/static/app/icone-192.png">
+<script>/* EMPRESAS: aberto como /<empresa>/APP/ → tudo o que o app pede em /api/… vai para /<empresa>/api/… (dados só daquela empresa) */
+(function () { var m = location.pathname.match(/^\/([a-z0-9][a-z0-9-]{1,30})\/(cliente|motorista|relatorios|entrega)(\/|$)/); if (m && /^(cliente|motorista|relatorios|entrega)$/.test(m[1])) m = null; window.HUB_BASE = m ? "/" + m[1] : "";
+  if (!m) return; var f = window.fetch; window.fetch = function (u, o) { return f.call(this, typeof u === "string" && u.indexOf("/api/") === 0 ? window.HUB_BASE + u : u, o); };
+  document.querySelectorAll('link[rel="manifest"]').forEach(function (l) { l.setAttribute("href", window.HUB_BASE + l.getAttribute("href")); }); })();</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
