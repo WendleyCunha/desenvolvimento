@@ -298,3 +298,14 @@ def test_ordem_excluir_e_curso_sem_avaliacao(t):
     como("edu", **CRIADOR)
     assert t.delete(f"/api/weduca/cursos/{c['id']}").status_code == 200
     assert t.get("/api/weduca/cursos").json()["cursos"] == [] and W.aulas_na_base() == []
+
+
+def test_menu_lateral_uma_entrada_por_secao():
+    """WEDUCA aparece no menu como grupo: Feed, Aprendizagem… (mesma página, ?s=; permissão do módulo)."""
+    import main
+    w = next(i for i in main.catalogo() if i["id"] == "weduca")
+    itens = main._no_menu(w)
+    assert [i["id"] for i in itens][:2] == ["weduca-feed", "weduca-aprendizagem"]
+    assert all(i["base"] == "weduca" and i["grupo"] == "WEDUCA" and i["url"].startswith("/m/weduca?s=") for i in itens)
+    assert "secoes" not in itens[0] and "_esquema" not in itens[0]
+    assert len([i for i in main.modulos_com_esquema() if i["id"].startswith("weduca")]) == 1   # Configurações: um item só

@@ -396,7 +396,17 @@ def weduca_destaques(request: Request):
         x["posts"] += 1; x["curtidas"] += len(p.get("curtidas") or [])
     top = sorted(autores.values(), key=lambda x: (-x["posts"], -x["curtidas"]))[:5]
     curtidas = sorted((p for p in posts if p.get("curtidas")), key=lambda p: -len(p.get("curtidas") or []))[:4]
-    return {"pessoas": top, "mais_curtidas": [{"id": p["id"], "autor": p.get("autor"), "texto": (p.get("texto") or (p.get("video") or {}).get("titulo") or "")[:120],
+    # "Em alta no time": o que mais engajou (curtidas + comentários) nos últimos 45 dias; sem nada, as mais recentes
+    from datetime import timedelta
+    corte = (datetime.now() - timedelta(days=45)).isoformat(timespec="seconds")
+    n_com = {}
+    for c in _dados()[1]:
+        if c.get("status", "ativo") == "ativo":
+            n_com[c.get("post_id")] = n_com.get(c.get("post_id"), 0) + 1
+    engaj = lambda p: len(p.get("curtidas") or []) + n_com.get(p["id"], 0)   # noqa: E731
+    alta = sorted((p for p in posts if (p.get("em") or "") >= corte and engaj(p)), key=lambda p: (-engaj(p), p.get("em") or ""))
+    alta += sorted((p for p in posts if p not in alta), key=lambda p: p.get("em") or "", reverse=True)
+    return {"alta": [publico(p, u, pode) for p in alta[:10]], "pessoas": top, "mais_curtidas": [{"id": p["id"], "autor": p.get("autor"), "texto": (p.get("texto") or (p.get("video") or {}).get("titulo") or "")[:120],
                                                "curtidas": len(p.get("curtidas") or [])} for p in curtidas],
             "na_base": sum(1 for p in posts if p.get("base", True)), "total": len(posts),
             "em_analise": sum(1 for p in posts if p.get("analise")) if pode["moderar"] else None}
