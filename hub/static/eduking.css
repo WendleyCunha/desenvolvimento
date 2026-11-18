@@ -262,7 +262,7 @@ html[data-eduking] .hub-casca .sb-rodape .btn-mini{display:grid!important}
 html[data-eduking] .hub-casca .topo{position:fixed;top:10px;left:80px;right:18px;z-index:50;height:auto;gap:14px;padding:8px 10px 8px 18px;border-radius:20px!important}
 html[data-eduking] .hub-casca .edk-secao{display:flex;align-items:center;gap:10px;font:800 18px var(--titulo);white-space:nowrap;color:var(--txt);max-width:28vw;min-width:0}
 html[data-eduking] .hub-casca .edk-secao span{overflow:hidden;text-overflow:ellipsis}
-html[data-eduking] .hub-casca .edk-secao small{font:600 11px var(--sans);color:var(--edk-texto-ouro);letter-spacing:.14em;text-transform:uppercase}
+html[data-eduking] .hub-casca .edk-secao small{font:700 13px var(--sans);color:var(--edk-texto-ouro);letter-spacing:.1em;text-transform:uppercase;overflow:hidden;text-overflow:ellipsis}
 /* abas modernas: trilho + indicador dourado que desliza */
 html[data-eduking] .hub-casca .abas{position:relative;flex:0 1 auto;gap:2px;padding:4px;margin:0 auto;border-radius:14px;max-width:100%;
   background:rgba(var(--edk-l),.06);border:1px solid rgba(var(--edk-l),.1);scroll-behavior:smooth}

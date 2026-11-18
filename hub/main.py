@@ -502,6 +502,9 @@ def home(request: Request):
     return FileResponse(home_html, media_type="text/html", headers=SEM_CACHE)
 
 
+GRUPO_PRINCIPAL = "Parque Aliança"   # grupo do menu que, numa empresa duplicada, ganha o nome dela
+
+
 def _no_menu(i: dict) -> list:
     """Item do menu lateral. Módulo com seções vira um GRUPO com uma entrada por seção (mesma página,
     ?s=<seção>; a permissão continua sendo a do módulo — Configurações mostra um item só)."""
@@ -518,6 +521,9 @@ def api_modulos(request: Request):
     u = acesso.exigir_usuario(request)
     itens = [x for i in catalogo() if acesso.pode_acessar(u, i["id"]) for x in _no_menu(i)]
     e = acesso.EMPRESAS.obter(banco.empresa_atual()) or {}
+    if banco.empresa_atual() != banco.PRINCIPAL:   # nome da empresa no lugar de "Parque Aliança" (menu e cabeçalho)
+        nome = e.get("nome") or banco.empresa_atual()
+        itens = [{**x, "grupo": nome} if x.get("grupo") == GRUPO_PRINCIPAL else x for x in itens]
     return JSONResponse({"versao": VERSAO, "itens": itens, "usuario": acesso.publico(u),
                          "empresa": {"id": banco.empresa_atual(), "nome": e.get("nome") or banco.empresa_atual()}}, headers=SEM_CACHE)
 
