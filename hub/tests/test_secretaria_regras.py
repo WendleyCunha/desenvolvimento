@@ -162,3 +162,25 @@ def test_meta_regular():
     assert t["horas"] == 624 and t["estudos"] == 12 and t["atingiu"] and t["encerrado"]
     t2 = R.totais_ano(membros["Ana Reg"], "Ana Reg", 2026, linhas[:3], meta=600, ate="2025-11")
     assert not t2["atingiu"] and t2["falta"] == 600 - 156 and t2["meses_restantes"] == 9
+
+
+def test_situacao_marcada_a_mao():
+    membros = {"Ana": {"nome_oficial": "Ana"}, "Gabi": {"nome_oficial": "Gabi", "status_manual": {"tipo": "sem_relatorio", "desde": "2026-09"}},
+               "Lidi": {"nome_oficial": "Lidi", "inativo_desde": "2026-09", "status_manual": {"tipo": "inativo", "desde": "2026-09"}},
+               "Rui": {"nome_oficial": "Rui", "inativo_desde": "2025-01", "status_manual": {"tipo": "ativo", "desde": "2026-10"}},
+               "Ze": {"nome_oficial": "Ze", "saiu_em": "2026-09", "status_manual": {"tipo": "ativo", "desde": "2026-01"}}}
+    rels = [{"id": str(i), "nome": n, "mes_chave": "2026-08"} for i, n in enumerate(["Ana", "Gabi", "Lidi"])]
+    rels.append({"id": "r", "nome": "Rui", "mes_chave": "2024-12"})   # Rui parou há muito tempo
+    linhas = R.preparar(rels, membros)
+    part = R.participacoes(linhas)
+    p = R.pendencias("2026-09", linhas, membros, part)
+    assert [x["membro_id"] for x in p["cobrar"]] == ["Ana"]          # Gabi saiu da lista, Lidi inativa, Ze mudou de congregação
+    assert [x["membro_id"] for x in p["sem_relatorio"]] == ["Gabi"] and [x["membro_id"] for x in p["inativos"]] == ["Lidi", "Rui"]
+    assert [x["membro_id"] for x in R.pendencias("2026-10", linhas, membros, part)["cobrar"]] == ["Ana", "Rui"]   # ativado de novo: volta a ser cobrado
+    tela = {mid: R.situacao_tela(m, part.get(mid, set()), "2026-10") for mid, m in membros.items()}
+    assert tela == {"Ana": "ativo", "Gabi": "sem_relatorio", "Lidi": "inativo", "Rui": "ativo", "Ze": "fora"}
+    assert R.situacao(membros["Gabi"], part["Gabi"], "2026-10") == "ativo"   # S-1 continua pela regra dos 6 meses
+    assert R.situacao(membros["Rui"], part["Rui"], "2026-10") == "inativo"   # oficialmente ainda inativo até entregar
+    # entregou depois da marca → a marca deixa de valer
+    part["Gabi"].add("2026-10")
+    assert R.situacao_tela(membros["Gabi"], part["Gabi"], "2026-10") == "ativo"

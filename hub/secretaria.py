@@ -49,7 +49,7 @@ TIPOS_REUNIAO = {"meio": "Reunião do Meio de Semana", "fim": "Reunião do Fim d
 CAMPOS_SENSIVEIS = ["data_nascimento", "data_batismo", "telefone_emergencia"]
 CAMPOS_MEMBRO = ["nome_oficial", "categoria", "genero", "classe", "cargo", "status", "grupo", "data_nascimento",
                  "data_batismo", "telefone_emergencia", "surdo", "cego", "preso", "saiu_em", "saiu_motivo",
-                 "inicio_chave", "mes_inicio", "observacao", "inativo_desde"]
+                 "inicio_chave", "mes_inicio", "observacao", "inativo_desde", "status_manual"]
 GENEROS = ["", "Masculino", "Feminino"]
 CLASSES = ["", "Outras ovelhas", "Ungido"]
 CARGOS = ["Ancião", "Servo ministerial", "Pioneiro regular", "Pioneiro especial", "Missionário em campo"]
@@ -338,7 +338,8 @@ def _membro_saida(mid: str, m: dict, p: dict, part: set[str], atual: str) -> dic
         if _nivel(p, c) == "oculto":
             out.pop(c, None)
     out.update(id=mid, nome_oficial=m.get("nome_oficial") or mid, regular=R.eh_regular(m), cargo=R.cargos(m),
-               situacao=R.situacao(m, part, atual), situacao_anterior=R.situacao(m, part, R.somar(atual, -1)),
+               situacao=R.situacao_tela(m, part, atual), situacao_s1=R.situacao(m, part, atual),
+               situacao_anterior=R.situacao(m, part, R.somar(atual, -1)),
                ultimo=R.ultimo_mes_com_participacao(part, atual), inicio=R.inicio_do_membro(m))
     return _json(out)
 
@@ -620,6 +621,41 @@ async def editar_membro(mid: str, request: Request):
     d.update(atualizado_por=u["login"], atualizado_em=_agora())
     BASE.gravar_membro(mid, d)
     return {"ok": True, "id": mid}
+
+
+STATUS_MANUAL = ("ativo", "sem_relatorio", "inativo", "saiu")
+
+
+@router.post("/membros/{mid}/status")
+async def status_membro(mid: str, request: Request):
+    """Muda a situação à mão: ativo · sem_relatorio (tirar das pendências) · inativo · saiu (mudou de congregação)."""
+    u, p = _contexto(request)
+    _exigir(p, "membros", "mudar a situação de membros")
+    c = await request.json()
+    BASE.atualizar()
+    m = (BASE.membros or {}).get(mid)
+    if m is None:
+        raise HTTPException(404, "Membro não encontrado.")
+    tipo = c.get("status")
+    if tipo not in STATUS_MANUAL:
+        raise HTTPException(400, "Situação inválida.")
+    ch = c.get("chave") if R.chave_valida(c.get("chave")) else _mes_atual()
+    d: dict = {"atualizado_por": u["login"], "atualizado_em": _agora()}
+    if tipo == "saiu":
+        d.update(saiu_em=ch, saiu_motivo=str(c.get("motivo") or m.get("saiu_motivo") or "")[:200], status="Inativo")
+    else:
+        d.update(status_manual={"tipo": tipo, "desde": ch, "por": u["login"], "em": _agora()},
+                 status="Inativo" if tipo == "inativo" else "Ativo")
+        if tipo == "inativo":                  # vale também para o S-1/S-10 (se já estava inativo, mantém o mês antigo)
+            part = R.participacoes(BASE.linhas()).get(mid, set())
+            if R.situacao(m, part, ch) != "inativo":
+                d["inativo_desde"] = ch
+        elif R.saiu_em(m):
+            d.update(saiu_em="", saiu_motivo="")   # voltou para a congregação
+        if tipo == "ativo" and R.inativo_desde(m) and R.distancia(R.inativo_desde(m), ch) < 0:
+            d["inativo_desde"] = ""            # marca de inativo para o futuro perde o sentido
+    BASE.gravar_membro(mid, d)
+    return {"ok": True, "id": mid, "status": tipo, "desde": ch}
 
 
 def _renomear(antigo: str, novo: str, mudancas: dict, u: dict):
