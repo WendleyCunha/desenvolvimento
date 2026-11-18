@@ -38,7 +38,7 @@ def _marcar(col, i, campo, valor, ligar):
 def t(monkeypatch):
     BANCO.clear()
     lista = lambda col: [dict(v, id=k) for k, v in BANCO.get(col, {}).items()]  # noqa: E731
-    W.P.update(listar=lista, ler=_ler, gravar=_gravar, marcar=_marcar)
+    W.P.update(listar=lista, ler=_ler, gravar=_gravar, marcar=_marcar, usuarios=lambda: CONTAS)
     A.P.update(listar=lista, ler=_ler, gravar=_gravar, desde=lambda c, f, d: [], usuarios=lambda: {})
     W.esquecer(); A.esquecer_cache()
     monkeypatch.setattr(W, "_CACHE_SEG", -1)          # sem cache nos testes: cada leitura vê o banco
@@ -62,6 +62,9 @@ def t(monkeypatch):
 
 
 TODOS = {"acessar": True, "publicar": True, "comentar": True}
+LIB = {"weduca": {"acoes": {"acessar": True}}}
+CONTAS = {"ana": {"nome": "Ana Ribeiro", "modulos": LIB}, "bia": {"nome": "Bia Souza", "modulos": LIB},
+          "zeca": {"nome": "Zeca", "modulos": {}}, "velho": {"nome": "Velho", "ativo": False, "modulos": LIB}}
 
 
 def como(login, **acoes):
@@ -300,12 +303,30 @@ def test_ordem_excluir_e_curso_sem_avaliacao(t):
     assert t.get("/api/weduca/cursos").json()["cursos"] == [] and W.aulas_na_base() == []
 
 
-def test_menu_lateral_uma_entrada_por_secao():
-    """WEDUCA aparece no menu como grupo: Feed, Aprendizagem… (mesma página, ?s=; permissão do módulo)."""
+def test_weduca_e_um_item_so_no_menu():
+    """O WEDUCA abre uma aba como todo sistema; as seções ficam no menu próprio dele (o "E")."""
     import main
     w = next(i for i in main.catalogo() if i["id"] == "weduca")
-    itens = main._no_menu(w)
-    assert [i["id"] for i in itens][:2] == ["weduca-feed", "weduca-aprendizagem"]
-    assert all(i["base"] == "weduca" and i["grupo"] == "WEDUCA" and i["url"].startswith("/m/weduca?s=") for i in itens)
-    assert "secoes" not in itens[0] and "_esquema" not in itens[0]
-    assert len([i for i in main.modulos_com_esquema() if i["id"].startswith("weduca")]) == 1   # Configurações: um item só
+    assert main._no_menu(w) == [{k: v for k, v in w.items() if k not in ("_esquema", "secoes")}]
+
+
+def test_perfis_buscar_seguir_e_feed_seguindo(t):
+    como("ana")
+    postar(t, texto="Dica de expedição #doca")
+    como("bia")
+    assert t.put("/api/weduca/perfil", json={"cargo": "Analista", "setor": "Qualidade", "bio": "ISO 9001"}).status_code == 200
+    pess = t.get("/api/weduca/perfis").json()
+    assert [p["login"] for p in pess["pessoas"]][0] == "bia"            # eu primeiro
+    assert {p["login"] for p in pess["pessoas"]} == {"ana", "bia"}       # sem acesso e inativo ficam de fora
+    assert pess["setores"] == ["Qualidade"]
+    assert [p["login"] for p in t.get("/api/weduca/perfis?q=qualidade").json()["pessoas"]] == ["bia"]
+    assert t.get("/api/weduca/feed?filtro=seguindo").json()["posts"] == []
+    assert t.post("/api/weduca/perfis/ana/seguir").json() == {"sigo": True}
+    assert len(t.get("/api/weduca/feed?filtro=seguindo").json()["posts"]) == 1
+    assert t.post("/api/weduca/perfis/bia/seguir").status_code == 400
+    assert t.post("/api/weduca/perfis/zeca/seguir").status_code == 404
+    ana = t.get("/api/weduca/perfis/ana").json()
+    assert ana["posts"] == 1 and ana["seguidores"] == 1 and ana["sigo"] is True and ana["na_base"] == 1
+    assert len(t.get("/api/weduca/feed?filtro=autor:ana").json()["posts"]) == 1
+    assert t.get("/api/weduca/me").json()["setor"] == "Qualidade"
+    assert t.post("/api/weduca/perfis/ana/seguir").json() == {"sigo": False}

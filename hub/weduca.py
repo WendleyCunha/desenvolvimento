@@ -43,6 +43,7 @@ router = APIRouter(prefix="/api/weduca")
 MOD = "weduca"
 COL_POST, COL_COM, COL_ARQ, COL_PARTE = "weduca_posts", "weduca_coment", "weduca_arquivos", "weduca_partes"
 COL_CURSO, COL_AULA, COL_PROG = "weduca_cursos", "weduca_aulas", "weduca_progresso"   # Aprendizagem
+COL_PERFIL = "weduca_perfis"                                                             # perfis (foto, cargo, setor, bio, seguindo)
 
 PARTE = 700_000                     # bytes por pedaço (o documento do Firestore aceita até ~1 MB)
 MAX_FOTO = 3_000_000                # a foto já chega comprimida do navegador
@@ -75,7 +76,11 @@ def _fs_marcar(col: str, doc_id: str, campo: str, valor: str, ligar: bool) -> No
     banco.db().collection(col).document(doc_id).update({campo: op}, timeout=banco.TIMEOUT)
 
 
-P = {"listar": _fs_listar, "ler": _fs_ler, "gravar": _fs_gravar, "marcar": _fs_marcar}
+def _fs_usuarios() -> dict:
+    return acesso.USUARIOS.todos() if banco.configurado() else {}
+
+
+P = {"listar": _fs_listar, "ler": _fs_ler, "gravar": _fs_gravar, "marcar": _fs_marcar, "usuarios": _fs_usuarios}
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -342,7 +347,9 @@ def _tipo(p: dict) -> set:
 @router.get("/me")
 def weduca_me(request: Request):
     u, pode = _ctx(request)
-    return {"login": _eu(u), "nome": u.get("nome") or u.get("login"), "pode": pode}
+    pf = P["ler"](COL_PERFIL, _eu(u)) or {}
+    return {"login": _eu(u), "nome": u.get("nome") or u.get("login"), "pode": pode,
+            "foto": pf.get("foto"), "cargo": pf.get("cargo") or "", "setor": pf.get("setor") or "", "bio": pf.get("bio") or ""}
 
 
 @router.get("/feed")
@@ -358,6 +365,11 @@ def weduca_feed(request: Request, filtro: str = "", q: str = "", antes: str = ""
         lst = [p for p in lst if (p.get("autor") or {}).get("login") == eu]
     elif filtro == "analise":
         lst = [p for p in lst if p.get("analise")]
+    elif filtro == "seguindo":
+        sigo = set((P["ler"](COL_PERFIL, eu) or {}).get("seguindo") or [])
+        lst = [p for p in lst if (p.get("autor") or {}).get("login") in sigo]
+    elif filtro.startswith("autor:"):
+        lst = [p for p in lst if (p.get("autor") or {}).get("login") == filtro[6:].lower()]
     if q.strip():
         import agente
         termos = agente.palavras(q)
@@ -1134,3 +1146,142 @@ def weduca_nova_duvida(aid: str, payload: Comentario, request: Request):
     P["gravar"](COL_COM, cid, x)
     _cache["com"].append(x); esquecer()
     return _com_publico(x, u, pode)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# PERFIS — cada pessoa cuida do próprio (foto, cargo, setor, bio); seguir; buscar pessoas
+# Quem aparece: usuários ativos do hub com acesso ao WEDUCA + quem já publicou ou tem perfil.
+# ══════════════════════════════════════════════════════════════════════════
+def _pessoas() -> dict:
+    """login → {login, nome, foto, cargo, setor, bio, seguindo}"""
+    out: dict = {}
+    try:
+        contas = P["usuarios"]() or {}
+    except Exception as e:   # noqa: BLE001 — sem a lista de usuários, ainda mostra quem publicou/tem perfil
+        print(f"[weduca] usuários indisponíveis: {type(e).__name__}: {e}")
+        contas = {}
+    for login, x in contas.items():
+        if x.get("ativo", True) is False:
+            continue
+        lg = str(login).lower()
+        if acesso.pode_acessar({**x, "login": lg}, MOD):
+            out[lg] = {"login": lg, "nome": x.get("nome") or lg}
+    for p in posts_ativos():
+        a = p.get("autor") or {}
+        if a.get("login"):
+            out.setdefault(a["login"], {"login": a["login"], "nome": a.get("nome") or a["login"]})
+    for pf in P["listar"](COL_PERFIL):
+        lg = pf.get("id")
+        base = out.setdefault(lg, {"login": lg, "nome": pf.get("nome") or lg})
+        base.update({k: pf.get(k) for k in ("foto", "cargo", "setor", "bio", "seguindo") if pf.get(k) is not None})
+        if pf.get("nome"):
+            base["nome"] = pf["nome"]
+    return out
+
+
+def _resumo_pessoa(x: dict, eu: str, seguidores: dict, posts_por: dict) -> dict:
+    return {"login": x["login"], "nome": x.get("nome"), "foto": x.get("foto"), "cargo": x.get("cargo") or "", "setor": x.get("setor") or "",
+            "bio": x.get("bio") or "", "posts": posts_por.get(x["login"], 0), "seguidores": len(seguidores.get(x["login"], [])),
+            "sigo": eu in seguidores.get(x["login"], []), "sou_eu": x["login"] == eu}
+
+
+def _indices(gente: dict) -> tuple:
+    seguidores: dict = {}
+    for x in gente.values():
+        for alvo in x.get("seguindo") or []:
+            seguidores.setdefault(alvo, []).append(x["login"])
+    posts_por: dict = {}
+    for p in posts_ativos():
+        lg = (p.get("autor") or {}).get("login")
+        posts_por[lg] = posts_por.get(lg, 0) + 1
+    return seguidores, posts_por
+
+
+@router.get("/perfis")
+def weduca_perfis(request: Request, q: str = "", setor: str = ""):
+    u, _ = _ctx(request)
+    eu = _eu(u)
+    gente = _pessoas()
+    seguidores, posts_por = _indices(gente)
+    import agente
+    termos = agente.palavras(q) if q.strip() else []
+    lst = []
+    for x in gente.values():
+        alvo = agente.sem_acento(f"{x.get('nome', '')} {x['login']} {x.get('cargo', '')} {x.get('setor', '')}")
+        if termos and not all(t in alvo for t in termos):
+            continue
+        if setor and (x.get("setor") or "") != setor:
+            continue
+        lst.append(_resumo_pessoa(x, eu, seguidores, posts_por))
+    lst.sort(key=lambda r: (not r["sou_eu"], str(r["nome"] or "").lower()))
+    return {"pessoas": lst, "setores": sorted({x.get("setor") for x in gente.values() if x.get("setor")})}
+
+
+@router.get("/perfis/{login}")
+def weduca_perfil(login: str, request: Request):
+    u, _ = _ctx(request)
+    eu, login = _eu(u), login.lower()
+    gente = _pessoas()
+    x = gente.get(login)
+    if not x:
+        raise HTTPException(404, "Pessoa não encontrada no WEDUCA.")
+    seguidores, posts_por = _indices(gente)
+    meus = [p for p in posts_ativos() if (p.get("autor") or {}).get("login") == login]
+    certs = sorted(({"curso": p.get("curso_titulo"), "concluido_em": p.get("concluido_em"), "codigo": p.get("certificado")}
+                    for p in P["listar"](COL_PROG) if p.get("login") == login and p.get("concluido_em")), key=lambda c: c["concluido_em"], reverse=True)
+    return {**_resumo_pessoa(x, eu, seguidores, posts_por),
+            "seguindo": len(x.get("seguindo") or []),
+            "curtidas": sum(len(p.get("curtidas") or []) for p in meus),
+            "na_base": sum(1 for p in meus if p.get("base", True)),
+            "comentarios": sum(1 for c in _dados()[1] if (c.get("autor") or {}).get("login") == login and c.get("status", "ativo") == "ativo"),
+            "cursos_criados": sum(1 for c in cursos_todos() if (c.get("autor") or {}).get("login") == login and c.get("status") == "publicado"),
+            "certificados": certs}
+
+
+class Perfil(BaseModel):
+    foto: Optional[str] = None
+    cargo: str = ""
+    setor: str = ""
+    bio: str = ""
+
+    @field_validator("cargo", "setor")
+    @classmethod
+    def _c(cls, v):
+        return str(v or "").strip()[:60]
+
+    @field_validator("bio")
+    @classmethod
+    def _b(cls, v):
+        return str(v or "").strip()[:400]
+
+
+@router.put("/perfil")
+def weduca_meu_perfil(payload: Perfil, request: Request):
+    """Cada pessoa cuida do próprio perfil."""
+    u, _ = _ctx(request)
+    eu = _eu(u)
+    if payload.foto:
+        m = P["ler"](COL_ARQ, payload.foto)
+        if not m or m.get("kind") != "foto":
+            raise HTTPException(400, "A foto do perfil precisa ser uma imagem enviada pelo WEDUCA.")
+    pf = P["ler"](COL_PERFIL, eu) or {"seguindo": []}
+    pf.update(payload.model_dump(), nome=u.get("nome") or eu, atualizado_em=agora())
+    P["gravar"](COL_PERFIL, eu, pf)
+    return {"ok": True}
+
+
+@router.post("/perfis/{login}/seguir")
+def weduca_seguir(login: str, request: Request):
+    u, _ = _ctx(request)
+    eu, login = _eu(u), login.lower()
+    if login == eu:
+        raise HTTPException(400, "Você não precisa se seguir 🙂")
+    if login not in _pessoas():
+        raise HTTPException(404, "Pessoa não encontrada no WEDUCA.")
+    pf = P["ler"](COL_PERFIL, eu)
+    if not pf:   # o documento precisa existir antes do ArrayUnion
+        pf = {"nome": u.get("nome") or eu, "seguindo": [], "atualizado_em": agora()}
+        P["gravar"](COL_PERFIL, eu, pf)
+    ligar = login not in (pf.get("seguindo") or [])
+    P["marcar"](COL_PERFIL, eu, "seguindo", login, ligar)
+    return {"sigo": ligar}
