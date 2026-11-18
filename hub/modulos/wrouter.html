@@ -166,7 +166,7 @@ const BX = { entregue: "entregue", ausente: "ausente → reagendar", avaria: "av
 const FASE = { aguardando: ["Liberada · aguardando saída", "#60a5fa"], rua: ["Na rua", "#e8b33d"], chegou: ["No CD", "#34d399"] };
 const etq = (t, c) => `<span class="etq" style="--c:${c}">${esc(t)}</span>`;
 const KM = (p) => p.km == null ? '<span class="sub">—</span>' : `<span class="km ${esc(p.km_cor === "normal" ? "" : p.km_cor)}" title="Distância em linha reta do caminhão até o endereço${p.km_aprox ? " — posição aproximada (sem GPS)" : ""}">${kmTxt(p.km)}${p.km_aprox ? " ≈" : ""}</span>`;
-const urlCli = (lk) => lk ? `${location.origin}/entrega/${lk}` : "";
+const urlCli = (lk) => lk ? `${location.origin}${S.base || ""}/entrega/${lk}` : "";
 const BTLINK = (p) => p.link ? `<span style="white-space:nowrap"><button type="button" class="btn v p" data-lcp="${esc(urlCli(p.link))}">🔗 Copiar</button> <button type="button" class="btn v p" data-lwa="${esc(urlCli(p.link))}|${esc(String(p.nome || "").split(" ")[0])}">WhatsApp</button></span>` : "";
 const VIZ = (v) => v ? `<span class="mini c viz">🏠 Vizinho nº ${esc(v.numero)}${v.tel ? " · " + esc(v.tel) : ""}</span>` : "";
 const desfTag = (p) => p.desfecho ? etq(DESF[p.desfecho][0], DESF[p.desfecho][1]) + (p.baixa_erp ? `<span class="sub">ERP: ${esc(BX[p.baixa_erp] || p.baixa_erp)}${p.manual ? " (baixa manual)" : ""}</span>` : "")
@@ -424,7 +424,7 @@ async function rMotoristas() {
   const c = d.cfg;
   const lim = (v) => [v.capacidade && `${v.capacidade} vol.`, v.max_pontos && `${v.max_pontos} paradas`, v.max_m3 && `${String(v.max_m3).replace(".", ",")} m³`, v.max_kg && `${v.max_kg} kg`].filter(Boolean).join(" · ") || "sem limites (usa o padrão do ERP)";
   const ativos = (l) => l.filter((x) => x.ativo !== false).length;
-  $("#main").innerHTML = `<section class="painel vidro vidro-borda-viva"><div class="cab">${A.orbe("usuarios", "#a78bfa")}<div><h2>Motoristas e app</h2><p>Cadastro de motoristas e veículos. O motorista entra no app <b>${location.origin}/motorista/</b> com a PLACA do veículo e a senha; na montagem da carga (ERP) escolhe-se o veículo e o motorista daqui.</p></div></div>
+  $("#main").innerHTML = `<section class="painel vidro vidro-borda-viva"><div class="cab">${A.orbe("usuarios", "#a78bfa")}<div><h2>Motoristas e app</h2><p>Cadastro de motoristas e veículos. O motorista entra no app <b>${location.origin}${S.base || ""}/motorista/</b> com a PLACA do veículo e a senha; na montagem da carga (ERP) escolhe-se o veículo e o motorista daqui.</p></div></div>
     <div class="grade2"><div class="bloco"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><h3>${svg("caminhao")} Veículos · ${ativos(d.veiculos)}</h3><button type="button" class="btn p" data-novo="veiculo">${svg("mais")}Veículo</button></div>
       <span class="sub">A placa é o login do app. Senha inicial ${d.senha_inicial_padrao ? "<b>Rota@2026</b> (troque em WROUTER_SENHA_INICIAL no Render)" : "definida em WROUTER_SENHA_INICIAL"} — o app obriga a trocar no 1º acesso. Resetar volta para a inicial e derruba o celular.</span>
       ${d.veiculos.map((v) => `<div class="linha"${v.ativo === false ? ' style="opacity:.55"' : ""}><span><b>${esc(v.placa || "sem placa")}</b> · ${esc(v.nome || "")}${v.ativo === false ? " · inativo" : ""}<span class="sub">${lim(v)}</span><span class="sub">senha ${v.senha === "trocada" ? "própria" : "inicial"}${v.senha_em ? " · " + dhBR(v.senha_em) : ""}${v.na_rua ? " · 🟢 app com GPS agora" : ""}</span></span>
@@ -485,7 +485,7 @@ const linhaMot = (m) => `<div class="linha"><input class="entrada" value="${esc(
 $("#btAtualizar").innerHTML = svg("repetir");
 $("#btAtualizar").onclick = () => render();
 (async () => {
-  try { S.perm = (await api("/eu")).perm; } catch (e) { $("#main").innerHTML = `<section class="painel vidro"><div class="vazio">${esc(e.message)}</div></section>`; return; }
+  try { const eu = await api("/eu"); S.perm = eu.perm; S.base = eu.base || ""; } catch (e) { $("#main").innerHTML = `<section class="painel vidro"><div class="vazio">${esc(e.message)}</div></section>`; return; }
   if (!["aovivo", "historico", "motoristas"].some(pode)) { $("#main").innerHTML = `<section class="painel vidro"><div class="vazio">Sem permissão nas abas do WROUTER. Peça ao administrador (Configurações → Usuários → WROUTER).</div></section>`; return; }
   render();
 })();

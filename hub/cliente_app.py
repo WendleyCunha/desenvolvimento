@@ -54,6 +54,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 
 import acesso
+import banco
 import tickets as T
 
 router = APIRouter()
@@ -232,7 +233,7 @@ SEM_CACHE = {"Cache-Control": "no-cache"}
 
 @router.get("/cliente", include_in_schema=False)
 def _sem_barra():
-    return RedirectResponse("/cliente/", status_code=307)
+    return RedirectResponse(banco.prefixo_publico() + "/cliente/", status_code=307)
 
 
 @router.get("/cliente/", include_in_schema=False)
@@ -242,13 +243,13 @@ def pagina():
 
 @router.get("/cliente/manifest.webmanifest", include_in_schema=False)
 def manifesto():
-    return FileResponse(PASTA / "manifest.webmanifest", media_type="application/manifest+json", headers=SEM_CACHE)
+    return acesso.manifesto_publico(PASTA / "manifest.webmanifest", "/cliente/")
 
 
 @router.get("/cliente/sw.js", include_in_schema=False)
 def service_worker():
     return FileResponse(PASTA / "sw.js", media_type="application/javascript",
-                        headers={**SEM_CACHE, "Service-Worker-Allowed": "/cliente/"})
+                        headers={**SEM_CACHE, "Service-Worker-Allowed": banco.prefixo_publico() + "/cliente/"})
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -364,7 +365,7 @@ def _rota_do_pedido(pid: str) -> dict | None:
     me = next((x for x in a["pedidos"] if x["pid"] == pid), {})
     return {"fase": a["fase"], "km": me.get("km"), "km_cor": me.get("km_cor"), "km_aprox": me.get("km_aprox"), "pos_ha_seg": a.get("pos_ha_seg"),
             "chegou": me.get("chegou"), "desfecho": me.get("desfecho"), "vizinho": me.get("vizinho"), "pode_vizinho": a.get("pode_vizinho"),
-            "mapa": bool(a.get("mapa")), "link": f"/entrega/{a['token']}" if a.get("token") else ""}
+            "mapa": bool(a.get("mapa")), "link": f"{banco.prefixo_publico()}/entrega/{a['token']}" if a.get("token") else ""}
 
 
 def tickets_do_cliente(cid: str, cli: dict) -> list[dict]:

@@ -247,7 +247,7 @@ def _executar(d: dict):
                 db().collection(COL_CART).document(cod).set(c, timeout=T.banco.TIMEOUT)
                 _cart[cod] = c
         dados = {"titulo": d["titulo"], "texto": d["texto"], "tag": d["id"],
-                 "url": f"/cliente/?aba=vantagens&d={d['id']}" + (f"&v={vale['codigo']}" if vale else "")}
+                 "url": f"{banco.prefixo_publico()}/cliente/?aba=vantagens&d={d['id']}" + (f"&v={vale['codigo']}" if vale else "")}
         ok, vivas = False, []
         for sub in ins.get(cod, {}).get("subs", []):
             r = enviar_push(sub, dados)

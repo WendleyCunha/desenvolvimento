@@ -8,6 +8,10 @@
 <meta name="theme-color" content="#f6f1e6">
 <meta name="color-scheme" content="light">
 <link rel="manifest" href="/relatorios/manifest.webmanifest">
+<script>/* EMPRESAS: aberto como /<empresa>/APP/ → tudo o que o app pede em /api/… vai para /<empresa>/api/… (dados só daquela empresa) */
+(function () { var m = location.pathname.match(/^\/([a-z0-9][a-z0-9-]{1,30})\/(cliente|motorista|relatorios|entrega)(\/|$)/); if (m && /^(cliente|motorista|relatorios|entrega)$/.test(m[1])) m = null; window.HUB_BASE = m ? "/" + m[1] : "";
+  if (!m) return; var f = window.fetch; window.fetch = function (u, o) { return f.call(this, typeof u === "string" && u.indexOf("/api/") === 0 ? window.HUB_BASE + u : u, o); };
+  document.querySelectorAll('link[rel="manifest"]').forEach(function (l) { l.setAttribute("href", window.HUB_BASE + l.getAttribute("href")); }); })();</script>
 <link rel="icon" href="data:,">
 <link rel="apple-touch-icon" href="/static/app/icone-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -214,7 +218,7 @@ async function api(url, op = {}) {
 
 /* ═══ app instalável ═══ */
 const instalado = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("/relatorios/sw.js", { scope: "/relatorios/" }).catch(() => {});
+if ("serviceWorker" in navigator) navigator.serviceWorker.register(window.HUB_BASE + "/relatorios/sw.js", { scope: window.HUB_BASE + "/relatorios/" }).catch(() => {});
 let pedido = null;
 const caixa = $("#instalar"), passos = $("#passos");
 const ios = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
@@ -230,7 +234,7 @@ const iosNaoSafari = ios && /CriOS|FxiOS|EdgiOS|OPiOS/i.test(ua);
    sozinhos e o Play Protect avisa "criado para uma versão mais antiga do Android". Pelo Chrome não há aviso. */
 const android = /Android/i.test(ua);
 const androidNaoChrome = android && !embutido && (/SamsungBrowser|MiuiBrowser|XiaoMi|OPR\/|EdgA|Firefox|HuaweiBrowser|HeyTapBrowser|YaBrowser|UCBrowser|VivoBrowser|Brave/i.test(ua) || !/Chrome\//.test(ua));
-const LINK_CHROME = "intent://" + location.host + "/relatorios/#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=" + encodeURIComponent("https://play.google.com/store/apps/details?id=com.android.chrome") + ";end";
+const LINK_CHROME = "intent://" + location.host + window.HUB_BASE + "/relatorios/#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=" + encodeURIComponent("https://play.google.com/store/apps/details?id=com.android.chrome") + ";end";
 function mostrarPassos(html) {
   passos.hidden = false; passos.innerHTML = html;
   passos.classList.remove("pisca"); void passos.offsetWidth; passos.classList.add("pisca");
@@ -238,8 +242,8 @@ function mostrarPassos(html) {
   $("#btInstalar").textContent = "Veja abaixo como instalar ↓";
   const bc = passos.querySelector("[data-copiar]");
   if (bc) bc.onclick = async () => {
-    try { await navigator.clipboard.writeText(location.origin + "/relatorios/"); bc.textContent = "Link copiado ✓"; }
-    catch (_) { bc.textContent = location.origin + "/relatorios/"; }
+    try { await navigator.clipboard.writeText(location.origin + window.HUB_BASE + "/relatorios/"); bc.textContent = "Link copiado ✓"; }
+    catch (_) { bc.textContent = location.origin + window.HUB_BASE + "/relatorios/"; }
   };
 }
 const BT_COPIAR = '<button type="button" class="btn v" data-copiar style="width:100%;margin-top:10px">Copiar o link</button>';

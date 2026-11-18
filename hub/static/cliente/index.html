@@ -7,6 +7,10 @@
 <meta name="description" content="Acompanhe seus pedidos, prazos de entrega e fale com a nossa central.">
 <meta name="theme-color" content="#05060a">
 <link rel="manifest" href="/cliente/manifest.webmanifest">
+<script>/* EMPRESAS: aberto como /<empresa>/APP/ → tudo o que o app pede em /api/… vai para /<empresa>/api/… (dados só daquela empresa) */
+(function () { var m = location.pathname.match(/^\/([a-z0-9][a-z0-9-]{1,30})\/(cliente|motorista|relatorios|entrega)(\/|$)/); if (m && /^(cliente|motorista|relatorios|entrega)$/.test(m[1])) m = null; window.HUB_BASE = m ? "/" + m[1] : "";
+  if (!m) return; var f = window.fetch; window.fetch = function (u, o) { return f.call(this, typeof u === "string" && u.indexOf("/api/") === 0 ? window.HUB_BASE + u : u, o); };
+  document.querySelectorAll('link[rel="manifest"]').forEach(function (l) { l.setAttribute("href", window.HUB_BASE + l.getAttribute("href")); }); })();</script>
 <link rel="icon" href="data:,">
 <link rel="apple-touch-icon" href="/static/app/icone-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -606,7 +610,7 @@ function telaPedido(m, id) {
     <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
       <button class="btn grande" id="falar">${ICO.chat} Falar sobre este pedido</button>
       <button class="btn v grande" id="chamado">${ICO.lista} Abrir chamado deste pedido</button>
-      <a class="btn v grande" href="/api/cliente/pedido/${encodeURIComponent(p.id)}/pdf" target="_blank" rel="noopener" style="text-align:center;text-decoration:none">⬇ Baixar o PDF do pedido</a></div>`;
+      <a class="btn v grande" href="${window.HUB_BASE}/api/cliente/pedido/${encodeURIComponent(p.id)}/pdf" target="_blank" rel="noopener" style="text-align:center;text-decoration:none">⬇ Baixar o PDF do pedido</a></div>`;
   $("#falar").onclick = () => { S.rascunho = `Sobre o pedido #${p.numero}: `; if (!S.eu.chat && !S.assunto) S.assunto = (S.eu.ura.find((u) => u.id === "entrega") || S.eu.ura[0]).id; ir("atendimento"); setTimeout(() => $("#txt")?.focus(), 80); };
   $("#chamado").onclick = () => ir("chamados", { tela: "novo", pedido: p.id });
 }
@@ -721,7 +725,7 @@ setInterval(async () => {
 addEventListener("online", () => { if (S.eu) { S.offline = false; enviarFila().then(atualizar); } });
 addEventListener("offline", () => { if (S.eu) { S.offline = true; render(); } });
 
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("/cliente/sw.js", { scope: "/cliente/" }).catch(() => {});
+if ("serviceWorker" in navigator) navigator.serviceWorker.register(window.HUB_BASE + "/cliente/sw.js", { scope: window.HUB_BASE + "/cliente/" }).catch(() => {});
 { const q = new URLSearchParams(location.search);
   if (q.get("aba") === "vantagens") { S.aba = "vantagens"; ls.set("cli.aba", "vantagens"); }
   if (q.get("d")) S.abrirDisparo = q.get("d");

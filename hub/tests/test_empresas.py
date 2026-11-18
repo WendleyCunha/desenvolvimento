@@ -104,7 +104,7 @@ def test_duplicar_sistema_isola_usuarios_e_dados(hub):
     assert r.status_code == 409 and "não é permitido" in r.json()["detail"]
     # o admin da empresa nova entra direto nela, vazia
     joao = entrar(hub(), "joao", "123456")
-    assert joao.get("/api/eu").json()["empresa"] == {"id": eid, "nome": "Loja Exemplo"}
+    assert joao.get("/api/eu").json()["empresa"] == {"id": eid, "nome": "Loja Exemplo", "base": "/loja-exemplo"}
     assert [u["login"] for u in joao.get("/api/admin/usuarios").json()["usuarios"]] == ["joao"]
     assert joao.get("/api/weduca/feed").json()["posts"] == []
     assert joao.post("/api/admin/usuarios", json={"login": "ana", "senha": "123456"}).status_code == 409
@@ -145,3 +145,36 @@ def test_cache_por_empresa():
         c["n"] = 5
     assert c["n"] == 1 and banco.nome_colecao("hub_usuarios", "x") == "hub_usuarios"
     assert banco.nome_colecao("weduca_posts", "x") == "e_x__weduca_posts"
+
+
+def test_links_publicos_por_empresa(hub, monkeypatch):
+    import relatorios_publico
+    monkeypatch.setattr(relatorios_publico, "CACHE_ANUNCIOS_S", -1)
+    chefe = entrar(hub(), "chefe", "senha-forte")
+    eid = chefe.post("/api/super/empresas", json={"nome": "Loja Exemplo", "admin": {"login": "joao", "senha": "123456"}}).json()["empresa"]["id"]
+    # nome que é endereço do hub não pode virar empresa
+    assert chefe.post("/api/super/empresas", json={"nome": "Cliente", "admin": {"login": "zz", "senha": "123456"}}).json()["empresa"]["id"] != "cliente"
+    links = [e for e in chefe.get("/api/super/empresas").json()["empresas"] if e["id"] == eid][0]["links"]
+    assert links == {"relatorios": "/loja-exemplo/relatorios/", "motorista": "/loja-exemplo/motorista/", "cliente": "/loja-exemplo/cliente/"}
+    pub = hub()
+    for app in ("relatorios", "motorista", "cliente"):
+        r = pub.get(f"/{eid}/{app}/")
+        assert r.status_code == 200 and "HUB_BASE" in r.text
+        assert f'"/{eid}/{app}/"' in pub.get(f"/{eid}/{app}/manifest.webmanifest").text      # app instalado abre na empresa certa
+        assert pub.get(f"/{eid}/{app}/sw.js").headers["service-worker-allowed"] == f"/{eid}/{app}/"
+        assert pub.get(f"/{eid}/{app}", follow_redirects=False).headers["location"] == f"/{eid}/{app}/"
+    assert pub.get("/cliente/manifest.webmanifest").text.count('"/cliente/"') >= 1           # a principal continua igual
+    assert pub.get("/empresa-que-nao-existe/cliente/").status_code == 404
+    # anúncio publicado dentro da loja só aparece no link da loja
+    chefe.post("/api/super/entrar-empresa", json={"empresa": eid})
+    assert chefe.post("/api/secretaria/anuncios", json={"tipo": "texto", "titulo": "Só da loja", "texto": "oi"}).status_code == 200
+    assert chefe.get("/api/secretaria/anuncios").json()["link"] == f"/{eid}/relatorios/"
+    assert [a["titulo"] for a in pub.get(f"/{eid}/api/relatorios-publico/anuncios").json()["anuncios"]] == ["Só da loja"]
+    assert pub.get("/api/relatorios-publico/anuncios").json()["anuncios"] == []
+    assert pub.get(f"/{eid}/api/wrouter/cargas").status_code == 404                        # só o app do motorista é público
+    # módulo desligado ou empresa desativada → o link fecha
+    mods = [m["id"] for m in chefe.get("/api/super/empresas").json()["modulos"] if m["id"] != "secretaria"]
+    chefe.put(f"/api/super/empresas/{eid}", json={"modulos": mods})
+    assert pub.get(f"/{eid}/relatorios/").status_code == 404 and pub.get(f"/{eid}/cliente/").status_code == 200
+    chefe.put(f"/api/super/empresas/{eid}", json={"ativo": False})
+    assert pub.get(f"/{eid}/cliente/").status_code == 404

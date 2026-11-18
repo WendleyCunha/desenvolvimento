@@ -1647,7 +1647,7 @@ function telaAjustes(m) {
         <button type="button" class="btn p" id="salvarErp">Salvar</button></div>
       <div class="cartao" style="grid-column:1/-1"><h3>${svg("mensagem")} App do cliente</h3>
         <p class="dica">Link geral para enviar aos clientes. Eles entram com <b>CPF + e-mail do cadastro do ERP</b>, veem os pedidos e prazos, abrem chamados pela URA e conversam com a central — tudo cai aqui na Caixa (fila “App do cliente”).</p>
-        <div class="link-app"><code id="linkApp">${esc(location.origin + "/cliente/")}</code><button type="button" class="btn v p" id="copiarLink">Copiar</button><a class="btn v p" href="/cliente/" target="_blank" rel="noopener">Abrir ↗</a></div>
+        <div class="link-app"><code id="linkApp">${esc(location.origin + "/cliente/")}</code><button type="button" class="btn v p" id="copiarLink">Copiar</button><a class="btn v p" id="abrirLinkApp" href="/cliente/" target="_blank" rel="noopener">Abrir ↗</a></div>
         <label class="chk"><input type="checkbox" id="appAtivo"${ap.ativo === false ? "" : " checked"}> Atendimento pelo app ligado</label>
         <div class="aviso ouro" style="display:flex;flex-direction:column;gap:6px"><label class="chk"><input type="checkbox" id="appPalavra"${ap.exigir_palavra ? " checked" : ""}> <b>Exigir palavra-chave no login</b> (CPF + e-mail + palavra-chave do pedido)</label>
           <span>A palavra-chave nasce com o pedido no ERP e só aparece para quem tem a permissão “Ver a palavra-chave” (no atendimento, no pedido do cliente, e no botão 🔒 do topo).${ap.pedidos_sem_palavra ? ` <b>${ap.pedidos_sem_palavra}</b> pedido(s) antigos ainda estão sem palavra.` : ""}</span>
@@ -1694,6 +1694,7 @@ function telaAjustes(m) {
   desenhaUra();
   $("#uraAdd").onclick = () => { ura.push({ id: "", rotulo: "", descricao: "", motivo_pai: "", departamento: "" }); desenhaUra(); };
   const gp = $("#gerarPalavras"); if (gp) gp.onclick = async () => { try { const r = await chamar("/app/palavras/gerar", { method: "POST" }, "gerando…"); ok(`${r.feitos} pedido(s) ganharam palavra-chave.`); await carregar(); } catch (er) { falha(er); } };
+  A.api("/api/eu").then((d) => { const b = (d.empresa && d.empresa.base) || ""; if (!b || !$("#linkApp")) return; $("#linkApp").textContent = location.origin + b + "/cliente/"; $("#abrirLinkApp").href = b + "/cliente/"; }).catch(() => {});   // link da empresa
   $("#copiarLink").onclick = async () => { try { await navigator.clipboard.writeText($("#linkApp").textContent); ok("Link copiado."); } catch (_) { A.toast("Selecione e copie o link."); } };
   $("#salvarApp").onclick = async () => {
     const lista = ura.filter((o) => String(o.rotulo || "").trim()).map((o) => ({ ...o, id: o.id || norm(o.rotulo).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30) }));

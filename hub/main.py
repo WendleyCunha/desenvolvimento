@@ -371,11 +371,56 @@ def _api_desligada(caminho: str) -> bool:
     return bool(mods) and not any(acesso.modulo_liberado(m) for m in mods)
 
 
+# LINKS PÚBLICOS POR EMPRESA: /<empresa>/relatorios/, /<empresa>/motorista/, /<empresa>/cliente/, /<empresa>/entrega/<código>
+# (a principal continua sem prefixo). O app chama /<empresa>/api/… e aqui o endereço volta ao normal, já na empresa certa.
+APPS_PUBLICOS = {"cliente": ["tickets"], "motorista": ["wrouter"], "entrega": ["wrouter"], "relatorios": ["secretaria"]}
+APIS_PUBLICAS = {"cliente": ["tickets"], "wrouter": ["wrouter"], "entrega": ["wrouter"], "relatorios-publico": ["secretaria"]}
+_LINK_FECHADO = """<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Link indisponível</title>
+<body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#05060a;color:#eef0f5;font:15px Inter,system-ui,sans-serif">
+<div style="text-align:center;max-width:380px;padding:24px"><div style="font-size:2.4rem">🔗</div><h2 style="font-weight:600;margin:10px 0 6px">Link indisponível</h2>
+<p style="color:#a3a9b8;line-height:1.6">Este endereço não está ativo. Confira o link com quem enviou.</p></div>"""
+
+
+def _link_publico(caminho: str):
+    """('/loja/cliente/x') → ('loja', '/cliente/x', módulos) · None se não é link público de empresa."""
+    p = caminho.split("/")
+    if len(p) < 3 or not p[1] or p[1] in acesso.RESERVADOS or p[1] == banco.PRINCIPAL:
+        return None
+    app_ = p[2]
+    if app_ == "api":
+        mods = APIS_PUBLICAS.get(p[3] if len(p) > 3 else "")
+        if mods and p[3] == "wrouter" and (len(p) < 5 or p[4] != "app"):
+            mods = None   # da API do WROUTER, só o app do motorista é público
+    else:
+        mods = APPS_PUBLICOS.get(app_)
+    if not mods:
+        return None
+    try:
+        if not acesso.EMPRESAS.obter(p[1]):
+            return None
+    except Exception:  # noqa: BLE001
+        return None
+    return p[1], "/" + "/".join(p[2:]), mods
+
+
 # EMPRESAS: cada requisição trabalha na empresa de quem está logado (o super ADM escolhe a dele).
 # Tudo o que os módulos gravam/leem no Firestore passa por banco.db(), que separa por empresa.
 @app.middleware("http")
 async def _empresa_da_requisicao(request: Request, call_next):
     from starlette.concurrency import run_in_threadpool
+    link = await run_in_threadpool(_link_publico, request.url.path) if request.url.path.count("/") >= 2 else None
+    if link:
+        eid, caminho, mods = link
+        tk = banco.definir_empresa(eid)
+        try:
+            e = acesso.EMPRESAS.obter(eid) or {}
+            if e.get("ativo", True) is False or not any(acesso.modulo_liberado(m) for m in mods):
+                return HTMLResponse(_LINK_FECHADO, status_code=404)
+            request.scope["path"] = caminho
+            request.scope["raw_path"] = caminho.encode()
+            return await call_next(request)
+        finally:
+            banco._EMPRESA.reset(tk)
     try:
         u = await run_in_threadpool(acesso.usuario_da_requisicao, request) if request.cookies.get(acesso.COOKIE) else None
         eid = acesso.empresa_da_requisicao(u, request)
@@ -408,6 +453,8 @@ app.include_router(weduca.router)   # WEDUCA — feed/aprendizagem; o conteúdo 
 agente.FONTES_EXTRAS.append(weduca.base_conhecimento)
 agente.ORIGENS["weduca"] = {"nao_resolveu": weduca.nao_resolveu, "ajustar": weduca.ajustar}
 agente.ligar(app)   # Agente IA do topo — /api/agente/* (static/agente.js)
+# nenhuma empresa pode se chamar como um endereço do hub (/api, /login, /cliente…)
+acesso.RESERVADOS |= {r.path.split("/")[1].split("{")[0] for r in app.routes if getattr(r, "path", "").count("/") >= 1} - {""}
 _inicio = time.time()
 
 
