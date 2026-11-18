@@ -19,7 +19,7 @@ SUB = {"endpoint": "https://push.exemplo/abc", "keys": {"p256dh": "BPchave", "au
 
 @pytest.fixture()
 def p(t, monkeypatch):  # noqa: F811
-    P._insc, P._idx, P._vapid = None, None, None
+    P._EST.update(insc=None, idx=None, vapid=None)
     P._cart.clear()
     P._dest.clear()
     t.app.include_router(P.router)

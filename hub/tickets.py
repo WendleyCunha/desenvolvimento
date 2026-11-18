@@ -363,7 +363,7 @@ def eu(u: dict) -> dict:
 #   gestor     → todos os setores + painel geral
 # ══════════════════════════════════════════════════════════════════════════════
 PERFIS = ("atendente", "supervisor", "gestor")
-ONLINE: dict[str, float] = {}
+ONLINE = banco.por_empresa(dict)   # login → visto por último (por empresa)
 ONLINE_SEG = 180
 
 
@@ -931,7 +931,7 @@ def ajuda(request: Request, setor: str = "", dias: int = 30):
 #   nos dois lados. Cache em memória: o balão consulta a cada 15 s sem gastar leitura do banco.
 # ══════════════════════════════════════════════════════════════════════════════
 COL_DM, DM_MAX, DM_DIAS = "hub_conversas_equipe", 200, 60
-_DM: dict[str, dict] = {}
+_DM = banco.por_empresa(dict)   # cache das conversas da equipe (por empresa)
 _DM_LOCK = threading.Lock()
 
 

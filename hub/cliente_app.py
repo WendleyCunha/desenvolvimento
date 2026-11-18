@@ -60,6 +60,11 @@ import tickets as T
 router = APIRouter()
 PASTA = Path(__file__).parent / "static" / "cliente"
 COOKIE = "cli_sessao"
+
+
+def _ck() -> str:
+    """Nome do cookie de sessão — um por empresa (o mesmo celular pode usar o app de duas empresas sem misturar)."""
+    return COOKIE if banco.empresa_atual() == banco.PRINCIPAL else f"{COOKIE}_{banco.empresa_atual()}"
 DIAS_SESSAO = 30
 ETIQUETA = "cliente-app:"          # entra na assinatura — separa do token do hub
 
@@ -149,7 +154,7 @@ def ler_token(token: str | None) -> dict | None:
 
 
 def _cliente_da_sessao(request: Request) -> tuple[str, dict]:
-    d = ler_token(request.cookies.get(COOKIE))
+    d = ler_token(request.cookies.get(_ck()))
     if not d:
         raise HTTPException(401, "Entre com seus dados.")
     e = _erp()
@@ -299,7 +304,7 @@ async def entrar(request: Request):
             tx.commit()
         cli = e.ST.dados["parceiros"][pid]
     resp = JSONResponse({"ok": True, "nome": _primeiro_nome(cli.get("nome"))})
-    resp.set_cookie(COOKIE, gerar_token(pid, cli), httponly=True, samesite="lax", secure=_https(request),
+    resp.set_cookie(_ck(), gerar_token(pid, cli), httponly=True, samesite="lax", secure=_https(request),
                     max_age=DIAS_SESSAO * 86400, path="/")
     return resp
 
@@ -307,7 +312,7 @@ async def entrar(request: Request):
 @router.post("/api/cliente/sair")
 def sair():
     resp = JSONResponse({"ok": True})
-    resp.delete_cookie(COOKIE, path="/")
+    resp.delete_cookie(_ck(), path="/")
     return resp
 
 
@@ -585,7 +590,7 @@ def _offline_em(d: dict) -> str:
     return v[:19] if re.match(r"^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}", v) else ""
 
 
-_envios: dict[str, list[float]] = {}
+_envios = banco.por_empresa(dict)
 
 
 def _freio_msg(chave: str, maximo=12, janela=300):

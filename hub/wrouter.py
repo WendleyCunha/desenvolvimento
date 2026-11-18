@@ -50,6 +50,11 @@ router = APIRouter()
 MOD = "wrouter"
 PASTA = Path(__file__).resolve().parent / "static" / "motorista"
 COOKIE = "hub_motorista"
+
+
+def _ck() -> str:
+    """Nome do cookie de sessão — um por empresa (o mesmo celular pode usar o app de duas empresas sem misturar)."""
+    return COOKIE if banco.empresa_atual() == banco.PRINCIPAL else f"{COOKIE}_{banco.empresa_atual()}"
 SENHA_INICIAL = os.environ.get("WROUTER_SENHA_INICIAL") or "Rota@2026"
 DURACAO_DIAS = 14
 COL_APP, DOC_APP, COL_FOTOS = "wrouter", "app", "wrouter_fotos"
@@ -326,8 +331,8 @@ def distancia_m(a_lat, a_lng, b_lat, b_lng) -> int:
 
 
 # ── posição: GPS → rede → estimada pelo último cliente atendido ──
-GPS: dict = {}     # placa → última posição (memória)
-SINAL: dict = {}   # placa → {t, gps}
+GPS = banco.por_empresa(dict)     # placa → última posição (memória, por empresa: a mesma placa pode existir em duas)
+SINAL = banco.por_empresa(dict)   # placa → {t, gps}
 
 
 def posicao_atual(car: dict) -> dict | None:
@@ -433,7 +438,7 @@ _falhas: dict = {}
 
 
 def _sessao(request: Request) -> dict:
-    d = acesso.ler_token(request.cookies.get(COOKIE))
+    d = acesso.ler_token(request.cookies.get(_ck()))
     if not d or not str(d.get("u", "")).startswith("mot:"):
         raise HTTPException(401, "Entre com a placa e a senha.")
     pl = d["u"][4:]
@@ -454,7 +459,7 @@ def _quem_mot(s: dict, car: dict) -> dict:
 
 
 def _cookie(resp, pl: str, versao: int, request: Request):
-    resp.set_cookie(COOKIE, acesso.gerar_token(f"mot:{pl}", versao, DURACAO_DIAS), max_age=DURACAO_DIAS * 86400, httponly=True,
+    resp.set_cookie(_ck(), acesso.gerar_token(f"mot:{pl}", versao, DURACAO_DIAS), max_age=DURACAO_DIAS * 86400, httponly=True,
                     samesite="lax", secure=acesso._https(request), path="/")
 
 
@@ -508,7 +513,7 @@ async def app_login(request: Request):
 
 @router.post("/api/wrouter/app/senha")
 async def app_senha(request: Request):
-    d = acesso.ler_token(request.cookies.get(COOKIE))
+    d = acesso.ler_token(request.cookies.get(_ck()))
     if not d or not str(d.get("u", "")).startswith("mot:"):
         raise HTTPException(401, "Entre com a placa e a senha.")
     pl = d["u"][4:]
@@ -546,7 +551,7 @@ def app_me(request: Request):
 @router.post("/api/wrouter/app/sair")
 def app_sair():
     r = JSONResponse({"ok": True})
-    r.delete_cookie(COOKIE, path="/")
+    r.delete_cookie(_ck(), path="/")
     return r
 
 
@@ -951,7 +956,7 @@ def _a_pub(a):
     return {**a, "restante_seg": _restante(a)} if a else None
 
 
-PRESENCA: dict = {}
+PRESENCA = banco.por_empresa(dict)
 PRESENCA_SEG = 25
 
 
