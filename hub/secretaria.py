@@ -640,7 +640,9 @@ async def editar_membro(mid: str, request: Request):
     if R.chave_valida(d.get("inicio_chave")):
         d["mes_inicio"] = R.rotulo_banco(d["inicio_chave"])
     novo_nome = " ".join(str(c.get("nome_oficial", mid)).split())
-    if novo_nome and novo_nome != mid:
+    # só renomeia quando o nome mudou de verdade — espaço sobrando no nome antigo não conta
+    # (o id é o nome e o Parque Aliança/Streamlit usa o mesmo; renomear à toa troca o id)
+    if novo_nome and novo_nome != " ".join(mid.split()):
         return _renomear(mid, novo_nome, d, u)
     d.update(atualizado_por=u["login"], atualizado_em=_agora())
     BASE.gravar_membro(mid, d)
