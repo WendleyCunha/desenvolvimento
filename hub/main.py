@@ -90,7 +90,7 @@ import promocoes
 import agente
 import weduca
 
-VERSAO = "3.27.0"
+VERSAO = "3.28.0"
 
 BASE = Path(__file__).resolve().parent
 PASTA_MODULOS = BASE / "modulos"
