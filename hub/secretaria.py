@@ -184,13 +184,28 @@ class _Base:
 
     def completa(self):
         with self.trava:
-            self.membros = {d.id: (d.to_dict() or {}) for d in _db().collection(COL_MEMBROS).stream(timeout=banco.TIMEOUT)}
-            self.leituras += len(self.membros)
+            self._ler_membros()
             self.rels = {}
             self.ultimo_visto = None
             self._guardar(_db().collection(COL_REL).stream(timeout=banco.TIMEOUT))
             self.t_completa = self.t_recente = self.t_incremental = time.time()
             self._linhas = None
+
+    def _ler_membros(self):
+        """Fichas ativas em self.membros; as renomeadas (guardadas, nunca apagadas) em self.renomeados."""
+        todos = {d.id: (d.to_dict() or {}) for d in _db().collection(COL_MEMBROS).stream(timeout=banco.TIMEOUT)}
+        self.leituras += len(todos)
+        self.membros = {k: v for k, v in todos.items() if not v.get("renomeado_para")}
+        self.renomeados = {k: v for k, v in todos.items() if v.get("renomeado_para")}
+
+    def nome_ocupado(self, nome: str) -> str:
+        """'' se o nome está livre; senão, por quê (ficha ativa ou ficha renomeada guardada)."""
+        if nome in (self.membros or {}):
+            return "Já existe um membro com esse nome."
+        r = (getattr(self, "renomeados", None) or {}).get(nome)
+        if r:
+            return f"Esse nome é de uma ficha renomeada para \"{r.get('renomeado_para')}\" (guardada no histórico). Use outro nome."
+        return ""
 
     def atualizar(self, forcar: bool = False):
         with self.trava:
@@ -209,8 +224,7 @@ class _Base:
                 for rid, r in list(self.rels.items()):
                     if r.get("mes_referencia") in rotulos and rid not in vistos:
                         self.rels.pop(rid, None)
-                self.membros = {d.id: (d.to_dict() or {}) for d in _db().collection(COL_MEMBROS).stream(timeout=banco.TIMEOUT)}
-                self.leituras += len(self.membros)
+                self._ler_membros()
                 self.t_recente = self.t_incremental = agora
                 self._linhas = None
             elif agora - self.t_incremental > self.INCREMENTAL and self.ultimo_visto:
@@ -225,6 +239,12 @@ class _Base:
                 assin = tuple(sorted(self.membros or {}))
                 if getattr(self, "_assin_nomes", None) != assin:   # mudou a lista de membros → reconhece os nomes de novo
                     self._assin_nomes, self._cache_nome = assin, {}
+                    for antigo, r in (getattr(self, "renomeados", None) or {}).items():   # relatório com o nome antigo → a ficha nova
+                        alvo, voltas = r.get("renomeado_para"), 0
+                        while alvo and alvo not in (self.membros or {}) and voltas < 10:
+                            alvo, voltas = ((self.renomeados.get(alvo) or {}).get("renomeado_para")), voltas + 1
+                        if alvo in (self.membros or {}):
+                            self._cache_nome[antigo] = alvo
                 self._linhas = R.preparar(list(self.rels.values()), self.membros or {}, self.config().get("limite_aux", 15),
                                           cache_nome=self._cache_nome)
             return self._linhas
@@ -617,8 +637,8 @@ async def novo_membro(request: Request):
     nome = " ".join(str(c.get("nome_oficial", "")).split())
     if len(nome) < 3 or "/" in nome:
         raise HTTPException(400, "Informe o nome completo (sem barra '/').")
-    if nome in (BASE.membros or {}):
-        raise HTTPException(409, "Já existe um membro com esse nome.")
+    if BASE.nome_ocupado(nome):
+        raise HTTPException(409, BASE.nome_ocupado(nome))
     d = {"nome_oficial": nome, "categoria": R.PUB, "status": "Ativo", "cargo": [], "genero": "", "classe": "",
          "inicio_chave": _mes_atual(), "mes_inicio": R.rotulo_banco(_mes_atual()),
          "criado_por": u["login"], "criado_em": _agora(), **_limpar_membro(c, p)}
@@ -685,22 +705,29 @@ async def status_membro(mid: str, request: Request):
 
 
 def _renomear(antigo: str, novo: str, mudancas: dict, u: dict):
-    """O id do membro é o nome (padrão do Streamlit): renomear = copiar + religar relatórios."""
+    """O id do membro é o nome (padrão do Streamlit): renomear = copiar + religar relatórios.
+    A ficha antiga NÃO é apagada — fica guardada com renomeado_para (fora das listas do Secretário)."""
     if len(novo) < 3 or "/" in novo:
         raise HTTPException(400, "Nome inválido.")
-    if novo in BASE.membros:
-        raise HTTPException(409, "Já existe um membro com esse nome.")
+    if BASE.nome_ocupado(novo):
+        raise HTTPException(409, BASE.nome_ocupado(novo))
     dados = {**BASE.membros[antigo], **mudancas, "nome_oficial": novo, "nome_anterior": antigo,
+             "nomes_anteriores": [*(BASE.membros[antigo].get("nomes_anteriores") or []), antigo],
              "atualizado_por": u["login"], "atualizado_em": _agora()}
+    # a ficha antiga NUNCA é apagada: fica guardada, apontando para o nome novo (o Parque Aliança/Streamlit
+    # e qualquer outra coisa que use o nome antigo continuam achando a pessoa)
+    guardada = {**BASE.membros[antigo], "renomeado_para": novo, "renomeado_em": _agora(), "renomeado_por": u["login"],
+                "status": "Renomeado"}
     meus = [ln["id"] for ln in BASE.linhas() if ln["membro_id"] == antigo]
     lote = _db().batch()
     lote.set(_db().collection(COL_MEMBROS).document(novo), dados)
     for rid in meus:
         lote.set(_db().collection(COL_REL).document(rid), {"membro_id": novo, "nome": novo}, merge=True)
-    lote.delete(_db().collection(COL_MEMBROS).document(antigo))
+    lote.set(_db().collection(COL_MEMBROS).document(antigo), guardada)
     lote.commit(timeout=banco.TIMEOUT)
     with BASE.trava:
         BASE.membros.pop(antigo, None)
+        BASE.renomeados = {**(getattr(BASE, "renomeados", None) or {}), antigo: guardada}
         BASE.membros[novo] = dados
         for rid in meus:
             BASE.rels[rid].update(membro_id=novo, nome=novo)
