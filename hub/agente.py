@@ -181,9 +181,33 @@ def pontuar(pergunta: str, art: dict) -> int:
 
 MIN_PONTOS_IA = 2   # com IA ligada a busca pode ser menos exigente: se não tiver a ver, a IA responde "não sei"
 
+# Outras bases que as PESSOAS alimentam (ex.: WEDUCA — postagens, comentários, PDFs, vídeos).
+# Cada fonte devolve "artigos" com id "<origem>:<id>"; main.py registra (weduca.base_conhecimento).
+FONTES_EXTRAS: List[Callable[[], list]] = []
+# Ganchos por origem: {"weduca": {"nao_resolveu": fn(id, u, obs), "ajustar": fn(id, de, para, u) -> {modo, onde}}}
+ORIGENS: dict = {}
+
+
+def _origem(artigo_id) -> tuple:
+    """("weduca", "abc123") para "weduca:abc123"; ("", id) para artigo da base."""
+    a = str(artigo_id or "")
+    if ":" in a and a.split(":", 1)[0] in ORIGENS:
+        return tuple(a.split(":", 1))
+    return "", a
+
+
+def extras() -> list:
+    saida = []
+    for f in FONTES_EXTRAS:
+        try:
+            saida += f() or []
+        except Exception as e:   # noqa: BLE001 — uma fonte fora do ar não derruba o agente
+            print(f"[agente] fonte extra falhou: {type(e).__name__}: {e}")
+    return saida
+
 
 def buscar(pergunta: str, limite: int = 3) -> list:
-    ativos = [a for a in artigos() if a.get("ativo", True)]
+    ativos = [a for a in artigos() if a.get("ativo", True)] + extras()
     notas = sorted(((pontuar(pergunta, a), a) for a in ativos), key=lambda x: -x[0])
     minimo = MIN_PONTOS_IA if provedor() else MIN_PONTOS
     return [a for n, a in notas if n >= minimo][:limite]
@@ -191,7 +215,8 @@ def buscar(pergunta: str, limite: int = 3) -> list:
 
 def fonte(a: dict) -> dict:
     return {"id": a.get("id"), "titulo": a.get("titulo"), "versao": a.get("versao", 1),
-            "atualizado_em": a.get("atualizado_em"), "por": (a.get("atualizado_por") or {}).get("nome")}
+            "atualizado_em": a.get("atualizado_em"), "por": (a.get("atualizado_por") or {}).get("nome"),
+            "origem": a.get("origem") or "base", "post_id": a.get("post_id")}
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -206,6 +231,8 @@ INSTRUCOES = (   # [v6.4] mais humano: um colega experiente, com as próprias pa
     "Mas NUNCA invente nome de tela, botão, campo, menu, opção, prazo, valor ou regra que não esteja escrito nos artigos: "
     "se o artigo não diz o nome exato, descreva o que fazer sem inventar um nome. "
     "As CORREÇÕES escritas num artigo valem mais que o resto do texto dele. "
+    "Alguns artigos são POSTAGENS de colegas no WEDUCA (com comentários, PDFs e vídeos): são conhecimento real da equipe; "
+    "quando usar uma postagem NÃO REVISADA, diga com naturalidade que é o que a equipe compartilhou no WEDUCA. "
     "Se houver CONVERSA ANTERIOR, continue o mesmo assunto. EXEMPLOS APROVADOS são respostas que a equipe validou: use como referência de conteúdo e de jeito de responder. "
     "Se os artigos não permitem responder, responda exatamente: NAO_SEI. "
     "Na última linha, escreva FONTE: seguido do número do artigo que você mais usou (ex.: FONTE: 2)."
@@ -398,10 +425,16 @@ def agente_ajustar(payload: Ajuste, request: Request):
     u = _exigir_alimentar(request)
     if payload.de.lower() == payload.para.lower():
         raise HTTPException(status_code=400, detail="O DE e o PARA estão iguais.")
-    art = P["ler"](COL_ART, payload.artigo_id)
-    if not art:
-        raise HTTPException(status_code=404, detail="Artigo não encontrado.")
-    r = _ajustar_artigo(art, payload.de, payload.para, u)
+    org, oid = _origem(payload.artigo_id)
+    if org:   # a fonte é uma postagem do WEDUCA: a correção fica visível na própria postagem
+        r = ORIGENS[org]["ajustar"](oid, payload.de, payload.para, u)
+        art = {"id": payload.artigo_id, "titulo": f"{org.upper()} · postagem", "versao": 0}
+        esquecer_cache()
+    else:
+        art = P["ler"](COL_ART, payload.artigo_id)
+        if not art:
+            raise HTTPException(status_code=404, detail="Artigo não encontrado.")
+        r = _ajustar_artigo(art, payload.de, payload.para, u)
     _historico(u, "ajustou", {"id": art["id"], "titulo": art.get("titulo"), "versao": art.get("versao", 1)},
                f"DE “{payload.de[:120]}” → PARA “{payload.para[:120]}” ({r['onde']})")
     if payload.pergunta_id:
@@ -500,6 +533,9 @@ def agente_retorno(payload: Retorno, request: Request):
                                                   "por": _quem(u), "em": agora()})
     if not payload.util:
         _nova_pendencia(u, perg.get("pergunta", ""), "nao_resolveu", payload.obs or "", perg.get("artigo_id"), payload.pergunta_id)
+        org, oid = _origem(perg.get("artigo_id"))
+        if org and ORIGENS[org].get("nao_resolveu"):   # ex.: a postagem do WEDUCA fica EM ANÁLISE
+            ORIGENS[org]["nao_resolveu"](oid, u, payload.obs or "")
     return {"ok": True}
 
 

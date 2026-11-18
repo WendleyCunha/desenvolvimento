@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>WEDUCA</title>
+<meta name="hub-icone" content="chapeu">
+<meta name="hub-cor" content="#f0cb4e">
+<meta name="hub-grupo" content="Pessoas">
+<meta name="hub-ordem" content="1">
+<meta name="hub-descricao" content="Conhecimento da King Star: o que a equipe publica vira a base da IA.">
+<script type="application/json" id="hub-permissoes">
+{
+  "acoes": {
+    "acessar": "Abrir o WEDUCA (ler o feed, curtir e salvar)",
+    "publicar": "Publicar no feed (texto, fotos, PDFs e vídeos)",
+    "comentar": "Comentar",
+    "moderar": "Moderar: editar, revisar, tirar da base e excluir de qualquer pessoa"
+  }
+}
+</script>
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/aurora.css?v=6">
+<!--
+═══════════════════════════════════════════════════════════════════════════════
+ weduca.html — WEDUCA · a rede de conhecimento da King Star (kit Aurora)
+───────────────────────────────────────────────────────────────────────────────
+ Etapa 1 — FEED: postagens com texto, fotos, PDFs e vídeos do YouTube (canal da
+ empresa), curtidas, comentários, salvos, busca e novidades em tempo real.
+ Tudo o que é publicado (com os comentários) vira BASE DE CONHECIMENTO da IA do
+ topo na hora. Quem publica pode deixar a postagem "só no feed". 👎 numa resposta
+ que veio daqui deixa a postagem EM ANÁLISE e cai nas pendências do agente.
+ Próximas etapas: Aprendizagem → Notícias → Pesquisas → Documentos → Resultados → Relatórios.
+ API: /api/weduca (hub/weduca.py) · IA: /api/agente (hub/agente.py)
+═══════════════════════════════════════════════════════════════════════════════
+-->
+<style>
+body{padding:14px;min-height:100vh}
+:root{--sup:color-mix(in srgb,var(--txt) 4%,transparent);--sup2:color-mix(in srgb,var(--txt) 8%,transparent);--linha:var(--vidro-borda);--ou:#f0cb4e}
+html[data-claro]{--ou-t:#8f6b08}
+html:not([data-claro]){--ou-t:#f0cb4e}
+.app{position:relative;z-index:1;max-width:1240px;margin:0 auto}
+.topo{position:sticky;top:10px;z-index:40;display:flex;align-items:center;gap:12px;padding:10px 12px 10px 14px;border-radius:20px;flex-wrap:wrap}
+.marca{display:flex;align-items:center;gap:12px;min-width:0}
+.marca b{display:block;font:700 1.08rem var(--titulo);letter-spacing:-.01em}
+.marca small{display:block;font-size:.6rem;letter-spacing:2.4px;text-transform:uppercase;font-weight:700;color:var(--ou-t)}
+.nav{display:flex;gap:4px;flex-wrap:wrap;margin:0 auto}
+.nav button{display:inline-flex;align-items:center;gap:7px;padding:8px 12px;border-radius:11px;font-size:.8rem;font-weight:600;color:var(--txt2);transition:.2s;position:relative}
+.nav button svg.i{width:15px;height:15px}
+.nav button:hover:not(:disabled){color:var(--txt);background:var(--sup)}
+.nav button.ativo{color:#1a1204;background:var(--ou);box-shadow:0 0 20px -4px var(--ou)}
+.nav button:disabled{opacity:.4;cursor:not-allowed}
+.nav button .breve{font-size:.55rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;opacity:.8}
+.dir{display:flex;gap:8px;align-items:center}
+.sync{display:inline-flex;align-items:center;gap:6px;font-size:.7rem;color:var(--txt3)}
+.sync i{width:7px;height:7px;border-radius:50%;background:var(--verde);box-shadow:0 0 8px var(--verde)}
+.sync.salvando i{background:var(--ouro);box-shadow:0 0 8px var(--ouro);animation:aurRespira 1s infinite}
+.sync.erro i{background:var(--rosa);box-shadow:0 0 8px var(--rosa)}
+main{margin-top:16px;display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:18px;align-items:start}
+.pilha{display:flex;flex-direction:column;gap:14px;min-width:0}
+.lado{position:sticky;top:92px;display:flex;flex-direction:column;gap:14px;max-height:calc(100vh - 106px);overflow-y:auto}
+.caixa{border-radius:22px;padding:16px}
+.caixa h3{margin:0 0 10px;display:flex;align-items:center;gap:8px;font:700 .95rem var(--titulo)}
+.caixa h3 small{margin-left:auto;font:600 .72rem var(--sans);color:var(--txt3)}
+/* avatar */
+.av{--c:#f0cb4e;flex:none;width:42px;height:42px;border-radius:50%;display:grid;place-items:center;font:800 .85rem var(--titulo);color:#1a1204;
+  background:linear-gradient(135deg,color-mix(in srgb,var(--c) 55%,#fff),var(--c));box-shadow:0 0 0 2px var(--noite),0 0 0 3.5px color-mix(in srgb,var(--c) 70%,transparent)}
+.av.p{width:32px;height:32px;font-size:.7rem}
+/* compositor */
+.comp{display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px}
+.comp textarea{width:100%;min-height:52px;max-height:320px;resize:none;border:0;background:none;outline:none;color:var(--txt);font:500 .98rem/1.55 var(--sans);padding:10px 2px}
+.comp textarea::placeholder{color:var(--txt3)}
+.anexos{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 8px}
+.anexo{position:relative;display:flex;align-items:center;gap:8px;padding:6px 30px 6px 6px;border-radius:12px;background:var(--sup);border:1px solid var(--linha);font-size:.76rem;max-width:240px}
+.anexo img{width:46px;height:46px;border-radius:9px;object-fit:cover}
+.anexo .pdf{width:46px;height:46px;border-radius:9px;display:grid;place-items:center;background:rgba(251,113,133,.12);color:var(--rosa);font:800 .7rem var(--titulo)}
+.anexo span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.anexo small{display:block;color:var(--txt3)}
+.anexo .x{position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;color:var(--txt3)}
+.anexo .x:hover{background:var(--sup2);color:var(--txt)}
+.anexo.envio{opacity:.6}.anexo.envio::after{content:"enviando…";position:absolute;inset:auto 8px 4px auto;font-size:.6rem;color:var(--ou-t)}
+.video-campos{display:grid;gap:8px;margin-bottom:10px}
+.comp-pe{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding-top:10px;border-top:1px solid var(--linha)}
+.comp-pe .ferr{display:inline-flex;align-items:center;gap:6px;padding:7px 11px;border-radius:11px;font-size:.78rem;font-weight:600;color:var(--txt2)}
+.comp-pe .ferr:hover{background:var(--sup);color:var(--txt)}
+.comp-pe .ferr svg.i{width:16px;height:16px}
+.comp-pe .ferr.foto svg{color:#34d399}.comp-pe .ferr.pdfb svg{color:#fb7185}.comp-pe .ferr.vid svg{color:#f87171}
+.comp-pe .base{display:inline-flex;align-items:center;gap:8px;margin-left:auto;font-size:.74rem;color:var(--txt2);cursor:pointer}
+.comp-pe .btn{margin-left:4px}
+/* filtros */
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.filtros{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.filtros .busca{flex:1;min-width:180px;position:relative}
+.filtros .busca input{padding-left:36px}
+.filtros .busca svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--txt3)}
+.novas{position:sticky;top:92px;z-index:30;align-self:center;display:none;margin:0 auto -6px;padding:9px 16px;border-radius:99px;font-weight:700;font-size:.8rem;color:#1a1204;
+  background:linear-gradient(135deg,#f7e6a3,#f0cb4e 45%,#d2ae34);box-shadow:0 10px 30px -8px rgba(240,203,78,.8);animation:sobe .45s cubic-bezier(.16,1,.3,1)}
+.novas.on{display:inline-flex;gap:8px;align-items:center}
+@keyframes sobe{from{opacity:0;transform:translateY(-10px)}}
+/* postagem */
+.post{border-radius:22px;padding:16px 16px 10px;animation:entra .5s cubic-bezier(.16,1,.3,1) both}
+@keyframes entra{from{opacity:0;transform:translateY(14px)}}
+.post.brilho{box-shadow:0 0 0 2px var(--ou),0 0 40px -6px var(--ou)!important}
+.p-cab{display:flex;align-items:center;gap:11px}
+.p-cab .quem{min-width:0;flex:1}
+.p-cab b{display:block;font:700 .92rem var(--titulo)}
+.p-cab small{display:flex;gap:6px;align-items:center;flex-wrap:wrap;color:var(--txt3);font-size:.72rem}
+.selo{display:inline-flex;align-items:center;gap:4px;padding:1px 8px;border-radius:99px;font-size:.62rem;font-weight:800;letter-spacing:.04em}
+.selo.base{color:var(--ou-t);background:rgba(240,203,78,.13);border:1px solid rgba(240,203,78,.35)}
+.selo.feed{color:var(--txt3);background:var(--sup);border:1px solid var(--linha)}
+.selo.rev{color:var(--verde);background:color-mix(in srgb,var(--verde) 12%,transparent);border:1px solid color-mix(in srgb,var(--verde) 35%,transparent)}
+.selo.ana{color:var(--rosa);background:color-mix(in srgb,var(--rosa) 12%,transparent);border:1px solid color-mix(in srgb,var(--rosa) 35%,transparent)}
+.p-texto{margin:12px 2px 4px;font-size:.95rem;line-height:1.6;white-space:pre-wrap;word-wrap:break-word}
+.p-texto.corta{max-height:9.6em;overflow:hidden;-webkit-mask-image:linear-gradient(#000 60%,transparent)}
+.p-texto a{color:var(--ou-t);font-weight:600}
+.p-texto .tag{color:var(--ou-t);font-weight:700;cursor:pointer}
+.mais-txt{font-size:.78rem;font-weight:700;color:var(--txt2);padding:2px}
+.correcao{margin:10px 0 2px;padding:10px 12px;border-radius:14px;font-size:.84rem;line-height:1.5;background:rgba(240,203,78,.09);border:1px solid rgba(240,203,78,.32)}
+.correcao b{color:var(--ou-t)}
+.analise{margin:10px 0 2px;padding:9px 12px;border-radius:14px;font-size:.8rem;background:color-mix(in srgb,var(--rosa) 9%,transparent);border:1px solid color-mix(in srgb,var(--rosa) 32%,transparent)}
+.fotos{display:grid;gap:4px;margin-top:12px;border-radius:16px;overflow:hidden}
+.fotos.n1{grid-template-columns:1fr}.fotos.n2{grid-template-columns:1fr 1fr}.fotos.n3{grid-template-columns:2fr 1fr;grid-template-rows:1fr 1fr}.fotos.n4{grid-template-columns:1fr 1fr}
+.fotos.n3 button:first-child{grid-row:1/3}
+.fotos button{position:relative;padding:0;display:block;background:var(--sup);min-height:120px}
+.fotos img{width:100%;height:100%;object-fit:cover;display:block;max-height:520px;transition:transform .5s}
+.fotos.n1 img{object-fit:contain;max-height:560px;background:#000}
+.fotos button:hover img{transform:scale(1.03)}
+.fotos .resto{position:absolute;inset:0;display:grid;place-items:center;background:rgba(0,0,0,.5);color:#fff;font:800 1.6rem var(--titulo)}
+.pdfs{display:grid;gap:8px;margin-top:12px}
+.pdf-c{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:14px;background:var(--sup);border:1px solid var(--linha);text-decoration:none;color:inherit;transition:.2s}
+.pdf-c:hover{border-color:color-mix(in srgb,var(--rosa) 45%,transparent);transform:translateY(-2px)}
+.pdf-c .ic{width:44px;height:52px;border-radius:9px;display:grid;place-items:center;background:rgba(251,113,133,.14);color:var(--rosa);font:800 .7rem var(--titulo);flex:none}
+.pdf-c b{display:block;font-size:.88rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pdf-c small{color:var(--txt3);font-size:.72rem}
+.pdf-c .ab{margin-left:auto;color:var(--txt3)}
+.video{margin-top:12px;border-radius:16px;overflow:hidden;background:#000;aspect-ratio:16/9;position:relative}
+.video button{position:absolute;inset:0;padding:0;display:block;width:100%}
+.video img{width:100%;height:100%;object-fit:cover;opacity:.88;transition:.4s}
+.video button:hover img{opacity:1;transform:scale(1.03)}
+.video .play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:68px;height:48px;border-radius:14px;background:#f00;display:grid;place-items:center;box-shadow:0 10px 30px rgba(0,0,0,.5)}
+.video .play::after{content:"";border-left:18px solid #fff;border-top:11px solid transparent;border-bottom:11px solid transparent;margin-left:4px}
+.video iframe{width:100%;height:100%;border:0;display:block}
+.v-tit{display:flex;align-items:center;gap:8px;margin-top:8px;font-weight:700;font-size:.88rem}
+.v-tit svg{color:#f87171;flex:none}
+details.transc{margin-top:6px;font-size:.84rem;color:var(--txt2)}
+details.transc summary{cursor:pointer;font-weight:700;font-size:.76rem;color:var(--txt3)}
+details.transc p{white-space:pre-wrap;margin:8px 0 0;line-height:1.55}
+.p-barra{display:flex;align-items:center;gap:4px;margin-top:10px;padding-top:6px;border-top:1px solid var(--linha)}
+.p-barra button{display:inline-flex;align-items:center;gap:7px;padding:8px 12px;border-radius:12px;font-size:.8rem;font-weight:650;color:var(--txt2);transition:.2s}
+.p-barra button:hover{background:var(--sup);color:var(--txt)}
+.p-barra button svg.i{width:18px;height:18px}
+.p-barra button.on.curtir{color:#fb7185}.p-barra button.on.curtir svg{fill:#fb7185;stroke:#fb7185}
+.p-barra button.on.salvar{color:var(--ou-t)}.p-barra button.on.salvar svg{fill:var(--ou);stroke:var(--ou)}
+.p-barra .salvar{margin-left:auto}
+.pop{animation:pop .4s cubic-bezier(.16,1,.3,1)}
+@keyframes pop{40%{transform:scale(1.35)}}
+.coments{display:flex;flex-direction:column;gap:8px;padding:8px 0 4px}
+.com{display:grid;grid-template-columns:auto minmax(0,1fr);gap:9px;align-items:start}
+.com .bal{padding:8px 12px;border-radius:4px 16px 16px 16px;background:var(--sup);font-size:.86rem;line-height:1.5;position:relative}
+.com .bal b{font-size:.8rem;margin-right:6px}
+.com .bal small{color:var(--txt3);font-size:.68rem}
+.com .bal .xc{position:absolute;top:4px;right:6px;opacity:0;color:var(--txt3);font-size:.9rem;transition:.2s}
+.com:hover .xc{opacity:1}
+.com .bal p{margin:2px 0 0;white-space:pre-wrap;word-wrap:break-word}
+.ver-todos{font-size:.78rem;font-weight:700;color:var(--txt3);padding:2px 0;text-align:left}
+.ver-todos:hover{color:var(--txt)}
+.com-novo{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:center;padding:6px 0 4px}
+.com-novo input{border-radius:99px;padding:9px 14px}
+.carregar{padding:14px;text-align:center;color:var(--txt3);font-size:.82rem}
+.vazio{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;color:var(--txt3);font-size:.88rem;padding:40px 14px;border-radius:22px}
+.vazio b{color:var(--txt);font:700 1.05rem var(--titulo)}
+/* IA */
+.ia-cab{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.ia-orbe{width:34px;height:34px;border-radius:50%;flex:none;background:conic-gradient(from 0deg,#f0cb4e,#fff6cf,#d2ae34,#111,#f0cb4e);box-shadow:0 0 18px rgba(240,203,78,.55);animation:gira 6s linear infinite}
+.ia-orbe.pensando{animation-duration:.9s;box-shadow:0 0 26px rgba(240,203,78,.95)}
+@keyframes gira{to{transform:rotate(360deg)}}
+.ia-cab b{display:block;font:700 .95rem var(--titulo)}
+.ia-cab small{color:var(--txt3);font-size:.72rem}
+.ia-conv{display:flex;flex-direction:column;gap:8px;max-height:360px;overflow-y:auto;margin-bottom:8px}
+.ia-conv:empty{display:none}
+.msg{padding:9px 12px;border-radius:14px;font-size:.85rem;line-height:1.55}
+.msg.eu{align-self:flex-end;max-width:88%;background:rgba(240,203,78,.16);border:1px solid rgba(240,203,78,.32)}
+.msg.ia{background:var(--sup);border:1px solid var(--linha)}
+.msg.ia p{margin:0 0 6px}.msg.ia p:last-child{margin:0}
+.msg.ia ol,.msg.ia ul{margin:4px 0;padding-left:18px}
+.msg .fonte{display:block;margin-top:8px;padding-top:7px;border-top:1px dashed var(--linha);font-size:.72rem;color:var(--txt3)}
+.msg .fonte button{color:var(--ou-t);font-weight:700;text-align:left}
+.msg .fb{display:flex;gap:6px;margin-top:8px}
+.msg .fb button{padding:4px 9px;border-radius:9px;font-size:.72rem;font-weight:700;background:var(--sup2);color:var(--txt2)}
+.msg .fb button:hover{color:var(--txt)}
+.ia-sug{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.ia-sug button{padding:5px 10px;border-radius:99px;font-size:.72rem;font-weight:600;background:var(--sup);border:1px solid var(--linha);color:var(--txt2)}
+.ia-sug button:hover{border-color:rgba(240,203,78,.5);color:var(--txt)}
+.ia-in{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px}
+.ia-in input{border-radius:99px;padding:10px 14px}
+.dig span{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--txt3);margin:0 2px;animation:dig 1s infinite}
+.dig span:nth-child(2){animation-delay:.15s}.dig span:nth-child(3){animation-delay:.3s}
+@keyframes dig{50%{transform:translateY(-4px);opacity:.4}}
+.num{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.num div{padding:10px 12px;border-radius:14px;background:var(--sup);border:1px solid var(--linha)}
+.num b{display:block;font:800 1.4rem var(--titulo)}
+.num small{color:var(--txt3);font-size:.7rem;font-weight:600}
+.pessoa{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--linha);font-size:.84rem}
+.pessoa:first-of-type{border-top:0}
+.pessoa small{display:block;color:var(--txt3);font-size:.7rem}
+.top-post{display:block;width:100%;text-align:left;padding:8px 0;border-top:1px solid var(--linha);font-size:.8rem;color:var(--txt2)}
+.top-post:first-of-type{border-top:0}
+.top-post:hover{color:var(--txt)}
+.top-post b{color:var(--txt);font-size:.76rem}
+/* lightbox */
+.luz-img{display:grid;place-items:center;min-height:60vh}
+.luz-img img{max-width:100%;max-height:78vh;border-radius:14px}
+.menu-p{position:relative}
+.menu-lista{position:absolute;right:0;top:calc(100% + 6px);z-index:50;min-width:220px;padding:6px;border-radius:16px;display:none}
+.menu-lista.on{display:block;animation:sobe .3s cubic-bezier(.16,1,.3,1)}
+.menu-lista button{display:flex;align-items:center;gap:10px;width:100%;padding:9px 10px;border-radius:10px;font-size:.82rem;text-align:left}
+.menu-lista button:hover{background:var(--sup2)}
+.menu-lista button.perigo{color:var(--rosa)}
+.menu-lista svg.i{width:16px;height:16px}
+@media (max-width:1000px){main{grid-template-columns:1fr}.lado{position:static;max-height:none;order:-1}.lado .so-pc{display:none}}
+@media (max-width:820px){.topo{position:relative;top:0}.nav{order:3;width:100%;overflow-x:auto;flex-wrap:nowrap;margin:0}.novas{top:10px}}
+@media (max-width:560px){body{padding:8px}.nav button .rot,.nav button .breve{display:none}.comp{grid-template-columns:1fr}.comp>.av{display:none}.comp-pe .ferr span{display:none}.post{padding:13px 12px 8px}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topo vidro vidro-borda-viva">
+    <div class="marca"><span id="logo"></span><span><b>WEDUCA</b><small>Conhecimento King Star</small></span></div>
+    <nav class="nav" id="nav"></nav>
+    <div class="dir"><span class="sync" id="sync"><i></i><span>conectando…</span></span><button type="button" class="btn-ic" id="btAtualizar" title="Recarregar"></button></div>
+  </header>
+  <main id="main"></main>
+</div>
+<script src="/static/aurora.js?v=6"></script>
+<script>
+(() => {
+"use strict";
+const A = Aurora, esc = A.esc, svg = A.svg;
+Object.assign(A.ICONES, {
+  chapeu: A.ICONES.chapeu || '<path d="M2 9.5 12 5l10 4.5L12 14z"/><path d="M6 11.5V16c3.5 2.6 8.5 2.6 12 0v-4.5M22 9.5V15"/>',
+  feed: '<rect x="3" y="3" width="18" height="18" rx="4"/><path d="M7 8h10M7 12h10M7 16h6"/>',
+  livro: '<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5M8 7h7"/>',
+  jornal: '<path d="M4 5h13v14H6a2 2 0 0 1-2-2z"/><path d="M17 8h3v9a2 2 0 0 1-2 2M7 9h7M7 13h7M7 16h4"/>',
+  enquete: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+  pasta2: '<path d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  trofeu: '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/>',
+  imagem: '<rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/>',
+  pdf: '<path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/>',
+  youtube: '<rect x="2.5" y="5.5" width="19" height="13" rx="4"/><path d="m10 9.5 5 2.5-5 2.5z"/>',
+  coracao: A.ICONES.coracao || '<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
+  balao: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>',
+  marcador: '<path d="M6 3h12v18l-6-4-6 4z"/>',
+  ia: '<path d="M12 3l1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8z"/><path d="M19 15l.8 1.9 1.9.8-1.9.8L19 20.4l-.8-1.9-1.9-.8 1.9-.8z"/>',
+  olho: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+});
+A.fundo();
+document.getElementById("logo").outerHTML = A.orbe("chapeu", "#f0cb4e");
+document.querySelector('link[rel="icon"]').href = A.ATOMO_SVG;
+$("#btAtualizar").innerHTML = svg("repetir");
+function $(s, r = document) { return r.querySelector(s); }
+function $$(s, r = document) { return [...r.querySelectorAll(s)]; }
+
+/* ═════════ estado ═════════ */
+const API = "/api/weduca";
+const S = { eu: null, posts: [], mais: false, carregando: false, agora: "", filtro: "", q: "", destaques: null, conv: [], iaOk: true };
+const SECOES = [
+  ["feed", "Feed", "feed", true], ["aprendizagem", "Aprendizagem", "livro"], ["noticias", "Notícias", "jornal"], ["pesquisas", "Pesquisas", "enquete"],
+  ["documentos", "Documentos", "pasta2"], ["resultados", "Resultados", "trofeu"], ["relatorios", "Relatórios", "grafico"],
+];
+const FILTROS = [["", "Tudo"], ["foto", "Fotos"], ["pdf", "PDFs"], ["video", "Vídeos"], ["salvos", "Salvos"], ["meus", "Meus"]];
+
+function sync(e, t) { const el = $("#sync"); el.className = "sync " + (e || ""); el.lastElementChild.textContent = t; }
+async function api(url, op = {}) {
+  const grava = op.method && op.method !== "GET";
+  if (grava) sync("salvando", "salvando…");
+  try { const r = await A.api(url.startsWith("/api/") ? url : API + url, op); sync("", "atualizado " + hora()); return r; }
+  catch (e) { sync("erro", "erro"); if (e.status === 401) { const w = window.top || window; w.location.href = "/login?volta=" + encodeURIComponent(w.location.pathname); } throw e; }
+}
+const hora = (d = new Date()) => d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+function quando(iso) {
+  if (!iso) return "";
+  const d = new Date(iso), s = (Date.now() - d.getTime()) / 1000;
+  if (s < 60) return "agora";
+  if (s < 3600) return `há ${Math.floor(s / 60)} min`;
+  if (s < 86400) return `há ${Math.floor(s / 3600)} h`;
+  if (s < 7 * 86400) return `há ${Math.floor(s / 86400)} d`;
+  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: d.getFullYear() === new Date().getFullYear() ? undefined : "numeric" });
+}
+const CORES = ["#f0cb4e", "#fb923c", "#34d399", "#22d3ee", "#a78bfa", "#fb7185", "#60a5fa", "#facc15"];
+function hashS(s) { let h = 0; for (const c of String(s || "")) h = (h * 31 + c.charCodeAt(0)) | 0; return Math.abs(h); }
+function avatar(p, pequeno) {
+  const nome = (p && p.nome) || "?";
+  return `<span class="av${pequeno ? " p" : ""}" style="--c:${CORES[hashS(p && p.login) % CORES.length]}" title="${esc(nome)}">${esc(A.iniciais ? A.iniciais(nome) : nome.slice(0, 2).toUpperCase())}</span>`;
+}
+const tam = (n) => n > 1048576 ? (n / 1048576).toFixed(1).replace(".", ",") + " MB" : Math.max(1, Math.round(n / 1024)) + " KB";
+/** texto com links e #hashtags clicáveis (sempre escapado antes) */
+function rico(t) {
+  return esc(t).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>')
+    .replace(/(^|\s)#([\p{L}\p{N}_]{2,40})/gu, '$1<span class="tag" data-tag="$2">#$2</span>');
+}
+const urlArq = (id) => `${API}/arquivos/${encodeURIComponent(id)}`;
+const pode = (a) => !!(S.eu && S.eu.pode && S.eu.pode[a]);
+
+/* ═════════ topo (abas) ═════════ */
+function topo() {
+  $("#nav").innerHTML = SECOES.map(([id, rot, ic, pronta]) =>
+    `<button type="button" class="${id === "feed" ? "ativo" : ""}" ${pronta ? "" : "disabled"} title="${pronta ? rot : rot + " — em construção (próxima etapa)"}">${svg(ic)}<span class="rot">${rot}</span></button>`).join("");
+}
+
+/* ═════════ tela ═════════ */
+function tela() {
+  $("#main").innerHTML = `
+    <section class="pilha" id="colFeed">
+      ${pode("publicar") ? `<div class="caixa vidro" id="compositor"></div>` : ""}
+      <div class="filtros">
+        <div class="chips" id="filtros">${FILTROS.map(([f, r]) => `<button type="button" class="chip ${f === S.filtro ? "ativo" : ""}" data-f="${f}">${r}</button>`).join("")}${pode("moderar") ? `<button type="button" class="chip ${S.filtro === "analise" ? "ativo" : ""}" data-f="analise">Em análise</button>` : ""}</div>
+        <label class="busca">${svg("busca")}<input class="entrada" id="busca" placeholder="Buscar no WEDUCA (texto, pessoa, PDF, comentário…)" value="${esc(S.q)}" autocomplete="off"></label>
+      </div>
+      <button type="button" class="novas" id="novas">${svg("subir")}<span></span></button>
+      <div class="pilha" id="lista"></div>
+      <div class="carregar" id="fim"></div>
+    </section>
+    <aside class="lado" id="lado">
+      <div class="caixa vidro" id="ia"></div>
+      <div class="caixa vidro so-pc" id="numeros"></div>
+      <div class="caixa vidro so-pc" id="pessoas"></div>
+    </aside>`;
+  if (pode("publicar")) editor($("#compositor"), null, (p) => { S.posts.unshift(p); desenharLista(); flash(p.id); carregarDestaques(); });
+  $("#filtros").addEventListener("click", (e) => { const b = e.target.closest("[data-f]"); if (!b) return; S.filtro = b.dataset.f; $$("#filtros .chip").forEach((x) => x.classList.toggle("ativo", x === b)); recarregar(); });
+  let tb; $("#busca").addEventListener("input", (e) => { clearTimeout(tb); tb = setTimeout(() => { S.q = e.target.value.trim(); recarregar(); }, 350); });
+  $("#novas").addEventListener("click", () => { $("#novas").classList.remove("on"); recarregar(); scrollTo({ top: 0, behavior: "smooth" }); });
+  painelIA();
+  new IntersectionObserver((es) => { if (es[0].isIntersecting && S.mais && !S.carregando) carregar(true); }, { rootMargin: "600px" }).observe($("#fim"));
+}
+
+/* ═════════ editor de postagem (compositor e edição) ═════════ */
+function editor(box, post, aoSalvar, fechar) {
+  const st = { midias: [...((post && post.midias) || [])], enviando: 0, video: !!(post && post.video) };
+  box.innerHTML = `<div class="comp">${avatar(S.eu)}<div>
+      <textarea id="tx" placeholder="Compartilhe um conhecimento, uma dica, um procedimento… Use #assunto para organizar.">${esc((post && post.texto) || "")}</textarea>
+      <div class="video-campos" ${st.video ? "" : "hidden"}>
+        <input class="entrada" id="vurl" placeholder="Link do vídeo no YouTube (canal da King Star)" value="${esc((post && post.video && post.video.url) || "")}">
+        <textarea class="entrada" id="vtr" rows="3" placeholder="Descrição ou transcrição do vídeo — é isso que a IA usa para responder sobre o vídeo">${esc((post && post.transcricao) || "")}</textarea>
+      </div>
+      <div class="anexos" id="anx"></div>
+      <div class="comp-pe">
+        <button type="button" class="ferr foto" id="bFoto">${svg("imagem")}<span>Foto</span></button>
+        <button type="button" class="ferr pdfb" id="bPdf">${svg("pdf")}<span>PDF</span></button>
+        <button type="button" class="ferr vid" id="bVid">${svg("youtube")}<span>Vídeo</span></button>
+        <label class="base" title="Entra na base de conhecimento: a IA do hub usa esta postagem (e os comentários) para responder"><span class="chave"><input type="checkbox" id="base" ${!post || post.base ? "checked" : ""}><span class="trilho"></span></span>Base da IA</label>
+        ${fechar ? `<button type="button" class="btn v" id="bCanc">Cancelar</button>` : ""}
+        <button type="button" class="btn" id="bPub">${svg("check")}${post ? "Salvar" : "Publicar"}</button>
+      </div>
+      <input type="file" id="fFoto" accept="image/*" multiple hidden><input type="file" id="fPdf" accept="application/pdf,.pdf" multiple hidden>
+    </div></div>`;
+  const tx = $("#tx", box), cresce = () => { tx.style.height = "auto"; tx.style.height = Math.min(tx.scrollHeight, 320) + "px"; };
+  tx.addEventListener("input", cresce); setTimeout(cresce);
+  const anexos = () => {
+    $("#anx", box).innerHTML = st.midias.map((m, i) => `<div class="anexo ${m._envio ? "envio" : ""}">${m.kind === "foto"
+      ? `<img src="${m._prev || urlArq(m.id)}" alt="">` : `<span class="pdf">PDF</span>`}<span>${esc(m.nome)}<small>${m.tam ? tam(m.tam) : ""}${m.paginas ? " · " + m.paginas + " pág." : ""}</small></span>
+      <button type="button" class="x" data-i="${i}" title="Remover">${svg("fechar")}</button></div>`).join("");
+  };
+  anexos();
+  $("#anx", box).addEventListener("click", (e) => { const b = e.target.closest("[data-i]"); if (b) { st.midias.splice(+b.dataset.i, 1); anexos(); } });
+  $("#bFoto", box).onclick = () => $("#fFoto", box).click();
+  $("#bPdf", box).onclick = () => $("#fPdf", box).click();
+  $("#bVid", box).onclick = () => { const v = $(".video-campos", box); v.hidden = !v.hidden; if (!v.hidden) $("#vurl", box).focus(); };
+  const enviar = async (arqs, kind) => {
+    for (const f of arqs) {
+      if (st.midias.length >= 10) { A.toast("Até 10 anexos por postagem."); break; }
+      const tmp = { kind, nome: f.name, tam: f.size, _envio: true, _prev: kind === "foto" ? URL.createObjectURL(f) : "" };
+      st.midias.push(tmp); st.enviando++; anexos();
+      try {
+        const corpo = kind === "foto" ? await comprimir(f) : { blob: f, tipo: "application/pdf" };
+        if (kind === "pdf" && f.size > 15e6) throw new Error("PDF grande demais (máx. 15 MB).");
+        const r = await fetch(`${API}/arquivos`, { method: "POST", credentials: "same-origin", body: corpo.blob,
+          headers: { "Content-Type": corpo.tipo, "X-Nome": encodeURIComponent(f.name), ...(corpo.w ? { "X-Largura": String(corpo.w), "X-Altura": String(corpo.h) } : {}) } });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.detail || "Falha no envio");
+        Object.assign(tmp, d, { _envio: false });
+        if (kind === "pdf" && !d.tem_texto) A.toast(`“${esc(f.name)}” parece escaneado: vai como anexo, mas a IA não consegue ler o texto dele.`, [], { duracao: 7000 });
+      } catch (e) { st.midias.splice(st.midias.indexOf(tmp), 1); A.toast("⚠️ " + esc(e.message)); }
+      st.enviando--; anexos();
+    }
+  };
+  $("#fFoto", box).onchange = (e) => { enviar([...e.target.files], "foto"); e.target.value = ""; };
+  $("#fPdf", box).onchange = (e) => { enviar([...e.target.files], "pdf"); e.target.value = ""; };
+  // colar imagem direto no texto (print da tela)
+  tx.addEventListener("paste", (e) => { const fs = [...(e.clipboardData?.files || [])].filter((f) => f.type.startsWith("image/")); if (fs.length) { e.preventDefault(); enviar(fs, "foto"); } });
+  if (fechar) $("#bCanc", box).onclick = fechar;
+  $("#bPub", box).onclick = async () => {
+    if (st.enviando) return A.toast("Espere os anexos terminarem de enviar.");
+    const corpo = { texto: tx.value, midias: st.midias.map((m) => m.id), video_url: $(".video-campos", box).hidden ? "" : $("#vurl", box).value.trim(),
+      transcricao: $(".video-campos", box).hidden ? "" : $("#vtr", box).value, base: $("#base", box).checked };
+    if (!corpo.texto.trim() && !corpo.midias.length && !corpo.video_url) return tx.focus();
+    const b = $("#bPub", box); b.disabled = true;
+    try {
+      const p = await api(post ? `/posts/${post.id}` : "/posts", { method: post ? "PUT" : "POST", body: corpo });
+      if (!post) { tx.value = ""; st.midias = []; anexos(); cresce(); $(".video-campos", box).hidden = true; $("#vurl", box).value = ""; $("#vtr", box).value = ""; }
+      A.toast(corpo.base ? "Publicado — já faz parte da base de conhecimento da IA." : "Publicado (só no feed).");
+      aoSalvar && aoSalvar(p);
+    } catch (e) { A.toast("⚠️ " + esc(e.message)); }
+    b.disabled = false;
+  };
+}
+/** foto: reduz para no máx. 1600 px e JPEG ~82% (GIF vai como está) — cabe folgado no banco */
+async function comprimir(f) {
+  if (f.type === "image/gif" && f.size < 2.8e6) return { blob: f, tipo: f.type };
+  const img = await new Promise((ok, erro) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => erro(new Error("Não consegui abrir a imagem.")); i.src = URL.createObjectURL(f); });
+  const k = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+  const w = Math.round(img.naturalWidth * k), h = Math.round(img.naturalHeight * k);
+  const c = document.createElement("canvas"); c.width = w; c.height = h;
+  const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, w, h); g.drawImage(img, 0, 0, w, h);
+  const blob = await new Promise((ok) => c.toBlob(ok, "image/jpeg", 0.82));
+  return { blob, tipo: "image/jpeg", w, h };
+}
+
+/* ═════════ postagens ═════════ */
+function htmlPost(p) {
+  const fotos = p.midias.filter((m) => m.kind === "foto"), pdfs = p.midias.filter((m) => m.kind === "pdf");
+  const nf = Math.min(fotos.length, 4);
+  const longo = (p.texto || "").length > 520 || (p.texto || "").split("\n").length > 7;
+  return `<article class="post vidro" data-id="${esc(p.id)}">
+    <div class="p-cab">${avatar(p.autor)}<div class="quem"><b>${esc((p.autor || {}).nome)}</b>
+      <small>${quando(p.em)}${p.editado_em ? " · editado" : ""}
+        ${p.base ? `<span class="selo base" title="A IA do hub usa esta postagem para responder">${svg("ia")}base da IA</span>` : `<span class="selo feed">só no feed</span>`}
+        ${p.revisado ? `<span class="selo rev">revisada</span>` : ""}${p.analise ? `<span class="selo ana">em análise</span>` : ""}</small></div>
+      ${p.pode_mexer || pode("moderar") ? `<div class="menu-p"><button type="button" class="btn-ic" data-menu title="Opções">${svg("reticencias")}</button>
+        <div class="menu-lista vidro">${p.pode_mexer ? `<button type="button" data-a="editar">${svg("lapis")}Editar</button>
+          <button type="button" data-a="base">${svg("ia")}${p.base ? "Tirar da base da IA" : "Pôr na base da IA"}</button>` : ""}
+          ${pode("moderar") ? `<button type="button" data-a="revisar">${svg("check")}${p.revisado ? "Revisar de novo" : "Marcar como revisada"}</button>` : ""}
+          ${p.pode_mexer ? `<button type="button" class="perigo" data-a="excluir">${svg("lixo")}Excluir</button>` : ""}</div></div>` : ""}
+    </div>
+    ${p.texto ? `<div class="p-texto ${longo ? "corta" : ""}">${rico(p.texto)}</div>${longo ? `<button type="button" class="mais-txt" data-a="mais">ver mais</button>` : ""}` : ""}
+    ${(p.correcoes || []).map((c) => `<div class="correcao"><b>Correção</b> · ${esc((c.por || {}).nome || "")} · ${quando(c.em)}<br>${esc(c.texto)}</div>`).join("")}
+    ${p.analise && typeof p.analise === "object" ? `<div class="analise">👎 Alguém disse que a resposta da IA baseada nesta postagem não resolveu${p.analise.obs ? `: “${esc(p.analise.obs)}”` : ""}. Está nas pendências do agente para ajuste.</div>` : ""}
+    ${p.video ? `<div class="video" data-v="${esc(p.video.id)}"><button type="button" data-a="play" aria-label="Assistir"><img src="https://i.ytimg.com/vi/${esc(p.video.id)}/hqdefault.jpg" alt="" loading="lazy" onerror="this.style.opacity=0"><span class="play"></span></button></div>
+      ${p.video.titulo ? `<div class="v-tit">${svg("youtube")}${esc(p.video.titulo)}</div>` : ""}
+      ${p.transcricao ? `<details class="transc"><summary>Descrição / transcrição</summary><p>${esc(p.transcricao)}</p></details>` : ""}` : ""}
+    ${nf ? `<div class="fotos n${nf}">${fotos.slice(0, 4).map((m, i) => `<button type="button" data-foto="${i}"><img src="${urlArq(m.id)}" alt="${esc(m.nome)}" loading="lazy">${i === 3 && fotos.length > 4 ? `<span class="resto">+${fotos.length - 4}</span>` : ""}</button>`).join("")}</div>` : ""}
+    ${pdfs.length ? `<div class="pdfs">${pdfs.map((m) => `<a class="pdf-c" href="${urlArq(m.id)}" target="_blank" rel="noopener"><span class="ic">PDF</span><span style="min-width:0"><b>${esc(m.nome)}</b><small>${m.paginas ? m.paginas + " páginas · " : ""}${tam(m.tam || 0)}</small></span><span class="ab">${svg("olho")}</span></a>`).join("")}</div>` : ""}
+    <div class="p-barra">
+      <button type="button" class="curtir ${p.curti ? "on" : ""}" data-a="curtir">${svg("coracao")}<span>${p.curtidas || ""}</span></button>
+      <button type="button" data-a="comentar">${svg("balao")}<span>${p.n_coment || ""}</span></button>
+      <button type="button" class="salvar ${p.salvei ? "on" : ""}" data-a="salvar" title="Salvar">${svg("marcador")}</button>
+    </div>
+    <div class="coments">${p.n_coment > p.comentarios.length ? `<button type="button" class="ver-todos" data-a="todos">Ver os ${p.n_coment} comentários</button>` : ""}
+      ${p.comentarios.map(htmlCom).join("")}</div>
+    ${pode("comentar") ? `<div class="com-novo">${avatar(S.eu, true)}<input class="entrada" placeholder="Escreva um comentário… (Enter envia)" maxlength="3000"><button type="button" class="btn-ic" data-a="enviar" title="Enviar">${svg("seta")}</button></div>` : ""}
+  </article>`;
+}
+function htmlCom(c) {
+  return `<div class="com" data-c="${esc(c.id)}">${avatar(c.autor, true)}<div class="bal"><b>${esc((c.autor || {}).nome)}</b><small>${quando(c.em)}</small>
+    ${c.pode_mexer ? `<button type="button" class="xc" data-a="xcom" title="Apagar comentário">×</button>` : ""}<p>${rico(c.texto)}</p></div></div>`;
+}
+function desenharLista() {
+  const l = $("#lista");
+  if (!S.posts.length) {
+    l.innerHTML = `<div class="vazio vidro">${A.orbe("chapeu", "#f0cb4e")}<b>${S.q || S.filtro ? "Nada encontrado aqui" : "O WEDUCA começa com você"}</b>
+      ${S.q || S.filtro ? "Tente outra busca ou outro filtro." : "Publique o primeiro conhecimento: um procedimento, uma dica, uma foto do jeito certo, um PDF de instrução ou um vídeo do canal. Tudo vira base da IA."}</div>`;
+  } else l.innerHTML = S.posts.map(htmlPost).join("");
+  $("#fim").textContent = S.posts.length ? (S.mais ? "carregando mais…" : "Você viu tudo 🎉") : "";
+}
+const postDe = (el) => S.posts.find((p) => p.id === el.closest("[data-id]")?.dataset.id) || S.aberto;
+function trocarPost(p) {
+  const i = S.posts.findIndex((x) => x.id === p.id);
+  if (i >= 0) S.posts[i] = p;
+  $$(`.post[data-id="${CSS.escape(p.id)}"]`).forEach((el) => { el.outerHTML = htmlPost(p); });
+}
+function flash(id) { const el = $(`.post[data-id="${CSS.escape(id)}"]`); if (!el) return; el.classList.add("brilho"); el.scrollIntoView({ behavior: "smooth", block: "center" }); setTimeout(() => el.classList.remove("brilho"), 2600); }
+
+document.addEventListener("click", async (e) => {
+  if (!e.target.closest(".menu-p")) $$(".menu-lista.on").forEach((m) => m.classList.remove("on"));
+  const m = e.target.closest("[data-menu]");
+  if (m) { m.nextElementSibling.classList.toggle("on"); return; }
+  const tag = e.target.closest("[data-tag]");
+  if (tag) { S.q = "#" + tag.dataset.tag; $("#busca").value = S.q; recarregar(); scrollTo({ top: 0, behavior: "smooth" }); A.modalAberto?.() && document.querySelector(".aur-modal [data-fechar]")?.click(); return; }
+  const f = e.target.closest("[data-foto]");
+  if (f) { const p = postDe(f); return luz(p.midias.filter((x) => x.kind === "foto"), +f.dataset.foto); }
+  const b = e.target.closest("[data-a]");
+  if (!b || !b.closest(".post")) return;
+  const p = postDe(b), art = b.closest(".post");
+  if (!p) return;
+  const a = b.dataset.a;
+  try {
+    if (a === "mais") { art.querySelector(".p-texto").classList.remove("corta"); b.remove(); }
+    else if (a === "play") { b.closest(".video").innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(p.video.id)}?autoplay=1&rel=0" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen title="${esc(p.video.titulo || "Vídeo")}"></iframe>`; }
+    else if (a === "curtir") {
+      const r = await api(`/posts/${p.id}/curtir`, { method: "POST" });
+      p.curti = r.ligado; p.curtidas = r.total; b.classList.toggle("on", r.ligado); b.querySelector("span").textContent = r.total || "";
+      b.querySelector("svg").classList.remove("pop"); void b.offsetWidth; if (r.ligado) b.querySelector("svg").classList.add("pop");
+    }
+    else if (a === "salvar") { const r = await api(`/posts/${p.id}/salvar`, { method: "POST" }); p.salvei = r.ligado; b.classList.toggle("on", r.ligado); A.toast(r.ligado ? "Salvo — veja em “Salvos”." : "Removido dos salvos."); }
+    else if (a === "comentar") { const i = art.querySelector(".com-novo input"); i ? i.focus() : A.toast("Comentar não está liberado para você."); }
+    else if (a === "enviar") comentar(p, art);
+    else if (a === "todos") { const t = await api(`/posts/${p.id}`); Object.assign(p, t); art.querySelector(".coments").innerHTML = t.comentarios.map(htmlCom).join(""); }
+    else if (a === "xcom") {
+      if (!(await A.confirmar("Apagar este comentário? Ele também sai da base da IA.", { titulo: "Apagar comentário", rotulo: "Apagar", perigo: true }))) return;
+      const cid = b.closest("[data-c]").dataset.c; await api(`/comentarios/${cid}`, { method: "DELETE" });
+      p.comentarios = p.comentarios.filter((c) => c.id !== cid); p.n_coment = Math.max(0, p.n_coment - 1); trocarPost(p);
+    }
+    else if (a === "editar") editarPost(p);
+    else if (a === "base") { const r = await api(`/posts/${p.id}/base`, { method: "POST", body: { base: !p.base } }); p.base = r.base; trocarPost(p); A.toast(r.base ? "Voltou para a base da IA." : "Agora só no feed: a IA não usa mais esta postagem."); carregarDestaques(); }
+    else if (a === "revisar") { await api(`/posts/${p.id}/revisar`, { method: "POST" }); p.revisado = true; p.analise = null; trocarPost(p); A.toast("Marcada como revisada."); carregarDestaques(); }
+    else if (a === "excluir") {
+      if (!(await A.confirmar("Excluir esta postagem? Ela sai do feed e da base da IA.", { titulo: "Excluir postagem", rotulo: "Excluir", perigo: true }))) return;
+      await api(`/posts/${p.id}`, { method: "DELETE" }); S.posts = S.posts.filter((x) => x.id !== p.id); art.remove(); A.toast("Postagem excluída."); carregarDestaques();
+      document.querySelector(".aur-modal [data-fechar]")?.click();
+    }
+  } catch (err) { A.toast("⚠️ " + esc(err.message)); }
+});
+document.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && e.target.matches(".com-novo input")) { e.preventDefault(); const art = e.target.closest(".post"); comentar(postDe(art), art); } });
+async function comentar(p, art) {
+  const i = art.querySelector(".com-novo input"), t = i.value.trim();
+  if (!t) return i.focus();
+  i.disabled = true;
+  try {
+    const c = await api(`/posts/${p.id}/comentarios`, { method: "POST", body: { texto: t } });
+    i.value = ""; p.comentarios.push(c); p.n_coment++;
+    art.querySelector(".coments").insertAdjacentHTML("beforeend", htmlCom(c));
+    art.querySelector('[data-a="comentar"] span').textContent = p.n_coment;
+  } catch (e) { A.toast("⚠️ " + esc(e.message)); }
+  i.disabled = false; i.focus();
+}
+function editarPost(p) {
+  const m = A.modal({ titulo: "Editar postagem", icone: "lapis", cor: "#f0cb4e", largura: 720, html: `<div id="edBox"></div>`,
+    aoAbrir: (cx) => editor($("#edBox", cx), p, (novo) => { trocarPost(novo); m.fechar(); A.toast("Postagem atualizada."); }, () => m.fechar()) });
+}
+function luz(fotos, i) {
+  let k = i;
+  const m = A.modal({ titulo: fotos[k].nome, icone: "imagem", largura: 1100, html: `<div class="luz-img"><img id="luzImg" src="${urlArq(fotos[k].id)}" alt=""></div>`,
+    botoes: fotos.length > 1 ? [{ rotulo: "Anterior", icone: "voltar", acao: () => (mudar(-1), false) }, { rotulo: "Próxima", icone: "avancar", classe: "btn", acao: () => (mudar(1), false) }] : [] });
+  function mudar(d) { k = (k + d + fotos.length) % fotos.length; m.el.querySelector("#luzImg").src = urlArq(fotos[k].id); m.el.querySelector("h3").textContent = fotos[k].nome; }
+}
+/** uma postagem pelo link (#post=ID) — vem da IA do topo ou de uma pendência */
+async function abrirPost(id) {
+  const ja = $(`.post[data-id="${CSS.escape(id)}"]`);
+  if (ja) { flash(id); return; }
+  try {
+    const p = await api(`/posts/${encodeURIComponent(id)}`);
+    S.aberto = p;
+    A.modal({ titulo: "Postagem de " + ((p.autor || {}).nome || ""), icone: "chapeu", cor: "#f0cb4e", largura: 760, html: `<div class="pilha">${htmlPost(p)}</div>`, aoFechar: () => { S.aberto = null; } });
+  } catch (e) { A.toast("⚠️ " + esc(e.message)); }
+}
+function lerHash() { const m = /post=([\w-]+)/.exec(location.hash); if (m) { abrirPost(m[1]); history.replaceState(null, "", location.pathname); } }
+addEventListener("hashchange", lerHash);
+
+/* ═════════ carregar / tempo real ═════════ */
+async function carregar(maisAntigas) {
+  if (S.carregando) return;
+  S.carregando = true;
+  try {
+    const qs = new URLSearchParams({ filtro: S.filtro, q: S.q, n: "15", ...(maisAntigas && S.posts.length ? { antes: S.posts[S.posts.length - 1].em } : {}) });
+    sync("salvando", "carregando…");
+    const r = await api("/feed?" + qs);
+    S.posts = maisAntigas ? S.posts.concat(r.posts) : r.posts;
+    S.mais = r.mais; if (!maisAntigas) S.agora = r.agora;
+    desenharLista();
+  } catch (e) { $("#lista").innerHTML = `<div class="vazio vidro">${svg("atencao")}<b>Não consegui carregar o feed</b>${esc(e.message)}</div>`; }
+  S.carregando = false;
+}
+function recarregar() { $("#novas").classList.remove("on"); return carregar(false); }
+async function novidades() {
+  if (document.hidden || !S.agora || S.q || S.filtro) return;
+  try {
+    const r = await A.api(`${API}/novidades?desde=${encodeURIComponent(S.agora)}`);
+    const b = $("#novas");
+    if (r.novas) { b.querySelector("span").textContent = r.novas === 1 ? "1 nova postagem" : `${r.novas} novas postagens`; b.classList.add("on"); }
+  } catch (_) {}
+}
+setInterval(novidades, 20000);
+async function carregarDestaques() {
+  try {
+    const d = S.destaques = await api("/destaques");
+    $("#numeros").innerHTML = `<h3>${svg("ia")}Base de conhecimento</h3><div class="num"><div><b>${d.na_base}</b><small>postagens na base da IA</small></div><div><b>${d.total}</b><small>no feed</small></div></div>
+      ${d.em_analise ? `<button type="button" class="btn v" style="margin-top:10px;width:100%" id="verAnalise">${svg("atencao")}${d.em_analise} em análise (👎 da IA)</button>` : ""}`;
+    $("#verAnalise")?.addEventListener("click", () => { S.filtro = "analise"; $$("#filtros .chip").forEach((x) => x.classList.toggle("ativo", x.dataset.f === "analise")); recarregar(); });
+    $("#pessoas").innerHTML = `<h3>${svg("usuarios")}Quem mais compartilha</h3>${d.pessoas.length ? d.pessoas.map((x) => `<div class="pessoa">${avatar({ nome: x.nome, login: x.login }, true)}<span><b>${esc(x.nome)}</b><small>${x.posts} ${x.posts === 1 ? "postagem" : "postagens"} · ${x.curtidas} ♥</small></span></div>`).join("")
+      : `<div class="sub" style="color:var(--txt3);font-size:.8rem">Ainda ninguém. Seja a primeira pessoa!</div>`}
+      ${d.mais_curtidas.length ? `<h3 style="margin-top:14px">${svg("coracao")}Mais curtidas</h3>${d.mais_curtidas.map((x) => `<button type="button" class="top-post" data-ver="${esc(x.id)}"><b>${esc((x.autor || {}).nome)}</b> · ${x.curtidas} ♥<br>${esc(x.texto || "(foto / vídeo)")}</button>`).join("")}` : ""}`;
+    $$("#pessoas [data-ver]").forEach((b) => b.addEventListener("click", () => abrirPost(b.dataset.ver)));
+  } catch (_) {}
+}
+
+/* ═════════ IA: pergunte ao que a equipe já sabe ═════════ */
+function painelIA() {
+  $("#ia").innerHTML = `<div class="ia-cab"><span class="ia-orbe" id="iaOrbe"></span><span><b>Pergunte ao WEDUCA</b><small>A IA responde com o que a equipe publicou</small></span></div>
+    <div class="ia-conv" id="iaConv"></div>
+    <div class="ia-sug" id="iaSug"></div>
+    <form class="ia-in" id="iaForm"><input class="entrada" id="iaTxt" placeholder="Ex.: como montar o palete?" autocomplete="off" maxlength="500"><button type="submit" class="btn" title="Perguntar">${svg("seta")}</button></form>`;
+  $("#iaForm").addEventListener("submit", (e) => { e.preventDefault(); perguntar($("#iaTxt").value); });
+  A.api("/api/agente/me").then((m) => {
+    $("#iaSug").innerHTML = (m.sugestoes || []).slice(0, 3).map((s) => `<button type="button">${esc(s)}</button>`).join("");
+    $$("#iaSug button").forEach((b) => b.addEventListener("click", () => perguntar(b.textContent)));
+  }).catch((e) => { if (e.status === 403) { S.iaOk = false; $("#iaConv").innerHTML = `<div class="msg ia">A IA ainda não está liberada para você. Peça ao administrador em <b>Configurações → Usuários → Agente IA</b>.</div>`; $("#iaForm").hidden = true; } });
+}
+function textoIA(t) {
+  const l = esc(t).split(/\n+/), out = []; let lista = null;
+  for (const x of l) {
+    const m = /^\s*(?:\d+[.)]|[-•*])\s+(.*)/.exec(x);
+    if (m) { if (!lista) { lista = []; out.push(lista); } lista.push(m[1]); }
+    else { lista = null; if (x.trim()) out.push(x); }
+  }
+  return out.map((x) => Array.isArray(x) ? `<ol>${x.map((i) => `<li>${i}</li>`).join("")}</ol>` : `<p>${x.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")}</p>`).join("");
+}
+async function perguntar(q) {
+  q = String(q || "").trim(); if (!q || S.iaOcupada) return;
+  S.iaOcupada = true; $("#iaTxt").value = ""; $("#iaSug").innerHTML = "";
+  const conv = $("#iaConv");
+  conv.insertAdjacentHTML("beforeend", `<div class="msg eu">${esc(q)}</div>`);
+  const d = document.createElement("div"); d.className = "msg ia"; d.innerHTML = `<span class="dig"><span></span><span></span><span></span></span>`; conv.appendChild(d);
+  $("#iaOrbe").classList.add("pensando"); conv.scrollTop = conv.scrollHeight;
+  try {
+    const r = await A.api("/api/agente/perguntar", { method: "POST", body: { pergunta: q, tela: "WEDUCA", historico: S.conv.slice(-3) } });
+    if (r.tipo === "resposta") {
+      const f = r.fonte || {}, corpo = r.passos ? `<ol>${r.passos.map((p) => `<li>${esc(p)}</li>`).join("")}</ol>` : textoIA(r.texto);
+      const fonte = f.origem === "weduca"
+        ? `📣 Fonte: <button type="button" data-post="${esc(f.post_id)}">postagem de ${esc(f.por || "")} no WEDUCA</button>`
+        : `📄 Fonte: <b>${esc(f.titulo)}</b> (artigo da base)`;
+      d.innerHTML = `${r.modo === "ia" || f.origem === "weduca" ? "" : `<p><b>${esc(r.titulo)}</b></p>`}${corpo}<span class="fonte">${fonte}</span>
+        <div class="fb"><button type="button" data-u="1">👍 Resolveu</button><button type="button" data-u="0">👎 Não resolveu</button></div>`;
+      S.conv.push({ p: q, r: r.texto || (r.passos || []).slice(0, 4).join(" ") }); if (S.conv.length > 3) S.conv.shift();
+      d.querySelector("[data-post]")?.addEventListener("click", (e) => abrirPost(e.currentTarget.dataset.post));
+      d.querySelectorAll("[data-u]").forEach((b) => b.addEventListener("click", async () => {
+        const util = b.dataset.u === "1";
+        let obs = "";
+        if (!util) { obs = await pedirObs(); if (obs === null) return; }
+        try { await A.api("/api/agente/retorno", { method: "POST", body: { pergunta_id: r.pergunta_id, util, obs } }); } catch (_) {}
+        d.querySelector(".fb").innerHTML = util ? `<small style="color:var(--verde)">Obrigado! Essa resposta vira exemplo para as próximas.</small>`
+          : `<small style="color:var(--rosa)">Anotado: ${f.origem === "weduca" ? "a postagem ficou <b>em análise</b> e " : ""}foi para quem cuida da base ajustar.</small>`;
+        if (!util && f.origem === "weduca") { const p = S.posts.find((x) => x.id === f.post_id); if (p) { p.analise = true; trocarPost(p); } }
+      }));
+    } else {
+      d.innerHTML = `🤔 <b>A equipe ainda não publicou sobre isso.</b><br>Não vou inventar: a pergunta foi para quem cuida da base. ${pode("publicar") ? "Se você sabe, publique no feed — a IA aprende na hora." : ""}`;
+    }
+  } catch (e) {
+    d.innerHTML = e.status === 403 ? "A IA não está liberada para você (Configurações → Usuários → Agente IA)." : "⚠️ " + esc(e.message || "Não consegui responder agora.");
+  }
+  $("#iaOrbe").classList.remove("pensando"); S.iaOcupada = false; conv.scrollTop = conv.scrollHeight;
+}
+function pedirObs() {
+  return new Promise((ok) => {
+    let v = null;
+    A.modal({ titulo: "O que não resolveu?", icone: "atencao", largura: 440,
+      html: `<p style="margin:0 0 10px;color:var(--txt2)">Conte o que faltou ou o que está errado — vai para quem cuida da base.</p><input class="entrada" id="obsTxt" maxlength="300" placeholder="Ex.: isso mudou, agora é feito pelo ERP">`,
+      aoAbrir: (cx) => setTimeout(() => $("#obsTxt", cx).focus(), 60),
+      botoes: [{ rotulo: "Cancelar" }, { rotulo: "Enviar", classe: "btn", principal: true, acao: () => { v = (document.getElementById("obsTxt") || {}).value || ""; } }],
+      aoFechar: () => ok(v) });
+  });
+}
+
+/* ═════════ início ═════════ */
+$("#btAtualizar").addEventListener("click", () => { recarregar(); carregarDestaques(); });
+(async () => {
+  topo();
+  try { S.eu = await api("/me"); }
+  catch (e) {
+    $("#main").innerHTML = `<div class="vazio vidro" style="grid-column:1/-1">${svg("cadeado")}<b>${e.status === 403 ? "Sem acesso ao WEDUCA" : "WEDUCA indisponível"}</b>${esc(e.message)}${e.status === 403 ? "<br>Peça ao administrador em Configurações → Usuários." : ""}</div>`;
+    return;
+  }
+  tela();
+  await carregar(false);
+  carregarDestaques();
+  lerHash();
+  try { parent.postMessage({ hub: "titulo", texto: "WEDUCA" }, location.origin); } catch (_) {}
+})();
+})();
+</script>
+</body>
+</html>

@@ -270,6 +270,12 @@ textarea.ag-f{min-height:130px;resize:vertical}
 
   /* ───────── conversa ───────── */
   const chat = () => POP.querySelector('#agChat');
+  /** abre a postagem no módulo WEDUCA (aba do túnel), direto nela */
+  function abrirWeduca(id) {
+    if (!id) return;
+    try { window.postMessage({ hub: 'abrir', id: 'weduca', hash: 'post=' + id }, location.origin); } catch (_) {}
+  }
+
   function bolha(cls, html) {
     const d = document.createElement('div'); d.className = 'ag-m ' + cls; d.innerHTML = html;
     chat().appendChild(d); chat().scrollTop = chat().scrollHeight; return d;
@@ -307,12 +313,15 @@ textarea.ag-f{min-height:130px;resize:vertical}
       if (r.tipo === 'resposta') {
         const corpo = r.passos ? '<ol>' + r.passos.map(p => '<li>' + esc(p) + '</li>').join('') + '</ol>' : textoIA(r.texto);
         const f = r.fonte || {};
-        d.innerHTML = `${r.modo === 'ia' ? '' : `<h4>${esc(r.titulo)}</h4>`}<div class="ag-corpo">${corpo}</div>
-          <div class="ag-src">📄 Fonte: <b>${esc(f.titulo)}</b> · v${esc(f.versao)} · ${esc(diaBR(f.atualizado_em))}${f.por ? ' · ' + esc(f.por) : ''}</div>
+        d.innerHTML = `${r.modo === 'ia' || f.origem === 'weduca' ? '' : `<h4>${esc(r.titulo)}</h4>`}<div class="ag-corpo">${corpo}</div>
+          <div class="ag-src">${f.origem === 'weduca'
+            ? `📣 Fonte: postagem de <b>${esc(f.por || '')}</b> no WEDUCA · ${esc(diaBR(f.atualizado_em))} · <a href="#" data-wed="${esc(f.post_id)}">ver a postagem</a>`
+            : `📄 Fonte: <b>${esc(f.titulo)}</b> · v${esc(f.versao)} · ${esc(diaBR(f.atualizado_em))}${f.por ? ' · ' + esc(f.por) : ''}`}</div>
           <div class="ag-fb"><button type="button" data-u="1">👍 Resolveu</button><button type="button" data-u="0">👎 Não resolveu</button>${ME && ME.pode_alimentar ? '<button type="button" data-aj="1" title="Corrigir um trecho: o artigo é ajustado e as próximas respostas já saem certas">✏️ Ajustar</button>' : ''}</div>`;
         CONV.push({ p: q, r: r.texto || (r.passos || []).slice(0, 4).join(' ') }); if (CONV.length > 3) CONV.shift();
         ligarRetorno(d, r.pergunta_id);
         ligarAjuste(d, r, q);
+        d.querySelector('[data-wed]')?.addEventListener('click', ev => { ev.preventDefault(); abrirWeduca(ev.currentTarget.dataset.wed); });
       } else {
         d.innerHTML = '🤔 <b>Ainda não tenho isso na minha base.</b><br>Não vou inventar: sua pergunta foi para quem cuida dos processos e, quando for documentada, eu passo a responder. Enquanto isso, procure seu gestor.';
         if (ME && ME.pode_alimentar) { ME.pendencias = (ME.pendencias || 0) + 1; contador(); }
@@ -465,6 +474,7 @@ textarea.ag-f{min-height:130px;resize:vertical}
           <div class="m">${esc((p.de || {}).nome || '')} · ${esc(dataBR(p.em))} · <span class="ag-w ${p.motivo === 'nao_resolveu' ? 'b' : 'n'}">${p.motivo === 'nao_resolveu' ? '👎 Não resolveu' : 'Sem resposta na base'}</span>${p.obs ? '<br>“' + esc(p.obs) + '”' : ''}
           ${at.login ? `<br>👤 Com <b>${esc(at.nome)}</b> · ${esc(at.cargo || '')}${at.setor ? ' · ' + esc(at.setor) : ''} · desde ${esc(dataBR(at.em))}${at.nota ? ' — “' + esc(at.nota) + '”' : ''}` : ''}</div>
           ${p.fase === 'aguardando_aprovacao' ? `<div class="ag-prop"><b>✍️ Resposta de ${esc((pr.por || {}).nome || '')}</b> · ${esc(dataBR(pr.em))}<br><b>${esc(pr.titulo)}</b><ol>${(pr.passos || []).map(x => '<li>' + esc(x) + '</li>').join('')}</ol></div>` : ''}
+          ${String(p.artigo_id || '').startsWith('weduca:') ? `<div class="m">📣 A fonte foi uma postagem do WEDUCA (ficou em análise) · <a href="#" data-wed="${esc(p.artigo_id.slice(7))}">ver a postagem</a></div>` : ''}
           ${pr.status === 'devolvida' ? `<div class="ag-dev">↩ Devolvida: ${esc(pr.motivo_devolucao || '')}</div>` : ''}
           <div class="ag-bt" style="margin:0">
             ${p.fase === 'aguardando_aprovacao'
@@ -481,6 +491,7 @@ textarea.ag-f{min-height:130px;resize:vertical}
       SEL = alvo ? alvo.id : null;
       rArt(alvo ? { ...alvo, ...(conteudo || {}) } : (conteudo || { titulo: p.pergunta }));
     };
+    cc().querySelectorAll('[data-wed]').forEach(a => a.addEventListener('click', ev => { ev.preventDefault(); abrirWeduca(a.dataset.wed); }));
     cc().querySelectorAll('[data-r]').forEach(b => b.addEventListener('click', () => abrirArtigo(lst.find(x => x.id === b.dataset.r))));
     cc().querySelectorAll('[data-rev]').forEach(b => b.addEventListener('click', () => {
       const p = lst.find(x => x.id === b.dataset.rev), pr = p.proposta || {};
