@@ -82,7 +82,7 @@ def achar_membro(nome_recebido, nomes) -> str | None:
     tokens = set(entrada.split())
     melhor, maior = None, 0.0
     for oficial in nomes:
-        of = normalizar(oficial)
+        of = _norm_memo(oficial)
         tok_of = of.split()
         if entrada == of:
             return oficial
@@ -100,10 +100,26 @@ def achar_membro(nome_recebido, nomes) -> str | None:
         for t in tokens:
             if t == primeiro and len(t) >= 3 and 0.88 > maior:
                 maior, melhor = 0.88, oficial
-        s = SequenceMatcher(None, entrada, of).ratio()
+        sm = SequenceMatcher(None, entrada, of)
+        # nota abaixo de 0,82 nunca é escolhida no fim: pula o cálculo caro quando nem o teto chega lá
+        if sm.real_quick_ratio() < max(0.82, maior) or sm.quick_ratio() < max(0.82, maior):
+            continue
+        s = sm.ratio()
         if s > maior:
             maior, melhor = s, oficial
     return melhor if maior >= 0.82 else None
+
+
+_NORM: dict[str, str] = {}
+
+
+def _norm_memo(t: str) -> str:
+    n = _NORM.get(t)
+    if n is None:
+        if len(_NORM) > 20000:
+            _NORM.clear()
+        n = _NORM[t] = normalizar(t)
+    return n
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -305,10 +321,13 @@ def classificar(membro: dict, rel: dict, limite: int = LIMITE_AUX_PADRAO) -> str
     return PUB
 
 
-def preparar(relatorios: list[dict], membros: dict[str, dict], limite: int = LIMITE_AUX_PADRAO) -> list[dict]:
-    """Uma linha por relatório, já com mês, membro, categoria e duplicidade resolvidos."""
+def preparar(relatorios: list[dict], membros: dict[str, dict], limite: int = LIMITE_AUX_PADRAO,
+             cache_nome: dict | None = None) -> list[dict]:
+    """Uma linha por relatório, já com mês, membro, categoria e duplicidade resolvidos.
+    cache_nome: nome enviado → membro, guardado ENTRE chamadas (achar o nome é a parte cara;
+    quem chama zera quando a lista de membros muda)."""
     nomes = list(membros.keys())
-    cache_nome: dict[str, str | None] = {}
+    cache_nome = {} if cache_nome is None else cache_nome
     linhas = []
     for r in relatorios:
         if r.get("status_validacao") == "EXCLUIDO":

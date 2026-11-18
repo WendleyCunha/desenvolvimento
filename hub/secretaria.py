@@ -222,7 +222,11 @@ class _Base:
     def linhas(self) -> list[dict]:
         with self.trava:
             if self._linhas is None:
-                self._linhas = R.preparar(list(self.rels.values()), self.membros or {}, self.config().get("limite_aux", 15))
+                assin = tuple(sorted(self.membros or {}))
+                if getattr(self, "_assin_nomes", None) != assin:   # mudou a lista de membros → reconhece os nomes de novo
+                    self._assin_nomes, self._cache_nome = assin, {}
+                self._linhas = R.preparar(list(self.rels.values()), self.membros or {}, self.config().get("limite_aux", 15),
+                                          cache_nome=self._cache_nome)
             return self._linhas
 
     def gravar_rel(self, rid: str, dados: dict, merge=True):
