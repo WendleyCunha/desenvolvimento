@@ -80,7 +80,7 @@ def _fs_desde(col: str, campo: str, desde: str) -> list:
 
 
 def _fs_usuarios() -> dict:
-    return acesso.USUARIOS.todos() if banco.configurado() else {}
+    return acesso.usuarios_da_empresa() if banco.configurado() else {}
 
 
 P = {"listar": _fs_listar, "ler": _fs_ler, "gravar": _fs_gravar, "desde": _fs_desde, "usuarios": _fs_usuarios}
@@ -145,7 +145,7 @@ def _exigir_alimentar(request: Request) -> dict:
 # ══════════════════════════════════════════════════════════════════════════
 # Base de artigos (com cache curto: o agente é chamado a cada pergunta)
 # ══════════════════════════════════════════════════════════════════════════
-_cache = {"t": 0.0, "artigos": []}
+_cache = banco.por_empresa(lambda: {"t": 0.0, "artigos": []})
 
 
 def esquecer_cache() -> None:

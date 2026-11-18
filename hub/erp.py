@@ -148,7 +148,7 @@ class _Store:
             self.carregado_em = time.time()
 
 
-ST = _Store()
+ST = banco.por_empresa(_Store)   # um estado por empresa
 
 
 class Tx:
@@ -251,7 +251,7 @@ def _avisar_tickets(eventos: list, u: dict):
     Em segundo plano: o ERP nunca espera nem falha por causa disso."""
     try:
         import tickets
-        threading.Thread(target=tickets.eventos_do_erp, args=(eventos, dict(u or {})), daemon=True).start()
+        banco.thread(tickets.eventos_do_erp, eventos, dict(u or {}))
     except Exception as ex:  # noqa: BLE001
         print(f"[erp] não avisou os tickets: {ex}")
 
@@ -1152,8 +1152,7 @@ async def baixa_entrega(cid: str, request: Request):
     if c.get("resultado") in ("avaria", "recusado", "ausente"):
         try:
             import tickets
-            threading.Thread(target=tickets.auto_de_baixa, args=(str(c.get("pedido_id") or ""), c.get("resultado"), str(c.get("motivo") or ""), u),
-                             daemon=True).start()
+            banco.thread(tickets.auto_de_baixa, str(c.get("pedido_id") or ""), c.get("resultado"), str(c.get("motivo") or ""), u)
         except Exception as ex:  # noqa: BLE001
             print(f"[erp] não abriu ticket automático: {ex}")
     return resposta

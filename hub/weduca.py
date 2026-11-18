@@ -81,7 +81,7 @@ def _fs_marcar(col: str, doc_id: str, campo: str, valor: str, ligar: bool) -> No
 
 
 def _fs_usuarios() -> dict:
-    return acesso.USUARIOS.todos() if banco.configurado() else {}
+    return acesso.usuarios_da_empresa() if banco.configurado() else {}
 
 
 def _fs_onde(col: str, campo: str, op: str, valor) -> list:
@@ -143,7 +143,7 @@ def _eu(u: dict) -> str:
 # ══════════════════════════════════════════════════════════════════════════
 # Leitura com cache curto (o feed e a IA leem muito; quem grava esquece o cache)
 # ══════════════════════════════════════════════════════════════════════════
-_cache = {"t": 0.0, "posts": [], "com": [], "cursos": [], "aulas": []}
+_cache = banco.por_empresa(lambda: {"t": 0.0, "posts": [], "com": [], "cursos": [], "aulas": []})
 
 
 def esquecer() -> None:

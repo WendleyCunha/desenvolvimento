@@ -85,6 +85,18 @@ body{padding:14px;min-height:100vh}
 .alerta{padding:14px 16px;border-radius:16px;font-size:.84rem;line-height:1.6;color:var(--txt2);background:rgba(var(--ouro-rgb),.07);border:1px dashed rgba(var(--ouro-rgb),.4);margin-bottom:16px}
 .alerta code{color:var(--ouro2)}
 
+/* duplicar sistema (empresas) */
+.emp-g{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.emp-c{display:flex;flex-direction:column;gap:12px;padding:16px;border-radius:18px;background:rgba(255,255,255,.035);border:1px solid var(--vidro-borda)}
+.emp-c.atual{border-color:rgba(var(--ouro-rgb),.6);box-shadow:0 0 0 1px rgba(var(--ouro-rgb),.25)}
+.emp-c.off{opacity:.55}
+.emp-c .nums{display:flex;gap:14px;font-size:.76rem;color:var(--txt3)}.emp-c .nums b{color:var(--txt);font-size:.95rem;margin-right:3px}
+.emp-acs{display:flex;flex-wrap:wrap;gap:6px;margin-top:auto}
+.mods-emp{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px;margin-top:10px}
+.mods-emp label{display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:12px;background:rgba(255,255,255,.035);border:1px solid var(--vidro-borda);font-size:.84rem;cursor:pointer}
+.mods-emp label small{display:block;color:var(--txt3);font-size:.7rem}
+.mods-emp input{width:17px;height:17px;accent-color:var(--ouro)}
+
 /* editor de usuário */
 .ed-g{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
 .ed-ch{display:flex;flex-wrap:wrap;gap:22px;margin-top:16px}
@@ -173,29 +185,30 @@ A.fundo();
 document.getElementById("logo").outerHTML = A.atomo(40);
 document.querySelector('link[rel="icon"]').href = A.ATOMO_SVG;
 
-let EU = null, DIAG = {}, USERS = [], MODS = [], BANCO = false, secao = "aparencia";
+let EU = null, EMPRESA = null, DIAG = {}, USERS = [], MODS = [], BANCO = false, secao = "aparencia";
 try { secao = sessionStorage.getItem("wd.cfg.secao") || "aparencia"; } catch (_) {}
 const elC = document.getElementById("conteudo");
 const SECOES = [
   { id: "aparencia",  nome: "Aparência",           ic: "paleta",  cor: "#22d3ee" },
   { id: "usuarios",   nome: "Usuários",            ic: "usuarios", cor: "#e8b33d", admin: true },
   { id: "permissoes", nome: "Permissões",          ic: "escudo",  cor: "#a78bfa", admin: true },
+  { id: "duplicar",   nome: "Duplicar sistema",    ic: "copiar",  cor: "#f472b6", super: true },
   { id: "conta",      nome: "Minha conta",         ic: "usuario", cor: "#34d399" },
   { id: "sistema",    nome: "Sistema",             ic: "ajustes", cor: "#94a3b8" },
 ];
 const NIVEL = { editar: ["Editar", "#34d399"], ver: ["Só ver", "#60a5fa"], oculto: ["Oculto", "#fb7185"] };
 
 function nav() {
-  const vis = SECOES.filter((s) => !s.admin || EU.admin);
+  const vis = SECOES.filter((s) => (!s.admin || EU.admin) && (!s.super || EU.super));
   if (!vis.some((s) => s.id === secao)) secao = "aparencia";
   document.getElementById("nav").innerHTML = vis.map((s) => `<button type="button" data-s="${s.id}" class="${s.id === secao ? "ativo" : ""}" style="--c:${s.cor}">${A.orbe(s.ic, s.cor)}${s.nome}</button>`).join("");
-  document.getElementById("quem").innerHTML = `<span class="av">${A.iniciais(EU.nome)}</span><div><b>${esc(EU.nome)}</b><small>${EU.admin ? "Administrador" : "@" + esc(EU.login)}</small></div>
+  document.getElementById("quem").innerHTML = `<span class="av">${A.iniciais(EU.nome)}</span><div><b>${esc(EU.nome)}</b><small>${EU.super ? "Super administrador" : EU.admin ? "Administrador" : "@" + esc(EU.login)}${EMPRESA ? " · " + esc(EMPRESA.nome) : ""}</small></div>
     <button type="button" class="btn-ic p" id="btSair" title="Sair">${svg("sair")}</button>`;
   document.getElementById("btSair").onclick = sair;
 }
 document.getElementById("nav").onclick = (e) => { const b = e.target.closest("[data-s]"); if (!b) return; secao = b.dataset.s; try { sessionStorage.setItem("wd.cfg.secao", secao); } catch (_) {} render(); };
 async function sair() { try { await api("/api/auth/sair", { method: "POST" }); } catch (_) {} (window.top || window).location.href = "/login"; }
-function render() { nav(); ({ aparencia: rAparencia, usuarios: rUsuarios, permissoes: rPermissoes, conta: rConta, sistema: rSistema }[secao] || rAparencia)(); }
+function render() { nav(); ({ aparencia: rAparencia, usuarios: rUsuarios, permissoes: rPermissoes, duplicar: rDuplicar, conta: rConta, sistema: rSistema }[secao] || rAparencia)(); }
 
 /* ═════════ APARÊNCIA ═════════ */
 const REGUAS = [
@@ -290,14 +303,14 @@ async function rUsuarios() {
   const busca = (rUsuarios.busca || "").toLowerCase();
   const lista = USERS.filter((u) => !busca || (u.nome + " " + u.login).toLowerCase().includes(busca));
   elC.innerHTML = `<section class="secao vidro vidro-borda-viva">
-    <div class="cab">${A.orbe("usuarios", "#e8b33d")}<h2>Usuários</h2>${BANCO ? `<button type="button" class="btn" id="uNovo">${svg("mais")}Novo usuário</button>` : ""}</div>
+    <div class="cab">${A.orbe("usuarios", "#e8b33d")}<h2>Usuários${EU.super && EMPRESA ? ` <small style="font:500 .8rem var(--sans);color:var(--txt3)">· ${esc(EMPRESA.nome)}</small>` : ""}</h2>${BANCO ? `<button type="button" class="btn" id="uNovo">${svg("mais")}Novo usuário</button>` : ""}</div>
     <p class="desc">Cada pessoa entra com o próprio login. Você decide, módulo por módulo, o que ela pode abrir, criar, editar, excluir — e até campo por campo: editar, só ver ou nem enxergar.
       As regras são conferidas no servidor: o que estiver bloqueado não passa, nem mexendo no navegador.</p>
     ${BANCO ? "" : `<div class="alerta"><b>Falta o banco de dados.</b> Para criar usuários, configure <code>FIRESTORE_CREDS</code> no Render (Environment). Enquanto isso, só o administrador de fábrica (<code>HUB_ADMIN_USUARIO</code>) entra.</div>`}
     ${BANCO ? `<div class="barra"><input class="entrada" id="uBusca" placeholder="Buscar por nome ou login…" value="${esc(rUsuarios.busca || "")}"></div>` : ""}
     <div class="usuarios">${lista.map((u) => `<div class="u-card luz${u.ativo ? "" : " inativo"}">
         <div class="u-top"><span class="av">${A.iniciais(u.nome)}</span><div><b>${esc(u.nome)}</b><small>@${esc(u.login)}${u.ultimo_acesso ? " · último acesso " + esc(u.ultimo_acesso.slice(0, 16).replace("T", " ")) : " · nunca entrou"}</small></div>
-          ${u.admin ? `<span class="etq" style="--c:#e8b33d">Admin</span>` : ""}${u.ativo ? "" : `<span class="etq" style="--c:#fb7185">Inativo</span>`}</div>
+          ${u.super ? `<span class="etq" style="--c:#f472b6">Super</span>` : u.admin ? `<span class="etq" style="--c:#e8b33d">Admin</span>` : ""}${u.ativo ? "" : `<span class="etq" style="--c:#fb7185">Inativo</span>`}</div>
         <div class="u-mods">${resumoAcesso(u)}</div>
         <div class="u-acoes"><button type="button" class="btn v p" data-ed="${esc(u.login)}">${svg("lapis")}Editar acesso</button>
           ${u.login !== EU.login ? `<button type="button" class="btn perigo p" data-del="${esc(u.login)}">${svg("lixo")}</button>` : ""}</div></div>`).join("")
@@ -337,7 +350,8 @@ function editorUsuario(u) {
       <label class="campo">${novo ? "Senha" : "Nova senha"}<input id="uSenha" type="password" autocomplete="new-password" placeholder="${novo ? "mínimo 6 caracteres" : "deixe em branco para manter"}"></label></div>
     <div class="ed-ch">
       <label class="chave" style="--c:#34d399"><input type="checkbox" id="uAtivo"><span class="trilho"></span>Ativo (pode entrar)</label>
-      <label class="chave" style="--c:#e8b33d"><input type="checkbox" id="uAdmin"><span class="trilho"></span>Administrador — acesso total a tudo</label></div>
+      <label class="chave" style="--c:#e8b33d"><input type="checkbox" id="uAdmin"><span class="trilho"></span>Administrador — acesso total ${EU.super ? "nesta empresa" : "a tudo"}</label>
+      ${EU.super ? `<label class="chave" style="--c:#f472b6"><input type="checkbox" id="uSuper"><span class="trilho"></span>Super administrador — todas as empresas</label>` : ""}</div>
     <div class="sub-t">Acesso por módulo</div>
     <div class="mods" id="uMods">${MODS.map((m) => `<div class="mod" data-m="${m.id}">
         <div class="mod-cab">${A.orbe(m.icone, m.cor || "#94a3b8")}<div class="nm"><b>${esc(m.titulo)}</b><small>${esc(m.grupo || "")} · ${Object.keys(m.esquema.acoes).length} ações · ${Object.keys(m.esquema.campos).length} campos</small></div>
@@ -351,7 +365,7 @@ function editorUsuario(u) {
       d.login = $("#uLogin").value.trim().toLowerCase(); d.nome = $("#uNome").value.trim();
       const senha = $("#uSenha").value;
       if (novo && senha.length < 6) { A.toast("A senha precisa de pelo menos 6 caracteres.", [], { cor: "var(--rosa)" }); return false; }
-      const corpo = { nome: d.nome, admin: d.admin, ativo: d.ativo, modulos: d.modulos, ...(senha ? { senha } : {}) };
+      const corpo = { nome: d.nome, admin: d.admin, ativo: d.ativo, modulos: d.modulos, ...(senha ? { senha } : {}), ...(EU.super ? { super: !!d.super } : {}) };
       try {
         if (novo) await api("/api/admin/usuarios", { method: "POST", body: { login: d.login, ...corpo } });
         else await api("/api/admin/usuarios/" + encodeURIComponent(d.login), { method: "PUT", body: corpo });
@@ -375,6 +389,7 @@ function editorUsuario(u) {
         });
       };
       $("#uAdmin").onchange = (e) => { d.admin = e.target.checked; sinc(); };
+      if ($("#uSuper")) { $("#uSuper").checked = !!d.super; $("#uSuper").onchange = (e) => { d.super = e.target.checked; if (d.super) { d.admin = true; $("#uAdmin").checked = true; sinc(); } }; }
       $("#uAtivo").onchange = (e) => { d.ativo = e.target.checked; };
       mods.addEventListener("click", (e) => {
         const el = e.target.closest(".mod"); if (!el) return;
@@ -509,9 +524,79 @@ async function rSistema() {
     </div></section>`;
 }
 
+/* ═════════ DUPLICAR SISTEMA (empresas) — só o super ADM ═════════ */
+async function rDuplicar() {
+  elC.innerHTML = `<section class="secao vidro"><div class="vazio">Carregando empresas…</div></section>`;
+  let d; try { d = await api("/api/super/empresas"); } catch (e) { elC.innerHTML = `<section class="secao vidro"><div class="vazio">Não consegui carregar: ${esc(e.message)}</div></section>`; return; }
+  elC.innerHTML = `<section class="secao vidro vidro-borda-viva">
+    <div class="cab">${A.orbe("copiar", "#f472b6")}<h2>Duplicar sistema</h2>${BANCO ? `<button type="button" class="btn" id="eNova">${svg("mais")}Nova empresa</button>` : ""}</div>
+    <p class="desc">Cada empresa é um sistema próprio: <b>os mesmos módulos, mas vazios</b> — sem dados e sem usuários das outras. Você cria a empresa e o <b>administrador dela</b>; ele cuida dos usuários e permissões só de lá.
+      Você, super administrador, entra em qualquer empresa sem sair do sistema (ícone de prédio no topo) e pode mexer em tudo. O login é único no hub inteiro: o mesmo login não pode existir em duas empresas.</p>
+    ${BANCO ? "" : `<div class="alerta"><b>Falta o banco de dados.</b> Configure <code>FIRESTORE_CREDS</code> no Render.</div>`}
+    <div class="emp-g">${d.empresas.map((e) => `<div class="emp-c luz ${e.id === d.atual ? "atual" : ""} ${e.ativo ? "" : "off"}">
+        <div class="u-top"><span class="av">${A.iniciais(e.nome)}</span><div><b>${esc(e.nome)}</b><small>${e.principal ? "empresa principal · tudo ligado" : esc(e.id) + (e.criado_em ? " · criada em " + esc(e.criado_em.slice(0, 10).split("-").reverse().join("/")) : "")}</small></div>
+          ${e.id === d.atual ? `<span class="etq" style="--c:#e8b33d">Você está aqui</span>` : ""}${e.ativo ? "" : `<span class="etq" style="--c:#fb7185">Desativada</span>`}</div>
+        <div class="nums"><span><b>${e.usuarios}</b>usuário(s)</span><span><b>${e.admins}</b>admin(s)</span><span><b>${e.principal ? d.modulos.length : (e.modulos || []).length}</b>módulo(s)</span></div>
+        <div class="emp-acs">${e.id === d.atual ? "" : `<button type="button" class="btn p" data-entrar="${esc(e.id)}">${svg("avancar")}Entrar</button>`}
+          ${e.principal ? "" : `<button type="button" class="btn v p" data-mods="${esc(e.id)}">${svg("grade")}Módulos</button>`}
+          <button type="button" class="btn v p" data-nome="${esc(e.id)}">${svg("lapis")}Renomear</button>
+          ${e.principal ? "" : `<button type="button" class="btn ${e.ativo ? "perigo" : "v"} p" data-ativo="${esc(e.id)}">${e.ativo ? "Desativar" : "Ativar"}</button>`}</div></div>`).join("")}</div>
+  </section>`;
+  const por = (id) => d.empresas.find((x) => x.id === id);
+  elC.querySelector("#eNova")?.addEventListener("click", () => novaEmpresa());
+  elC.querySelectorAll("[data-entrar]").forEach((b) => (b.onclick = () => entrarEmpresa(b.dataset.entrar)));
+  elC.querySelectorAll("[data-mods]").forEach((b) => (b.onclick = () => modulosEmpresa(por(b.dataset.mods), d.modulos)));
+  elC.querySelectorAll("[data-nome]").forEach((b) => (b.onclick = () => {
+    const e = por(b.dataset.nome);
+    A.modal({ titulo: "Renomear empresa", icone: "lapis", largura: 460, html: `<label class="campo">Nome<input id="eNm" value="${esc(e.nome)}" maxlength="60"></label>`,
+      botoes: [{ rotulo: "Cancelar" }, { rotulo: "Salvar", classe: "btn", icone: "check", principal: true, acao: async (cx) => {
+        try { await api("/api/super/empresas/" + encodeURIComponent(e.id), { method: "PUT", body: { nome: cx.querySelector("#eNm").value } }); A.toast("✓ Nome salvo.", [], { cor: "var(--verde)" }); rDuplicar(); }
+        catch (err) { A.toast("Não salvou: " + esc(err.message), [], { cor: "var(--rosa)" }); return false; } } }] });
+  }));
+  elC.querySelectorAll("[data-ativo]").forEach((b) => (b.onclick = async () => {
+    const e = por(b.dataset.ativo);
+    if (e.ativo && !(await A.confirmar(`Desativar <b>${esc(e.nome)}</b>? Ninguém de lá consegue entrar até você ativar de novo. Nenhum dado é apagado.`, { titulo: "Desativar empresa", rotulo: "Desativar", perigo: true }))) return;
+    try { await api("/api/super/empresas/" + encodeURIComponent(e.id), { method: "PUT", body: { ativo: !e.ativo } }); A.toast(e.ativo ? "Empresa desativada." : "✓ Empresa ativada.", [], { cor: e.ativo ? "var(--rosa)" : "var(--verde)" }); rDuplicar(); }
+    catch (err) { A.toast("Não salvou: " + esc(err.message), [], { cor: "var(--rosa)" }); }
+  }));
+}
+function novaEmpresa() {
+  A.modal({ titulo: "Nova empresa", icone: "copiar", largura: 620, html: `
+    <label class="campo">Nome da nova empresa<input id="nEmp" maxlength="60" placeholder="ex.: Loja Centro"></label>
+    <div class="sub-t" style="margin-top:16px">Administrador da empresa</div>
+    <p style="margin:0 0 10px;color:var(--txt2);font-size:.84rem">Ele entra direto na empresa nova e cuida dos usuários e permissões de lá. Você continua super administrador.</p>
+    <div class="ed-g"><label class="campo">Nome<input id="nNome" placeholder="ex.: Maria Silva"></label>
+      <label class="campo">Login<input id="nLogin" autocapitalize="none" spellcheck="false" placeholder="ex.: maria.centro"></label>
+      <label class="campo">Senha<input id="nSenha" type="password" autocomplete="new-password" placeholder="mínimo 6 caracteres"></label></div>
+    <p style="margin:14px 0 0;color:var(--txt3);font-size:.78rem">A empresa nasce com <b>todos os módulos</b> ligados e <b>vazios</b>. Módulos criados depois você libera na própria empresa (botão Módulos).</p>`,
+    botoes: [{ rotulo: "Cancelar" }, { rotulo: "Criar empresa", classe: "btn", icone: "check", principal: true, acao: async (cx) => {
+      const v = (s) => cx.querySelector(s).value.trim();
+      try {
+        const r = await api("/api/super/empresas", { method: "POST", body: { nome: v("#nEmp"), admin: { nome: v("#nNome"), login: v("#nLogin").toLowerCase(), senha: cx.querySelector("#nSenha").value } } });
+        A.toast(`✓ <b>${esc(r.empresa.nome)}</b> criada. O admin já pode entrar com o login <b>${esc(v("#nLogin").toLowerCase())}</b>.`, [], { cor: "var(--verde)" }); rDuplicar();
+      } catch (e) { A.toast(esc(e.message), [], { cor: "var(--rosa)" }); return false; }
+    } }],
+    aoAbrir: (cx) => setTimeout(() => cx.querySelector("#nEmp").focus(), 80) });
+}
+function modulosEmpresa(e, todos) {
+  const lig = new Set(e.modulos || []);
+  A.modal({ titulo: "Módulos de " + e.nome, icone: "grade", largura: 820, html: `<p style="margin:0;color:var(--txt2);font-size:.86rem">Ligue o que esta empresa pode usar. Desligar não apaga nada — os dados voltam quando você ligar de novo.</p>
+      <div style="display:flex;gap:8px;margin-top:10px"><button type="button" class="chip" data-tudo="1">Ligar todos</button><button type="button" class="chip" data-tudo="0">Desligar todos</button></div>
+      <div class="mods-emp">${todos.map((m) => `<label><input type="checkbox" value="${esc(m.id)}"${lig.has(m.id) ? " checked" : ""}><span><b>${esc(m.titulo)}</b><small>${esc(m.grupo || m.id)}</small></span></label>`).join("")}</div>`,
+    aoAbrir: (cx) => cx.querySelectorAll("[data-tudo]").forEach((b) => (b.onclick = () => cx.querySelectorAll(".mods-emp input").forEach((i) => (i.checked = b.dataset.tudo === "1")))),
+    botoes: [{ rotulo: "Cancelar" }, { rotulo: "Salvar", classe: "btn", icone: "check", principal: true, acao: async (cx) => {
+      const mods = [...cx.querySelectorAll(".mods-emp input:checked")].map((i) => i.value);
+      try { await api("/api/super/empresas/" + encodeURIComponent(e.id), { method: "PUT", body: { modulos: mods } }); A.toast(`✓ ${mods.length} módulo(s) ligado(s) em <b>${esc(e.nome)}</b>.`, [], { cor: "var(--verde)" }); rDuplicar(); }
+      catch (err) { A.toast("Não salvou: " + esc(err.message), [], { cor: "var(--rosa)" }); return false; } } }] });
+}
+async function entrarEmpresa(id) {
+  try { await api("/api/super/entrar-empresa", { method: "POST", body: { empresa: id } }); (window.top || window).location.href = "/"; }
+  catch (e) { A.toast("Não entrou: " + esc(e.message), [], { cor: "var(--rosa)" }); }
+}
+
 /* ═════════ INÍCIO ═════════ */
 (async () => {
-  try { const d = await api("/api/eu"); EU = d.usuario; BANCO = d.banco; A.tema.daConta(d.preferencias); }
+  try { const d = await api("/api/eu"); EU = d.usuario; EMPRESA = d.empresa; BANCO = d.banco; A.tema.daConta(d.preferencias); }
   catch (e) { if (e.status === 401) { (window.top || window).location.href = "/login"; return; } elC.innerHTML = `<div class="vazio">Erro: ${esc(e.message)}</div>`; return; }
   render();
 })();

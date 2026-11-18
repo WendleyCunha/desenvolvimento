@@ -218,6 +218,18 @@ kbd{font:600 .64rem var(--sans);color:var(--txt3);border:1px solid var(--vidro-b
 .topo-acoes{display:flex;gap:6px;flex:none}
 .btn-ic{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;color:var(--txt2);border:1px solid var(--vidro-borda);background:rgba(255,255,255,.03);transition:.25s}
 .btn-ic svg.i{width:17px;height:17px}
+/* popup "Trocar de empresa" (só o super ADM) */
+.emp-veu{position:fixed;inset:0;z-index:300;display:grid;place-items:start center;padding:10vh 16px 16px;background:rgba(0,0,0,.45);backdrop-filter:blur(4px)}
+.emp-pop{width:min(520px,100%);border-radius:22px;padding:18px;color:var(--txt)}
+.emp-cab{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}.emp-cab b{font-size:1.1rem}
+.emp-pop p{margin:0 0 12px;color:var(--txt2);font-size:.86rem}
+.emp-lst{display:flex;flex-direction:column;gap:8px;max-height:60vh;overflow-y:auto}
+.emp-lst button{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:14px;text-align:left;border:1px solid var(--vidro-borda);background:rgba(255,255,255,.035);color:inherit;cursor:pointer;transition:.2s}
+.emp-lst button:hover:not(:disabled){border-color:rgba(var(--ouro-rgb),.6)}
+.emp-lst button.atual{border-color:rgba(var(--ouro-rgb),.6);cursor:default}.emp-lst button.off{opacity:.55}
+.emp-lst .av{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;font-weight:700;color:var(--ouro2);background:rgba(var(--ouro-rgb),.12);flex:none}
+.emp-lst .tx{flex:1;min-width:0}.emp-lst .tx b{display:block}.emp-lst .tx small{color:var(--txt3)}
+.emp-lst .aqui{color:var(--ouro2);font-weight:700}
 .btn-ic:hover:not(:disabled){color:var(--ouro2);border-color:rgba(var(--ouro-rgb),.5);box-shadow:0 0 22px -6px rgba(var(--ouro-rgb),.7);transform:translateY(-1px)}
 .btn-ic:active:not(:disabled){transform:scale(.94)}
 .btn-ic:disabled{opacity:.3;cursor:default}
@@ -493,6 +505,9 @@ kbd{font:600 .64rem var(--sans);color:var(--txt3);border:1px solid var(--vidro-b
         <button class="btn-ic esconde" id="btnTelaCheia" title="Tela cheia (F11)" aria-label="Tela cheia">
           <svg viewBox="0 0 24 24" class="i"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
         </button>
+        <button class="btn-ic" id="btnEmpresa" title="Trocar de empresa" aria-label="Trocar de empresa" hidden>
+          <svg viewBox="0 0 24 24" class="i"><path d="M3 21h18M5 21V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v16M16 9h3a2 2 0 0 1 2 2v10"/><path d="M9 7h3M9 11h3M9 15h3"/></svg>
+        </button>
         <button class="btn-ic edk-so" id="edkTema" title="Trocar tema claro / escuro" aria-label="Trocar tema claro / escuro"></button>
         <button class="btn-ic engrenagem" id="btnConfig" title="Configurações — aparência, usuários e permissões" aria-label="Configurações">
           <svg viewBox="0 0 24 24" class="i"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
@@ -676,7 +691,10 @@ kbd{font:600 .64rem var(--sans);color:var(--txt3);border:1px solid var(--vidro-b
       estado.porId.set(ITEM_CONFIG.id, ITEM_CONFIG);
       estado.versao = dados.versao || "?";
       estado.usuario = dados.usuario || null;
-      el.versao.textContent = (estado.usuario ? estado.usuario.nome + " · " : "") + "hub v" + estado.versao;
+      estado.empresa = dados.empresa || null;
+      const emp = estado.empresa && (estado.usuario?.super || estado.empresa.id !== "principal") ? estado.empresa.nome + " · " : "";
+      el.versao.textContent = (estado.usuario ? estado.usuario.nome + " · " : "") + emp + "hub v" + estado.versao;
+      const be = $("#btnEmpresa"); if (be) { be.hidden = !estado.usuario?.super; be.title = "Empresa: " + (estado.empresa?.nome || "") + " — trocar"; }
       return true;
     } catch (e) {
       el.catalogo.innerHTML = `<div class="vazio erro">Não consegui carregar a lista de módulos (${esc(e.message)}).<br>
@@ -1143,6 +1161,29 @@ kbd{font:600 .64rem var(--sans);color:var(--txt3);border:1px solid var(--vidro-b
   el.btnRecarregar.onclick = recarregar;
   el.btnNovaAba.onclick = () => { const i = estado.porId.get(estado.ativa); if (i) window.open(i.url, "_blank", "noopener"); };
   $("#btnConfig").onclick = () => abrir(ITEM_CONFIG.id);
+  /* super ADM: troca de empresa sem sair (Configurações → Duplicar sistema cria as empresas) */
+  $("#btnEmpresa").onclick = async () => {
+    let d;
+    try { const r = await fetch("/api/super/empresas", { credentials: "same-origin", cache: "no-store" }); d = await r.json(); if (!r.ok) throw new Error(d.detail || "HTTP " + r.status); }
+    catch (e) { alert(e.message); return; }
+    const v = document.createElement("div");
+    v.className = "emp-veu";
+    v.innerHTML = `<div class="emp-pop vidro" role="dialog" aria-label="Trocar de empresa"><div class="emp-cab"><b>Trocar de empresa</b><button type="button" class="btn-ic" data-fecha aria-label="Fechar">✕</button></div>
+      <p>Você entra como super administrador — vê e mexe em tudo de lá, sem sair do sistema.</p>
+      <div class="emp-lst">${d.empresas.map((e) => `<button type="button" data-emp="${esc(e.id)}" class="${e.id === d.atual ? "atual" : ""}${e.ativo ? "" : " off"}" ${e.id === d.atual ? "disabled" : ""}>
+        <span class="av">${esc((e.nome.match(/\b\p{L}/gu) || ["?"]).slice(0, 2).join("").toUpperCase())}</span>
+        <span class="tx"><b>${esc(e.nome)}</b><small>${e.usuarios} usuário(s)${e.principal ? " · principal" : ""}${e.ativo ? "" : " · desativada"}</small></span>
+        ${e.id === d.atual ? `<small class="aqui">você está aqui</small>` : ""}</button>`).join("")}</div></div>`;
+    const fechar = () => v.remove();
+    v.addEventListener("click", async (e) => {
+      if (e.target === v || e.target.closest("[data-fecha]")) return fechar();
+      const b = e.target.closest("[data-emp]"); if (!b || b.disabled) return;
+      const r = await fetch("/api/super/entrar-empresa", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ empresa: b.dataset.emp }) });
+      if (r.ok) location.href = "/"; else alert((await r.json().catch(() => ({}))).detail || "Não consegui trocar de empresa.");
+    });
+    addEventListener("keydown", function esc_(e) { if (e.key === "Escape") { fechar(); removeEventListener("keydown", esc_); } });
+    document.body.appendChild(v);
+  };
   /* Tela cheia — o mesmo que apertar F11, num botão */
   const ICO_CHEIA = '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>', ICO_SAIR = '<path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/>';
   const telaCheia = () => !!(document.fullscreenElement || document.webkitFullscreenElement);

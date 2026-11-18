@@ -29,6 +29,14 @@ SESSÃO
 
 USUÁRIOS no Firestore: coleção "hub_usuarios" (documento = login).
 Senhas guardadas só como hash PBKDF2-SHA256 (200 mil iterações + sal).
+
+EMPRESAS (Configurações → Duplicar sistema)
+  Cada usuário pertence a UMA empresa (campo "empresa"; vazio = principal) e o
+  login é único no hub inteiro. O login leva a pessoa para a empresa dela.
+  SUPER ADM = admin de fábrica, quem estiver em HUB_SUPER_ADMINS (logins
+  separados por vírgula) ou usuário com "super": true. Só ele cria empresas,
+  liga/desliga módulos por empresa e troca de empresa sem sair (cookie hub_empresa).
+  "admin" de um usuário = administrador só da empresa dele.
 """
 from __future__ import annotations
 
@@ -49,6 +57,9 @@ from fastapi.responses import JSONResponse
 import banco
 
 COOKIE = "hub_sessao"
+COOKIE_EMPRESA = "hub_empresa"
+COL_EMPRESAS = "hub_empresas"
+EMPRESA_OK = re.compile(r"^[a-z0-9][a-z0-9-]{1,30}$")
 COLECAO = "hub_usuarios"
 NIVEIS_CAMPO = ("editar", "ver", "oculto")
 LOGIN_OK = re.compile(r"^[a-z0-9][a-z0-9._-]{1,39}$")
@@ -60,6 +71,7 @@ if not SEGREDO:
 
 ADMIN_FAB_LOGIN = os.environ.get("HUB_ADMIN_USUARIO", "").strip().lower()
 ADMIN_FAB_SENHA = os.environ.get("HUB_ADMIN_SENHA", "")
+SUPER_ENV = {x.strip().lower() for x in os.environ.get("HUB_SUPER_ADMINS", "").split(",") if x.strip()}
 
 # main.py preenche estas duas funções (evita import circular)
 obter_esquema: Callable[[str], dict | None] = lambda slug: None
@@ -132,7 +144,7 @@ class _Usuarios:
         self._trava = threading.Lock()
 
     def _col(self):
-        return banco.db().collection(COLECAO)
+        return banco.db_global().collection(COLECAO)   # usuários são do hub inteiro (login único)
 
     def todos(self) -> dict[str, dict]:
         if not banco.configurado():
@@ -155,6 +167,81 @@ class _Usuarios:
 
 
 USUARIOS = _Usuarios()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# EMPRESAS
+# ══════════════════════════════════════════════════════════════════════════════
+class _Empresas:
+    def __init__(self) -> None:
+        self._cache: dict[str, dict] | None = None
+        self._trava = threading.Lock()
+
+    def _col(self):
+        return banco.db_global().collection(COL_EMPRESAS)
+
+    def todas(self) -> dict[str, dict]:
+        """{id: {nome, modulos (None = todos), ativo, ...}} — a principal sempre existe."""
+        if not banco.configurado():
+            return {banco.PRINCIPAL: {"nome": "Empresa principal", "modulos": None, "ativo": True}}
+        with self._trava:
+            if self._cache is None:
+                self._cache = {d.id: (d.to_dict() or {}) for d in self._col().stream(timeout=banco.TIMEOUT)}
+            c = dict(self._cache)
+        p = c.get(banco.PRINCIPAL) or {}
+        c[banco.PRINCIPAL] = {**p, "nome": p.get("nome") or "Empresa principal", "modulos": None, "ativo": True}
+        return c
+
+    def obter(self, eid: str) -> dict | None:
+        return self.todas().get(eid or banco.PRINCIPAL)
+
+    def salvar(self, eid: str, dados: dict) -> None:
+        self._col().document(eid).set(dados, timeout=banco.TIMEOUT)
+        self.todas()
+        with self._trava:
+            self._cache[eid] = dados
+
+
+EMPRESAS = _Empresas()
+
+
+def empresa_de(u: dict | None) -> str:
+    return str((u or {}).get("empresa") or banco.PRINCIPAL)
+
+
+def eh_super(u: dict | None) -> bool:
+    return bool(u) and bool(u.get("fabrica") or u.get("super") or str(u.get("login", "")).lower() in SUPER_ENV)
+
+
+def empresa_da_requisicao(u: dict | None, request: Request) -> str:
+    """Empresa em que a requisição trabalha: a do usuário; o super ADM escolhe (cookie)."""
+    if not u:
+        return banco.PRINCIPAL
+    if eh_super(u):
+        e = request.cookies.get(COOKIE_EMPRESA) or ""
+        try:
+            if e and EMPRESAS.obter(e):
+                return e
+        except Exception:  # noqa: BLE001
+            pass
+        return empresa_de(u) if not u.get("fabrica") else banco.PRINCIPAL
+    return empresa_de(u)
+
+
+def modulo_liberado(slug: str) -> bool:
+    """O módulo está ligado para a empresa atual? (principal = todos)"""
+    try:
+        e = EMPRESAS.obter(banco.empresa_atual()) or {}
+    except Exception:  # noqa: BLE001
+        return banco.empresa_atual() == banco.PRINCIPAL
+    mods = e.get("modulos")
+    return mods is None or slug in mods
+
+
+def usuarios_da_empresa() -> dict[str, dict]:
+    """Usuários da empresa atual (para listas de pessoas dentro dos módulos)."""
+    eid = banco.empresa_atual()
+    return {k: v for k, v in USUARIOS.todos().items() if empresa_de(v) == eid}
 
 
 def _fabrica() -> dict:
@@ -181,7 +268,8 @@ def usuario_da_requisicao(request: Request) -> dict | None:
 def publico(u: dict) -> dict:
     return {
         "login": u.get("login"), "nome": u.get("nome") or u.get("login"),
-        "admin": bool(u.get("admin")), "ativo": bool(u.get("ativo", True)),
+        "admin": bool(u.get("admin")) or eh_super(u), "ativo": bool(u.get("ativo", True)),
+        "super": eh_super(u), "empresa": empresa_de(u),
         "fabrica": bool(u.get("fabrica")), "modulos": u.get("modulos") or {},
         "criado_em": u.get("criado_em", ""), "atualizado_em": u.get("atualizado_em", ""),
         "ultimo_acesso": u.get("ultimo_acesso", ""),
@@ -199,7 +287,9 @@ def normalizar_esquema(e: dict | None) -> dict:
 
 def permissoes(u: dict, slug: str, esquema: dict) -> dict:
     """Permissões efetivas do usuário num módulo."""
-    if u.get("admin"):
+    if not modulo_liberado(slug):
+        return {"acoes": {a: False for a in esquema["acoes"]}, "campos": {c: "oculto" for c in esquema["campos"]}}
+    if u.get("admin") or eh_super(u):
         return {"acoes": {a: True for a in esquema["acoes"]}, "campos": {c: "editar" for c in esquema["campos"]}}
     p = (u.get("modulos") or {}).get(slug) or {}
     pa, pc = p.get("acoes") or {}, p.get("campos") or {}
@@ -211,9 +301,9 @@ def permissoes(u: dict, slug: str, esquema: dict) -> dict:
 
 
 def pode_acessar(u: dict | None, slug: str) -> bool:
-    if not u:
+    if not u or not modulo_liberado(slug):
         return False
-    if u.get("admin"):
+    if u.get("admin") or eh_super(u):
         return True
     return bool(((u.get("modulos") or {}).get(slug) or {}).get("acoes", {}).get("acessar"))
 
@@ -227,9 +317,22 @@ def exigir_usuario(request: Request) -> dict:
 
 def exigir_admin(request: Request) -> dict:
     u = exigir_usuario(request)
-    if not u.get("admin"):
+    if not (u.get("admin") or eh_super(u)):
         raise HTTPException(403, "Somente administradores.")
     return u
+
+
+def exigir_super(request: Request) -> dict:
+    u = exigir_usuario(request)
+    if not eh_super(u):
+        raise HTTPException(403, "Somente o super administrador.")
+    return u
+
+
+def _da_empresa_atual(login: str) -> dict | None:
+    """Usuário só existe para o admin se for da empresa em que ele está trabalhando."""
+    u = USUARIOS.obter(login)
+    return u if u and empresa_de(u) == banco.empresa_atual() else None
 
 
 def _exigir_banco():
@@ -283,6 +386,8 @@ async def entrar(request: Request):
             u = USUARIOS.obter(login)
         except Exception:  # noqa: BLE001
             u = None
+        if u and not eh_super(u) and (EMPRESAS.obter(empresa_de(u)) or {}).get("ativo", True) is False:
+            u = None   # empresa desativada pelo super ADM
         if u and u.get("ativo", True) and conferir_senha(senha, u.get("senha_hash", "")):
             ok_user, versao = {**u, "login": login}, int(u.get("versao_sessao", 0))
             try:
@@ -308,13 +413,16 @@ async def entrar(request: Request):
 def sair():
     resp = JSONResponse({"ok": True})
     resp.delete_cookie(COOKIE, path="/")
+    resp.delete_cookie(COOKIE_EMPRESA, path="/")
     return resp
 
 
 @router.get("/api/eu")
 def eu(request: Request, modulo: str = ""):
     u = exigir_usuario(request)
-    saida = {"usuario": publico(u), "preferencias": u.get("preferencias") or {}, "banco": banco.configurado()}
+    e = EMPRESAS.obter(banco.empresa_atual()) or {}
+    saida = {"usuario": publico(u), "preferencias": u.get("preferencias") or {}, "banco": banco.configurado(),
+             "empresa": {"id": banco.empresa_atual(), "nome": e.get("nome") or banco.empresa_atual()}}
     if modulo:
         esq = obter_esquema(modulo)
         if esq is None:
@@ -363,27 +471,31 @@ async def salvar_preferencias(request: Request):
 @router.get("/api/admin/usuarios")
 def admin_listar(request: Request):
     exigir_admin(request)
-    usuarios = [] if not banco.configurado() else [publico({**u, "login": k}) for k, u in sorted(USUARIOS.todos().items())]
-    return {"usuarios": usuarios, "modulos": listar_modulos(), "banco": banco.configurado(),
-            "admin_fabrica": ADMIN_FAB_LOGIN or None}
+    usuarios = [] if not banco.configurado() else [publico({**u, "login": k}) for k, u in sorted(usuarios_da_empresa().items())]
+    return {"usuarios": usuarios, "modulos": [m for m in listar_modulos() if modulo_liberado(m["id"])], "banco": banco.configurado(),
+            "admin_fabrica": ADMIN_FAB_LOGIN or None, "empresa": banco.empresa_atual()}
 
 
 @router.post("/api/admin/usuarios")
 async def admin_criar(request: Request):
-    exigir_admin(request)
+    eu_ = exigir_admin(request)
     _exigir_banco()
     c = await request.json()
     login = str(c.get("login", "")).strip().lower()
     if not LOGIN_OK.match(login):
         raise HTTPException(400, "Login inválido: use 2 a 40 letras minúsculas, números, ponto, - ou _.")
-    if login == ADMIN_FAB_LOGIN or USUARIOS.obter(login):
-        raise HTTPException(409, "Já existe um usuário com esse login.")
+    if login == ADMIN_FAB_LOGIN or USUARIOS.obter(login) or login in SUPER_ENV:
+        raise HTTPException(409, "Esse login não é permitido. Escolha outro.")   # o login é único no hub inteiro
     senha = str(c.get("senha", ""))
     if len(senha) < 6:
         raise HTTPException(400, "A senha precisa de pelo menos 6 caracteres.")
     dados = {"nome": str(c.get("nome", "")).strip() or login, "senha_hash": hash_senha(senha),
              "admin": bool(c.get("admin")), "ativo": bool(c.get("ativo", True)), "versao_sessao": 0,
              "modulos": _limpar_modulos(c.get("modulos")), "preferencias": {}, "criado_em": _agora(), "atualizado_em": _agora()}
+    if banco.empresa_atual() != banco.PRINCIPAL:
+        dados["empresa"] = banco.empresa_atual()
+    if c.get("super") and eh_super(eu_):
+        dados["super"] = True
     USUARIOS.salvar(login, dados)
     return {"ok": True, "usuario": publico({**dados, "login": login})}
 
@@ -392,7 +504,7 @@ async def admin_criar(request: Request):
 async def admin_editar(login: str, request: Request):
     eu_ = exigir_admin(request)
     _exigir_banco()
-    atual = USUARIOS.obter(login)
+    atual = _da_empresa_atual(login)
     if not atual:
         raise HTTPException(404, "Usuário não encontrado.")
     c = await request.json()
@@ -416,6 +528,10 @@ async def admin_editar(login: str, request: Request):
         derrubar = True
     if "modulos" in c:
         dados["modulos"] = _limpar_modulos(c["modulos"])
+    if "super" in c and eh_super(eu_):
+        if login == eu_.get("login") and not c["super"]:
+            raise HTTPException(400, "Você não pode tirar o seu próprio super acesso.")
+        dados["super"] = bool(c["super"])
     if derrubar:
         dados["versao_sessao"] = int(dados.get("versao_sessao", 0)) + 1
     dados["atualizado_em"] = _agora()
@@ -429,7 +545,7 @@ def admin_excluir(login: str, request: Request):
     _exigir_banco()
     if login == eu_.get("login"):
         raise HTTPException(400, "Você não pode excluir a si mesmo.")
-    if not USUARIOS.obter(login):
+    if not _da_empresa_atual(login):
         raise HTTPException(404, "Usuário não encontrado.")
     USUARIOS.excluir(login)
     return {"ok": True}
@@ -447,7 +563,7 @@ async def admin_permissao(request: Request):
         raise HTTPException(400, "Pedido inválido.")
     alterados = 0
     for login, valor in (c.get("valores") or {}).items():
-        u = USUARIOS.obter(login)
+        u = _da_empresa_atual(login)
         if not u:
             continue
         mods = _limpar_modulos(u.get("modulos"))
@@ -461,3 +577,99 @@ async def admin_permissao(request: Request):
         USUARIOS.salvar(login, {**u, "modulos": mods, "atualizado_em": _agora()})
         alterados += 1
     return {"ok": True, "alterados": alterados}
+
+
+# ── super ADM: empresas ("Duplicar sistema") ────────────────────────────────
+def _empresa_publica(eid: str, e: dict) -> dict:
+    us = [u for u in USUARIOS.todos().values() if empresa_de(u) == eid] if banco.configurado() else []
+    return {"id": eid, "nome": e.get("nome") or eid, "modulos": e.get("modulos"), "ativo": e.get("ativo", True),
+            "principal": eid == banco.PRINCIPAL, "usuarios": len(us), "admins": sum(1 for u in us if u.get("admin")),
+            "criado_em": e.get("criado_em", ""), "criado_por": e.get("criado_por", "")}
+
+
+def _slug_empresa(nome: str) -> str:
+    import unicodedata
+    t = unicodedata.normalize("NFD", nome.lower())
+    t = re.sub(r"[^a-z0-9]+", "-", "".join(c for c in t if unicodedata.category(c) != "Mn")).strip("-")[:24].strip("-")
+    return t or "empresa"
+
+
+@router.get("/api/super/empresas")
+def super_empresas(request: Request):
+    exigir_super(request)
+    todas = EMPRESAS.todas()
+    lista = sorted((_empresa_publica(k, v) for k, v in todas.items()), key=lambda x: (not x["principal"], x["nome"].lower()))
+    return {"empresas": lista, "atual": banco.empresa_atual(),
+            "modulos": [{"id": m["id"], "titulo": m["titulo"], "grupo": m.get("grupo", "")} for m in listar_modulos()]}
+
+
+@router.post("/api/super/empresas")
+async def super_criar_empresa(request: Request):
+    """Cria uma empresa vazia (todos os módulos ligados, sem dados) + o admin dela."""
+    eu_ = exigir_super(request)
+    _exigir_banco()
+    c = await request.json()
+    nome = " ".join(str(c.get("nome", "")).split())[:60]
+    if len(nome) < 2:
+        raise HTTPException(400, "Informe o nome da nova empresa.")
+    if any((e.get("nome") or "").lower() == nome.lower() for e in EMPRESAS.todas().values()):
+        raise HTTPException(409, "Já existe uma empresa com esse nome.")
+    base = _slug_empresa(nome)
+    eid, n = base, 2
+    while eid == banco.PRINCIPAL or EMPRESAS.obter(eid):
+        eid, n = f"{base}-{n}", n + 1
+    adm = c.get("admin") or {}
+    login = str(adm.get("login", "")).strip().lower()
+    if not LOGIN_OK.match(login):
+        raise HTTPException(400, "Login do administrador inválido: use 2 a 40 letras minúsculas, números, ponto, - ou _.")
+    if login == ADMIN_FAB_LOGIN or USUARIOS.obter(login) or login in SUPER_ENV:
+        raise HTTPException(409, "Esse login não é permitido. Escolha outro.")
+    senha = str(adm.get("senha", ""))
+    if len(senha) < 6:
+        raise HTTPException(400, "A senha do administrador precisa de pelo menos 6 caracteres.")
+    mods = [m["id"] for m in listar_modulos()]
+    EMPRESAS.salvar(eid, {"nome": nome, "modulos": mods, "ativo": True, "criado_em": _agora(), "criado_por": eu_.get("login")})
+    USUARIOS.salvar(login, {"nome": str(adm.get("nome", "")).strip() or login, "senha_hash": hash_senha(senha), "admin": True,
+                            "ativo": True, "versao_sessao": 0, "modulos": {}, "preferencias": {}, "empresa": eid,
+                            "criado_em": _agora(), "atualizado_em": _agora()})
+    return {"ok": True, "empresa": _empresa_publica(eid, EMPRESAS.obter(eid))}
+
+
+@router.put("/api/super/empresas/{eid}")
+async def super_editar_empresa(eid: str, request: Request):
+    exigir_super(request)
+    _exigir_banco()
+    e = EMPRESAS.obter(eid)
+    if e is None:
+        raise HTTPException(404, "Empresa não encontrada.")
+    c = await request.json()
+    d = {k: v for k, v in e.items()}
+    if "nome" in c:
+        nome = " ".join(str(c["nome"]).split())[:60]
+        if len(nome) < 2:
+            raise HTTPException(400, "Nome muito curto.")
+        d["nome"] = nome
+    if eid != banco.PRINCIPAL:
+        if "modulos" in c:
+            validos = {m["id"] for m in listar_modulos()}
+            d["modulos"] = [m for m in (c["modulos"] or []) if m in validos]
+        if "ativo" in c:
+            d["ativo"] = bool(c["ativo"])
+    if eid == banco.PRINCIPAL:
+        d = {"nome": d.get("nome")}   # a principal sempre tem tudo ligado
+    d["atualizado_em"] = _agora()
+    EMPRESAS.salvar(eid, d)
+    return {"ok": True, "empresa": _empresa_publica(eid, EMPRESAS.obter(eid))}
+
+
+@router.post("/api/super/entrar-empresa")
+async def super_entrar(request: Request):
+    """Troca a empresa em que o super ADM está trabalhando — sem sair do sistema."""
+    exigir_super(request)
+    c = await request.json()
+    eid = str(c.get("empresa") or banco.PRINCIPAL)
+    if not EMPRESAS.obter(eid):
+        raise HTTPException(404, "Empresa não encontrada.")
+    resp = JSONResponse({"ok": True, "empresa": eid})
+    resp.set_cookie(COOKIE_EMPRESA, eid, httponly=True, samesite="lax", secure=_https(request), path="/", max_age=30 * 86400)
+    return resp

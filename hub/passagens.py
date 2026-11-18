@@ -157,7 +157,7 @@ def _limpar_viagens(viagens, evento: dict) -> list[dict]:
 
 
 # ── cadastro central (mesma função do Streamlit) ────────────────────────────
-_cad_cache: dict = {"t": 0.0, "itens": None}
+_cad_cache = banco.por_empresa(lambda: {"t": 0.0, "itens": None})
 _cad_trava = threading.Lock()
 
 
