@@ -557,7 +557,7 @@ kbd{font:600 .64rem var(--sans);color:var(--txt3);border:1px solid var(--vidro-b
 <div class="aviso vidro" id="aviso" role="status" aria-live="polite"></div>
 
 <script src="/static/aurora.js?v=6"></script>
-<script src="/static/agente.js?v=3" defer></script>
+<script src="/static/agente.js?v=4" defer></script>
 <script src="/static/ajuda.js?v=3" defer></script>
 <script>
 (() => {
@@ -900,6 +900,18 @@ kbd{font:600 .64rem var(--sans);color:var(--txt3);border:1px solid var(--vidro-b
 
   /* ══════ RENDER: ABAS ══════ */
   function renderAbas() {
+    const atual = abaDe(estado.ativa);
+    if (atual && atual.sub && atual.sub.itens.length) {   // a seção manda as abas dela (ex.: Feed: Para você · Meus posts · Salvos)
+      const item = itemDe(atual.id) || {};
+      const indAntes = $("#edkInd"), deOnde = indAntes ? [indAntes.style.left, indAntes.style.width] : null;
+      el.abas.innerHTML = atual.sub.itens.map((s) => `<button type="button" class="aba sub ${s.id === atual.sub.ativa ? "ativa" : ""}" role="tab" data-sub="${esc(s.id)}"
+          aria-selected="${s.id === atual.sub.ativa}" style="--c:${corDo(item)}">${s.ic ? `<span class="ic">${svg(s.ic)}</span>` : ""}<span class="rot">${esc(s.rot)}</span></button>`).join("")
+        + `<span class="ind" id="edkInd" aria-hidden="true"></span>`;
+      if (deOnde && deOnde[1]) { const ind = $("#edkInd"); ind.style.transition = "none"; ind.style.left = deOnde[0]; ind.style.width = deOnde[1]; void ind.offsetWidth; ind.style.transition = ""; }
+      posInd(); requestAnimationFrame(posInd); edkSecao();
+      el.btnRecarregar.disabled = false; el.btnNovaAba.disabled = false;
+      return;
+    }
     const chip = (item, carregando) => carregando ? `<span class="giro"></span>` : `<span class="ic">${conteudoIcone(item.icone)}</span>`;
     let h = `<button class="aba fixa ${estado.ativa === INICIO ? "ativa" : ""}" role="tab" data-id="${INICIO}" aria-selected="${estado.ativa === INICIO}"
                title="Início (Alt+1)" style="--c:${ITEM_INICIO.cor}">${chip(ITEM_INICIO)}<span class="rot">Início</span></button>`;
@@ -973,8 +985,11 @@ kbd{font:600 .64rem var(--sans);color:var(--txt3);border:1px solid var(--vidro-b
     el.app.classList.remove("gaveta");
     salvar(); renderNav(); renderAbas(); sincronizarInicio();
   }
+  /** id de módulo com seções (ex.: "weduca") → a 1ª seção dele ("weduca-feed") */
+  const idReal = (id) => estado.porId.has(id) ? id : ([...estado.porId.values()].find((i) => i.base === id) || {}).id || id;
   function abrir(id) {
     if (id === INICIO) return ativar(INICIO);
+    id = idReal(id);
     const item = estado.porId.get(id);
     if (!item) { avisar("Módulo não encontrado: " + id); return; }
     if (!abaDe(id)) estado.abas.push({ id, titulo: item.titulo, painel: null, iframe: null, carregado: false });
@@ -1099,6 +1114,12 @@ kbd{font:600 .64rem var(--sans);color:var(--txt3);border:1px solid var(--vidro-b
   el.nav.addEventListener("click", (e) => { const b = e.target.closest("[data-id]"); if (b) abrir(b.dataset.id); });
   el.catalogo.addEventListener("click", (e) => { const b = e.target.closest(".cartao[data-id]"); if (b) abrir(b.dataset.id); });
   el.abas.addEventListener("click", (e) => {
+    const sb = e.target.closest("[data-sub]");
+    if (sb) {
+      const aba = abaDe(estado.ativa);
+      if (aba && aba.sub) { aba.sub.ativa = sb.dataset.sub; renderAbas(); try { aba.iframe.contentWindow.postMessage({ hub: "aba", id: sb.dataset.sub }, location.origin); } catch (_) {} }
+      return;
+    }
     const x = e.target.closest("[data-fechar]");
     if (x) { e.stopPropagation(); return fechar(x.dataset.fechar); }
     const a = e.target.closest(".aba[data-id]"); if (a) ativar(a.dataset.id);
@@ -1162,7 +1183,7 @@ kbd{font:600 .64rem var(--sans);color:var(--txt3);border:1px solid var(--vidro-b
     if (d.hub === "abrir" && d.id) {
       abrir(String(d.id));
       // {hash} → leva o módulo direto a um item (ex.: ERP abre um ticket específico no módulo Tickets)
-      const alvo = abaDe(String(d.id));
+      const alvo = abaDe(idReal(String(d.id)));
       if (d.hash && alvo?.iframe) {
         const h = "#" + String(d.hash).replace(/^#/, "");
         try { if (alvo.carregado) alvo.iframe.contentWindow.location.hash = h; else alvo.iframe.src = urlDo(estado.porId.get(alvo.id)) + h; } catch (_) {}
@@ -1173,6 +1194,10 @@ kbd{font:600 .64rem var(--sans);color:var(--txt3);border:1px solid var(--vidro-b
       if (estado.ativa === origem.id) document.title = origem.titulo + " · Wendley Desenvolvimento";
     }
     else if (d.hub === "aviso" && d.texto) avisar(String(d.texto).slice(0, 140));
+    else if (d.hub === "abas" && origem) {   // {itens:[{id, rot, ic}], ativa} — as abas da seção sobem para a barra de cima
+      origem.sub = { itens: (Array.isArray(d.itens) ? d.itens : []).slice(0, 8).map((s) => ({ id: String(s.id), rot: String(s.rot || s.id).slice(0, 30), ic: s.ic ? String(s.ic) : "" })), ativa: String(d.ativa || "") };
+      if (estado.ativa === origem.id) renderAbas();
+    }
     else if (d.hub === "fechar" && origem) fechar(origem.id);
   });
 
@@ -1201,7 +1226,7 @@ kbd{font:600 .64rem var(--sans);color:var(--txt3);border:1px solid var(--vidro-b
     renderInicio();
     const doLink = decodeURIComponent(location.hash.replace(/^#\/?/, ""));
     const salva = ler(CHAVE.ativa, INICIO);
-    if (doLink && estado.porId.has(doLink)) abrir(doLink);
+    if (doLink && estado.porId.has(idReal(doLink))) abrir(doLink);
     else if (salva !== INICIO && abaDe(salva)) ativar(salva);
     else ativar(INICIO);
     try { if (edk() && estado.ativa === INICIO && !sessionStorage.getItem("edk.sis")) { sessionStorage.setItem("edk.sis", "1"); setTimeout(abrirSistemas, 450); } } catch (_) {}

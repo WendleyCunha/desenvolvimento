@@ -90,7 +90,7 @@ import promocoes
 import agente
 import weduca
 
-VERSAO = "3.23.0"
+VERSAO = "3.24.0"
 
 BASE = Path(__file__).resolve().parent
 PASTA_MODULOS = BASE / "modulos"
@@ -244,7 +244,12 @@ def modulos_internos() -> list[dict]:
             ordem = int(m.get("ordem", 100))
         except ValueError:
             ordem = 100
+        try:   # <meta name="hub-secoes"> — um módulo com várias seções no menu (ex.: WEDUCA: Feed, Aprendizagem…)
+            secoes = json.loads(m["secoes"]) if m.get("secoes") else None
+        except json.JSONDecodeError:
+            secoes = None
         saida.append({
+            "secoes": secoes,
             "id": slug,
             "titulo": m.get("titulo") or slug.replace("-", " ").replace("_", " ").title(),
             "icone": m.get("icone") or "documento",
@@ -413,10 +418,21 @@ def home(request: Request):
     return FileResponse(home_html, media_type="text/html", headers=SEM_CACHE)
 
 
+def _no_menu(i: dict) -> list:
+    """Item do menu lateral. Módulo com seções vira um GRUPO com uma entrada por seção (mesma página,
+    ?s=<seção>; a permissão continua sendo a do módulo — Configurações mostra um item só)."""
+    base = {k: v for k, v in i.items() if k not in ("_esquema", "secoes")}
+    if not i.get("secoes"):
+        return [base]
+    return [{**base, "id": f"{i['id']}-{s['id']}", "base": i["id"], "titulo": s.get("titulo") or s["id"], "icone": s.get("icone") or i["icone"],
+             "descricao": s.get("descricao") or "", "grupo": i["titulo"], "ordem": i["ordem"] + n / 100,
+             "url": f"{i['url']}?s={s['id']}"} for n, s in enumerate(i["secoes"]) if s.get("id")]
+
+
 @app.get("/api/modulos")
 def api_modulos(request: Request):
     u = acesso.exigir_usuario(request)
-    itens = [{k: v for k, v in i.items() if k != "_esquema"} for i in catalogo() if acesso.pode_acessar(u, i["id"])]
+    itens = [x for i in catalogo() if acesso.pode_acessar(u, i["id"]) for x in _no_menu(i)]
     return JSONResponse({"versao": VERSAO, "itens": itens, "usuario": acesso.publico(u)}, headers=SEM_CACHE)
 
 

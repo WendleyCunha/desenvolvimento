@@ -6,9 +6,10 @@
 <title>WEDUCA</title>
 <meta name="hub-icone" content="chapeu">
 <meta name="hub-cor" content="#f0cb4e">
-<meta name="hub-grupo" content="Pessoas">
+<meta name="hub-grupo" content="WEDUCA">
 <meta name="hub-ordem" content="1">
-<meta name="hub-descricao" content="Conhecimento da King Star: o que a equipe publica vira a base da IA.">
+<meta name="hub-descricao" content="O que a equipe publica vira a base da IA do hub.">
+<meta name="hub-secoes" content='[{"id":"feed","titulo":"Feed","icone":"mensagem","descricao":"Publicações da equipe — viram base da IA"},{"id":"aprendizagem","titulo":"Aprendizagem","icone":"estrela","descricao":"Cursos, avaliação e certificado"}]'>
 <script type="application/json" id="hub-permissoes">
 {
   "acoes": {
@@ -40,11 +41,11 @@
 ═══════════════════════════════════════════════════════════════════════════════
 -->
 <style>
-body{padding:14px;min-height:100vh}
+body{padding:0;min-height:100vh}
 :root{--sup:color-mix(in srgb,var(--txt) 4%,transparent);--sup2:color-mix(in srgb,var(--txt) 8%,transparent);--linha:var(--vidro-borda);--ou:#f0cb4e}
 html[data-claro]{--ou-t:#8f6b08}
 html:not([data-claro]){--ou-t:#f0cb4e}
-.app{position:relative;z-index:1;max-width:1240px;margin:0 auto}
+.app{position:relative;z-index:1;max-width:none;margin:0}
 .topo{position:sticky;top:10px;z-index:40;display:flex;align-items:center;gap:12px;padding:10px 12px 10px 14px;border-radius:20px;flex-wrap:wrap}
 .marca{display:flex;align-items:center;gap:12px;min-width:0}
 .marca b{display:block;font:700 1.08rem var(--titulo);letter-spacing:-.01em}
@@ -61,10 +62,28 @@ html:not([data-claro]){--ou-t:#f0cb4e}
 .sync i{width:7px;height:7px;border-radius:50%;background:var(--verde);box-shadow:0 0 8px var(--verde)}
 .sync.salvando i{background:var(--ouro);box-shadow:0 0 8px var(--ouro);animation:aurRespira 1s infinite}
 .sync.erro i{background:var(--rosa);box-shadow:0 0 8px var(--rosa)}
-main{margin-top:16px;display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:18px;align-items:start}
-main.unica{display:block}
+main{display:block}
+/* mesmo padrão do hub (tema Eduking): largura total, hero com cartão de vidro, fileiras */
+.em-hub .topo{display:none}
+body:not(.em-hub) .topo{margin:14px 14px 0}
+.cont{max-width:1600px;margin:0 auto;padding:22px clamp(16px,3vw,48px) 90px}
+.edk-hero+.cont{margin-top:-46px;position:relative;z-index:3}
+.edk-hero{min-height:min(54vh,480px);padding:34px clamp(16px,3vw,48px) 64px}
+.edk-hero .wrap{max-width:1600px}
+.edk-hero .carregar{color:var(--txt3)}
+.edk-cartao .meta .av{width:28px;height:28px;font-size:.62rem}
+.edk-cartao .meta b{color:var(--txt)}
+.edk-bt svg.i{width:18px;height:18px}
+.cab-sec{display:flex;align-items:center;gap:12px;margin:0 0 16px;flex-wrap:wrap}
+.cab-sec h2{margin:0;font:800 clamp(20px,2.2vw,28px) var(--titulo);display:flex;align-items:center;gap:12px}
+.cab-sec .btn{margin-left:auto}
+.feed-grade{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:22px;align-items:start;margin-top:10px}
+.feed-grade>.pilha{max-width:none}
+.grade-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:20px;padding:6px 0}
+.grade-cards .edk-card{width:auto}
+.edk-fil-cab .btn{margin-left:auto}
 .pilha{display:flex;flex-direction:column;gap:14px;min-width:0}
-.lado{position:sticky;top:92px;display:flex;flex-direction:column;gap:14px;max-height:calc(100vh - 106px);overflow-y:auto}
+.lado{position:sticky;top:16px;display:flex;flex-direction:column;gap:14px;max-height:calc(100vh - 32px);overflow-y:auto}
 .caixa{border-radius:22px;padding:16px}
 .caixa h3{margin:0 0 10px;display:flex;align-items:center;gap:8px;font:700 .95rem var(--titulo)}
 .caixa h3 small{margin-left:auto;font:600 .72rem var(--sans);color:var(--txt3)}
@@ -99,7 +118,7 @@ main.unica{display:block}
 .filtros .busca{flex:1;min-width:180px;position:relative}
 .filtros .busca input{padding-left:36px}
 .filtros .busca svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--txt3)}
-.novas{position:sticky;top:92px;z-index:30;align-self:center;display:none;margin:0 auto -6px;padding:9px 16px;border-radius:99px;font-weight:700;font-size:.8rem;color:#1a1204;
+.novas{position:sticky;top:12px;z-index:30;align-self:center;display:none;margin:0 auto -6px;padding:9px 16px;border-radius:99px;font-weight:700;font-size:.8rem;color:#1a1204;
   background:linear-gradient(135deg,#f7e6a3,#f0cb4e 45%,#d2ae34);box-shadow:0 10px 30px -8px rgba(240,203,78,.8);animation:sobe .45s cubic-bezier(.16,1,.3,1)}
 .novas.on{display:inline-flex;gap:8px;align-items:center}
 @keyframes sobe{from{opacity:0;transform:translateY(-10px)}}
@@ -226,11 +245,11 @@ details.transc p{white-space:pre-wrap;margin:8px 0 0;line-height:1.55}
 /* ═════════ APRENDIZAGEM ═════════ */
 .chk{display:flex;gap:8px;align-items:center;font-size:.84rem;cursor:pointer}
 .btn.p{padding:6px 10px;font-size:.72rem}
-html:not([data-eduking]){--edk-l:255,255,255;--edk-sup:#131316;--edk-texto-ouro:#f0cb4e;--edk-vidro:rgba(22,22,26,.6);
+html:not([data-eduking]){--edk-veu:rgba(0,0,0,.8);--edk-vidro-forte:rgba(16,16,20,.9);--edk-l:255,255,255;--edk-sup:#131316;--edk-texto-ouro:#f0cb4e;--edk-vidro:rgba(22,22,26,.6);
   --edk-sombra:linear-gradient(0deg,rgba(0,0,0,.92),rgba(0,0,0,.25) 55%,rgba(0,0,0,0));--edk-a1:#0b0b0d;--edk-a2:#1a160b;--edk-a3:#09090b}
 html:not([data-eduking])[data-claro]{--edk-l:17,17,17;--edk-sup:#fff;--edk-texto-ouro:#8f6b08;--edk-vidro:rgba(255,255,255,.75);
   --edk-sombra:linear-gradient(0deg,rgba(255,255,255,.97),rgba(255,255,255,.6) 55%,rgba(255,255,255,0));--edk-a1:#fffdf6;--edk-a2:#f8e7aa;--edk-a3:#fbf6e6}
-.apr{display:flex;flex-direction:column;gap:6px}
+.apr{display:block}
 .apr-hero{position:relative;border-radius:26px;overflow:hidden;min-height:260px;display:flex;align-items:flex-end;margin-bottom:14px}
 .apr-hero .edk-arte,.apr-hero .capa-img{position:absolute;inset:0}
 .capa-img{width:100%;height:100%;object-fit:cover}
@@ -320,7 +339,7 @@ html:not([data-eduking])[data-claro]{--edk-l:17,17,17;--edk-sup:#fff;--edk-texto
 .tbl th{text-align:left;font-size:.66rem;letter-spacing:.08em;text-transform:uppercase;color:var(--txt3);padding:8px;border-bottom:1px solid var(--linha)}
 .tbl td{padding:9px 8px;border-bottom:1px solid var(--linha)}
 @media (max-width:1000px){.cur-grade,.player,.ed-grade{grid-template-columns:1fr}.lado-cur{position:static}}
-@media (max-width:1000px){main{grid-template-columns:1fr}.lado{position:static;max-height:none;order:-1}.lado .so-pc{display:none}}
+@media (max-width:1000px){.feed-grade{grid-template-columns:1fr}.lado{position:static;max-height:none}}
 @media (max-width:820px){.topo{position:relative;top:0}.nav{order:3;width:100%;overflow-x:auto;flex-wrap:nowrap;margin:0}.novas{top:10px}}
 @media (max-width:560px){body{padding:8px}.nav button .rot,.nav button .breve{display:none}.comp{grid-template-columns:1fr}.comp>.av{display:none}.comp-pe .ferr span{display:none}.post{padding:13px 12px 8px}}
 </style>
@@ -328,9 +347,9 @@ html:not([data-eduking])[data-claro]{--edk-l:17,17,17;--edk-sup:#fff;--edk-texto
 <body>
 <div class="app">
   <header class="topo vidro vidro-borda-viva">
-    <div class="marca"><span id="logo"></span><span><b>WEDUCA</b><small>Conhecimento King Star</small></span></div>
+    <div class="marca"><span id="logo"></span><span><b>WEDUCA</b></span></div>
     <nav class="nav" id="nav"></nav>
-    <div class="dir"><span class="sync" id="sync"><i></i><span>conectando…</span></span><button type="button" class="btn-ic" id="btAtualizar" title="Recarregar"></button></div>
+    <div class="dir"><span id="secoes" style="display:flex;gap:6px"></span><span class="sync" id="sync"><i></i><span>conectando…</span></span><button type="button" class="btn-ic" id="btAtualizar" title="Recarregar"></button></div>
   </header>
   <main id="main"></main>
 </div>
@@ -365,14 +384,11 @@ function $$(s, r = document) { return [...r.querySelectorAll(s)]; }
 
 /* ═════════ estado ═════════ */
 const API = "/api/weduca";
-const S = { aba: lsGet("wd.weduca.aba", "feed"), eu: null, posts: [], mais: false, carregando: false, agora: "", filtro: "", q: "", destaques: null, conv: [], iaOk: true };
-const SECOES = [
-  ["feed", "Feed", "feed", true], ["aprendizagem", "Aprendizagem", "livro", true], ["noticias", "Notícias", "jornal"], ["pesquisas", "Pesquisas", "enquete"],
-  ["documentos", "Documentos", "pasta2"], ["resultados", "Resultados", "trofeu"], ["relatorios", "Relatórios", "grafico"],
-];
-const FILTROS = [["", "Tudo"], ["foto", "Fotos"], ["pdf", "PDFs"], ["video", "Vídeos"], ["salvos", "Salvos"], ["meus", "Meus"]];
+const S = { aba: "feed", sub: "", tipo: "", eu: null, posts: [], mais: false, carregando: false, agora: "", filtro: "", q: "" };
+const SECOES = [["feed", "Feed", "feed"], ["aprendizagem", "Aprendizagem", "livro"]];   // prontas (as próximas entram aqui e no <meta hub-secoes>)
+const FILTROS = [["", "Tudo"], ["foto", "Fotos"], ["pdf", "PDFs"], ["video", "Vídeos"]];
 
-function sync(e, t) { const el = $("#sync"); el.className = "sync " + (e || ""); el.lastElementChild.textContent = t; }
+function sync(e, t) { const el = $("#sync"); if (!el) return; el.className = "sync " + (e || ""); el.lastElementChild.textContent = t; }
 async function api(url, op = {}) {
   const grava = op.method && op.method !== "GET";
   if (grava) sync("salvando", "salvando…");
@@ -404,48 +420,128 @@ function rico(t) {
 const urlArq = (id) => `${API}/arquivos/${encodeURIComponent(id)}`;
 const pode = (a) => !!(S.eu && S.eu.pode && S.eu.pode[a]);
 
-/* ═════════ topo (abas) ═════════ */
+/* ═════════ seções e abas ═════════
+   No hub, cada seção (Feed, Aprendizagem…) é um item do menu lateral (bolinha) e as ABAS da seção
+   sobem para a barra de cima do hub (postMessage {hub:"abas"}). Aberto fora do hub, as abas
+   aparecem no topo do próprio módulo. */
 function lsGet(k, d) { try { return localStorage.getItem(k) || d; } catch (_) { return d; } }
-function topo() {
-  $("#nav").innerHTML = SECOES.map(([id, rot, ic, pronta]) =>
-    `<button type="button" data-s="${id}" class="${id === S.aba ? "ativo" : ""}" ${pronta ? "" : "disabled"} title="${pronta ? rot : rot + " — em construção (próxima etapa)"}">${svg(ic)}<span class="rot">${rot}</span></button>`).join("");
+const EMB = !!A.embutido;
+document.body.classList.toggle("em-hub", EMB);
+function subsDe(aba) {
+  if (aba === "aprendizagem") return [["vitrine", "Para você", "livro"], ["andamento", "Em andamento", "relogio"], ["concluidos", "Concluídos", "check"],
+    ["certificados", "Certificados", "trofeu"], ...(pode("cursos") || pode("moderar") ? [["meus", "Meus cursos", "lapis"]] : [])];
+  return [["tudo", "Para você", "feed"], ["meus", "Meus posts", "usuario"], ["salvos", "Salvos", "marcador"], ...(pode("moderar") ? [["analise", "Em análise", "atencao"]] : [])];
+}
+function publicarAbas() {
+  const itens = subsDe(S.aba).map(([id, rot, ic]) => ({ id, rot, ic, _ic: ic }));
+  const paraHub = itens.map(({ id, rot }) => ({ id, rot }));   // na barra do hub: só o texto, como no modelo
+  if (EMB) { try { parent.postMessage({ hub: "abas", itens: paraHub, ativa: S.sub }, location.origin); } catch (_) {} }
+  $("#nav").innerHTML = itens.map((s) => `<button type="button" data-sub="${s.id}" class="${s.id === S.sub ? "ativo" : ""}">${svg(s.ic)}<span class="rot">${s.rot}</span></button>`).join("");
+  $("#secoes").innerHTML = SECOES.map(([id, rot, ic]) => `<button type="button" class="btn ${id === S.aba ? "" : "v"} p" data-sec="${id}">${svg(ic)}${rot}</button>`).join("");
+}
+$("#nav").addEventListener("click", (e) => { const b = e.target.closest("[data-sub]"); if (b) irSub(b.dataset.sub); });
+$("#secoes").addEventListener("click", (e) => { const b = e.target.closest("[data-sec]"); if (b) { S.aba = b.dataset.sec; S.sub = ""; irSub(""); } });
+addEventListener("message", (e) => { if (e.origin === location.origin && e.data && e.data.hub === "aba") irSub(String(e.data.id)); });
+function irSub(id) {
+  const subs = subsDe(S.aba).map((x) => x[0]);
+  S.sub = subs.includes(id) ? id : subs[0];
+  try { localStorage.setItem("wd.weduca.aba", S.aba); } catch (_) {}
+  publicarAbas();
+  $("#main").animate?.([{ opacity: 0, transform: "scale(1.02)", filter: "blur(6px)" }, { opacity: 1, transform: "none", filter: "none" }], { duration: 450, easing: "cubic-bezier(.16,1,.3,1)" });
+  scrollTo({ top: 0 });
+  if (S.aba === "feed") telaFeed(); else telaAprender();
+}
+/** leva para outra seção do WEDUCA (no hub: abre a aba daquela seção, direto no item) */
+function irPara(sec, hash) {
+  if (sec === S.aba) { location.hash = hash; return; }
+  if (EMB) { try { parent.postMessage({ hub: "abrir", id: "weduca-" + sec, hash }, location.origin); } catch (_) {} return; }
+  S.aba = sec; irSub(""); setTimeout(() => { location.hash = hash; }, 300);
 }
 
-$("#nav").addEventListener("click", (e) => { const b = e.target.closest("[data-s]"); if (b && !b.disabled) irAba(b.dataset.s); });
-function irAba(a) {
-  if (a === S.aba && $("#main").childElementCount) return;
-  S.aba = a; try { localStorage.setItem("wd.weduca.aba", a); } catch (_) {}
-  $$("#nav [data-s]").forEach((b) => b.classList.toggle("ativo", b.dataset.s === a));
-  const m = $("#main"); m.classList.toggle("unica", a !== "feed");
-  m.animate?.([{ opacity: 0, transform: "translateY(10px)" }, { opacity: 1, transform: "none" }], { duration: 380, easing: "cubic-bezier(.16,1,.3,1)" });
-  if (a === "feed") { tela(); carregar(false); carregarDestaques(); } else telaAprender();
+/* ═════════ FEED ═════════ */
+const ICP = (p) => p.video ? "youtube" : (p.midias || []).some((m) => m.kind === "pdf") ? "pdf" : (p.midias || []).some((m) => m.kind === "foto") ? "imagem" : "feed";
+const tagDe = (p) => ((/#([\p{L}\p{N}_]{2,40})/u.exec(p.texto || "") || [])[1] || "");
+/** título curto: a 1ª frase da publicação (sem #tags), cortada numa palavra */
+function tituloDe(p) {
+  if (p.video && p.video.titulo) return p.video.titulo;
+  let t = String(p.texto || "").replace(/#[\p{L}\p{N}_]+/gu, "").split(/\n|(?<=[.!?:])\s/).map((x) => x.trim()).find(Boolean) || "";
+  t = t.replace(/[.:]$/, "");
+  if (t.length > 64) t = t.slice(0, 64).replace(/\s+\S*$/, "") + "…";
+  return t || "Publicação";
 }
-
-/* ═════════ tela ═════════ */
-function tela() {
-  $("#main").innerHTML = `
-    <section class="pilha" id="colFeed">
-      ${pode("publicar") ? `<div class="caixa vidro" id="compositor"></div>` : ""}
-      <div class="filtros">
-        <div class="chips" id="filtros">${FILTROS.map(([f, r]) => `<button type="button" class="chip ${f === S.filtro ? "ativo" : ""}" data-f="${f}">${r}</button>`).join("")}${pode("moderar") ? `<button type="button" class="chip ${S.filtro === "analise" ? "ativo" : ""}" data-f="analise">Em análise</button>` : ""}</div>
-        <label class="busca">${svg("busca")}<input class="entrada" id="busca" placeholder="Buscar no WEDUCA (texto, pessoa, PDF, comentário…)" value="${esc(S.q)}" autocomplete="off"></label>
-      </div>
-      <button type="button" class="novas" id="novas">${svg("subir")}<span></span></button>
-      <div class="pilha" id="lista"></div>
-      <div class="carregar" id="fim"></div>
-    </section>
-    <aside class="lado" id="lado">
-      <div class="caixa vidro" id="ia"></div>
-      <div class="caixa vidro so-pc" id="numeros"></div>
-      <div class="caixa vidro so-pc" id="pessoas"></div>
-    </aside>`;
-  if (pode("publicar")) editor($("#compositor"), null, (p) => { S.posts.unshift(p); desenharLista(); flash(p.id); carregarDestaques(); });
-  $("#filtros").addEventListener("click", (e) => { const b = e.target.closest("[data-f]"); if (!b) return; S.filtro = b.dataset.f; $$("#filtros .chip").forEach((x) => x.classList.toggle("ativo", x === b)); recarregar(); });
+function cardPost(p, tom) {
+  const foto = (p.midias || []).find((m) => m.kind === "foto");
+  return `<button type="button" class="edk-card" data-ver="${esc(p.id)}" title="${esc(tituloDe(p))}">${foto ? `<img class="capa-img" src="${urlArq(foto.id)}" alt="" loading="lazy">` : arte(p.id, ICP(p), tom)}<span class="sombra"></span>
+    <span class="topo-c"><span></span><span class="nota">♥ ${p.curtidas || 0}</span></span>
+    <span class="info"><span class="cat">${esc(tagDe(p) || (p.autor || {}).nome || "Feed")}</span><h3>${esc(tituloDe(p))}</h3>
+      <span class="ctr"><span class="bts"><span class="play">${svg("olho")}</span></span><small>${esc((p.autor || {}).nome || "")} · ${quando(p.em)}${p.n_coment ? ` · ${p.n_coment} coment.` : ""}</small></span></span></button>`;
+}
+function pendencias(cursos, d) {
+  const lst = [];
+  for (const c of (cursos || []).filter((c) => c.status === "publicado" && !c.concluido_em && (c.obrigatorio || c.iniciado)).slice(0, 5))
+    lst.push(`<button type="button" class="edk-pend" data-curso-ir="${esc(c.id)}"><span class="ic">${svg(c.obrigatorio ? "chapeu" : "livro")}</span><span><b>${esc(c.titulo)}</b><small>${c.obrigatorio ? "Curso obrigatório" : "Curso em andamento"} · ${c.pct}%</small></span></button>`);
+  if (d && d.em_analise) lst.push(`<button type="button" class="edk-pend" data-sub-ir="analise"><span class="ic">${svg("atencao")}</span><span><b>${d.em_analise} ${d.em_analise === 1 ? "publicação" : "publicações"} em análise</b><small>👎 de quem perguntou à IA · revisar</small></span></button>`);
+  return `<div class="edk-mini vidro"><h3>${svg("alvo")}Suas pendências</h3>${lst.join("") || `<div class="edk-pend" style="cursor:default"><span class="ic">${svg("check")}</span><span><b>Nada pendente</b><small>Cursos obrigatórios e o que você começou aparecem aqui</small></span></div>`}</div>`;
+}
+async function telaFeed() {
+  const tudo = S.sub === "tudo";
+  S.filtro = tudo ? (S.tipo || "") : S.sub; S.posts = []; S.mais = false;
+  const titulo = { meus: "Meus posts", salvos: "Salvos", analise: "Em análise" }[S.sub];
+  $("#main").innerHTML = `${tudo ? `<section class="edk-hero" id="fHero"><div class="carregar" style="position:relative;z-index:2">carregando…</div></section>` : ""}
+    <div class="cont">${titulo ? `<div class="cab-sec"><h2>${titulo}</h2>${pode("publicar") ? `<button type="button" class="btn" data-nova>${svg("mais")}Nova publicação</button>` : ""}</div>` : ""}
+      ${tudo ? `<div id="fAlta"></div>` : ""}
+      <div class="feed-grade"><section class="pilha">
+        ${tudo ? `<div class="edk-fil-cab" style="margin:0"><h2>Tudo no feed</h2>${pode("publicar") ? `<button type="button" class="btn" data-nova>${svg("mais")}Nova publicação</button>` : ""}</div>` : ""}
+        <div class="filtros">${tudo ? `<div class="chips" id="filtros">${FILTROS.map(([f, r]) => `<button type="button" class="chip ${f === (S.tipo || "") ? "ativo" : ""}" data-f="${f}">${r}</button>`).join("")}</div>` : ""}
+          <label class="busca">${svg("busca")}<input class="entrada" id="busca" placeholder="Buscar (texto, pessoa, PDF, comentário…)" value="${esc(S.q)}" autocomplete="off"></label></div>
+        <button type="button" class="novas" id="novas">${svg("subir")}<span></span></button>
+        <div class="pilha" id="lista"><div class="carregar">carregando…</div></div><div class="carregar" id="fim"></div>
+      </section>
+      <aside class="lado" id="lado"><div class="caixa vidro" id="numeros"></div><div class="caixa vidro" id="pessoas"></div></aside></div></div>`;
+  $("#filtros")?.addEventListener("click", (e) => { const b = e.target.closest("[data-f]"); if (!b) return; S.tipo = S.filtro = b.dataset.f; $$("#filtros .chip").forEach((x) => x.classList.toggle("ativo", x === b)); recarregar(); });
   let tb; $("#busca").addEventListener("input", (e) => { clearTimeout(tb); tb = setTimeout(() => { S.q = e.target.value.trim(); recarregar(); }, 350); });
-  $("#novas").addEventListener("click", () => { $("#novas").classList.remove("on"); recarregar(); scrollTo({ top: 0, behavior: "smooth" }); });
-  painelIA();
+  $("#novas").addEventListener("click", () => { $("#novas").classList.remove("on"); recarregar(); $("#lista").scrollIntoView({ behavior: "smooth" }); });
   new IntersectionObserver((es) => { if (es[0].isIntersecting && S.mais && !S.carregando) carregar(true); }, { rootMargin: "600px" }).observe($("#fim"));
+  carregar(false);
+  carregarDestaques();
 }
+async function carregarDestaques() {
+  let d, cursos = [];
+  try { [d, cursos] = await Promise.all([api("/destaques"), api("/cursos").then((r) => r.cursos).catch(() => [])]); } catch (_) { return; }
+  if ($("#fHero")) {
+    const p = d.alta[0];
+    const anexo = p && (p.video ? ["youtube", "Vídeo", p.video.titulo || "do canal"] : (p.midias || []).find((m) => m.kind === "pdf") ? ["pdf", "PDF", p.midias.find((m) => m.kind === "pdf").nome]
+      : (p.midias || []).length ? ["imagem", "Fotos", `${p.midias.length} ${p.midias.length === 1 ? "foto" : "fotos"}`] : null);
+    $("#fHero").innerHTML = `<div class="bg">${p ? arte(p.id, ICP(p)) : arte("weduca-feed", "feed")}</div><div class="wrap">
+      <div class="edk-cartao vidro">${p ? `<div class="edk-chips"><span class="edk-chip forte">${svg("estrela")}${p.curtidas || p.n_coment ? "Em alta no time" : "Mais recente"}</span>${tagDe(p) ? `<span class="edk-chip">${esc(tagDe(p))}</span>` : ""}</div>
+        <h1>${esc(tituloDe(p))}</h1>
+        <div class="meta">${avatar(p.autor, true)}<b>${esc((p.autor || {}).nome || "")}</b><span>· ${quando(p.em)}</span><span class="edk-chip">♥ ${p.curtidas || 0}</span><span class="edk-chip">${p.n_coment} ${p.n_coment === 1 ? "comentário" : "comentários"}</span></div>
+        ${p.texto ? `<p>${esc(p.texto.slice(0, 220))}${p.texto.length > 220 ? "…" : ""}</p>` : ""}
+        ${anexo ? `<div class="edk-destaque"><span class="ic">${svg(anexo[0])}</span><span><b>${anexo[1]}:</b> ${esc(anexo[2])}</span></div>` : ""}
+        <div class="edk-acoes"><button type="button" class="edk-bt preto" data-ver="${esc(p.id)}">${svg("olho")}Ver publicação</button>${pode("publicar") ? `<button type="button" class="edk-bt v" data-nova>${svg("mais")}Nova publicação</button>` : ""}</div>`
+      : `<div class="edk-chips"><span class="edk-chip forte">${svg("estrela")}WEDUCA</span></div><h1>O feed começa com você</h1>
+        <p>Publique um procedimento, uma dica, uma foto do jeito certo, um PDF de instrução ou um vídeo do canal. Tudo vira base de conhecimento da IA do hub na hora.</p>
+        <div class="edk-acoes">${pode("publicar") ? `<button type="button" class="edk-bt ouro" data-nova>${svg("mais")}Nova publicação</button>` : ""}</div>`}</div>
+      <div class="edk-lado">${pendencias(cursos, d)}</div></div>`;
+  }
+  if ($("#fAlta")) $("#fAlta").innerHTML = d.alta.length > 1 ? fileiraA("Em alta no time", d.alta.some((p) => p.curtidas) ? "mais curtidos" : "recentes", d.alta.map((p, i) => cardPost(p, i % 4))) : "";
+  if ($("#numeros")) $("#numeros").innerHTML = `<h3>${svg("ia")}Base de conhecimento</h3><div class="num"><div><b>${d.na_base}</b><small>publicações na base da IA</small></div><div><b>${d.total}</b><small>no feed</small></div></div>
+    <small style="display:block;margin-top:10px;color:var(--txt3);font-size:.74rem">Pergunte no Agente do topo: ele responde com o que a equipe publicou.</small>`;
+  if ($("#pessoas")) $("#pessoas").innerHTML = `<h3>${svg("usuarios")}Quem mais compartilha</h3>${d.pessoas.length ? d.pessoas.map((x) => `<div class="pessoa">${avatar({ nome: x.nome, login: x.login }, true)}<span><b>${esc(x.nome)}</b><small>${x.posts} ${x.posts === 1 ? "publicação" : "publicações"} · ${x.curtidas} ♥</small></span></div>`).join("")
+    : `<div style="color:var(--txt3);font-size:.8rem">Ainda ninguém. Seja a primeira pessoa!</div>`}`;
+}
+function novaPublicacao() {
+  const md = A.modal({ titulo: "Nova publicação", icone: "feed", cor: "#f0cb4e", largura: 760, html: `<div id="npBox"></div>`,
+    aoAbrir: (cx) => { editor($("#npBox", cx), null, (p) => { md.fechar(); if (S.aba === "feed" && ["tudo", "meus"].includes(S.sub)) { S.posts.unshift(p); desenharLista(); setTimeout(() => flash(p.id), 400); carregarDestaques(); } }, () => md.fechar()); setTimeout(() => $("#tx", cx)?.focus(), 80); } });
+}
+document.addEventListener("click", (e) => {
+  if (e.target.closest("[data-nova]")) return novaPublicacao();
+  const v = e.target.closest("[data-ver]"); if (v) return abrirPost(v.dataset.ver);
+  const ci = e.target.closest("[data-curso-ir]"); if (ci) return irPara("aprendizagem", "curso=" + ci.dataset.cursoIr);
+  const si = e.target.closest("[data-sub-ir]"); if (si) return irSub(si.dataset.subIr);
+  const sc = e.target.closest("[data-sc]");
+  if (sc && !sc.closest("#apr")) { const t = document.getElementById(sc.dataset.sc); t && t.scrollBy({ left: +sc.dataset.d * t.clientWidth * 0.8, behavior: "smooth" }); }
+});
 
 /* ═════════ editor de postagem (compositor e edição) ═════════ */
 function editor(box, post, aoSalvar, fechar) {
@@ -657,11 +753,13 @@ async function abrirPost(id) {
   } catch (e) { A.toast("⚠️ " + esc(e.message)); }
 }
 function lerHash() {
-  const m = /post=([\w-]+)/.exec(location.hash), c = /curso=([\w-]+)(?:&aula=([\w-]+))?/.exec(location.hash), au = /^#?aula=([\w-]+)/.exec(location.hash);
-  if (m) { if (S.aba !== "feed") irAba("feed"); abrirPost(m[1]); }
-  else if (c) { if (S.aba !== "aprendizagem") irAba("aprendizagem"); abrirCurso(c[1], c[2]); }
-  else if (au) { if (S.aba !== "aprendizagem") irAba("aprendizagem"); api(`/aulas/${au[1]}`).then((x) => abrirCurso(x.curso_id, au[1])).catch((e) => A.toast("⚠️ " + esc(e.message))); }
-  if (m || c || au) history.replaceState(null, "", location.pathname);
+  const h = location.hash.replace(/^#/, "");
+  const m = /post=([\w-]+)/.exec(h), c = /curso=([\w-]+)(?:&aula=([\w-]+))?/.exec(h), au = /^aula=([\w-]+)/.exec(h);
+  if (!(m || c || au)) return;
+  history.replaceState(null, "", location.pathname + location.search);
+  if (m) { if (S.aba !== "feed") return irPara("feed", h); abrirPost(m[1]); }
+  else if (c) { if (S.aba !== "aprendizagem") return irPara("aprendizagem", h); abrirCurso(c[1], c[2]); }
+  else { if (S.aba !== "aprendizagem") return irPara("aprendizagem", h); api(`/aulas/${au[1]}`).then((x) => abrirCurso(x.curso_id, au[1])).catch((e) => A.toast("⚠️ " + esc(e.message))); }
 }
 addEventListener("hashchange", lerHash);
 
@@ -681,7 +779,7 @@ async function carregar(maisAntigas) {
 }
 function recarregar() { $("#novas").classList.remove("on"); return carregar(false); }
 async function novidades() {
-  if (document.hidden || S.aba !== "feed" || !S.agora || S.q || S.filtro || !$("#novas")) return;
+  if (document.hidden || S.aba !== "feed" || S.sub !== "tudo" || !S.agora || S.q || S.filtro || !$("#novas")) return;
   try {
     const r = await A.api(`${API}/novidades?desde=${encodeURIComponent(S.agora)}`);
     const b = $("#novas");
@@ -689,86 +787,6 @@ async function novidades() {
   } catch (_) {}
 }
 setInterval(novidades, 20000);
-async function carregarDestaques() {
-  try {
-    const d = S.destaques = await api("/destaques");
-    $("#numeros").innerHTML = `<h3>${svg("ia")}Base de conhecimento</h3><div class="num"><div><b>${d.na_base}</b><small>postagens na base da IA</small></div><div><b>${d.total}</b><small>no feed</small></div></div>
-      ${d.em_analise ? `<button type="button" class="btn v" style="margin-top:10px;width:100%" id="verAnalise">${svg("atencao")}${d.em_analise} em análise (👎 da IA)</button>` : ""}`;
-    $("#verAnalise")?.addEventListener("click", () => { S.filtro = "analise"; $$("#filtros .chip").forEach((x) => x.classList.toggle("ativo", x.dataset.f === "analise")); recarregar(); });
-    $("#pessoas").innerHTML = `<h3>${svg("usuarios")}Quem mais compartilha</h3>${d.pessoas.length ? d.pessoas.map((x) => `<div class="pessoa">${avatar({ nome: x.nome, login: x.login }, true)}<span><b>${esc(x.nome)}</b><small>${x.posts} ${x.posts === 1 ? "postagem" : "postagens"} · ${x.curtidas} ♥</small></span></div>`).join("")
-      : `<div class="sub" style="color:var(--txt3);font-size:.8rem">Ainda ninguém. Seja a primeira pessoa!</div>`}
-      ${d.mais_curtidas.length ? `<h3 style="margin-top:14px">${svg("coracao")}Mais curtidas</h3>${d.mais_curtidas.map((x) => `<button type="button" class="top-post" data-ver="${esc(x.id)}"><b>${esc((x.autor || {}).nome)}</b> · ${x.curtidas} ♥<br>${esc(x.texto || "(foto / vídeo)")}</button>`).join("")}` : ""}`;
-    $$("#pessoas [data-ver]").forEach((b) => b.addEventListener("click", () => abrirPost(b.dataset.ver)));
-  } catch (_) {}
-}
-
-/* ═════════ IA: pergunte ao que a equipe já sabe ═════════ */
-function painelIA() {
-  $("#ia").innerHTML = `<div class="ia-cab"><span class="ia-orbe" id="iaOrbe"></span><span><b>Pergunte ao WEDUCA</b><small>A IA responde com o que a equipe publicou</small></span></div>
-    <div class="ia-conv" id="iaConv"></div>
-    <div class="ia-sug" id="iaSug"></div>
-    <form class="ia-in" id="iaForm"><input class="entrada" id="iaTxt" placeholder="Ex.: como montar o palete?" autocomplete="off" maxlength="500"><button type="submit" class="btn" title="Perguntar">${svg("seta")}</button></form>`;
-  $("#iaForm").addEventListener("submit", (e) => { e.preventDefault(); perguntar($("#iaTxt").value); });
-  A.api("/api/agente/me").then((m) => {
-    $("#iaSug").innerHTML = (m.sugestoes || []).slice(0, 3).map((s) => `<button type="button">${esc(s)}</button>`).join("");
-    $$("#iaSug button").forEach((b) => b.addEventListener("click", () => perguntar(b.textContent)));
-  }).catch((e) => { if (e.status === 403) { S.iaOk = false; $("#iaConv").innerHTML = `<div class="msg ia">A IA ainda não está liberada para você. Peça ao administrador em <b>Configurações → Usuários → Agente IA</b>.</div>`; $("#iaForm").hidden = true; } });
-}
-function textoIA(t) {
-  const l = esc(t).split(/\n+/), out = []; let lista = null;
-  for (const x of l) {
-    const m = /^\s*(?:\d+[.)]|[-•*])\s+(.*)/.exec(x);
-    if (m) { if (!lista) { lista = []; out.push(lista); } lista.push(m[1]); }
-    else { lista = null; if (x.trim()) out.push(x); }
-  }
-  return out.map((x) => Array.isArray(x) ? `<ol>${x.map((i) => `<li>${i}</li>`).join("")}</ol>` : `<p>${x.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")}</p>`).join("");
-}
-async function perguntar(q) {
-  q = String(q || "").trim(); if (!q || S.iaOcupada) return;
-  S.iaOcupada = true; $("#iaTxt").value = ""; $("#iaSug").innerHTML = "";
-  const conv = $("#iaConv");
-  conv.insertAdjacentHTML("beforeend", `<div class="msg eu">${esc(q)}</div>`);
-  const d = document.createElement("div"); d.className = "msg ia"; d.innerHTML = `<span class="dig"><span></span><span></span><span></span></span>`; conv.appendChild(d);
-  $("#iaOrbe").classList.add("pensando"); conv.scrollTop = conv.scrollHeight;
-  try {
-    const r = await A.api("/api/agente/perguntar", { method: "POST", body: { pergunta: q, tela: "WEDUCA", historico: S.conv.slice(-3) } });
-    if (r.tipo === "resposta") {
-      const f = r.fonte || {}, corpo = r.passos ? `<ol>${r.passos.map((p) => `<li>${esc(p)}</li>`).join("")}</ol>` : textoIA(r.texto);
-      const fonte = f.origem === "weduca"
-        ? `📣 Fonte: <button type="button" data-hash="${esc(f.hash || "post=" + f.post_id)}">${String(f.hash || "").startsWith("curso=") ? "aula" : "postagem"} de ${esc(f.por || "")} no WEDUCA</button>`
-        : `📄 Fonte: <b>${esc(f.titulo)}</b> (artigo da base)`;
-      d.innerHTML = `${r.modo === "ia" || f.origem === "weduca" ? "" : `<p><b>${esc(r.titulo)}</b></p>`}${corpo}<span class="fonte">${fonte}</span>
-        <div class="fb"><button type="button" data-u="1">👍 Resolveu</button><button type="button" data-u="0">👎 Não resolveu</button></div>`;
-      S.conv.push({ p: q, r: r.texto || (r.passos || []).slice(0, 4).join(" ") }); if (S.conv.length > 3) S.conv.shift();
-      d.querySelector("[data-hash]")?.addEventListener("click", (e) => { location.hash = e.currentTarget.dataset.hash; });
-      d.querySelectorAll("[data-u]").forEach((b) => b.addEventListener("click", async () => {
-        const util = b.dataset.u === "1";
-        let obs = "";
-        if (!util) { obs = await pedirObs(); if (obs === null) return; }
-        try { await A.api("/api/agente/retorno", { method: "POST", body: { pergunta_id: r.pergunta_id, util, obs } }); } catch (_) {}
-        d.querySelector(".fb").innerHTML = util ? `<small style="color:var(--verde)">Obrigado! Essa resposta vira exemplo para as próximas.</small>`
-          : `<small style="color:var(--rosa)">Anotado: ${f.origem === "weduca" ? "a postagem ficou <b>em análise</b> e " : ""}foi para quem cuida da base ajustar.</small>`;
-        if (!util && f.origem === "weduca") { const p = S.posts.find((x) => x.id === f.post_id); if (p) { p.analise = true; trocarPost(p); } }
-      }));
-    } else {
-      d.innerHTML = `🤔 <b>A equipe ainda não publicou sobre isso.</b><br>Não vou inventar: a pergunta foi para quem cuida da base. ${pode("publicar") ? "Se você sabe, publique no feed — a IA aprende na hora." : ""}`;
-    }
-  } catch (e) {
-    d.innerHTML = e.status === 403 ? "A IA não está liberada para você (Configurações → Usuários → Agente IA)." : "⚠️ " + esc(e.message || "Não consegui responder agora.");
-  }
-  $("#iaOrbe").classList.remove("pensando"); S.iaOcupada = false; conv.scrollTop = conv.scrollHeight;
-}
-function pedirObs() {
-  return new Promise((ok) => {
-    let v = null;
-    A.modal({ titulo: "O que não resolveu?", icone: "atencao", largura: 440,
-      html: `<p style="margin:0 0 10px;color:var(--txt2)">Conte o que faltou ou o que está errado — vai para quem cuida da base.</p><input class="entrada" id="obsTxt" maxlength="300" placeholder="Ex.: isso mudou, agora é feito pelo ERP">`,
-      aoAbrir: (cx) => setTimeout(() => $("#obsTxt", cx).focus(), 60),
-      botoes: [{ rotulo: "Cancelar" }, { rotulo: "Enviar", classe: "btn", principal: true, acao: () => { v = (document.getElementById("obsTxt") || {}).value || ""; } }],
-      aoFechar: () => ok(v) });
-  });
-}
-
 /* ═══════════════════════════════════════════════════════════════════════════
    APRENDIZAGEM — cursos feitos pela equipe, progresso, avaliação e certificado
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -793,11 +811,11 @@ const ROT_T = { video: "Vídeo", texto: "Leitura", pdf: "PDF" };
 
 async function telaAprender() {
   const m = $("#main");
-  m.innerHTML = `<div class="apr" id="apr"><div class="carregar">carregando cursos…</div></div>`;
+  m.innerHTML = `<div class="apr" id="apr"><div class="cont"><div class="carregar">carregando cursos…</div></div></div>`;
   try {
     const [r, c] = await Promise.all([api("/cursos"), api("/certificados")]);
     Object.assign(AP, { cursos: r.cursos, pode_criar: r.pode_criar, categorias: r.categorias, certs: c.certificados });
-  } catch (e) { m.innerHTML = `<div class="vazio vidro">${svg("atencao")}<b>Não consegui carregar a Aprendizagem</b>${esc(e.message)}</div>`; return; }
+  } catch (e) { m.innerHTML = `<div class="cont"><div class="vazio vidro">${svg("atencao")}<b>Não consegui carregar a Aprendizagem</b>${esc(e.message)}</div></div>`; return; }
   desenharApr();
 }
 function cardCurso(c, tom = 0) {
@@ -811,47 +829,51 @@ function cardCurso(c, tom = 0) {
 }
 function fileiraA(titulo, selo, itens) {
   if (!itens.length) return "";
-  const id = "fa" + hashS(titulo + itens.length);
+  const id = "fa" + hashS(titulo + itens.length + Math.random());
   return `<section class="edk-fil"><div class="edk-fil-cab"><h2>${titulo}${selo ? `<span class="edk-selo">${selo}</span>` : ""}</h2>
-    <div class="edk-setas"><button type="button" data-sc="${id}" data-d="-1">${svg("voltar")}</button><button type="button" data-sc="${id}" data-d="1">${svg("avancar")}</button></div></div>
+    <div class="edk-setas"><button type="button" data-sc="${id}" data-d="-1" aria-label="Voltar">${svg("voltar")}</button><button type="button" data-sc="${id}" data-d="1" aria-label="Avançar">${svg("avancar")}</button></div></div>
     <div class="edk-rel"><div class="edk-trilho" id="${id}">${itens.join("")}</div></div></section>`;
 }
 function desenharApr() {
   const q = AP.q.toLowerCase();
   let lst = AP.cursos.filter((c) => !q || (c.titulo + " " + c.descricao + " " + c.categoria).toLowerCase().includes(q));
-  if (AP.filtro === "andamento") lst = lst.filter((c) => c.iniciado && !c.concluido_em);
-  else if (AP.filtro === "concluidos") lst = lst.filter((c) => c.concluido_em);
-  else if (AP.filtro === "obrigatorios") lst = lst.filter((c) => c.obrigatorio);
-  else if (AP.filtro === "meus") lst = lst.filter((c) => (c.autor || {}).login === S.eu.login);
   const pub = lst.filter((c) => c.status === "publicado");
-  const andando = pub.filter((c) => c.iniciado && !c.concluido_em).sort((a, b) => b.pct - a.pct);
-  const destaque = andando[0] || pub.find((c) => c.obrigatorio && !c.concluido_em) || pub.find((c) => !c.concluido_em) || pub[0];
-  let h = "";
-  if (destaque) {
-    h += `<section class="apr-hero">${capaDe(destaque)}<div class="txt"><span class="rotulo">${destaque.concluido_em ? "Você concluiu ✓" : andando[0] === destaque ? "Continue de onde parou" : destaque.obrigatorio ? "Obrigatório" : "Comece por aqui"}</span>
-      <h2>${esc(destaque.titulo)}</h2><p>${esc((destaque.descricao || "").slice(0, 220))}</p>
-      ${destaque.pct ? `<div class="barra-prog"><i style="width:${destaque.pct}%"></i></div>` : ""}
-      <div class="acoes"><button type="button" class="btn" data-curso="${esc(destaque.id)}" data-ir="1">${svg("seta")}${destaque.concluido_em ? "Rever" : destaque.pct ? "Continuar" : "Começar"}</button>
-      <button type="button" class="btn v" data-curso="${esc(destaque.id)}">${svg("olho")}Ver o curso</button></div></div></section>`;
-  } else if (!AP.q && !AP.filtro) {
-    h += `<div class="vazio vidro">${A.orbe("livro", "#f0cb4e")}<b>Nenhum curso ainda</b>${AP.pode_criar ? "Crie o primeiro curso: aulas em vídeo do canal, leitura, PDF e fotos, com avaliação e certificado. Tudo vira base da IA." : "Quando a equipe publicar cursos, eles aparecem aqui."}
-      ${AP.pode_criar ? `<button type="button" class="btn" data-novo-curso>${svg("mais")}Criar curso</button>` : ""}</div>`;
-  }
-  if (AP.cursos.length || AP.q || AP.filtro) h += `<div class="apr-ferr"><div class="chips" id="aprF">${[["", "Todos"], ["obrigatorios", "Obrigatórios"], ["andamento", "Em andamento"], ["concluidos", "Concluídos"], ...(AP.pode_criar ? [["meus", "Meus cursos"]] : [])]
-      .map(([f, r]) => `<button type="button" class="chip ${f === AP.filtro ? "ativo" : ""}" data-af="${f}">${r}</button>`).join("")}</div>
-    <label class="busca">${svg("busca")}<input class="entrada" id="aprQ" placeholder="Buscar curso" value="${esc(AP.q)}" autocomplete="off"></label>
+  const ferr = `<div class="apr-ferr"><label class="busca">${svg("busca")}<input class="entrada" id="aprQ" placeholder="Buscar curso" value="${esc(AP.q)}" autocomplete="off"></label>
     ${AP.pode_criar ? `<button type="button" class="btn" data-novo-curso>${svg("mais")}Criar curso</button>` : ""}</div>`;
-  if (andando.length) h += fileiraA("Continue assistindo", `${andando.length}`, andando.map((c) => cardCurso(c, 1)));
-  const obr = pub.filter((c) => c.obrigatorio && !c.concluido_em);
-  if (obr.length) h += fileiraA("Obrigatórios para você", `${obr.length}`, obr.map((c) => cardCurso(c, 2)));
-  const cats = [...new Set(pub.map((c) => c.categoria))].sort();
-  for (const cat of cats) { const it = pub.filter((c) => c.categoria === cat); h += fileiraA(esc(cat), `${it.length} ${it.length === 1 ? "curso" : "cursos"}`, it.map((c) => cardCurso(c))); }
-  const ras = lst.filter((c) => c.status !== "publicado");
-  if (ras.length) h += fileiraA("Rascunhos e arquivados", "só quem edita vê", ras.map((c) => cardCurso(c, 3)));
-  if (!lst.length && (AP.q || AP.filtro)) h += `<div class="vazio vidro"><b>Nada encontrado</b>Tente outra busca ou outro filtro.</div>`;
-  if (AP.certs.length) h += `<section class="edk-fil"><div class="edk-fil-cab"><h2>Meus certificados<span class="edk-selo">${AP.certs.length}</span></h2></div>
-    <div class="certs">${AP.certs.map((x) => `<button type="button" class="cert-c vidro" data-cert="${esc(x.curso_id)}"><span class="ic">${svg("trofeu")}</span><span><b>${esc(x.curso)}</b><small>${new Date(x.concluido_em).toLocaleDateString("pt-BR")} · código ${esc(x.codigo)}${x.nota != null ? " · nota " + x.nota : ""}</small></span></button>`).join("")}</div></section>`;
-  $("#apr").innerHTML = h;
+  let h = "";
+  if (S.sub === "vitrine") {
+    const andando = pub.filter((c) => c.iniciado && !c.concluido_em).sort((a, b) => b.pct - a.pct);
+    const d = andando[0] || pub.find((c) => c.obrigatorio && !c.concluido_em) || pub.find((c) => !c.concluido_em) || pub[0];
+    h += `<section class="edk-hero"><div class="bg">${d ? capaDe(d) : arte("weduca-aprender", "livro")}</div><div class="wrap"><div class="edk-cartao vidro">${d
+      ? `<div class="edk-chips"><span class="edk-chip forte">${svg("estrela")}${d.concluido_em ? "Você concluiu" : andando[0] === d ? "Continue de onde parou" : d.obrigatorio ? "Obrigatório" : "Comece por aqui"}</span><span class="edk-chip">${esc(d.categoria)}</span></div>
+        <h1>${esc(d.titulo)}</h1><div class="meta"><span>${d.n_aulas} ${d.n_aulas === 1 ? "aula" : "aulas"}</span>${d.minutos ? `<span>· ${durTxt(d.minutos)}</span>` : ""}<span>· ${esc((d.autor || {}).nome || "")}</span>${d.tem_quiz ? `<span class="edk-chip">avaliação · nota ${d.nota_min}</span>` : ""}</div>
+        ${d.descricao ? `<p>${esc(d.descricao.slice(0, 220))}${d.descricao.length > 220 ? "…" : ""}</p>` : ""}
+        ${d.pct ? `<div class="edk-destaque"><span class="ic">${svg("grafico")}</span><span style="flex:1"><b>${d.pct}% concluído</b><div class="barra-prog" style="margin-top:6px"><i style="width:${d.pct}%"></i></div></span></div>` : ""}
+        <div class="edk-acoes"><button type="button" class="edk-bt preto" data-curso="${esc(d.id)}" data-ir="1">${svg("seta")}${d.concluido_em ? "Rever" : d.pct ? "Continuar" : "Começar"}</button>
+          <button type="button" class="edk-bt v" data-curso="${esc(d.id)}">${svg("olho")}Ver o curso</button></div>`
+      : `<div class="edk-chips"><span class="edk-chip forte">${svg("estrela")}Aprendizagem</span></div><h1>Nenhum curso ainda</h1>
+        <p>${AP.pode_criar ? "Crie o primeiro curso: aulas em vídeo do canal, leitura, PDF e fotos, com avaliação e certificado. As aulas viram base da IA." : "Quando a equipe publicar cursos, eles aparecem aqui."}</p>
+        <div class="edk-acoes">${AP.pode_criar ? `<button type="button" class="edk-bt ouro" data-novo-curso>${svg("mais")}Criar curso</button>` : ""}</div>`}</div>
+      <div class="edk-lado">${pendencias(AP.cursos, null)}</div></div></section>`;
+    h += `<div class="cont">${AP.cursos.length ? ferr : ""}`;
+    if (andando.length) h += fileiraA("Continue assistindo", `${andando.length}`, andando.map((c) => cardCurso(c, 1)));
+    const obr = pub.filter((c) => c.obrigatorio && !c.concluido_em);
+    if (obr.length) h += fileiraA("Obrigatórios para você", `${obr.length}`, obr.map((c) => cardCurso(c, 2)));
+    for (const cat of [...new Set(pub.map((c) => c.categoria))].sort()) { const it = pub.filter((c) => c.categoria === cat); h += fileiraA(esc(cat), `${it.length} ${it.length === 1 ? "curso" : "cursos"}`, it.map((c) => cardCurso(c))); }
+    if (!lst.length && AP.q) h += `<div class="vazio vidro"><b>Nada encontrado</b>Tente outra busca.</div>`;
+    h += `</div>`;
+  } else if (S.sub === "certificados") {
+    h += `<div class="cont"><div class="cab-sec"><h2>Meus certificados</h2></div>${AP.certs.length ? `<div class="certs">${AP.certs.map((x) => `<button type="button" class="cert-c vidro" data-cert="${esc(x.curso_id)}"><span class="ic">${svg("trofeu")}</span><span><b>${esc(x.curso)}</b><small>${new Date(x.concluido_em).toLocaleDateString("pt-BR")} · código ${esc(x.codigo)}${x.nota != null ? " · nota " + x.nota : ""}</small></span></button>`).join("")}</div>`
+      : `<div class="vazio vidro">${svg("trofeu")}<b>Nenhum certificado ainda</b>Conclua um curso (e a avaliação, quando houver) para receber o certificado.</div>`}</div>`;
+  } else {
+    const [tit, f, vazio] = { andamento: ["Em andamento", (c) => c.iniciado && !c.concluido_em, "Você não tem curso em andamento."],
+      concluidos: ["Concluídos", (c) => c.concluido_em, "Você ainda não concluiu nenhum curso."],
+      meus: ["Meus cursos", (c) => (c.autor || {}).login === S.eu.login, "Você ainda não criou nenhum curso."] }[S.sub];
+    const it = lst.filter(f);
+    h += `<div class="cont"><div class="cab-sec"><h2>${tit}<span class="edk-selo">${it.length}</span></h2></div>${ferr}
+      ${it.length ? `<div class="grade-cards">${it.map((c, i) => cardCurso(c, i % 4)).join("")}</div>` : `<div class="vazio vidro"><b>${vazio}</b></div>`}</div>`;
+  }
+  $("#main").innerHTML = `<div class="apr" id="apr">${h}</div>`;
   const qi = $("#aprQ"); let tq;
   qi?.addEventListener("input", () => { clearTimeout(tq); tq = setTimeout(() => { AP.q = qi.value.trim(); desenharApr(); const n = $("#aprQ"); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 300); });
 }
@@ -859,8 +881,6 @@ document.addEventListener("click", (e) => {
   if (!e.target.closest("#apr")) return;
   const sc = e.target.closest("[data-sc]");
   if (sc) { const t = document.getElementById(sc.dataset.sc); t && t.scrollBy({ left: +sc.dataset.d * t.clientWidth * 0.8, behavior: "smooth" }); return; }
-  const f = e.target.closest("[data-af]");
-  if (f) { AP.filtro = f.dataset.af; desenharApr(); return; }
   if (e.target.closest("[data-novo-curso]")) return editorCurso(null);
   const ct = e.target.closest("[data-cert]");
   if (ct) return certificado(AP.certs.find((x) => x.curso_id === ct.dataset.cert));
@@ -1034,7 +1054,7 @@ function certificado(x) {
     .bt{position:fixed;top:14px;right:14px;font:700 14px Arial;padding:10px 16px;border-radius:10px;border:0;background:#f0cb4e;cursor:pointer}@media print{.bt{display:none}body{background:#fff}}</style></head>
     <body><button class="bt" onclick="print()">Imprimir / salvar PDF</button><div class="c"><div class="m">King Star Colchões · WEDUCA</div><h1>Certificado de conclusão</h1>
     <p>Certificamos que</p><div class="n">${esc(x.nome || S.eu.nome)}</div><p>concluiu o curso <b>${esc(x.curso)}</b>${x.minutos ? `, com carga de ${esc(durTxt(x.minutos))}` : ""}${x.nota != null ? `, com nota ${esc(x.nota)} na avaliação` : ""},</p>
-    <p>em ${esc(dt)}.</p><div class="r"><span>Código de verificação: <b>${esc(x.codigo)}</b></span><span>WEDUCA · Conhecimento King Star</span></div></div></body></html>`);
+    <p>em ${esc(dt)}.</p><div class="r"><span>Código de verificação: <b>${esc(x.codigo)}</b></span><span>WEDUCA</span></div></div></body></html>`);
   w.document.close();
 }
 
@@ -1201,18 +1221,17 @@ function editorAula(cid, a, depois) {
 }
 
 /* ═════════ início ═════════ */
-$("#btAtualizar").addEventListener("click", () => { if (S.aba === "feed") { recarregar(); carregarDestaques(); } else telaAprender(); });
+$("#btAtualizar").addEventListener("click", () => irSub(S.sub));
 (async () => {
-  topo();
   try { S.eu = await api("/me"); }
   catch (e) {
-    $("#main").innerHTML = `<div class="vazio vidro" style="grid-column:1/-1">${svg("cadeado")}<b>${e.status === 403 ? "Sem acesso ao WEDUCA" : "WEDUCA indisponível"}</b>${esc(e.message)}${e.status === 403 ? "<br>Peça ao administrador em Configurações → Usuários." : ""}</div>`;
+    $("#main").innerHTML = `<div class="cont"><div class="vazio vidro">${svg("cadeado")}<b>${e.status === 403 ? "Sem acesso ao WEDUCA" : "WEDUCA indisponível"}</b>${esc(e.message)}${e.status === 403 ? "<br>Peça ao administrador em Configurações → Usuários." : ""}</div></div>`;
     return;
   }
-  if (/curso=|aula=/.test(location.hash)) S.aba = "aprendizagem";
-  irAba(S.aba);
+  const s = new URLSearchParams(location.search).get("s");
+  S.aba = s === "aprendizagem" || (!s && /curso=|aula=/.test(location.hash)) ? "aprendizagem" : s === "feed" ? "feed" : lsGet("wd.weduca.aba", "feed");
+  irSub("");
   lerHash();
-  try { parent.postMessage({ hub: "titulo", texto: "WEDUCA" }, location.origin); } catch (_) {}
 })();
 })();
 </script>
