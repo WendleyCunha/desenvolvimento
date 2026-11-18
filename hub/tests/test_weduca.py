@@ -388,3 +388,57 @@ def test_ranking_do_mes(t):
     assert [(x["login"], x["pontos"]) for x in r["lista"]] == [("ana", 190), ("bia", 170)]
     assert r["eu"]["pos"] == 2
     assert t.get("/api/weduca/ranking?periodo=tudo").json()["lista"][0]["cursos"] == 2
+
+
+# ══════════════════════════ NOTIFICAÇÕES E DIRECT ══════════════════════════
+def test_notificacoes_curtida_comentario_mencao_seguidor(t):
+    como("ana")
+    p = postar(t, texto="Fechamos a doca 3 hoje, valeu @bia!")
+    como("bia")
+    n = t.get("/api/weduca/notificacoes").json()
+    assert n["nao_lidas"] == 1 and n["notificacoes"][0]["tipo"] == "mencao" and n["notificacoes"][0]["post_id"] == p["id"]
+    t.post(f"/api/weduca/posts/{p['id']}/curtir")
+    c = t.post(f"/api/weduca/posts/{p['id']}/comentarios", json={"texto": "Show! @zeca @ana"}).json()
+    t.post("/api/weduca/perfis/ana/seguir")
+    como("ana")
+    tipos = [x["tipo"] for x in t.get("/api/weduca/notificacoes").json()["notificacoes"]]
+    assert sorted(tipos) == ["comentario", "curtida", "seguidor"]          # menção de quem já é o autor não duplica
+    assert t.get("/api/weduca/novidades?desde=2999").json()["notif"] == 3
+    t.post(f"/api/weduca/posts/{p['id']}/curtir")                          # curtir a própria postagem não notifica
+    t.post(f"/api/weduca/comentarios/{c['id']}/curtir")
+    assert t.post("/api/weduca/notificacoes/lidas", json={}).json() == {"ok": True}
+    assert t.get("/api/weduca/notificacoes").json()["nao_lidas"] == 0
+    como("bia")
+    assert t.get("/api/weduca/notificacoes").json()["notificacoes"][0]["tipo"] == "curtida_com"
+    assert W.COL_NOTIF not in str(W.base_conhecimento())
+
+
+def test_direct_privado_e_fora_da_ia(t):
+    como("ana")
+    conv = t.post("/api/weduca/direct/com/bia").json()
+    assert conv["id"] == "ana__bia" and conv["com"]["nome"] == "Bia Souza"
+    assert t.post("/api/weduca/direct/com/ana").status_code == 400
+    assert t.post("/api/weduca/direct/com/zeca").status_code == 400          # sem acesso ao WEDUCA
+    assert t.get("/api/weduca/direct").json()["conversas"] == []            # conversa vazia não aparece na lista
+    assert t.post("/api/weduca/direct/ana__bia", json={"texto": "  "}).status_code == 400
+    foto = t.post("/api/weduca/arquivos", content=b"\xff\xd8\xff" + b"0" * 50, headers={"Content-Type": "image/jpeg", "X-Nome": "f.jpg"}).json()
+    m = t.post("/api/weduca/direct/ana__bia", json={"texto": "Senha do cofre é segredo-xyz", "midias": [foto["id"]]}).json()
+    assert m["minha"] and m["midias"][0]["kind"] == "foto"
+    como("bia")
+    assert t.get("/api/weduca/novidades?desde=2999").json()["direct"] == 1
+    lst = t.get("/api/weduca/direct").json()
+    assert lst["nao_lidas"] == 1 and lst["conversas"][0]["com"]["login"] == "ana"
+    msgs = t.get("/api/weduca/direct/ana__bia").json()["mensagens"]
+    assert msgs[0]["texto"].startswith("Senha") and not msgs[0]["minha"]
+    assert t.get(f"/api/weduca/arquivos/{foto['id']}").status_code == 200   # membro abre o anexo
+    t.post("/api/weduca/direct/ana__bia/lida")
+    assert t.get("/api/weduca/direct").json()["nao_lidas"] == 0
+    t.post("/api/weduca/direct/ana__bia", json={"texto": "Recebido"})
+    assert len(t.get(f"/api/weduca/direct/ana__bia?desde={msgs[0]['em']}").json()["mensagens"]) == 1
+    como("zeca", acessar=True)                                              # quem não está na conversa não vê nada
+    assert t.get("/api/weduca/direct/ana__bia").status_code == 404
+    assert t.post("/api/weduca/direct/ana__bia", json={"texto": "oi"}).status_code == 404
+    assert t.get(f"/api/weduca/arquivos/{foto['id']}").status_code == 404
+    assert "segredo-xyz" not in str(W.base_conhecimento()) and "Recebido" not in str(W.base_conhecimento())
+    como("ana")
+    assert t.post("/api/weduca/posts", json={"texto": "x", "midias": [foto["id"]]}).status_code == 400   # anexo do direct não vira post público
