@@ -33,7 +33,7 @@ router = APIRouter()
 SLUG = re.compile(r"^[a-z0-9][a-z0-9_-]{0,60}$")
 ID_OK = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
 
-_cache: dict[tuple[str, str], dict[str, dict]] = {}
+_cache = banco.por_empresa(dict)   # {(mod, col): {doc_id: dados}} — um por empresa
 _trava = threading.Lock()
 
 

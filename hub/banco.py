@@ -6,9 +6,11 @@ o gRPC pendurado para sempre. Toda chamada usa TIMEOUT para nunca travar a rota.
 """
 from __future__ import annotations
 
+import contextvars
 import json
 import os
 import threading
+from contextlib import contextmanager
 
 TIMEOUT = 15  # segundos por operação no Firestore
 
@@ -73,7 +75,7 @@ def ler_credenciais(bruto: str) -> dict:
     return info
 
 
-def db():
+def _cliente():
     global _db
     if _db is None:
         with _trava:
@@ -88,3 +90,134 @@ def db():
                 cred = service_account.Credentials.from_service_account_info(info)
                 _db = firestore.Client(credentials=cred, project=info["project_id"])
     return _db
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# EMPRESAS — o mesmo hub, vários "sistemas" separados (Configurações → Duplicar sistema)
+# ──────────────────────────────────────────────────────────────────────────────
+# A empresa da requisição fica num contextvar (o main.py põe a do usuário logado).
+# PRINCIPAL = os dados de sempre, com os nomes de coleção de sempre (nada migra).
+# Outra empresa = as MESMAS coleções com prefixo "e_<id>__" → começa vazia e nada
+# dela se mistura com as outras. Usuários e o cadastro de empresas são globais.
+# ══════════════════════════════════════════════════════════════════════════════
+PRINCIPAL = "principal"
+GLOBAIS = {"hub_usuarios", "hub_empresas"}
+_EMPRESA: contextvars.ContextVar[str] = contextvars.ContextVar("empresa", default=PRINCIPAL)
+
+
+def empresa_atual() -> str:
+    return _EMPRESA.get()
+
+
+def definir_empresa(eid: str | None):
+    """Põe a empresa no contexto atual; devolve o token para desfazer (contextvars.reset)."""
+    return _EMPRESA.set(eid or PRINCIPAL)
+
+
+@contextmanager
+def usar_empresa(eid: str | None):
+    tk = _EMPRESA.set(eid or PRINCIPAL)
+    try:
+        yield
+    finally:
+        _EMPRESA.reset(tk)
+
+
+def nome_colecao(nome: str, eid: str | None = None) -> str:
+    eid = eid or empresa_atual()
+    if eid == PRINCIPAL or nome in GLOBAIS:
+        return nome
+    return f"e_{eid}__{nome}"
+
+
+class _Banco:
+    """Cliente do Firestore que separa as coleções por empresa (o resto passa direto)."""
+    __slots__ = ("_c",)
+
+    def __init__(self, cliente):
+        self._c = cliente
+
+    def collection(self, nome: str, *resto):
+        return self._c.collection(nome_colecao(nome), *resto)
+
+    def __getattr__(self, n):
+        return getattr(self._c, n)
+
+
+def envolver(cliente):
+    """Para outro cliente do Firestore (ex.: o banco próprio dos Tickets) também separar por empresa."""
+    return _Banco(cliente)
+
+
+def db():
+    """Firestore da empresa da requisição."""
+    return _Banco(_cliente())
+
+
+def db_global():
+    """Firestore sem prefixo — só para o que é do hub inteiro (usuários e empresas)."""
+    return _cliente()
+
+
+class _PorEmpresa:
+    """Um objeto (cache, fila, estado) por empresa: `BASE = banco.por_empresa(_Base)`.
+    Por fora parece o objeto de sempre; por dentro cada empresa tem o seu."""
+    __slots__ = ("_fab", "_mapa", "_trava")
+
+    def __init__(self, fabrica):
+        object.__setattr__(self, "_fab", fabrica)
+        object.__setattr__(self, "_mapa", {})
+        object.__setattr__(self, "_trava", threading.Lock())
+
+    def _alvo(self):
+        e, m = empresa_atual(), self._mapa
+        if e not in m:
+            with self._trava:
+                if e not in m:
+                    m[e] = self._fab()
+        return m[e]
+
+    def __getattr__(self, n):
+        return getattr(self._alvo(), n)
+
+    def __setattr__(self, n, v):
+        setattr(self._alvo(), n, v)
+
+    def __delattr__(self, n):
+        delattr(self._alvo(), n)
+
+    def __getitem__(self, k):
+        return self._alvo()[k]
+
+    def __setitem__(self, k, v):
+        self._alvo()[k] = v
+
+    def __delitem__(self, k):
+        del self._alvo()[k]
+
+    def __contains__(self, k):
+        return k in self._alvo()
+
+    def __iter__(self):
+        return iter(self._alvo())
+
+    def __len__(self):
+        return len(self._alvo())
+
+    def __bool__(self):
+        return bool(self._alvo())
+
+    def __repr__(self):
+        return f"<por empresa {empresa_atual()}: {self._alvo()!r}>"
+
+
+def por_empresa(fabrica):
+    return _PorEmpresa(fabrica)
+
+
+def thread(alvo, *args, **kw):
+    """threading.Thread que leva junto a empresa de quem pediu (o contextvar não passa sozinho)."""
+    ctx = contextvars.copy_context()
+    t = threading.Thread(target=lambda: ctx.run(alvo, *args, **kw), daemon=True)
+    t.start()
+    return t

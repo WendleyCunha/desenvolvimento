@@ -154,7 +154,7 @@ class _Base:
             self.versao += 1
 
 
-BASE = _Base()
+BASE = banco.por_empresa(_Base)   # um cache por empresa
 
 
 def _enc(eid: str) -> dict:

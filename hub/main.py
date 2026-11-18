@@ -90,7 +90,7 @@ import promocoes
 import agente
 import weduca
 
-VERSAO = "3.26.2"
+VERSAO = "3.27.0"
 
 BASE = Path(__file__).resolve().parent
 PASTA_MODULOS = BASE / "modulos"
@@ -353,6 +353,43 @@ async def _so_web_na_origem_separada(request: Request, call_next):
     return await call_next(request)
 
 
+# API de cada módulo → módulos que a usam (se nenhum estiver ligado na empresa, a API fecha).
+API_MODULO = {"atelier": ["lila-closet"], "passagens": ["passagens"], "secretaria": ["secretaria"], "weduca": ["weduca"],
+              "wlog": ["wlogistica"], "web": ["web"], "agente": ["agente"], "erp": ["erp", "tickets", "wrouter", "wlogistica"],
+              "tickets": ["tickets", "erp"], "promo": ["tickets"], "wrouter": ["wrouter"]}
+
+
+def _api_desligada(caminho: str) -> bool:
+    p = caminho.split("/")
+    if len(p) < 3 or p[1] != "api":
+        return False
+    if p[2] == "dados" and len(p) > 3:
+        return not acesso.modulo_liberado(p[3])
+    if p[2] == "wrouter" and len(p) > 3 and p[3] == "app":
+        return False   # app do motorista: sessão própria, fora das empresas
+    mods = API_MODULO.get(p[2])
+    return bool(mods) and not any(acesso.modulo_liberado(m) for m in mods)
+
+
+# EMPRESAS: cada requisição trabalha na empresa de quem está logado (o super ADM escolhe a dele).
+# Tudo o que os módulos gravam/leem no Firestore passa por banco.db(), que separa por empresa.
+@app.middleware("http")
+async def _empresa_da_requisicao(request: Request, call_next):
+    from starlette.concurrency import run_in_threadpool
+    try:
+        u = await run_in_threadpool(acesso.usuario_da_requisicao, request) if request.cookies.get(acesso.COOKIE) else None
+        eid = acesso.empresa_da_requisicao(u, request)
+    except Exception:  # noqa: BLE001
+        eid = banco.PRINCIPAL
+    tk = banco.definir_empresa(eid)
+    try:
+        if eid != banco.PRINCIPAL and _api_desligada(request.url.path):
+            return JSONResponse({"detail": "Este módulo não está liberado para esta empresa."}, status_code=403)
+        return await call_next(request)
+    finally:
+        banco._EMPRESA.reset(tk)
+
+
 app.include_router(acesso.router)
 app.include_router(dados.router)
 app.include_router(passagens.router)
@@ -433,7 +470,9 @@ def _no_menu(i: dict) -> list:
 def api_modulos(request: Request):
     u = acesso.exigir_usuario(request)
     itens = [x for i in catalogo() if acesso.pode_acessar(u, i["id"]) for x in _no_menu(i)]
-    return JSONResponse({"versao": VERSAO, "itens": itens, "usuario": acesso.publico(u)}, headers=SEM_CACHE)
+    e = acesso.EMPRESAS.obter(banco.empresa_atual()) or {}
+    return JSONResponse({"versao": VERSAO, "itens": itens, "usuario": acesso.publico(u),
+                         "empresa": {"id": banco.empresa_atual(), "nome": e.get("nome") or banco.empresa_atual()}}, headers=SEM_CACHE)
 
 
 @app.get("/m/{slug}")

@@ -209,7 +209,7 @@ def db():
                 info = banco.ler_credenciais(bruto)
                 cred = service_account.Credentials.from_service_account_info(info)
                 _db = firestore.Client(credentials=cred, project=info["project_id"])
-    return _db
+    return banco.envolver(_db)   # separa por empresa (Configurações → Duplicar sistema)
 
 
 def _transacao(cid: str, mutar):
@@ -290,7 +290,7 @@ class _Base:
                     self.leituras += len(usu)
                 else:   # banco do hub: os usuários são os do próprio hub (setor definido em Ajustes)
                     setores = (self.cfg_cache.get("tickets_hub") or {}).get("setor_usuarios") or {}
-                    usu = {k: {"nome": v.get("nome") or k, "depto": setores.get(k, "")} for k, v in acesso.USUARIOS.todos().items()
+                    usu = {k: {"nome": v.get("nome") or k, "depto": setores.get(k, "")} for k, v in acesso.usuarios_da_empresa().items()
                            if v.get("ativo", True)}
                     if acesso.ADMIN_FAB_LOGIN and acesso.ADMIN_FAB_LOGIN not in usu:
                         usu[acesso.ADMIN_FAB_LOGIN] = {"nome": "Administrador", "depto": setores.get(acesso.ADMIN_FAB_LOGIN, "")}
@@ -311,7 +311,7 @@ class _Base:
         return saida
 
 
-BASE = _Base()
+BASE = banco.por_empresa(_Base)   # um cache por empresa
 
 
 def hub_cfg() -> dict:

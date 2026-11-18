@@ -144,7 +144,7 @@ async def enviar(request: Request):
 # ══════════════════════════════════════════════════════════════════════════════
 # Anúncios
 # ══════════════════════════════════════════════════════════════════════════════
-_cache = {"t": 0.0, "lista": None}
+_cache = banco.por_empresa(lambda: {"t": 0.0, "lista": None})
 _trava_cache = threading.Lock()
 
 

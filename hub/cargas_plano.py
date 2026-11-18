@@ -25,10 +25,10 @@ from __future__ import annotations
 import math
 import os
 import re
-import threading
 
 from fastapi import APIRouter, HTTPException, Request
 
+import banco
 import erp as E
 
 router = APIRouter(prefix="/api/erp/plano")
@@ -63,8 +63,8 @@ def _geo_falhou(ped: dict) -> bool:
     return bool(g.get("falhou")) and g.get("chave") == chave_endereco(ped.get("endereco"))
 
 
-FILA: list = []
-ESTADO = {"rodando": False}
+FILA = banco.por_empresa(list)               # uma fila (e um trabalhador) por empresa
+ESTADO = banco.por_empresa(lambda: {"rodando": False})
 
 
 def _trabalhar():
@@ -102,7 +102,7 @@ def localizar(pids) -> int:
             FILA.append(pid)
     if FILA and not ESTADO["rodando"] and os.environ.get("WROUTER_GEO", "1") != "0":
         ESTADO["rodando"] = True
-        threading.Thread(target=_trabalhar, daemon=True).start()
+        banco.thread(_trabalhar)
     return len(FILA)
 
 

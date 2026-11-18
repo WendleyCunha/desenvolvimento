@@ -37,6 +37,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
 
 import acesso
+import banco
 import tickets as T
 
 router = APIRouter()
@@ -267,7 +268,7 @@ def _executar(d: dict):
 
 
 def _disparar_em_fundo(d: dict):
-    threading.Thread(target=_executar, args=(d,), daemon=True).start()
+    banco.thread(_executar, d)
 
 
 async def _json(request: Request) -> dict:

@@ -119,7 +119,7 @@ class _App:
             banco.db().collection(COL_APP).document(DOC_APP).set(self.dados(), timeout=banco.TIMEOUT)
 
 
-APP = _App()
+APP = banco.por_empresa(_App)   # um estado por empresa
 
 
 def cfg() -> dict:
@@ -237,8 +237,8 @@ def _desfecho_de(car: dict, pid: str) -> str:
 
 
 # ── geocodificação (grátis: OpenStreetMap + BrasilAPI pelo CEP), uma vez por pedido, em segundo plano ──
-GEO_FILA: list = []
-GEO_ESTADO = {"rodando": False}
+GEO_FILA = banco.por_empresa(list)
+GEO_ESTADO = banco.por_empresa(lambda: {"rodando": False})
 
 
 def _http_json(url: str):
@@ -307,7 +307,7 @@ def pedir_geo(cid: str, car: dict):
             GEO_FILA.append((cid, pid))
     if GEO_FILA and not GEO_ESTADO["rodando"] and os.environ.get("WROUTER_GEO", "1") != "0":
         GEO_ESTADO["rodando"] = True
-        threading.Thread(target=_geo_trabalhar, daemon=True).start()
+        banco.thread(_geo_trabalhar)
 
 
 def destino(car: dict, pid: str) -> dict | None:
@@ -697,7 +697,7 @@ def _abrir_ticket_auto(pid: str, resultado: str, motivo: str, q: dict):
         return
     try:
         import tickets
-        threading.Thread(target=tickets.auto_de_baixa, args=(pid, resultado, motivo, q), daemon=True).start()
+        banco.thread(tickets.auto_de_baixa, pid, resultado, motivo, q)
     except Exception as ex:  # noqa: BLE001
         print(f"[wrouter] não abriu ticket automático: {ex}")
 

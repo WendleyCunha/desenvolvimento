@@ -282,7 +282,7 @@ class _Base:
         return self.fechamentos
 
 
-BASE = _Base()
+BASE = banco.por_empresa(_Base)   # um cache por empresa
 
 
 def _mes_atual() -> str:
