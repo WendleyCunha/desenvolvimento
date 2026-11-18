@@ -317,16 +317,74 @@ def test_perfis_buscar_seguir_e_feed_seguindo(t):
     assert t.put("/api/weduca/perfil", json={"cargo": "Analista", "setor": "Qualidade", "bio": "ISO 9001"}).status_code == 200
     pess = t.get("/api/weduca/perfis").json()
     assert [p["login"] for p in pess["pessoas"]][0] == "bia"            # eu primeiro
-    assert {p["login"] for p in pess["pessoas"]} == {"ana", "bia"}       # sem acesso e inativo ficam de fora
+    assert {p["login"] for p in pess["pessoas"]} == {"ana", "bia", "zeca"}   # todo mundo ativo do hub; inativo fica de fora
+    assert {p["login"]: p["acesso"] for p in pess["pessoas"]}["zeca"] is False  # aparece marcado: ainda sem o WEDUCA
     assert pess["setores"] == ["Qualidade"]
     assert [p["login"] for p in t.get("/api/weduca/perfis?q=qualidade").json()["pessoas"]] == ["bia"]
     assert t.get("/api/weduca/feed?filtro=seguindo").json()["posts"] == []
     assert t.post("/api/weduca/perfis/ana/seguir").json() == {"sigo": True}
     assert len(t.get("/api/weduca/feed?filtro=seguindo").json()["posts"]) == 1
     assert t.post("/api/weduca/perfis/bia/seguir").status_code == 400
-    assert t.post("/api/weduca/perfis/zeca/seguir").status_code == 404
+    assert t.post("/api/weduca/perfis/velho/seguir").status_code == 404
     ana = t.get("/api/weduca/perfis/ana").json()
     assert ana["posts"] == 1 and ana["seguidores"] == 1 and ana["sigo"] is True and ana["na_base"] == 1
     assert len(t.get("/api/weduca/feed?filtro=autor:ana").json()["posts"]) == 1
     assert t.get("/api/weduca/me").json()["setor"] == "Qualidade"
     assert t.post("/api/weduca/perfis/ana/seguir").json() == {"sigo": False}
+
+
+def test_stories_somem_em_24h_e_nao_vao_para_a_ia(t, monkeypatch):
+    como("ana")
+    st = t.post("/api/weduca/stories", json={"texto": "Bom dia, expedição!"}).json()
+    assert st["n_vistos"] == 0 and st["pode_mexer"]
+    assert t.post("/api/weduca/stories", json={}).status_code == 400
+    como("bia")
+    g = t.get("/api/weduca/stories").json()["grupos"]
+    assert [x["login"] for x in g] == ["ana"] and g[0]["todos_vistos"] is False
+    t.post(f"/api/weduca/stories/{st['id']}/visto")
+    assert t.get("/api/weduca/stories").json()["grupos"][0]["todos_vistos"] is True
+    assert t.get(f"/api/weduca/stories/{st['id']}/vistos").status_code == 403    # só quem publicou
+    como("ana")
+    assert [p["login"] for p in t.get(f"/api/weduca/stories/{st['id']}/vistos").json()["pessoas"]] == ["bia"]
+    assert not [a for a in W.base_conhecimento() if "Bom dia" in str(a)]          # story não é base da IA
+    assert t.get("/api/weduca/feed").json()["posts"] == []                         # nem aparece no feed
+    BANCO[W.COL_STORY][st["id"]]["expira"] = "2000-01-01T00:00:00"                 # passou de 24 h
+    assert t.get("/api/weduca/stories").json()["grupos"] == []
+    como("leitor", acessar=True)
+    assert t.post("/api/weduca/stories", json={"texto": "x"}).status_code == 403
+
+
+def test_conquista_quem_curtiu_e_curtir_comentario(t):
+    como("ana")
+    p = postar(t, conquista="Concluí o curso LGPD na prática")
+    assert p["conquista"] == {"titulo": "Concluí o curso LGPD na prática"}
+    assert any("Conquista: Concluí o curso LGPD" in " ".join(a["passos"]) for a in W.base_conhecimento())
+    c = t.post(f"/api/weduca/posts/{p['id']}/comentarios", json={"texto": "Parabéns!"}).json()
+    como("bia")
+    t.post(f"/api/weduca/posts/{p['id']}/curtir")
+    assert t.get(f"/api/weduca/posts/{p['id']}/curtidas").json()["pessoas"][0]["login"] == "bia"
+    como("ana")
+    assert t.get(f"/api/weduca/posts/{p['id']}").json()["curtiram"] == ["bia"]
+    assert t.post(f"/api/weduca/comentarios/{c['id']}/curtir").json() == {"ligado": True, "total": 1}
+    assert t.get(f"/api/weduca/posts/{p['id']}").json()["comentarios"][0]["curti"] is True
+
+
+def test_foto_do_perfil_sem_poder_publicar(t):
+    como("leitor", acessar=True)
+    png = b"\x89PNG\r\n\x1a\n" + b"0" * 50
+    assert t.post("/api/weduca/arquivos", content=png, headers={"Content-Type": "image/png", "X-Nome": "eu.png"}).status_code == 200
+    assert t.post("/api/weduca/arquivos", content=b"%PDF-1.4", headers={"Content-Type": "application/pdf", "X-Nome": "a.pdf"}).status_code == 403
+
+
+def test_ranking_do_mes(t):
+    from datetime import datetime
+    mes = datetime.now().strftime("%Y-%m")
+    W.P["gravar"](W.COL_PROG, "ana_c1", {"login": "ana", "curso_id": "c1", "concluido_em": f"{mes}-02T10:00:00", "quiz": {"nota": 90}})
+    W.P["gravar"](W.COL_PROG, "ana_c2", {"login": "ana", "curso_id": "c2", "concluido_em": "2001-01-02T10:00:00"})
+    W.P["gravar"](W.COL_PROG, "bia_c1", {"login": "bia", "curso_id": "c1", "concluido_em": f"{mes}-03T10:00:00", "quiz": {"nota": 70}})
+    W.P["gravar"](W.COL_PROG, "zeca_c1", {"login": "zeca", "curso_id": "c1"})       # não concluiu
+    como("bia")
+    r = t.get("/api/weduca/ranking").json()
+    assert [(x["login"], x["pontos"]) for x in r["lista"]] == [("ana", 190), ("bia", 170)]
+    assert r["eu"]["pos"] == 2
+    assert t.get("/api/weduca/ranking?periodo=tudo").json()["lista"][0]["cursos"] == 2
