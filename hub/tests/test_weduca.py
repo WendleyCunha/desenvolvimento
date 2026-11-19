@@ -442,3 +442,28 @@ def test_direct_privado_e_fora_da_ia(t):
     assert "segredo-xyz" not in str(W.base_conhecimento()) and "Recebido" not in str(W.base_conhecimento())
     como("ana")
     assert t.post("/api/weduca/posts", json={"texto": "x", "midias": [foto["id"]]}).status_code == 400   # anexo do direct não vira post público
+
+
+def test_memoria_longa_mas_gravacao_aparece_na_hora(t, monkeypatch):
+    """Economia de leituras: o feed fica em memória (10 min), mas qualquer gravação aparece na hora."""
+    monkeypatch.setattr(W, "_CACHE_SEG", 600)
+    W.esquecer()
+    leituras = []
+    lista = W.P["listar"]
+    monkeypatch.setitem(W.P, "listar", lambda col: leituras.append(col) or lista(col))
+    como("ana")
+    p = postar(t, texto="Primeira postagem")
+    como("bia")
+    assert len(t.get("/api/weduca/feed").json()["posts"]) == 1
+    n = len(leituras)
+    for _ in range(3):                                   # olhar de novo não relê o banco
+        t.get("/api/weduca/feed"); t.get("/api/weduca/novidades?desde=2000-01-01")
+    assert len([c for c in leituras[n:] if c == W.COL_POST]) == 0
+    t.post(f"/api/weduca/posts/{p['id']}/curtir")
+    t.post(f"/api/weduca/posts/{p['id']}/comentarios", json={"texto": "boa"})
+    f = t.get("/api/weduca/feed").json()["posts"][0]
+    assert f["curtidas"] == 1 and f["n_coment"] == 1     # curtida e comentário aparecem na hora
+    como("ana")
+    assert t.get("/api/weduca/novidades?desde=2000-01-01").json()["notif"] >= 1   # notificação nova zera a contagem guardada
+    t.post("/api/weduca/notificacoes/lidas", json={"ids": []})
+    assert t.get("/api/weduca/novidades?desde=2000-01-01").json()["notif"] == 0

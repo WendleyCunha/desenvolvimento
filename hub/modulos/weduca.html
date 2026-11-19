@@ -1809,7 +1809,8 @@ async function novidades() {
     if (noFeed && r.novas) { b.querySelector("span").textContent = r.novas === 1 ? "1 nova postagem" : `${r.novas} novas postagens`; b.classList.add("on"); }
   } catch (_) {}
 }
-setInterval(novidades, 20000);
+setInterval(novidades, 60000);   // 1 min (economiza leituras); ao voltar para a tela confere na hora
+document.addEventListener("visibilitychange", () => { if (!document.hidden) novidades(); });
 /* ═══════════════════════════════════════════════════════════════════════════
    APRENDIZAGEM — cursos feitos pela equipe, progresso, avaliação e certificado
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -2378,7 +2379,7 @@ async function telaDirect() {
   await listarConversas();
   const alvo = DM.abrir; DM.abrir = null;
   if (alvo) entrarConversa(alvo);
-  DM.timer = setInterval(pulsoDirect, 4000);
+  DM.timer = setInterval(pulsoDirect, 8000);
 }
 function chatVazio() {
   $("#dmG")?.classList.remove("chat-on");

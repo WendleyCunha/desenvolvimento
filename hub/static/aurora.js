@@ -17,6 +17,22 @@
   "use strict";
   const embutido = new URLSearchParams(location.search).has("hub") || window.top !== window;
 
+  /* Módulo numa aba escondida do hub = "página oculta": as consultas periódicas dos módulos (que já olham
+     document.hidden / visibilityState) param sozinhas e voltam quando a aba aparece — economiza leituras do banco. */
+  let ocultoNoHub = false;
+  if (window.parent !== window) {
+    try {
+      const vs = Object.getOwnPropertyDescriptor(Document.prototype, "visibilityState"), hd = Object.getOwnPropertyDescriptor(Document.prototype, "hidden");
+      Object.defineProperty(document, "visibilityState", { configurable: true, get: () => (ocultoNoHub ? "hidden" : vs.get.call(document)) });
+      Object.defineProperty(document, "hidden", { configurable: true, get: () => ocultoNoHub || hd.get.call(document) });
+    } catch (_) { /* navegador antigo: segue como antes */ }
+    addEventListener("message", (e) => {
+      if (e.source !== window.parent || e.origin !== location.origin || !e.data || e.data.hub !== "visivel") return;
+      const antes = document.hidden; ocultoNoHub = !e.data.visivel;
+      if (antes !== document.hidden) document.dispatchEvent(new Event("visibilitychange"));
+    });
+  }
+
   /* ══════ API (sempre com o cookie de sessão) ══════ */
   async function api(url, { method = "GET", body } = {}) {
     const r = await fetch(url, { method, credentials: "same-origin", cache: "no-store",
