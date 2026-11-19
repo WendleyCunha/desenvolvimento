@@ -27,6 +27,7 @@ import time
 from fastapi import APIRouter, HTTPException, Request
 
 import acesso
+import governanca
 import banco
 
 router = APIRouter()
@@ -137,6 +138,7 @@ async def alterar(mod: str, col: str, doc_id: str, request: Request):
     if proibidos:
         nomes = ", ".join(esq["campos"].get(k, k) for k in proibidos)
         raise HTTPException(403, f"Sem permissão para alterar: {nomes}.")
+    governanca.aplicar_campos(p, mod, atual, {k: novos[k] for k in mudados})   # apagar campo só com nível Excluir
 
     if mudados:
         atual = {**atual, **{k: novos[k] for k in mudados}, "_atualizado_em": _agora(), "_atualizado_por": u["login"]}

@@ -535,6 +535,7 @@
   /* ══════ PERMISSÕES DO USUÁRIO NO MÓDULO ══════
      const P = await Aurora.permissoes.carregar("lila")
      P.pode("excluir") · P.nivel("titulo") → "editar" | "ver" | "oculto"
+     P.nivelCampo("titulo") → "excluir" | "editar" | "ver" | "oculto" · P.aba("membros") / P.podeNaAba("membros", "editar")
      Administrador: "Modo permissões" (Configurações) mostra um escudo em cada
      elemento com data-perm="campo:xxx" | "acao:yyy" — clique para liberar ou
      bloquear aquele ponto para cada usuário.                                */
@@ -560,6 +561,10 @@
     get admin() { return !!this.estado?.usuario?.admin; },
     pode(a) { return !!this.estado?.perm?.acoes?.[a]; },
     nivel(c) { return this.estado?.perm?.campos?.[c] || "editar"; },
+    // GOVERNANÇA: nível completo do campo (oculto|ver|editar|excluir) e da aba (nenhum|ver|incluir|editar|excluir)
+    nivelCampo(c) { return this.estado?.perm?.campos_nivel?.[c] || "excluir"; },
+    aba(a) { return this.estado?.perm?.abas?.[a] || "excluir"; },
+    podeNaAba(a, nivel) { const o = ["nenhum", "ver", "incluir", "editar", "excluir"]; return o.indexOf(this.aba(a)) >= o.indexOf(nivel); },
     _modo(on) {
       document.body.classList.toggle("modo-permissoes", on);
       clearInterval(this._iv);
@@ -605,9 +610,9 @@
       if (!lista.length) { toast("Ainda não há usuários (além de administradores). Crie em ⚙ Configurações → Usuários.", [], { cor: "var(--violeta)", duracao: 7000 }); return; }
       const mod = this.modulo;
       const perm = (u) => (u.modulos || {})[mod] || {};
-      const opcoes = tipo === "acao" ? [["1", "Permitir", "#34d399"], ["0", "Negar", "#fb7185"]] : [["editar", "Editar", "#34d399"], ["ver", "Só ver", "#60a5fa"], ["oculto", "Oculto", "#fb7185"]];
+      const opcoes = tipo === "acao" ? [["1", "Permitir", "#34d399"], ["0", "Negar", "#fb7185"]] : [["excluir", "Excluir", "#f59e0b"], ["editar", "Editar", "#34d399"], ["ver", "Só ver", "#60a5fa"], ["oculto", "Oculto", "#fb7185"]];
       const escolha = {};
-      lista.forEach((u) => { escolha[u.login] = tipo === "acao" ? ((perm(u).acoes || {})[k] ? "1" : "0") : ((perm(u).campos || {})[k] || "editar"); });
+      lista.forEach((u) => { escolha[u.login] = tipo === "acao" ? ((perm(u).acoes || {})[k] ? "1" : "0") : (((v) => (!v || (v === "editar" && !perm(u).gov) ? "excluir" : v))((perm(u).campos || {})[k])); });
       const seg = (login) => `<div class="seg" data-u="${esc(login)}">${opcoes.map(([v, r, c]) => `<button type="button" data-v="${v}" style="--c:${c}" class="${escolha[login] === v ? "ativo" : ""}">${r}</button>`).join("")}</div>`;
       modal({
         titulo: (tipo === "acao" ? "Ação · " : "Campo · ") + rot, icone: tipo === "acao" ? "raio" : "escudo", largura: 640,

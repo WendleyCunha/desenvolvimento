@@ -61,7 +61,8 @@ COOKIE_EMPRESA = "hub_empresa"
 COL_EMPRESAS = "hub_empresas"
 EMPRESA_OK = re.compile(r"^[a-z0-9][a-z0-9-]{1,30}$")
 COLECAO = "hub_usuarios"
-NIVEIS_CAMPO = ("editar", "ver", "oculto")
+NIVEIS_CAMPO = ("excluir", "editar", "ver", "oculto")   # excluir = editar + pode apagar o valor (governança)
+NIVEIS_ABA = ("nenhum", "ver", "incluir", "editar", "excluir")
 LOGIN_OK = re.compile(r"^[a-z0-9][a-z0-9._-]{1,39}$")
 
 SEGREDO = os.environ.get("HUB_SEGREDO", "").strip()
@@ -295,23 +296,35 @@ def normalizar_esquema(e: dict | None) -> dict:
     acoes = dict(e.get("acoes") or {})
     acoes.setdefault("acessar", "Abrir o módulo")
     acoes = {"acessar": acoes.pop("acessar"), **acoes}
-    return {"acoes": acoes, "campos": dict(e.get("campos") or {}),
+    return {"acoes": acoes, "campos": dict(e.get("campos") or {}), "abas": dict(e.get("abas") or {}),
             "regras": dict(e.get("regras") or {}), "padroes": dict(e.get("padroes") or {})}
 
 
 def permissoes(u: dict, slug: str, esquema: dict) -> dict:
-    """Permissões efetivas do usuário num módulo."""
+    """Permissões efetivas do usuário num módulo.
+    campos: nível de sempre (editar|ver|oculto) — "excluir" aparece como "editar" para o código antigo;
+    campos_nivel: o nível completo da governança (oculto|ver|editar|excluir); abas: {aba: nenhum|ver|incluir|editar|excluir}."""
+    abas = list((esquema.get("abas") or {}).keys())
     if not modulo_liberado(slug):
-        return {"acoes": {a: False for a in esquema["acoes"]}, "campos": {c: "oculto" for c in esquema["campos"]}}
+        return {"acoes": {a: False for a in esquema["acoes"]}, "campos": {c: "oculto" for c in esquema["campos"]},
+                "campos_nivel": {c: "oculto" for c in esquema["campos"]}, "abas": {a: "nenhum" for a in abas}}
     if u.get("admin") or eh_super(u):
-        return {"acoes": {a: True for a in esquema["acoes"]}, "campos": {c: "editar" for c in esquema["campos"]}}
+        return {"acoes": {a: True for a in esquema["acoes"]}, "campos": {c: "editar" for c in esquema["campos"]},
+                "campos_nivel": {c: "excluir" for c in esquema["campos"]}, "abas": {a: "excluir" for a in abas}}
     p = (u.get("modulos") or {}).get(slug) or {}
-    pa, pc = p.get("acoes") or {}, p.get("campos") or {}
+    pa, pc, pb, v2 = p.get("acoes") or {}, p.get("campos") or {}, p.get("abas") or {}, bool(p.get("gov"))
     acoes = {a: bool(pa.get(a, False)) for a in esquema["acoes"]}
     if not acoes.get("acessar"):
         acoes = {a: False for a in acoes}
-    campos = {c: (pc.get(c) if pc.get(c) in NIVEIS_CAMPO else "editar") for c in esquema["campos"]}
-    return {"acoes": acoes, "campos": campos}
+    nivel = {}
+    for c in esquema["campos"]:
+        v = pc.get(c)
+        if v not in NIVEIS_CAMPO or (v == "editar" and not v2):   # sem configurar (ou do formato antigo): como sempre foi
+            v = "excluir"
+        nivel[c] = v
+    campos = {c: ("editar" if v == "excluir" else v) for c, v in nivel.items()}
+    ab = {a: (pb.get(a) if pb.get(a) in NIVEIS_ABA else "excluir") if acoes.get("acessar") else "nenhum" for a in abas}
+    return {"acoes": acoes, "campos": campos, "campos_nivel": nivel, "abas": ab}
 
 
 def pode_acessar(u: dict | None, slug: str) -> bool:
@@ -359,14 +372,15 @@ def _agora() -> str:
 
 
 def _limpar_modulos(m: dict | None) -> dict:
-    """Aceita só o formato esperado: {slug: {acoes:{a:bool}, campos:{c:nivel}}}."""
+    """Aceita só o formato esperado: {slug: {acoes:{a:bool}, campos:{c:nivel}, abas:{a:nivel}, gov:bool}}."""
     saida = {}
     for slug, p in (m or {}).items():
         if not isinstance(p, dict) or not re.match(r"^[a-z0-9][a-z0-9_-]{0,60}$", str(slug)):
             continue
         acoes = {str(a): bool(v) for a, v in (p.get("acoes") or {}).items()}
         campos = {str(c): v for c, v in (p.get("campos") or {}).items() if v in NIVEIS_CAMPO}
-        saida[slug] = {"acoes": acoes, "campos": campos}
+        abas = {str(a): v for a, v in (p.get("abas") or {}).items() if v in NIVEIS_ABA}
+        saida[slug] = {"acoes": acoes, "campos": campos, "abas": abas, "gov": bool(p.get("gov"))}
     return saida
 
 
@@ -572,7 +586,7 @@ async def admin_permissao(request: Request):
     _exigir_banco()
     c = await request.json()
     modulo, tipo, chave = str(c.get("modulo", "")), c.get("tipo"), str(c.get("chave", ""))
-    if obter_esquema(modulo) is None or tipo not in ("acao", "campo") or not chave:
+    if obter_esquema(modulo) is None or tipo not in ("acao", "campo", "aba") or not chave:
         raise HTTPException(400, "Pedido inválido.")
     alterados = 0
     for login, valor in (c.get("valores") or {}).items():
@@ -580,12 +594,19 @@ async def admin_permissao(request: Request):
         if not u:
             continue
         mods = _limpar_modulos(u.get("modulos"))
-        p = mods.setdefault(modulo, {"acoes": {}, "campos": {}})
+        p = mods.setdefault(modulo, {"acoes": {}, "campos": {}, "abas": {}, "gov": False})
         if tipo == "acao":
             p["acoes"][chave] = bool(valor)
+        elif tipo == "aba":
+            if valor not in NIVEIS_ABA:
+                continue
+            p["abas"][chave] = valor
         else:
             if valor not in NIVEIS_CAMPO:
                 continue
+            if not p.get("gov"):   # passa para o formato novo sem mudar o que a pessoa já podia
+                p["campos"] = {k: ("excluir" if v == "editar" else v) for k, v in p["campos"].items()}
+                p["gov"] = True
             p["campos"][chave] = valor
         USUARIOS.salvar(login, {**u, "modulos": mods, "atualizado_em": _agora()})
         alterados += 1

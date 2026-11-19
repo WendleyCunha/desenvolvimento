@@ -86,6 +86,7 @@ import web_proxy
 import atelier
 import relatorios_publico
 import relatorios_lembretes
+import governanca
 import cliente_app
 import promocoes
 import agente
@@ -286,15 +287,23 @@ def catalogo() -> list[dict]:
 RECURSOS = [agente.RECURSO]
 
 
+def _com_governanca(slug: str, e: dict | None) -> dict:
+    """Esquema do módulo + abas e campos da governança (governanca.py)."""
+    esq = acesso.normalizar_esquema(e)
+    esq["abas"] = governanca.abas_do(slug)
+    esq["campos"] = {**esq["campos"], **{k: v for k, v in governanca.campos_do(slug).items() if k not in esq["campos"]}}
+    return esq
+
+
 def esquema_do_modulo(slug: str) -> dict | None:
     for i in catalogo() + RECURSOS:
         if i["id"] == slug:
-            return acesso.normalizar_esquema(i.get("_esquema"))
+            return _com_governanca(slug, i.get("_esquema"))
     return None
 
 
 def modulos_com_esquema() -> list[dict]:
-    return [{k: v for k, v in i.items() if k != "_esquema"} | {"esquema": acesso.normalizar_esquema(i.get("_esquema"))}
+    return [{k: v for k, v in i.items() if k != "_esquema"} | {"esquema": _com_governanca(i["id"], i.get("_esquema"))}
             for i in catalogo() + RECURSOS]
 
 
@@ -406,6 +415,25 @@ def _link_publico(caminho: str):
 
 # EMPRESAS: cada requisição trabalha na empresa de quem está logado (o super ADM escolhe a dele).
 # Tudo o que os módulos gravam/leem no Firestore passa por banco.db(), que separa por empresa.
+async def _governanca(u: dict, request: Request) -> str | None:
+    from starlette.concurrency import run_in_threadpool
+    caminho, metodo = request.url.path, request.method
+    achado = governanca.localizar(metodo, caminho)
+    if not achado:
+        return None
+    corpo = None
+    if achado[3] is not None:   # rota compartilhada: a aba sai das chaves do corpo
+        try:
+            corpo = json.loads((await request.body()) or b"{}")
+        except Exception:  # noqa: BLE001
+            corpo = {}
+
+    def perm(slug):
+        esq = esquema_do_modulo(slug)
+        return acesso.permissoes(u, slug, esq) if esq is not None else None
+    return await run_in_threadpool(governanca.checar, {**u, "super": acesso.eh_super(u)}, metodo, caminho, corpo if isinstance(corpo, dict) else {}, perm)
+
+
 @app.middleware("http")
 async def _empresa_da_requisicao(request: Request, call_next):
     from starlette.concurrency import run_in_threadpool
@@ -431,6 +459,10 @@ async def _empresa_da_requisicao(request: Request, call_next):
     try:
         if eid != banco.PRINCIPAL and _api_desligada(request.url.path):
             return JSONResponse({"detail": "Este módulo não está liberado para esta empresa."}, status_code=403)
+        if u and request.url.path.startswith("/api/"):   # GOVERNANÇA: aba e nível de cada rota (governanca.py)
+            bloqueio = await _governanca(u, request)
+            if bloqueio:
+                return JSONResponse({"detail": bloqueio}, status_code=403)
         return await call_next(request)
     finally:
         banco._EMPRESA.reset(tk)
@@ -540,7 +572,13 @@ def modulo(slug: str, request: Request):
         raise HTTPException(404, f"Módulo '{slug}' não encontrado em hub/modulos/")
     if not acesso.pode_acessar(u, slug):
         return HTMLResponse(_SEM_ACESSO, status_code=403)
-    return FileResponse(arq, media_type="text/html", headers=SEM_CACHE)
+    esq = esquema_do_modulo(slug)
+    extra = governanca.estilo_abas_ocultas(acesso.permissoes(u, slug, esq) if esq else None, slug)
+    if not extra:
+        return FileResponse(arq, media_type="text/html", headers=SEM_CACHE)
+    html = arq.read_text(encoding="utf-8")
+    html = html.replace("</head>", extra + "</head>", 1) if "</head>" in html else extra + html
+    return HTMLResponse(html, headers=SEM_CACHE)
 
 
 @app.get("/m/{slug}/{caminho:path}")

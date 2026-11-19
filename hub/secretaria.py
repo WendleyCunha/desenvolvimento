@@ -37,6 +37,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 
 import acesso
+import governanca
 import banco
 import secretaria_pdf as PDF
 import secretaria_regras as R
@@ -553,6 +554,9 @@ def _membro_saida(mid: str, m: dict, p: dict, part: set[str], atual: str) -> dic
     for c in CAMPOS_SENSIVEIS:
         if _nivel(p, c) == "oculto":
             out.pop(c, None)
+    for c, nv in (p.get("campos_nivel") or {}).items():   # governança: campo Oculto não sai do servidor
+        if nv == "oculto" and c not in ("nome_oficial",):
+            out.pop(c, None)
     out.update(id=mid, nome_oficial=m.get("nome_oficial") or mid, regular=R.eh_regular(m), cargo=R.cargos(m),
                situacao=R.situacao_tela(m, part, atual), situacao_s1=R.situacao(m, part, atual),
                situacao_anterior=R.situacao(m, part, R.somar(atual, -1)),
@@ -833,9 +837,13 @@ async def editar_membro(mid: str, request: Request):
     if mid not in (BASE.membros or {}):
         raise HTTPException(404, "Membro não encontrado.")
     d = _limpar_membro(c, p)
+    novo_nome = " ".join(str(c.get("nome_oficial", mid)).split())
+    antigo = BASE.membros[mid]   # mesmo tratamento dos dois lados: só conta o que mudou de verdade
+    velho = _limpar_membro({k: antigo.get(k) for k in c if k in antigo or k in ("categoria",)}, {"campos": {}})
+    governanca.aplicar_campos(p, MOD, {**velho, "nome_oficial": " ".join(str(antigo.get("nome_oficial") or mid).split())},
+                              {**d, "nome_oficial": novo_nome})
     if R.chave_valida(d.get("inicio_chave")):
         d["mes_inicio"] = R.rotulo_banco(d["inicio_chave"])
-    novo_nome = " ".join(str(c.get("nome_oficial", mid)).split())
     # só renomeia quando o nome mudou de verdade — espaço sobrando no nome antigo não conta
     # (o id é o nome e o Parque Aliança/Streamlit usa o mesmo; renomear à toa troca o id)
     if novo_nome and novo_nome != " ".join(mid.split()):

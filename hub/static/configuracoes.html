@@ -138,7 +138,15 @@ th:first-child,td:first-child{text-align:left;position:sticky;left:0;background:
 tr:hover td{background:rgba(255,255,255,.025)}
 .nv{min-width:62px;padding:5px 9px;border-radius:9px;font-weight:700;font-size:.7rem;--c:#34d399;color:var(--c);background:color-mix(in srgb,var(--c) 12%,transparent);border:1px solid color-mix(in srgb,var(--c) 32%,transparent);transition:.2s}
 .nv:hover{box-shadow:0 0 14px -4px var(--c)}
-.nv.ver{--c:#60a5fa}.nv.oculto{--c:#fb7185}
+.nv.ver{--c:#60a5fa}.nv.oculto{--c:#fb7185}.nv.excluir{--c:#f59e0b}
+.gov-aba{border:1px solid var(--vidro-borda);border-radius:14px;padding:10px 12px;margin:8px 0;background:rgba(255,255,255,.02)}
+.gov-aba.fechada{opacity:.6}
+.gov-aba-cab{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.gov-aba-cab b{flex:1;min-width:160px}
+.gov-aba .campos-g{margin-top:8px;padding-left:10px;border-left:2px solid var(--vidro-borda)}
+.seg.mini{flex-wrap:nowrap;white-space:nowrap}.seg.mini button{padding:4px 8px;font-size:.7rem}
+.gov-aba .campos-g{grid-template-columns:repeat(auto-fill,minmax(370px,1fr))}
+select.nv-sel{border-radius:8px;padding:3px 6px;font-size:.74rem;background:transparent;color:var(--txt);border:1px solid var(--vidro-borda-forte)}
 .legenda{display:flex;flex-wrap:wrap;gap:14px;margin:12px 2px 0;font-size:.74rem;color:var(--txt3)}
 .info-g{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
 .info{padding:16px;border-radius:16px;background:rgba(255,255,255,.03);border:1px solid var(--vidro-borda)}
@@ -200,7 +208,16 @@ const SECOES = [
   { id: "conta",      nome: "Minha conta",         ic: "usuario", cor: "#34d399" },
   { id: "sistema",    nome: "Sistema",             ic: "ajustes", cor: "#94a3b8" },
 ];
-const NIVEL = { editar: ["Editar", "#34d399"], ver: ["Só ver", "#60a5fa"], oculto: ["Oculto", "#fb7185"] };
+const NIVEL = { excluir: ["Excluir", "#f59e0b"], editar: ["Editar", "#34d399"], ver: ["Só ver", "#60a5fa"], oculto: ["Oculto", "#fb7185"] };
+const NIVEL_ABA = { nenhum: ["Sem acesso", "#94a3b8"], ver: ["Ver", "#60a5fa"], incluir: ["Incluir", "#22d3ee"], editar: ["Editar", "#34d399"], excluir: ["Excluir", "#f59e0b"] };
+/* GOVERNANÇA: nível de campo/aba como vale de fato (o que não foi configurado = como sempre foi: Excluir) */
+const nvCampo = (p, c) => { const v = ((p || {}).campos || {})[c]; return !v || (v === "editar" && !(p || {}).gov) ? "excluir" : v; };
+const nvAba = (p, a) => ((p || {}).abas || {})[a] || "excluir";
+function paraGov(p) {   // passa o módulo para o formato novo sem mudar o que a pessoa já podia
+  p.acoes = p.acoes || {}; p.campos = p.campos || {}; p.abas = p.abas || {};
+  if (!p.gov) { Object.keys(p.campos).forEach((c) => { if (p.campos[c] === "editar") p.campos[c] = "excluir"; }); p.gov = true; }
+  return p;
+}
 
 function nav() {
   const vis = SECOES.filter((s) => (!s.admin || EU.admin) && (!s.super || EU.super));
@@ -281,19 +298,19 @@ async function carregarAdmin() {
   USERS = d.usuarios; MODS = d.modulos; BANCO = d.banco;
 }
 function presetDe(mod, p) {
-  const acoes = Object.keys(mod.esquema.acoes), campos = Object.keys(mod.esquema.campos);
+  const acoes = Object.keys(mod.esquema.acoes), campos = Object.keys(mod.esquema.campos), abas = Object.keys(mod.esquema.abas || {});
   if (!p || !(p.acoes || {}).acessar) return "nenhum";
-  const todasA = acoes.every((a) => (p.acoes || {})[a]), todosE = campos.every((c) => ((p.campos || {})[c] || "editar") === "editar");
-  if (todasA && todosE) return "completo";
-  const soVer = acoes.every((a) => a === "acessar" || !(p.acoes || {})[a]) && campos.every((c) => ((p.campos || {})[c] || "editar") === "ver");
+  const todasA = acoes.every((a) => (p.acoes || {})[a]), todosE = campos.every((c) => nvCampo(p, c) === "excluir"), todasAb = abas.every((a) => nvAba(p, a) === "excluir");
+  if (todasA && todosE && todasAb) return "completo";
+  const soVer = acoes.every((a) => a === "acessar" || !(p.acoes || {})[a]) && campos.every((c) => nvCampo(p, c) === "ver") && abas.every((a) => nvAba(p, a) === "ver");
   if (soVer) return "ver";
   return "custom";
 }
 function aplicarPreset(mod, tipo) {
-  const acoes = Object.keys(mod.esquema.acoes), campos = Object.keys(mod.esquema.campos);
-  if (tipo === "nenhum") return { acoes: {}, campos: {} };
-  if (tipo === "ver") return { acoes: { acessar: true }, campos: Object.fromEntries(campos.map((c) => [c, "ver"])) };
-  return { acoes: Object.fromEntries(acoes.map((a) => [a, true])), campos: Object.fromEntries(campos.map((c) => [c, "editar"])) };
+  const acoes = Object.keys(mod.esquema.acoes), campos = Object.keys(mod.esquema.campos), abas = Object.keys(mod.esquema.abas || {});
+  if (tipo === "nenhum") return { acoes: {}, campos: {}, abas: {}, gov: true };
+  if (tipo === "ver") return { acoes: { acessar: true }, campos: Object.fromEntries(campos.map((c) => [c, "ver"])), abas: Object.fromEntries(abas.map((a) => [a, "ver"])), gov: true };
+  return { acoes: Object.fromEntries(acoes.map((a) => [a, true])), campos: Object.fromEntries(campos.map((c) => [c, "excluir"])), abas: Object.fromEntries(abas.map((a) => [a, "excluir"])), gov: true };
 }
 function resumoAcesso(u) {
   if (u.admin) return `<span class="etq" style="--c:#e8b33d">${svg("escudo")}Acesso total</span>`;
@@ -337,15 +354,25 @@ function editorUsuario(u) {
   d.modulos = d.modulos || {};
   const segPreset = (m) => `<div class="seg p" data-preset="${m.id}">${[["nenhum", "Sem acesso", "#94a3b8"], ["ver", "Visualizar", "#60a5fa"], ["completo", "Completo", "#34d399"], ["custom", "Personalizado", "#a78bfa"]]
       .map(([v, r, c]) => `<button type="button" data-v="${v}" style="--c:${c}">${r}</button>`).join("")}</div>`;
+  const segCampo = (p, c) => `<div class="seg p mini" data-c="${c}">${Object.entries(NIVEL).reverse().map(([v, [rr, cc]]) =>
+      `<button type="button" data-v="${v}" style="--c:${cc}" class="${nvCampo(p, c) === v ? "ativo" : ""}">${rr}</button>`).join("")}</div>`;
   const corpoMod = (m) => {
-    const p = d.modulos[m.id] || { acoes: {}, campos: {} }, ac = Object.entries(m.esquema.acoes), ca = Object.entries(m.esquema.campos);
+    const p = d.modulos[m.id] || { acoes: {}, campos: {} }, ac = Object.entries(m.esquema.acoes), ca = m.esquema.campos, abas = Object.entries(m.esquema.abas || {});
+    const naAba = new Set(abas.flatMap(([, x]) => Object.keys(x.campos || {})));
+    const soltos = Object.keys(ca).filter((c) => !naAba.has(c));
+    const linhaCampos = (lista) => lista.length ? `<div class="campos-g">${lista.map((c) => `<div class="campo-l"><span>${esc(ca[c] || c)}</span>${segCampo(p, c)}</div>`).join("")}</div>` : "";
     return `<div class="mini-t">Ações</div>
       <div class="acoes-g">${ac.map(([a, r]) => `<label class="chave" style="--c:${a === "excluir" ? "#fb7185" : "#34d399"}"><input type="checkbox" data-a="${a}" ${(p.acoes || {})[a] ? "checked" : ""}><span class="trilho"></span>${esc(r)}</label>`).join("")}</div>
-      ${ca.length ? `<div class="mini-t">Campos <span style="flex:1"></span>todos:
-          ${Object.entries(NIVEL).map(([v, [r, c]]) => `<button type="button" class="chip" data-todos="${v}" style="--c:${c}">${r}</button>`).join("")}</div>
-        <div class="campos-g">${ca.map(([c, r]) => `<div class="campo-l"><span>${esc(r)}</span><div class="seg p" data-c="${c}">${Object.entries(NIVEL).map(([v, [rr, cc]]) =>
-          `<button type="button" data-v="${v}" style="--c:${cc}" class="${((p.campos || {})[c] || "editar") === v ? "ativo" : ""}">${rr}</button>`).join("")}</div></div>`).join("")}</div>`
-        : `<p style="font-size:.78rem;color:var(--txt3);margin:8px 0 0">Este módulo só tem a opção de abrir (sistema hospedado fora do hub).</p>`}`;
+      ${abas.length ? `<div class="mini-t">Abas e campos <span style="flex:1"></span>todas as abas:
+          ${Object.entries(NIVEL_ABA).map(([v, [r, c]]) => `<button type="button" class="chip" data-todas-abas="${v}" style="--c:${c}">${r}</button>`).join("")}</div>
+        ${abas.map(([a, x]) => `<div class="gov-aba ${nvAba(p, a) === "nenhum" ? "fechada" : ""}"><div class="gov-aba-cab"><b>${esc(x.rotulo)}</b>
+            <div class="seg p mini" data-aba="${a}">${Object.entries(NIVEL_ABA).map(([v, [rr, cc]]) => `<button type="button" data-v="${v}" style="--c:${cc}" class="${nvAba(p, a) === v ? "ativo" : ""}">${rr}</button>`).join("")}</div></div>
+            ${nvAba(p, a) === "nenhum" ? "" : linhaCampos(Object.keys(x.campos || {}))}</div>`).join("")}` : ""}
+      ${soltos.length ? `<div class="mini-t">${abas.length ? "Outros campos" : "Campos"} <span style="flex:1"></span>todos:
+          ${Object.entries(NIVEL).map(([v, [r, c]]) => `<button type="button" class="chip" data-todos="${v}" style="--c:${c}">${r}</button>`).join("")}</div>${linhaCampos(soltos)}` : ""}
+      ${!abas.length && !Object.keys(ca).length ? `<p style="font-size:.78rem;color:var(--txt3);margin:8px 0 0">Este módulo só tem a opção de abrir (sistema hospedado fora do hub).</p>` : ""}
+      <p style="font-size:.74rem;color:var(--txt3);margin:10px 0 0">Aba: <b>Ver</b> só olha · <b>Incluir</b> cria novos · <b>Editar</b> altera · <b>Excluir</b> apaga (cada nível inclui os anteriores).
+        Campo: <b>Oculto</b> nem aparece · <b>Ver</b> só olha · <b>Editar</b> altera sem apagar · <b>Excluir</b> pode apagar o valor. Tudo conferido no servidor.</p>`;
   };
   const html = `
     <div class="ed-g">
@@ -358,7 +385,7 @@ function editorUsuario(u) {
       ${EU.super ? `<label class="chave" style="--c:#f472b6"><input type="checkbox" id="uSuper"><span class="trilho"></span>Super administrador — todas as empresas</label>` : ""}</div>
     <div class="sub-t">Acesso por módulo</div>
     <div class="mods" id="uMods">${MODS.map((m) => `<div class="mod" data-m="${m.id}">
-        <div class="mod-cab">${A.orbe(m.icone, m.cor || "#94a3b8")}<div class="nm"><b>${esc(m.titulo)}</b><small>${esc(m.grupo || "")} · ${Object.keys(m.esquema.acoes).length} ações · ${Object.keys(m.esquema.campos).length} campos</small></div>
+        <div class="mod-cab">${A.orbe(m.icone, m.cor || "#94a3b8")}<div class="nm"><b>${esc(m.titulo)}</b><small>${esc(m.grupo || "")} · ${Object.keys(m.esquema.abas || {}).length} abas · ${Object.keys(m.esquema.acoes).length} ações · ${Object.keys(m.esquema.campos).length} campos</small></div>
           ${segPreset(m)}<button type="button" class="btn-ic p abrir" data-abrir title="Detalhar">${svg("avancar")}</button></div>
         <div class="mod-corpo" data-corpo></div></div>`).join("") || `<div class="vazio">Nenhum módulo no hub ainda.</div>`}</div>`;
 
@@ -406,8 +433,10 @@ function editorUsuario(u) {
           sinc(); return;
         }
         if (e.target.closest("[data-abrir]")) { el.classList.toggle("aberto"); sinc(); return; }
-        if ((b = e.target.closest("[data-todos]"))) { Object.keys(m.esquema.campos).forEach((c) => (p.campos[c] = b.dataset.todos)); if (!p.acoes.acessar) p.acoes.acessar = true; sinc(); return; }
-        if ((b = e.target.closest("[data-c] button"))) { p.campos[b.parentElement.dataset.c] = b.dataset.v; if (!p.acoes.acessar) p.acoes.acessar = true; sinc(); }
+        if ((b = e.target.closest("[data-todos]"))) { paraGov(p); Object.keys(m.esquema.campos).forEach((c) => (p.campos[c] = b.dataset.todos)); if (!p.acoes.acessar) p.acoes.acessar = true; sinc(); return; }
+        if ((b = e.target.closest("[data-todas-abas]"))) { paraGov(p); Object.keys(m.esquema.abas || {}).forEach((a) => (p.abas[a] = b.dataset.todasAbas)); if (!p.acoes.acessar) p.acoes.acessar = true; sinc(); return; }
+        if ((b = e.target.closest("[data-aba] button"))) { paraGov(p); p.abas[b.parentElement.dataset.aba] = b.dataset.v; if (!p.acoes.acessar) p.acoes.acessar = true; sinc(); return; }
+        if ((b = e.target.closest("[data-c] button"))) { paraGov(p); p.campos[b.parentElement.dataset.c] = b.dataset.v; if (!p.acoes.acessar) p.acoes.acessar = true; sinc(); }
       });
       mods.addEventListener("change", (e) => {
         const i = e.target.closest("[data-a]"); if (!i) return;
@@ -434,7 +463,13 @@ async function rPermissoes() {
   const pessoas = USERS.filter((u) => !u.admin);
   const desenhar = () => {
     const m = MODS.find((x) => x.id === atual);
+    const abasM = Object.entries(m?.esquema?.abas || {});
     const tab = m ? `
+      ${abasM.length ? `<div class="sub-t">Abas · ${esc(m.titulo)}</div>
+      <div class="tabela"><table><thead><tr><th>Pessoa</th>${abasM.map(([, x]) => `<th>${esc(x.rotulo)}</th>`).join("")}</tr></thead><tbody>
+        ${pessoas.map((u) => { const p = (u.modulos || {})[m.id] || {}; return `<tr><td><b>${esc(u.nome)}</b> <small style="color:var(--txt3)">@${esc(u.login)}</small></td>${abasM.map(([a]) =>
+          `<td><select class="nv-sel" data-u="${esc(u.login)}" data-aba-m="${a}"${(p.acoes || {}).acessar ? "" : " disabled title=\"Libere o acesso ao módulo primeiro\""}>${Object.entries(NIVEL_ABA).map(([v, [r]]) => `<option value="${v}"${nvAba(p, a) === v ? " selected" : ""}>${r}</option>`).join("")}</select></td>`).join("")}</tr>`; }).join("")}
+      </tbody></table></div>` : ""}
       <div class="sub-t">Ações · ${esc(m.titulo)}</div>
       <div class="tabela"><table><thead><tr><th>Pessoa</th>${Object.values(m.esquema.acoes).map((r) => `<th>${esc(r)}</th>`).join("")}</tr></thead><tbody>
         ${pessoas.map((u) => { const p = (u.modulos || {})[m.id] || {}; return `<tr><td><b>${esc(u.nome)}</b> <small style="color:var(--txt3)">@${esc(u.login)}</small></td>${Object.keys(m.esquema.acoes).map((a) =>
@@ -442,10 +477,10 @@ async function rPermissoes() {
       </tbody></table></div>
       ${Object.keys(m.esquema.campos).length ? `<div class="sub-t">Campos · ${esc(m.titulo)}</div>
       <div class="tabela"><table><thead><tr><th>Pessoa</th>${Object.values(m.esquema.campos).map((r) => `<th>${esc(r)}</th>`).join("")}</tr></thead><tbody>
-        ${pessoas.map((u) => { const p = (u.modulos || {})[m.id] || {}; return `<tr><td><b>${esc(u.nome)}</b></td>${Object.keys(m.esquema.campos).map((c) => { const v = (p.campos || {})[c] || "editar";
+        ${pessoas.map((u) => { const p = (u.modulos || {})[m.id] || {}; return `<tr><td><b>${esc(u.nome)}</b></td>${Object.keys(m.esquema.campos).map((c) => { const v = nvCampo(p, c);
           return `<td><button type="button" class="nv ${v}" data-u="${esc(u.login)}" data-c="${c}" data-v="${v}" title="Clique para trocar">${NIVEL[v][0]}</button></td>`; }).join("")}</tr>`; }).join("")}
       </tbody></table></div>
-      <div class="legenda"><span><b style="color:#34d399">Editar</b> pode alterar</span><span><b style="color:#60a5fa">Só ver</b> enxerga, não altera</span><span><b style="color:#fb7185">Oculto</b> nem aparece para a pessoa</span><span>· clique para alternar · salva na hora</span></div>` : ""}` : "";
+      <div class="legenda"><span><b style="color:#f59e0b">Excluir</b> altera e pode apagar</span><span><b style="color:#34d399">Editar</b> altera, sem apagar</span><span><b style="color:#60a5fa">Só ver</b> enxerga, não altera</span><span><b style="color:#fb7185">Oculto</b> nem aparece para a pessoa</span><span>· clique para alternar · salva na hora</span></div>` : ""}` : "";
     elC.innerHTML = `<section class="secao vidro vidro-borda-viva">
       <div class="cab">${A.orbe("escudo", "#a78bfa")}<h2>Permissões</h2></div>
       <p class="desc">Duas formas de controlar: a <b>matriz</b> abaixo (pessoa × ação × campo, por módulo) ou o <b>Modo permissões</b>, que coloca um escudo em cada campo e botão dentro dos próprios módulos — você clica no escudo e decide quem pode o quê, ali mesmo.</p>
@@ -471,19 +506,23 @@ async function rPermissoes() {
         await api("/api/admin/permissao", { method: "PUT", body: { modulo: atual, tipo: "acao", chave: "acessar", valores: { [login]: true } } });
       await api("/api/admin/permissao", { method: "PUT", body: { modulo: atual, tipo, chave, valores } });
       const p = ((u.modulos = u.modulos || {})[atual] = u.modulos[atual] || { acoes: {}, campos: {} });
-      p.acoes = p.acoes || {}; p.campos = p.campos || {};
-      if (tipo === "acao") { p.acoes[chave] = valor; if (valor) p.acoes.acessar = true; } else p.campos[chave] = valor;
-      A.toast(`✓ ${esc(u.nome)} · ${esc((tipo === "acao" ? m.esquema.acoes : m.esquema.campos)[chave])}: <b>${tipo === "acao" ? (valor ? "permitido" : "negado") : NIVEL[valor][0]}</b>`, [], { cor: "var(--verde)", duracao: 2200 });
+      p.acoes = p.acoes || {}; p.campos = p.campos || {}; p.abas = p.abas || {};
+      if (tipo === "acao") { p.acoes[chave] = valor; if (valor) p.acoes.acessar = true; }
+      else if (tipo === "aba") p.abas[chave] = valor;
+      else { paraGov(p); p.campos[chave] = valor; }
+      const rot = tipo === "acao" ? m.esquema.acoes[chave] : tipo === "aba" ? (m.esquema.abas[chave] || {}).rotulo : m.esquema.campos[chave];
+      A.toast(`✓ ${esc(u.nome)} · ${esc(rot)}: <b>${tipo === "acao" ? (valor ? "permitido" : "negado") : tipo === "aba" ? NIVEL_ABA[valor][0] : NIVEL[valor][0]}</b>`, [], { cor: "var(--verde)", duracao: 2200 });
     } catch (e) { A.toast("Não salvou: " + esc(e.message), [], { cor: "var(--rosa)" }); }
     desenhar();
   };
   elC.addEventListener("change", rPermissoes._ch = (e) => {
+    const sl = e.target.closest("select[data-aba-m]"); if (sl) { salvar(sl.dataset.u, "aba", sl.dataset.abaM, sl.value); return; }
     const i = e.target.closest("input[data-a]"); if (!i) return;
     salvar(i.dataset.u, "acao", i.dataset.a, i.checked);
   });
   elC.addEventListener("click", rPermissoes._cl = (e) => {
     const b = e.target.closest("button.nv"); if (!b) return;
-    const ord = ["editar", "ver", "oculto"], prox = ord[(ord.indexOf(b.dataset.v) + 1) % 3];
+    const ord = ["excluir", "editar", "ver", "oculto"], prox = ord[(ord.indexOf(b.dataset.v) + 1) % 4];
     salvar(b.dataset.u, "campo", b.dataset.c, prox);
   });
   desenhar();
