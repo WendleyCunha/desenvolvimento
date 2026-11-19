@@ -769,7 +769,13 @@ b[data-perfil]:hover{text-decoration:underline}
 #fAlta .alta-vert .edk-card{width:calc((100cqw - 60px) / 7);min-width:0;flex:none}
 .stories-topo{margin:0 0 6px}
 .stories-topo .stories{padding:4px 2px 6px}
-#fHero.hero-mini{min-height:190px!important;margin-bottom:12px}
+#fHero.hero-mini{min-height:0!important}
+.topo-feed{display:grid;grid-template-columns:minmax(0,360px) minmax(0,1fr);gap:16px;align-items:stretch;margin-bottom:6px}
+#fHero.hero-mini .edk-cartao{padding:14px 16px}
+#fHero.hero-mini .edk-cartao h1{font-size:clamp(18px,1.5vw,22px);margin:8px 0 6px}
+#fHero.hero-mini .edk-cartao p{display:none}
+#fHero.hero-mini .edk-bt{padding:7px 12px;font-size:12.5px}
+@media (max-width:900px){.topo-feed{grid-template-columns:1fr}#fHero.hero-mini{min-height:180px!important}}
 @media (max-width:700px){#fAlta .alta-vert .edk-card{width:112px}}
 #fAlta .alta-vert .edk-card h3{font-size:13px}
 @media (prefers-reduced-motion:reduce){#fAlta .alta-vert.roda .edk-trilho,#fAlta .alta-vert .edk-card:hover .capa-img{animation:none}}
@@ -1137,10 +1143,10 @@ async function telaFeed() {
           <label class="busca">${svg("busca")}<input class="entrada" id="busca" placeholder="Buscar (texto, pessoa, PDF, comentário…)" value="${esc(S.q)}" autocomplete="off"></label></div>`;
   // "Para você": no topo só a barra de stories (largura toda); Em alta na mesma altura da coluna da direita
   $("#main").innerHTML = `<div class="cont ${tudo ? "feed-topo-cont" : ""}">${titulo ? `<div class="cab-sec"><h2>${titulo}</h2></div>` : ""}
-      ${tudo ? `<div class="stories-topo">${storiesH}</div>` : ""}
+      ${tudo ? `<div class="topo-feed"><section class="edk-hero hero-mini" id="fHero"><div class="carregar" style="position:relative;z-index:2">carregando…</div></section>
+        <div class="topo-dir">${storiesH}${comporH}${filtrosH}</div></div>` : ""}
       <div class="feed-grade"><section class="pilha">
-        ${tudo ? `<div id="fAlta"></div><section class="edk-hero hero-mini" id="fHero"><div class="carregar" style="position:relative;z-index:2">carregando…</div></section>
-          ${comporH}${filtrosH}` : `${storiesH}${comporH}${filtrosH}`}
+        ${tudo ? `<div id="fAlta"></div>` : `${storiesH}${comporH}${filtrosH}`}
         <button type="button" class="novas" id="novas">${svg("subir")}<span></span></button>
         <div class="pilha" id="lista"><div class="carregar">carregando…</div></div><div class="carregar" id="fim"></div>
       </section>
