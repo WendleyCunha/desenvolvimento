@@ -156,7 +156,14 @@ async def enviar(request: Request):
         completar = secretaria.pedido_publicador(nome, ref.id)
     except Exception:  # noqa: BLE001
         completar = None
-    return {"ok": True, "nome": nome, "mes": R.rotulo(ch), "protocolo": ref.id[:6].upper(), "completar": completar}
+    try:   # passe do lembrete: só quem tem ficha certa (o aparelho guarda e se inscreve com ele)
+        import relatorios_lembretes as L
+        mid = secretaria.membro_certo(nome) if L.ligado() else None
+        lembrete = {"passe": L.passe(mid), "nome": mid} if mid else None
+    except Exception:  # noqa: BLE001
+        lembrete = None
+    return {"ok": True, "nome": nome, "mes": R.rotulo(ch), "protocolo": ref.id[:6].upper(), "completar": completar,
+            "lembrete": lembrete}
 
 
 @router.post("/api/relatorios-publico/completar")

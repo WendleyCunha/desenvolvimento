@@ -1,7 +1,7 @@
 /* sw.js — deixa o hub instalável como app (celular e computador).
    Não guarda tela nem dado de ninguém: só o ícone, para mostrar um aviso
    quando abrir sem sinal. Servido em /relatorios/sw.js (escopo só do app Relatórios). */
-const CACHE = "wd-rel-v1";
+const CACHE = "wd-rel-v2";
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(["/static/app/icone-192.png"])).then(() => self.skipWaiting()));
 });
@@ -18,4 +18,20 @@ self.addEventListener("fetch", e => {
     '<div><img src="/static/app/icone-192.png" width="96" height="96" style="border-radius:24px"><h2 style="font-weight:600;margin:16px 0 6px">Sem conexão</h2>' +
     '<p style="color:#475369">Confira o sinal e tente de novo.</p><button onclick="location.reload()" style="margin-top:10px;padding:10px 18px;border-radius:12px;border:1px solid #c48a12;background:transparent;color:#8a5f08;font:inherit">Tentar de novo</button></div>',
     { headers: { "Content-Type": "text/html; charset=utf-8" } })));
+});
+
+/* Lembrete do relatório: notificação do sistema (Android, Windows, Mac, iPhone com o app instalado) */
+self.addEventListener("push", (e) => {
+  let d = {}; try { d = e.data ? e.data.json() : {}; } catch (_) { d = { titulo: "Relatório", texto: e.data ? e.data.text() : "" }; }
+  e.waitUntil(self.registration.showNotification(d.titulo || "Relatório de serviço", {
+    body: d.texto || "", tag: d.tag || undefined, renotify: true, requireInteraction: true,
+    icon: "/static/app/icone-192.png", badge: "/static/app/icone-192.png", data: { url: d.url || self.registration.scope } }));
+});
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || self.registration.scope;
+  e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((ws) => {
+    const w = ws.find((x) => x.url.startsWith(self.registration.scope));
+    return w ? w.focus() : self.clients.openWindow(url);
+  }));
 });
