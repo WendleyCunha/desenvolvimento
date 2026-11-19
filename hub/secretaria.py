@@ -847,7 +847,8 @@ async def editar_membro(mid: str, request: Request):
 
 @router.delete("/membros/{mid}")
 def excluir_membro(mid: str, request: Request):
-    """Tira a ficha do Secretário. Nada é apagado: a ficha fica guardada (excluido_em) e os relatórios ficam."""
+    """Manda a ficha para a LIXEIRA. Nada é apagado: a ficha fica guardada (excluido_em) e os relatórios ficam.
+    Ativo, inativo, sem relatório, saiu da congregação… nunca apagam dado nenhum — só a lixeira apaga de vez."""
     u, p = _contexto(request)
     _exigir(p, "membros", "excluir membros")
     BASE.atualizar()
@@ -860,6 +861,65 @@ def excluir_membro(mid: str, request: Request):
         BASE.excluidos = {**(getattr(BASE, "excluidos", None) or {}), mid: {**m, **d}}
         BASE._linhas = None
     return {"ok": True, "id": mid}
+
+
+# ── LIXEIRA: restaurar ou apagar DE VEZ (do banco de dados) ─────────────────
+def _rels_de(mid: str) -> list[str]:
+    return [rid for rid, r in BASE.rels.items() if r.get("membro_id") == mid]
+
+
+@router.get("/lixeira")
+def lixeira(request: Request):
+    _, p = _contexto(request)
+    _exigir(p, "membros", "ver a lixeira")
+    BASE.atualizar()
+    exc = getattr(BASE, "excluidos", None) or {}
+    return {"itens": sorted(({"id": mid, "nome_oficial": m.get("nome_oficial") or mid, "excluido_em": m.get("excluido_em"),
+                              "excluido_por": m.get("excluido_por"), "relatorios": len(_rels_de(mid))} for mid, m in exc.items()),
+                            key=lambda x: x.get("excluido_em") or "", reverse=True)}
+
+
+@router.post("/lixeira/{mid}/restaurar")
+def restaurar_membro(mid: str, request: Request):
+    u, p = _contexto(request)
+    _exigir(p, "membros", "restaurar fichas")
+    BASE.atualizar()
+    exc = getattr(BASE, "excluidos", None) or {}
+    if mid not in exc:
+        raise HTTPException(404, "Ficha não está na lixeira.")
+    if mid in (BASE.membros or {}):
+        raise HTTPException(409, "Já existe uma ficha ativa com esse nome.")
+    m = {k: v for k, v in exc[mid].items() if k not in ("excluido_em", "excluido_por")}
+    m["status"] = "Inativo" if m.get("status") == "Excluído" else m.get("status", "")
+    m.update(restaurado_em=_agora(), restaurado_por=u["login"])
+    _db().collection(COL_MEMBROS).document(mid).set(m, timeout=banco.TIMEOUT)   # sem merge: tira as marcas de excluída
+    with BASE.trava:
+        exc.pop(mid, None)
+        BASE.membros[mid] = m
+        BASE._linhas = None
+    return {"ok": True, "id": mid}
+
+
+@router.delete("/lixeira/{mid}")
+def apagar_de_vez(mid: str, request: Request, relatorios: int = 0):
+    """Apaga a ficha DO BANCO DE DADOS (não volta). Com relatorios=1 apaga também os relatórios dela."""
+    u, p = _contexto(request)
+    _exigir(p, "membros", "apagar fichas")
+    BASE.atualizar()
+    exc = getattr(BASE, "excluidos", None) or {}
+    if mid not in exc:
+        raise HTTPException(404, "Só dá para apagar de vez o que está na lixeira.")
+    _db().collection(COL_MEMBROS).document(mid).delete(timeout=banco.TIMEOUT)
+    apagados = 0
+    if relatorios:
+        for rid in _rels_de(mid):
+            _db().collection(COL_REL).document(rid).delete(timeout=banco.TIMEOUT)
+            BASE.rels.pop(rid, None)
+            apagados += 1
+    with BASE.trava:
+        exc.pop(mid, None)
+        BASE._linhas = None
+    return {"ok": True, "id": mid, "relatorios_apagados": apagados}
 
 
 STATUS_MANUAL = ("ativo", "sem_relatorio", "inativo", "saiu")
