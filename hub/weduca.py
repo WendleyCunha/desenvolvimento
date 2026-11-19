@@ -54,7 +54,7 @@ MAX_FOTO = 3_000_000                # a foto já chega comprimida do navegador
 MAX_PDF = 15_000_000
 MAX_TEXTO_PDF = 40_000              # texto extraído de cada PDF que vai para a base
 TIPOS_FOTO = {"image/jpeg", "image/png", "image/webp", "image/gif"}
-_CACHE_SEG = 20
+_CACHE_SEG = 600                    # a memória só é relida quando alguém grava (ver _Persistencia) ou, por garantia, a cada 10 min
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -90,7 +90,25 @@ def _fs_onde(col: str, campo: str, op: str, valor) -> list:
     return [{**(d.to_dict() or {}), "id": d.id} for d in q.stream(timeout=banco.TIMEOUT)]
 
 
-P = {"listar": _fs_listar, "ler": _fs_ler, "gravar": _fs_gravar, "marcar": _fs_marcar, "usuarios": _fs_usuarios}
+class _Persistencia(dict):
+    """As funções de banco (trocáveis nos testes). Toda gravação nas coleções que ficam em memória
+    esquece a memória na hora — assim o feed não precisa reler o banco a cada 20 s para ver o que mudou."""
+    def __getitem__(self, k):
+        f = dict.__getitem__(self, k)
+        if k not in ("gravar", "marcar"):
+            return f
+
+        def gravando(col, *a, **kw):
+            r = f(col, *a, **kw)
+            if col in (COL_POST, COL_COM, COL_CURSO, COL_AULA):
+                esquecer()
+            if col in (COL_NOTIF, COL_CONV, COL_MSG):
+                _contagens["por"] = {}
+            return r
+        return gravando
+
+
+P = _Persistencia({"listar": _fs_listar, "ler": _fs_ler, "gravar": _fs_gravar, "marcar": _fs_marcar, "usuarios": _fs_usuarios})
 
 
 def onde(col: str, campo: str, op: str, valor) -> list:
@@ -144,6 +162,7 @@ def _eu(u: dict) -> str:
 # Leitura com cache curto (o feed e a IA leem muito; quem grava esquece o cache)
 # ══════════════════════════════════════════════════════════════════════════
 _cache = banco.por_empresa(lambda: {"t": 0.0, "posts": [], "com": [], "cursos": [], "aulas": []})
+_contagens = banco.por_empresa(lambda: {"por": {}})   # notificações/Direct não lidos por pessoa (zera quando chega notificação ou mensagem)
 
 
 def esquecer() -> None:
@@ -443,7 +462,11 @@ def weduca_novidades(request: Request, desde: str = ""):
     u, _ = _ctx(request)
     eu = _eu(u)
     novas = [p for p in posts_ativos() if (p.get("em") or "") > desde and (p.get("autor") or {}).get("login") != eu]
-    return {"novas": len(novas), "agora": agora(), "notif": _nao_lidas(eu), "direct": _dm_nao_lidas(eu)}
+    c = _contagens["por"].get(eu)
+    if not c or time.time() - c[0] > _CACHE_SEG:
+        c = (time.time(), _nao_lidas(eu), _dm_nao_lidas(eu))
+        _contagens["por"][eu] = c
+    return {"novas": len(novas), "agora": agora(), "notif": c[1], "direct": c[2]}
 
 
 @router.get("/destaques")

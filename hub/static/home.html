@@ -1002,6 +1002,13 @@ kbd{font:600 .64rem var(--sans);color:var(--txt3);border:1px solid var(--vidro-b
     document.title = (id === INICIO ? "Início" : aba.titulo) + " · Wendley Desenvolvimento";
     el.app.classList.remove("gaveta");
     salvar(); renderNav(); renderAbas(); sincronizarInicio();
+    avisarVisiveis();
+  }
+  /* cada módulo sabe se está na tela: escondido, ele para as consultas ao banco (volta ao aparecer) */
+  function avisarVisiveis() {
+    for (const a of estado.abas) {
+      try { a.iframe?.contentWindow?.postMessage({ hub: "visivel", visivel: a.id === estado.ativa }, location.origin); } catch (_) {}
+    }
   }
   /** id de módulo com seções (ex.: "weduca") → a 1ª seção dele ("weduca-feed") */
   const idReal = (id) => estado.porId.has(id) ? id : ([...estado.porId.values()].find((i) => i.base === id) || {}).id || id;

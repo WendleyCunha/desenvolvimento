@@ -243,7 +243,7 @@ def _transacao(cid: str, mutar):
 # MEMÓRIA
 # ══════════════════════════════════════════════════════════════════════════════
 class _Base:
-    INCREMENTAL, COMPLETA = 20, 1800
+    INCREMENTAL, COMPLETA = 30, 1800
 
     def __init__(self):
         self.trava = threading.RLock()

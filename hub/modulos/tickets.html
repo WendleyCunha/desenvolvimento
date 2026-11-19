@@ -1707,10 +1707,19 @@ function telaAjustes(m) {
 carregar();
 /* com um atendimento aberto: se o cliente escreveu pelo app, a conversa atualiza sozinha (sem perder o que você está digitando) */
 setInterval(() => { if (document.visibilityState !== "visible" || !S.aberto || document.querySelector(".aur-modal-fundo") || $("#txt")?.value || $("#txtChat")?.value) return;
-  A.api(API + "/estado").then((e) => { if (e.versao !== S.e?.versao) { guardarRascunho(); recarregarCliente(); } }).catch(() => {}); }, 20000);   // busca por trás e só troca o conteúdo — a tela não pisca
-setInterval(() => { if (document.visibilityState === "visible") carregarAjuda(); }, 20000);
+  A.api(API + "/estado").then((e) => { if (e.versao !== S.e?.versao) { guardarRascunho(); recarregarCliente(); } }).catch(() => {}); }, 30000);   // busca por trás e só troca o conteúdo — a tela não pisca
+setInterval(() => { if (document.visibilityState === "visible") carregarAjuda(); }, 30000);
 setInterval(() => { if (document.visibilityState === "visible" && S.sec === "meudia" && !S.aberto) carregarEquipe(); }, 30000);   // painel da equipe (online / produtividade)   // pedidos de ajuda do meu setor (contador da aba + lista)
 setInterval(() => { if (document.visibilityState === "visible" && !S.aberto && !document.querySelector(".aur-modal-fundo")) A.api(API + "/estado").then((e) => { if (e.versao !== S.e?.versao) { novoEstado(e); if (!document.activeElement || !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) render(); } }).catch(() => {}); }, 30000);
+/* ao voltar para a tela (aba do hub ou do navegador): confere na hora o que mudou */
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden || document.querySelector(".aur-modal-fundo")) return;
+  A.api(API + "/estado").then((e) => {
+    if (e.versao === S.e?.versao) return;
+    if (S.aberto) { if (!$("#txt")?.value && !$("#txtChat")?.value) { guardarRascunho(); recarregarCliente(); } }
+    else { novoEstado(e); if (!document.activeElement || !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) render(); }
+  }).catch(() => {});
+});
 })();
 </script>
 </body>
