@@ -80,3 +80,32 @@ def test_selo_ficha_completa_e_excluir(hub):
     secretaria.BASE.membros = None
     assert "Rui Incompleto" not in {m["id"] for m in chefe.get("/api/secretaria/base").json()["membros"]}
     assert chefe.post("/api/secretaria/membros", json={"nome_oficial": "Rui Incompleto"}).status_code == 409
+
+
+def test_lixeira_restaurar_e_apagar_de_vez(hub):
+    import secretaria
+    T.DB[(secretaria.COL_MEMBROS, "Celia Exemplo")] = {"nome_oficial": "Celia Exemplo", "categoria": "PUBLICADOR", "genero": "Feminino",
+                                                      "data_nascimento": "15/12/1962"}
+    T.DB[(secretaria.COL_REL, "rc1")] = {"nome": "Celia Exemplo", "membro_id": "Celia Exemplo", "mes_referencia": "Outubro 2026", "participou_ministerio": True}
+    chefe = entrar(hub(), "chefe", "senha-forte")
+    secretaria.BASE.membros = None
+    secretaria.BASE.atualizar(forcar=True)
+    # saiu da congregação: continua na lista com todos os dados
+    r = chefe.post("/api/secretaria/membros/Celia Exemplo/status", json={"status": "saiu", "chave": "2026-10"})
+    assert r.status_code == 200
+    m = [x for x in chefe.get("/api/secretaria/base").json()["membros"] if x["id"] == "Celia Exemplo"][0]
+    assert m["situacao"] == "fora" and m["data_nascimento"] == "15/12/1962"
+    # excluir = lixeira (nada apagado)
+    assert chefe.delete("/api/secretaria/membros/Celia Exemplo").status_code == 200
+    assert [x["id"] for x in chefe.get("/api/secretaria/lixeira").json()["itens"]] == ["Celia Exemplo"]
+    assert (secretaria.COL_MEMBROS, "Celia Exemplo") in T.DB
+    # restaurar volta igual
+    assert chefe.post("/api/secretaria/lixeira/Celia Exemplo/restaurar").status_code == 200
+    d = T.DB[(secretaria.COL_MEMBROS, "Celia Exemplo")]
+    assert "excluido_em" not in d and d["data_nascimento"] == "15/12/1962"
+    assert any(x["id"] == "Celia Exemplo" for x in chefe.get("/api/secretaria/base").json()["membros"])
+    # apagar de vez só a partir da lixeira
+    assert chefe.delete("/api/secretaria/lixeira/Celia Exemplo").status_code == 404
+    chefe.delete("/api/secretaria/membros/Celia Exemplo")
+    assert chefe.delete("/api/secretaria/lixeira/Celia Exemplo?relatorios=1").json()["relatorios_apagados"] == 1
+    assert (secretaria.COL_MEMBROS, "Celia Exemplo") not in T.DB and (secretaria.COL_REL, "rc1") not in T.DB
