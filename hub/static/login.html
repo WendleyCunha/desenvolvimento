@@ -23,7 +23,6 @@ body{min-height:100vh;display:grid;place-items:center;padding:20px}
 h1{font:700 1.5rem var(--titulo);margin:8px 0 4px;letter-spacing:-.02em}
 .sub{font-size:.62rem;letter-spacing:2.6px;text-transform:uppercase;font-weight:700;background:var(--grad-ouro);-webkit-background-clip:text;background-clip:text;color:transparent}
 form{display:flex;flex-direction:column;gap:12px;margin-top:26px;text-align:left}
-.lembrar{display:flex;align-items:center;justify-content:space-between;margin:4px 2px 6px}
 .erro{min-height:20px;font-size:.8rem;color:#fda4af;text-align:center}
 .btn{width:100%;padding:13px 16px;font-size:.92rem}
 .rodape{margin-top:18px;font-size:.72rem;color:var(--txt3);line-height:1.6}
@@ -50,7 +49,6 @@ form{display:flex;flex-direction:column;gap:12px;margin-top:26px;text-align:left
   <form id="form" autocomplete="on">
     <label class="campo">Usuário<input id="login" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus></label>
     <label class="campo">Senha<input id="senha" name="password" type="password" autocomplete="current-password" required></label>
-    <div class="lembrar"><label class="chave"><input type="checkbox" id="lembrar" checked><span class="trilho"></span>Manter conectado por 30 dias</label></div>
     <div class="erro" id="erro" role="alert"></div>
     <button class="btn" id="bt" type="submit">Entrar</button>
   </form>
@@ -76,7 +74,7 @@ form{display:flex;flex-direction:column;gap:12px;margin-top:26px;text-align:left
     e.preventDefault();
     erro.textContent = ""; bt.disabled = true; bt.textContent = "Entrando…";
     try {
-      await A.api("/api/auth/entrar", { method: "POST", body: { login: f.login.value, senha: f.senha.value, lembrar: document.getElementById("lembrar").checked } });
+      await A.api("/api/auth/entrar", { method: "POST", body: { login: f.login.value, senha: f.senha.value } });
       location.href = destino;
     } catch (err) {
       erro.textContent = err.message;

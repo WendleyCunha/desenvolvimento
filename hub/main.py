@@ -85,6 +85,7 @@ import tickets
 import web_proxy
 import atelier
 import relatorios_publico
+import relatorios_lembretes
 import cliente_app
 import promocoes
 import agente
@@ -447,6 +448,7 @@ app.include_router(promocoes.router)
 app.include_router(web_proxy.router)
 app.include_router(atelier.router)
 app.include_router(relatorios_publico.router)
+app.include_router(relatorios_lembretes.router)
 app.include_router(wrouter.router)   # WROUTER — /motorista/ (app), /entrega/<código> (cliente) e /api/wrouter/*
 app.include_router(cliente_app.router)   # App do cliente — /cliente/ e /api/cliente/* (públicos, sessão própria)
 app.include_router(weduca.router)   # WEDUCA — feed/aprendizagem; o conteúdo vira base da IA do topo

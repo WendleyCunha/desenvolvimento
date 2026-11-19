@@ -72,7 +72,7 @@ ITS_PADRAO = [
 CONFIG_PADRAO = {"limite_aux": R.LIMITE_AUX_PADRAO, "corte_dia": R.CORTE_DIA_PADRAO, "grupos": [], "pastas": [],
                  "dia_meio": -1, "dia_fim": -1, "meta_regular": 600,
                  "its": ITS_PADRAO, "territorios_total": 0, "territorios_nao_trabalhados": 0, "visita_ultima": "",
-                 "pedir_dados_publicador": True,
+                 "pedir_dados_publicador": True, "lembretes_ligado": True, "lembrete_hora": 9,
                  "campos_publicador": ["data_nascimento", "data_batismo", "telefone_emergencia", "genero", "grupo"]}
 
 
@@ -1035,6 +1035,13 @@ def anual(request: Request, ano: int = 0):
 # ══════════════════════════════════════════════════════════════════════════════
 # CONFIGURAÇÃO
 # ══════════════════════════════════════════════════════════════════════════════
+@router.get("/lembretes")
+def lembretes_resumo(request: Request):
+    _contexto(request)
+    import relatorios_lembretes as L
+    return {"aparelhos": L.aparelhos()}
+
+
 @router.put("/config")
 async def salvar_config(request: Request):
     _, p = _contexto(request)
@@ -1071,6 +1078,10 @@ async def salvar_config(request: Request):
         novo["visita_ultima"] = str(c["visita_ultima"] or "")[:10]
     if "pedir_dados_publicador" in c:
         novo["pedir_dados_publicador"] = bool(c["pedir_dados_publicador"])
+    if "lembretes_ligado" in c:
+        novo["lembretes_ligado"] = bool(c["lembretes_ligado"])
+    if "lembrete_hora" in c:
+        novo["lembrete_hora"] = _int(c["lembrete_hora"], 6, 21)
     if "campos_publicador" in c:
         validos = [k for k, _ in CAMPOS_PUBLICADOR]
         novo["campos_publicador"] = [k for k in validos if k in (c["campos_publicador"] or [])]

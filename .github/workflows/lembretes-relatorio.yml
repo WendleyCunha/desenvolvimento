@@ -1,0 +1,20 @@
+# Lembrete do relatório (app Relatórios do Secretário).
+# De hora em hora (das 6h às 21h de Brasília) acorda o hub e pede a rodada do dia.
+# O hub só manda UMA vez por dia por empresa, depois da hora escolhida em Ajustes — chamar a mais não manda nada a mais.
+name: Lembretes do relatório
+on:
+  schedule:
+    - cron: "5 9-23,0 * * *"
+  workflow_dispatch:
+jobs:
+  disparar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Disparar lembretes
+        run: |
+          for i in 1 2 3; do
+            curl -fsS --max-time 120 -X POST https://wendleyservice.onrender.com/api/lembretes-relatorio/disparar && exit 0
+            sleep 20
+          done
+          exit 1

@@ -111,6 +111,14 @@ body{margin:0;background:var(--noite,#f6f1e6);color:var(--txt);font-family:var(-
 .confete i{position:absolute;top:-10px;width:7px;height:12px;border-radius:2px;opacity:.9;animation:cai 2.6s ease-in forwards}
 @keyframes cai{to{transform:translateY(520px) rotate(540deg);opacity:0}}
 
+/* lembrete do relatório */
+.lemb{margin:0 0 16px;padding:14px;border-radius:20px;text-align:left;display:grid;grid-template-columns:auto 1fr;gap:6px 12px;align-items:center;background:rgba(var(--ouro-rgb),.07);border:1px solid rgba(var(--ouro-rgb),.35)}
+.lemb .ic{font-size:1.6rem;grid-row:span 2}
+.lemb b{font-size:.95rem}
+.lemb span{font-size:.8rem;color:var(--txt2)}
+.lemb .bts{grid-column:1/-1;display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:6px}
+.lemb.feito{grid-template-columns:1fr;text-align:center;border-color:rgba(15,159,110,.5);background:rgba(15,159,110,.07)}
+
 /* completar a ficha (depois do obrigado) */
 .falta{margin:0 0 16px;padding:16px 14px;border-radius:20px;text-align:left;background:rgba(var(--ouro-rgb),.10);border:1.5px solid rgba(var(--ouro-rgb),.6);animation:borda 1.6s ease-in-out infinite}
 .falta .pede{display:block;text-align:center;font:700 1.02rem/1.35 var(--titulo);color:var(--ouro2);margin:0 0 4px;animation:piscaTx 1.1s ease-in-out infinite}
@@ -345,6 +353,7 @@ function mostrarOk(r, c) {
     </div>
     <div class="prot">${esc(r.nome)} · protocolo ${esc(r.protocolo)} · ${new Date().toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</div>
     ${r.completar ? `<form class="falta" id="falta" novalidate></form>` : ""}
+    <div id="lembBox"></div>
     <div class="acoes">
       <button type="button" class="btn v" id="okAn">${svg("sino")} Ver anúncios</button>
       <button type="button" class="btn v" id="okVoltar">${svg("voltar")} Voltar ao início</button>
@@ -354,6 +363,53 @@ function mostrarOk(r, c) {
   $("#okAn").onclick = () => { voltar(); irPara("an"); };
   $("#okVoltar").onclick = voltar;
   if (r.completar) pedirFaltando(r.completar, primeiro);
+  if (r.lembrete) guardarLembrete(r.lembrete);
+}
+
+/* ── Lembrete do relatório (notificação do sistema) ─────────────────────────── */
+const LEMB_SUPORTA = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+const ehIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+function lembPasses() { try { return JSON.parse(ls.get("wd.rel.lemb", "[]")) || []; } catch (_) { return []; } }
+function lembAparelho() {
+  let a = ls.get("wd.rel.aparelho", "");
+  if (!a) { a = Array.from(crypto.getRandomValues(new Uint8Array(18)), (b) => b.toString(16).padStart(2, "0")).join(""); ls.set("wd.rel.aparelho", a); }
+  return a;
+}
+async function lembInscrever(pedir) {
+  const k = await api("/api/relatorios-publico/lembretes/chave");
+  if (!k.ligado) return "desligado";
+  if (pedir && Notification.permission === "default") await Notification.requestPermission();
+  if (Notification.permission !== "granted") return "negado";
+  const reg = await navigator.serviceWorker.ready;
+  const b64u = (t) => { const p = "=".repeat((4 - (t.length % 4)) % 4); const r = atob((t + p).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from(r, (c) => c.charCodeAt(0)); };
+  const sub = (await reg.pushManager.getSubscription()) || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64u(k.publica) }));
+  await api("/api/relatorios-publico/lembretes/inscrever", { method: "POST", body: { aparelho: lembAparelho(), sub: sub.toJSON(), passes: lembPasses().map((x) => x.passe) } });
+  ls.set("wd.rel.lembAtivo", "1");
+  return "ok";
+}
+function guardarLembrete(l) {
+  const lista = lembPasses().filter((x) => x.nome !== l.nome);
+  lista.unshift(l); ls.set("wd.rel.lemb", JSON.stringify(lista.slice(0, 10)));
+  const box = $("#lembBox");
+  if (!box) return;
+  const ativo = ls.get("wd.rel.lembAtivo", "") === "1" && LEMB_SUPORTA && Notification.permission === "granted";
+  if (ativo) { lembInscrever(false).catch(() => {}); return; }        // já ativado: só inclui esta pessoa
+  if (!LEMB_SUPORTA) {
+    if (ehIOS && !instalado) box.innerHTML = `<div class="lemb"><span class="ic">🔔</span><b>Quer lembrete todo mês?</b><span>No iPhone, instale o app na tela de início (Compartilhar › Adicionar à Tela de Início) e envie por ele.</span></div>`;
+    return;
+  }
+  if (Notification.permission === "denied" || ls.get("wd.rel.lembNao", "") === new Date().toISOString().slice(0, 7)) return;
+  box.innerHTML = `<div class="lemb"><span class="ic">🔔</span><b>Lembrete todo mês?</b><span>A partir do dia 1, aviso aqui no aparelho até o relatório chegar.</span>
+    <div class="bts"><button type="button" class="btn p" id="lembSim">Ativar lembretes</button><button type="button" class="btn v" id="lembNao">Agora não</button></div></div>`;
+  $("#lembNao").onclick = () => { ls.set("wd.rel.lembNao", new Date().toISOString().slice(0, 7)); box.innerHTML = ""; };
+  $("#lembSim").onclick = async () => {
+    const bt = $("#lembSim"); bt.disabled = true; bt.textContent = "Ativando…";
+    try {
+      const r = await lembInscrever(true);
+      box.innerHTML = r === "ok" ? `<div class="lemb feito"><b>🔔 Lembretes ativados ✓</b><span>Todo mês, a partir do dia 1, enquanto o relatório não chegar.</span></div>`
+        : r === "negado" ? `<div class="lemb"><span class="ic">🔕</span><b>Notificações bloqueadas</b><span>Libere as notificações deste app nas configurações do aparelho e tente de novo.</span></div>` : "";
+    } catch (e) { bt.disabled = false; bt.textContent = "Tentar de novo"; box.querySelector(".lemb span:not(.ic)").textContent = e.message || "Não consegui ativar agora."; }
+  };
 }
 
 /* Ficha incompleta: pede só o que está vazio e grava direto no cadastro */
