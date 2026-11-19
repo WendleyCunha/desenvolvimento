@@ -36,6 +36,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Request
 
 import acesso
+import governanca
 import banco
 
 router = APIRouter(prefix="/api/passagens")
@@ -336,6 +337,7 @@ async def alterar_passageiro(id_evento: str, pid: str, request: Request):
     if proibidos:
         nomes = ", ".join(esq["campos"].get(k, k) for k in proibidos)
         raise HTTPException(403, f"Sem permissão para alterar: {nomes}.")
+    governanca.aplicar_campos(p, MOD, atual, {k: novos[k] for k in mudados})   # apagar campo só com nível Excluir
     if not mudados:
         return {"ok": True, "passageiro": _pax_para_usuario(pid, atual, p), "mudados": []}
 
