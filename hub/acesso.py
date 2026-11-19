@@ -390,7 +390,6 @@ async def entrar(request: Request):
     corpo = await request.json()
     login = str(corpo.get("login", "")).strip().lower()
     senha = str(corpo.get("senha", ""))
-    lembrar = bool(corpo.get("lembrar"))
 
     ok_user, fabrica, versao = None, False, 0
     if ADMIN_FAB_LOGIN and ADMIN_FAB_SENHA and login == ADMIN_FAB_LOGIN and hmac.compare_digest(senha, ADMIN_FAB_SENHA):
@@ -416,10 +415,10 @@ async def entrar(request: Request):
         raise HTTPException(401, "Usuário ou senha incorretos.")
 
     _falhas.pop(ip, None)
-    dias = 30 if lembrar else 0.5
+    dias = 30   # sempre conectado por 30 dias (sem a chave "lembrar" na tela)
     resp = JSONResponse({"ok": True, "usuario": publico(ok_user)})
     resp.set_cookie(COOKIE, gerar_token(login, versao, dias, fabrica), httponly=True, samesite="lax",
-                    secure=_https(request), max_age=int(dias * 86400) if lembrar else None, path="/")
+                    secure=_https(request), max_age=int(dias * 86400), path="/")
     return resp
 
 
