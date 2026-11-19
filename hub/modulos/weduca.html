@@ -623,6 +623,8 @@ b[data-perfil]:hover{text-decoration:underline}
 .shorts{position:fixed;top:84px;left:0;right:0;bottom:0;overflow-y:auto;overflow-anchor:none;scroll-snap-type:y mandatory;scrollbar-width:none;overscroll-behavior:contain}
 .shorts::-webkit-scrollbar{display:none}
 .short{height:calc(100vh - 84px);scroll-snap-align:start;scroll-snap-stop:always;display:grid;place-items:center;padding:10px 0 14px;position:relative}
+.sh-prog{position:absolute;left:14px;right:14px;top:10px;height:3px;border-radius:3px;background:rgba(255,255,255,.22);z-index:6;pointer-events:none;overflow:hidden}
+.sh-prog i{display:block;height:100%;width:0;background:#f0cb4e;border-radius:3px;transition:width .1s linear}
 .sh-card{position:relative;height:100%;aspect-ratio:9/16;max-width:94vw;border-radius:26px;overflow:hidden;background:#0b0b0d;box-shadow:0 30px 80px -30px rgba(0,0,0,.6),0 0 0 1px rgba(var(--edk-l),.1)}
 .sh-card.larga{aspect-ratio:auto;width:min(980px,94vw)}
 .sh-card .edk-arte,.sh-card .fundo-b{position:absolute;inset:0}
@@ -1675,7 +1677,7 @@ function htmlShort(p) {
   else if (p.conquista) { fundo = `${arte(p.id, "trofeu")}<div class="conq-sh"><span class="medalha">${svg("trofeu")}</span><small style="color:var(--ou-t);font-weight:800;letter-spacing:.14em;font-size:.72rem">CONQUISTA</small><b>${esc(p.conquista.titulo)}</b></div>`; }
   else { fundo = `${arte(p.id, pdf ? "pdf" : "feed")}<div class="txt-sh">${rico((p.texto || (pdf ? pdf.nome : "")).slice(0, 360))}${(p.texto || "").length > 360 ? "…" : ""}</div>`; centro = true; }
   const txt = centro ? "" : (p.texto || "");
-  return `<section class="short" data-sid="${esc(p.id)}"><div class="sh-card">${fundo}
+  return `<section class="short" data-sid="${esc(p.id)}"><div class="sh-card">${fundo}<span class="sh-prog"><i></i></span>
     <div class="sh-info"><div class="sh-quem">${avatar(p.autor, true)}<span><b data-perfil="${esc(lg)}">${esc((p.autor || {}).nome || "")}</b><small>${esc([g.cargo, g.setor].filter(Boolean).join(" · ") || quando(p.em))}</small></span>
       ${lg && lg !== S.eu.login && S.gente[lg] ? `<button type="button" class="btn-seg ${g.sigo ? "on" : ""}" data-seguir="${esc(lg)}">${g.sigo ? "Seguindo" : "Seguir"}</button>` : ""}</div>
       ${txt ? `<div class="sh-txt" data-s="txt">${rico(txt)}</div>` : ""}${fotos.length > 1 ? `<button type="button" class="edk-chip" data-s="fotos" style="margin-top:8px">${svg("imagem")} ${fotos.length} fotos</button>` : ""}
@@ -1687,10 +1689,58 @@ function htmlShort(p) {
       <button type="button" class="salvar ${p.salvei ? "on" : ""}" data-s="salvar"><span class="c">${svg("marcador")}</span><span class="r">Salvar</span></button>
     </div></div></section>`;
 }
+/* Avanço automático: texto/foto/conquista passam sozinhos (3 s, mais um pouco se o texto for longo);
+   vídeo passa para o próximo quando termina. Segurar o clique/dedo, abrir o texto ou um modal pausa. */
+function tempoShort(p) {
+  if (!p || p.video) return 0;
+  if ((p.midias || []).some((m) => m.kind === "foto") || p.conquista) return 3000;
+  const palavras = String(p.texto || "").trim().split(/\s+/).filter(Boolean).length;
+  return Math.min(12000, Math.max(3000, palavras * 260));
+}
+function shortPausado(el) {
+  return document.hidden || SH.segura || !!document.querySelector(".aur-modal-fundo, .st-tela, .luz") || !!$(".sh-txt.aberto", el);
+}
+function contarShort(el) {
+  clearInterval(SH.tm);
+  const ms = tempoShort(shortDe(el)), bar = $(".sh-prog i", el);
+  if (bar) bar.style.width = "0%";
+  if (!ms) return;
+  let feito = 0;
+  SH.tm = setInterval(() => {
+    if (!el.isConnected || SH.atual !== el) return clearInterval(SH.tm);
+    if (shortPausado(el)) return;
+    feito += 100; if (bar) bar.style.width = Math.min(100, feito / ms * 100) + "%";
+    if (feito >= ms) { clearInterval(SH.tm); irShort(1); }
+  }, 100);
+}
+function ytIframe(id, som) {
+  return `<iframe src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}?autoplay=1${som ? "" : "&mute=1"}&playsinline=1&rel=0&enablejsapi=1&origin=${encodeURIComponent(location.origin)}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen title="Vídeo"></iframe>`;
+}
+/** pede ao player do YouTube para avisar o estado (para saber quando o vídeo terminou) */
+function ytOuvir(yt) {
+  const f = $("iframe", yt); if (!f) return;
+  let n = 0; const fala = () => { if (!f.isConnected || f._ouvindo || n++ > 20) return; f.contentWindow?.postMessage(JSON.stringify({ event: "listening", id: 1, channel: "widget" }), "*"); setTimeout(fala, 500); };
+  f.addEventListener("load", fala); fala();
+}
+addEventListener("message", (e) => {
+  if (!/youtube(-nocookie)?\.com$/.test(new URL(e.origin || "http://x").hostname)) return;
+  let d; try { d = typeof e.data === "string" ? JSON.parse(e.data) : e.data; } catch { return; }
+  const f = $$(".short .yt iframe").find((x) => x.contentWindow === e.source); if (!f) return;
+  f._ouvindo = true;
+  const el = f.closest(".short"), info = d.info || {};
+  if (typeof info.duration === "number" && info.duration > 0) f._dur = info.duration;
+  if (typeof info.currentTime === "number" && f._dur) { const bar = $(".sh-prog i", el); if (bar) bar.style.width = Math.min(100, info.currentTime / f._dur * 100) + "%"; }
+  const fim = (d.event === "onStateChange" && d.info === 0) || (d.event === "infoDelivery" && info.playerState === 0);
+  if (fim && SH.atual === el && !f._fim) { f._fim = true; if (!shortPausado(el)) irShort(1); else { const espera = setInterval(() => { if (SH.atual !== el) return clearInterval(espera); if (!shortPausado(el)) { clearInterval(espera); irShort(1); } }, 300); } }
+});
+document.addEventListener("pointerdown", (e) => { if (e.target.closest(".short .sh-card") && !e.target.closest(".sh-acoes, button, a")) SH.segura = true; });
+addEventListener("pointerup", () => { SH.segura = false; });
+addEventListener("pointercancel", () => { SH.segura = false; });
 /** ao parar numa postagem: o vídeo começa sozinho (sem som); ao sair, para */
 function ativarShort(el, visivel) {
+  if (visivel) { SH.atual = el; contarShort(el); } else if (SH.atual === el) { SH.atual = null; clearInterval(SH.tm); }
   const yt = $(".yt", el); if (!yt) { if (visivel) aoChegar(el); return; }
-  if (visivel) { yt.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(yt.dataset.yt)}?autoplay=1&mute=1&playsinline=1&rel=0&loop=1&playlist=${encodeURIComponent(yt.dataset.yt)}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen title="Vídeo"></iframe>`; aoChegar(el); }
+  if (visivel) { yt.innerHTML = ytIframe(yt.dataset.yt, false); ytOuvir(yt); aoChegar(el); }
   else if ($("iframe", yt)) yt.innerHTML = `<img class="yt-capa" src="https://i.ytimg.com/vi/${esc(yt.dataset.yt)}/hqdefault.jpg" alt="" style="object-fit:contain"><span class="yt-play" data-s="play"></span>`;
 }
 function aoChegar(el) { const i = $$(".short").indexOf(el); if (i >= SH.posts.length - 3) maisShorts(); }
@@ -1714,7 +1764,7 @@ document.addEventListener("click", async (e) => {
     else if (a === "compart") compartilhar(p);
     else if (a === "txt") b.classList.toggle("aberto");
     else if (a === "fotos") luz(p.midias.filter((x) => x.kind === "foto"), 0);
-    else if (a === "play") { const yt = b.closest(".yt"); yt.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(yt.dataset.yt)}?autoplay=1&playsinline=1&rel=0" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen title="Vídeo"></iframe>`; }
+    else if (a === "play") { const yt = b.closest(".yt"); yt.innerHTML = ytIframe(yt.dataset.yt, true); ytOuvir(yt); }
     else if (a === "coment") {
       const t = await api(`/posts/${p.id}`); Object.assign(p, t); S.aberto = p;
       A.modal({ titulo: "Comentários · " + ((p.autor || {}).nome || ""), icone: "balao", cor: "#f0cb4e", largura: 760, html: `<div class="pilha">${htmlPost(p)}</div>`,
