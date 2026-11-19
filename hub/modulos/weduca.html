@@ -720,10 +720,12 @@ b[data-perfil]:hover{text-decoration:underline}
 /* EM ALTA NO TIME: cards em pé (como Shorts), rolando da direita para a esquerda; mouse em cima = pausa e o card "roda" */
 #fAlta .edk-fil{margin-bottom:16px}
 #fAlta .alta-vert .edk-setas{display:none}
-#fAlta .alta-vert .edk-rel{overflow:hidden;-webkit-mask-image:linear-gradient(90deg,transparent,#000 4%,#000 96%,transparent);mask-image:linear-gradient(90deg,transparent,#000 4%,#000 96%,transparent)}
+#fAlta .alta-vert .edk-rel{overflow:hidden;container-type:inline-size}
+#fAlta .alta-vert.roda .edk-rel{-webkit-mask-image:linear-gradient(90deg,transparent,#000 4%,#000 96%,transparent);mask-image:linear-gradient(90deg,transparent,#000 4%,#000 96%,transparent)}
 #fAlta .alta-vert .edk-trilho{gap:12px;overflow:visible;padding:8px 4px 10px;margin:0;width:max-content}
-#fAlta .alta-vert.roda .edk-trilho{animation:altaRola var(--dur,30s) linear infinite}
-#fAlta .alta-vert.roda .edk-rel:hover .edk-trilho{animation-play-state:paused}
+#fAlta .alta-vert.roda .edk-trilho{animation:altaRola var(--dur,30s) linear infinite;animation-play-state:paused}
+#fAlta .alta-vert.roda .edk-rel:hover .edk-trilho{animation-play-state:running}
+@media (hover:none){#fAlta .alta-vert.roda .edk-trilho{animation-play-state:running}}
 @keyframes altaRola{from{transform:translateX(0)}to{transform:translateX(-50%)}}
 #fAlta .alta-vert .edk-card{width:150px;aspect-ratio:9/16;border-radius:16px}
 #fAlta .alta-vert .edk-card h3{white-space:normal;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;font-size:14px;line-height:1.2}
@@ -751,9 +753,13 @@ b[data-perfil]:hover{text-decoration:underline}
 #fHero.hero-mini .bg::after{background:linear-gradient(0deg,var(--noite) 8%,color-mix(in srgb,var(--noite) 70%,transparent) 55%,color-mix(in srgb,var(--noite) 35%,transparent))}
 #fAlta .edk-fil{margin:2px 0 4px}
 #fAlta .edk-fil-cab h2{font-size:1.05rem}
-#fAlta .alta-vert .edk-card{width:132px}
+#fAlta .alta-vert .edk-trilho{gap:10px;padding:6px 0 8px}
+#fAlta .alta-vert .edk-card{width:calc((100cqw - 60px) / 7);min-width:0;flex:none}
+.stories-topo{margin:0 0 6px}
+.stories-topo .stories{padding:4px 2px 6px}
+#fHero.hero-mini{min-height:190px!important;margin-bottom:12px}
+@media (max-width:700px){#fAlta .alta-vert .edk-card{width:112px}}
 #fAlta .alta-vert .edk-card h3{font-size:13px}
-@media (max-width:1250px){.topo-feed{grid-template-columns:1fr}#fHero.hero-mini{min-height:220px!important}}
 @media (prefers-reduced-motion:reduce){#fAlta .alta-vert.roda .edk-trilho,#fAlta .alta-vert .edk-card:hover .capa-img{animation:none}}
 
 @media (max-width:820px){.topo{position:relative;top:0}.nav{order:3;width:100%;overflow-x:auto;flex-wrap:nowrap;margin:0}.novas{top:10px}}
@@ -1087,11 +1093,12 @@ async function telaFeed() {
   const comporH = pode("publicar") && ["tudo", "seguindo", "meus"].includes(S.sub) ? compor() : "";
   const filtrosH = `<div class="filtros">${tudo ? `<div class="chips" id="filtros">${FILTROS.map(([f, r]) => `<button type="button" class="chip ${f === (S.tipo || "") ? "ativo" : ""}" data-f="${f}">${r}</button>`).join("")}</div>` : ""}
           <label class="busca">${svg("busca")}<input class="entrada" id="busca" placeholder="Buscar (texto, pessoa, PDF, comentário…)" value="${esc(S.q)}" autocomplete="off"></label></div>`;
-  // "Para você": destaque à esquerda + stories/publicar/filtros à direita, Em alta logo abaixo — tudo compacto
+  // "Para você": no topo só a barra de stories (largura toda); Em alta na mesma altura da coluna da direita
   $("#main").innerHTML = `<div class="cont ${tudo ? "feed-topo-cont" : ""}">${titulo ? `<div class="cab-sec"><h2>${titulo}</h2></div>` : ""}
+      ${tudo ? `<div class="stories-topo">${storiesH}</div>` : ""}
       <div class="feed-grade"><section class="pilha">
-        ${tudo ? `<div class="topo-feed"><section class="edk-hero hero-mini" id="fHero"><div class="carregar" style="position:relative;z-index:2">carregando…</div></section>
-          <div class="topo-dir">${storiesH}${comporH}${filtrosH}</div></div><div id="fAlta"></div>` : `${storiesH}${comporH}${filtrosH}`}
+        ${tudo ? `<div id="fAlta"></div><section class="edk-hero hero-mini" id="fHero"><div class="carregar" style="position:relative;z-index:2">carregando…</div></section>
+          ${comporH}${filtrosH}` : `${storiesH}${comporH}${filtrosH}`}
         <button type="button" class="novas" id="novas">${svg("subir")}<span></span></button>
         <div class="pilha" id="lista"><div class="carregar">carregando…</div></div><div class="carregar" id="fim"></div>
       </section>
@@ -1144,10 +1151,10 @@ async function carregarDestaques() {
   if ($("#pendLado")) $("#pendLado").innerHTML = pendencias(cursos, d);   // pendências ficam na coluna da direita, junto do ranking
   if ($("#fAlta")) {
     const cards = d.alta.map((p, i) => cardPost(p, i % 4));
-    const roda = cards.length >= 3;   // com poucos cards não precisa rolar
+    const roda = cards.length > 7;   // cabem 7; passou disso, o resto fica oculto e rola ao passar o mouse
     $("#fAlta").innerHTML = d.alta.length > 1 ? fileiraA("Em alta no time", d.alta.some((p) => p.curtidas) ? "mais curtidos" : "recentes", roda ? [...cards, ...cards] : cards, "alta-vert" + (roda ? " roda" : "")) : "";
     const tr = $("#fAlta .edk-trilho");
-    if (tr && roda) tr.style.setProperty("--dur", `${Math.max(18, cards.length * 5)}s`);
+    if (tr && roda) tr.style.setProperty("--dur", `${Math.max(16, cards.length * 4)}s`);
   }
   if ($("#numeros")) $("#numeros").innerHTML = `<h3>${svg("ia")}Base de conhecimento</h3><div class="num"><div><b>${d.na_base}</b><small>publicações na base da IA</small></div><div><b>${d.total}</b><small>no feed</small></div></div>
     <small style="display:block;margin-top:10px;color:var(--txt3);font-size:.74rem">Pergunte no Agente do topo: ele responde com o que a equipe publicou.</small>`;
