@@ -58,7 +58,7 @@ ABAS: dict[str, dict] = {
                 "telefone_emergencia": "Telefone de emergência", "inicio_chave": "Entrou no quadro em", "cargo": "Cargo(s)",
                 "observacao": "Observações da ficha", "surdo": "S-10: surdo", "cego": "S-10: cego", "preso": "S-10: preso"},
                 "rotas": [
-                _r("GET", f"{S}/membro/*", "ver"), _r("POST", f"{S}/membros/*/status", "editar"), _r("POST", f"{S}/membros", "incluir"),
+                _r("GET", f"{S}/membro/*", "ver"), _r("GET", f"{S}/lembretes/membros", "ver"), _r("POST", f"{S}/membros/*/status", "editar"), _r("POST", f"{S}/membros", "incluir"),
                 _r("PUT", f"{S}/membros/*", "editar"), _r("DELETE", f"{S}/membros/*", "excluir"),
                 _r("GET", f"{S}/lixeira", "ver"), _r("POST", f"{S}/lixeira/*/restaurar", "editar"), _r("DELETE", f"{S}/lixeira/*", "excluir"),
                 _r("GET", f"{S}/pdf/s21/*", "ver"), _r("POST", f"{S}/importar-s21/ler", "ver"), _r("POST", f"{S}/importar-s21/aplicar", "editar")]},

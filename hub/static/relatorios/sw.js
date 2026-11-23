@@ -1,7 +1,7 @@
 /* sw.js — deixa o hub instalável como app (celular e computador).
    Não guarda tela nem dado de ninguém: só o ícone, para mostrar um aviso
    quando abrir sem sinal. Servido em /relatorios/sw.js (escopo só do app Relatórios). */
-const CACHE = "wd-rel-v2";
+const CACHE = "wd-rel-v3";
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(["/static/app/icone-192.png"])).then(() => self.skipWaiting()));
 });
@@ -21,15 +21,24 @@ self.addEventListener("fetch", e => {
 });
 
 /* Lembrete do relatório: notificação do sistema (Android, Windows, Mac, iPhone com o app instalado) */
+/* recibo: o aparelho avisa o Secretário que o lembrete CHEGOU e quando a pessoa ABRIU (só o id do lembrete) */
+function recibo(id, ev) {
+  if (!id) return Promise.resolve();
+  const base = new URL(self.registration.scope).pathname.replace(/\/relatorios\/?$/, "");
+  return fetch(base + "/api/relatorios-publico/lembretes/recibo", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id, ev }), keepalive: true }).catch(() => {});
+}
 self.addEventListener("push", (e) => {
   let d = {}; try { d = e.data ? e.data.json() : {}; } catch (_) { d = { titulo: "Relatório", texto: e.data ? e.data.text() : "" }; }
   e.waitUntil(self.registration.showNotification(d.titulo || "Relatório de serviço", {
     body: d.texto || "", tag: d.tag || undefined, renotify: true, requireInteraction: true,
-    icon: "/static/app/icone-192.png", badge: "/static/app/icone-192.png", data: { url: d.url || self.registration.scope } }));
+    icon: "/static/app/icone-192.png", badge: "/static/app/icone-192.png", data: { url: d.url || self.registration.scope, id: d.id || "" } })
+    .then(() => recibo(d.id, "chegou")));
 });
 self.addEventListener("notificationclick", (e) => {
   e.notification.close();
   const url = (e.notification.data && e.notification.data.url) || self.registration.scope;
+  recibo(e.notification.data && e.notification.data.id, "abriu");
   e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((ws) => {
     const w = ws.find((x) => x.url.startsWith(self.registration.scope));
     return w ? w.focus() : self.clients.openWindow(url);

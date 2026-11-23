@@ -1107,7 +1107,15 @@ def anual(request: Request, ano: int = 0):
 def lembretes_resumo(request: Request):
     _contexto(request)
     import relatorios_lembretes as L
-    return {"aparelhos": L.aparelhos()}
+    return L.resumo()
+
+
+@router.get("/lembretes/membros")
+def lembretes_membros(request: Request):
+    """Para a lista de Membros e a ficha: quem tem lembrete ativado e como foi o último."""
+    _contexto(request)
+    import relatorios_lembretes as L
+    return {"por_membro": L.resumo()["por_membro"]}
 
 
 @router.put("/config")

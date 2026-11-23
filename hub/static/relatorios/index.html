@@ -190,6 +190,7 @@ body{margin:0;background:var(--noite,#f6f1e6);color:var(--txt);font-family:var(-
   </nav>
 
   <main id="telaRel">
+    <div id="lembTopo"></div>
     <form class="cartao vidro vidro-borda-viva" id="form" novalidate autocomplete="on">
       <label class="campo">Nome<input id="nome" name="name" autocomplete="name" placeholder="Seu nome aqui" maxlength="80"></label>
       <div class="mes"><span>Mês do relatório</span><b id="mes">—</b></div>
@@ -210,7 +211,7 @@ body{margin:0;background:var(--noite,#f6f1e6);color:var(--txt);font-family:var(-
 
   <main id="telaAn" class="oculto"></main>
 
-  <footer class="rodape">S-4-T · Congregação Parque Aliança<br>Seus dados vão direto para o secretário da congregação.</footer>
+  <footer class="rodape">S-4-T · Congregação Parque Aliança<br>Seus dados vão direto para o secretário da congregação.<br><a href="#" id="lembLink" style="color:inherit">🔔 Lembrete do relatório</a></footer>
 </div>
 
 <script src="/static/aurora.js?v=6"></script>
@@ -390,20 +391,24 @@ async function lembInscrever(pedir) {
 function guardarLembrete(l) {
   const lista = lembPasses().filter((x) => x.nome !== l.nome);
   lista.unshift(l); ls.set("wd.rel.lemb", JSON.stringify(lista.slice(0, 10)));
-  const box = $("#lembBox");
+  const topo = $("#lembTopo"); if (topo) topo.innerHTML = "";
+  convidarLembrete($("#lembBox"), "wd.rel.lembNao", new Date().toISOString().slice(0, 7));
+}
+const lembAtivo = () => ls.get("wd.rel.lembAtivo", "") === "1" && LEMB_SUPORTA && Notification.permission === "granted";
+/** convite para ativar o lembrete (depois do envio, ou ao abrir o link num aparelho que já enviou relatório antes) */
+function convidarLembrete(box, chaveNao, valorNao) {
   if (!box) return;
-  const ativo = ls.get("wd.rel.lembAtivo", "") === "1" && LEMB_SUPORTA && Notification.permission === "granted";
-  if (ativo) { lembInscrever(false).catch(() => {}); return; }        // já ativado: só inclui esta pessoa
+  if (lembAtivo()) { lembInscrever(false).catch(() => {}); return; }        // já ativado: só inclui esta pessoa
   if (!LEMB_SUPORTA) {
     if (ehIOS && !instalado) box.innerHTML = `<div class="lemb"><span class="ic">🔔</span><b>Quer lembrete todo mês?</b><span>No iPhone, instale o app na tela de início (Compartilhar › Adicionar à Tela de Início) e envie por ele.</span></div>`;
     return;
   }
-  if (Notification.permission === "denied" || ls.get("wd.rel.lembNao", "") === new Date().toISOString().slice(0, 7)) return;
+  if (Notification.permission === "denied" || ls.get(chaveNao, "") === valorNao) return;
   box.innerHTML = `<div class="lemb"><span class="ic">🔔</span><b>Lembrete todo mês?</b><span>A partir do dia 1, aviso aqui no aparelho até o relatório chegar.</span>
     <div class="bts"><button type="button" class="btn p" id="lembSim">Ativar lembretes</button><button type="button" class="btn v" id="lembNao">Agora não</button></div></div>`;
-  $("#lembNao").onclick = () => { ls.set("wd.rel.lembNao", new Date().toISOString().slice(0, 7)); box.innerHTML = ""; };
-  $("#lembSim").onclick = async () => {
-    const bt = $("#lembSim"); bt.disabled = true; bt.textContent = "Ativando…";
+  box.querySelector("#lembNao").onclick = () => { ls.set(chaveNao, valorNao); box.innerHTML = ""; };
+  box.querySelector("#lembSim").onclick = async () => {
+    const bt = box.querySelector("#lembSim"); bt.disabled = true; bt.textContent = "Ativando…";
     try {
       const r = await lembInscrever(true);
       box.innerHTML = r === "ok" ? `<div class="lemb feito"><b>🔔 Lembretes ativados ✓</b><span>Todo mês, a partir do dia 1, enquanto o relatório não chegar.</span></div>`
@@ -411,6 +416,28 @@ function guardarLembrete(l) {
     } catch (e) { bt.disabled = false; bt.textContent = "Tentar de novo"; box.querySelector(".lemb span:not(.ic)").textContent = e.message || "Não consegui ativar agora."; }
   };
 }
+
+/* Ao abrir o link: se este aparelho já enviou relatório (tem passe), convida para o lembrete — mesmo sem instalar o app.
+   Já ativado: renova a inscrição 1x por dia (mantém o aparelho valendo). "Agora não" some por 7 dias. */
+function lembreteAoAbrir() {
+  const passes = lembPasses();
+  if (!passes.length) return;
+  const hoje = new Date().toISOString().slice(0, 10);
+  if (lembAtivo()) { if (ls.get("wd.rel.lembRenovado", "") !== hoje) lembInscrever(false).then(() => ls.set("wd.rel.lembRenovado", hoje)).catch(() => {}); return; }
+  const ate = ls.get("wd.rel.lembNaoAte", "");
+  if (ate && ate >= hoje) return;
+  const em7 = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+  convidarLembrete($("#lembTopo"), "wd.rel.lembNaoAte", em7);
+  const b = $("#lembTopo .lemb span:not(.ic)");
+  if (b && LEMB_SUPORTA) b.textContent = `Para ${passes.map((x) => String(x.nome || "").split(" ")[0]).filter(Boolean).slice(0, 4).join(", ")}: a partir do dia 1, aviso aqui no aparelho até o relatório chegar.`;
+}
+lembreteAoAbrir();
+$("#lembLink").onclick = (e) => {
+  e.preventDefault();
+  if (!lembPasses().length) return A.toast("Envie um relatório por este aparelho e depois ative o lembrete.", [], { cor: "var(--ouro)" });
+  if (lembAtivo()) return A.toast("Lembrete já está ativado neste aparelho ✓", [], { cor: "var(--verde)" });
+  ls.set("wd.rel.lembNaoAte", ""); lembreteAoAbrir(); window.scrollTo({ top: 0, behavior: "smooth" });
+};
 
 /* Ficha incompleta: pede só o que está vazio e grava direto no cadastro */
 function pedirFaltando(pd, primeiro) {
