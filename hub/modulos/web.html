@@ -36,6 +36,19 @@ body{margin:0;display:flex;flex-direction:column;overflow:hidden}
 .inicio p{margin:0;color:var(--txt2);max-width:560px;line-height:1.6;font-size:.88rem}
 .dica-bloq{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:3;display:none;align-items:center;gap:10px;padding:9px 12px 9px 14px;border-radius:14px;font-size:.8rem;max-width:calc(100% - 28px)}
 .dica-bloq.mostra{display:flex}
+.ext{display:inline-flex;align-items:center;gap:6px;padding:7px 11px;border-radius:12px;font-size:.76rem;font-weight:650;white-space:nowrap;cursor:pointer;border:1px solid var(--vidro-borda);background:rgba(255,255,255,.04);color:var(--txt2)}
+.ext.on{color:#bbf7d0;border-color:rgba(52,211,153,.4);background:rgba(52,211,153,.1)}
+.ext.off{color:var(--ouro2);border-color:rgba(var(--ouro-rgb),.45);background:rgba(var(--ouro-rgb),.1)}
+.ext svg{width:14px;height:14px}
+.recusa{position:absolute;inset:0;z-index:4;display:none;align-items:center;justify-content:center;padding:24px;background:var(--noite);color:var(--txt);text-align:center}
+.recusa.mostra{display:flex}
+.recusa .cx{max-width:600px;display:flex;flex-direction:column;gap:12px;align-items:center}
+.recusa h2{margin:0;font:700 1.25rem var(--titulo)}
+.recusa p{margin:0;color:var(--txt2);line-height:1.6;font-size:.9rem}
+.passos-ext{text-align:left;margin:0;padding-left:20px;line-height:1.75;font-size:.9rem;color:var(--txt2)}
+.passos-ext b{color:var(--txt)}
+.passos-ext code{background:rgba(255,255,255,.08);padding:1px 6px;border-radius:6px;user-select:all}
+@media (max-width:700px){.ext span{display:none}}
 </style>
 </head>
 <body>
@@ -51,6 +64,7 @@ body{margin:0;display:flex;flex-direction:column;overflow:hidden}
   <button type="button" class="btn-ic" id="btFav" title="Guardar nos favoritos"></button>
   <button type="button" class="btn-ic" id="btModo" title="Modo hub ⇄ direto"></button>
   <button type="button" class="btn-ic" id="btFora" title="Abrir numa aba do navegador"></button>
+  <button type="button" class="ext" id="btExt"></button>
 </div>
 <div class="favs" id="favs"></div>
 <div class="quadro">
@@ -62,9 +76,10 @@ body{margin:0;display:flex;flex-direction:column;overflow:hidden}
   <div class="inicio" id="telaInicio">
     <span id="orbe"></span>
     <h2>Abra um site aqui dentro</h2>
-    <p>Digite o endereço (por exemplo <b>g1.globo.com</b>) ou o que quer pesquisar e aperte Enter — a pesquisa vai pelo <b>Bing</b>, e as matérias abrem aqui dentro. Os sites abrem pelo <b>modo hub</b>: o hub busca a página e libera os links. Vídeos do YouTube e do Vimeo tocam no player deles. Sites com login (Outlook, Gmail, bancos, WhatsApp Web) e vídeos com proteção (Netflix, Globoplay) não funcionam dentro de um quadro — nesses, use ↗.</p>
+    <p>Digite o endereço (por exemplo <b>g1.globo.com</b>) ou o que quer pesquisar e aperte Enter — a pesquisa vai pelo <b>Bing</b>, e as matérias abrem aqui dentro. Os sites abrem pelo <b>modo hub</b>: o hub busca a página e libera os links. Vídeos do YouTube e do Vimeo tocam no player deles. <span id="inicioExt"></span></p>
   </div>
-  <div class="dica-bloq vidro" id="dicaBloq"><span id="dicaTxt">Não carregou direito? Clique no escudo para trocar o modo só deste site, ou use ↗.</span><button type="button" class="btn p" id="btFora2">Abrir em nova aba ↗</button><button type="button" class="btn-ic p" id="fechaDica" title="Fechar"></button></div>
+  <div class="dica-bloq vidro" id="dicaBloq"><span id="dicaTxt"></span><button type="button" class="btn p" id="btDicaExt">Abrir aqui dentro: instalar extensão</button><button type="button" class="btn p" id="btFora2">Abrir em nova aba ↗</button><button type="button" class="btn-ic p" id="fechaDica" title="Fechar"></button></div>
+  <div class="recusa" id="recusa"><div class="cx" id="recusaCx"></div></div>
 </div>
 
 <script src="/static/aurora.js?v=6"></script>
@@ -81,6 +96,12 @@ const K = { favs: "wd.web.favs", ult: "wd.web.ultimo" };
 const ler = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch (_) { return d; } };
 const gravar = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} };
 let atual = "";
+/* EXTENSÃO Hub Web: instalada neste navegador → os sites abrem DIRETO no quadro (pela internet e logins da pessoa) */
+const EXT = document.documentElement.dataset.wdWebExt || "";
+const UAD = navigator.userAgentData;
+const PC_CHROMIUM = UAD ? !UAD.mobile && UAD.brands.some((b) => /Chrom|Edge|Opera|Brave/i.test(b.brand))
+  : /Chrome\/|Edg\//.test(navigator.userAgent) && !/Mobile|Android|iPhone|iPad/i.test(navigator.userAgent);
+const EDGE = /Edg\//.test(navigator.userAgent);
 const MODO = "wd.web.modo";   // { host: "direto" } — padrão é o modo hub
 let TOK = "", ORIGEM = "";   // ORIGEM: endereço separado do modo hub (WEB_PROXY_ORIGEM), quando houver
 async function token() { if (!TOK) { try { const j = await A.api("/api/web/token"); TOK = j.token; ORIGEM = j.origem || ""; setTimeout(() => (TOK = ""), 6 * 3600e3); } catch (_) {} } return TOK; }
@@ -112,6 +133,7 @@ async function modoDe(u) {
   if (videoEmbed(u) || ehGoogle(u)) return "direto";
   const h = hostDe(u), fixo = ler(MODO, {})[h];
   if (fixo === "direto" || fixo === "hub") return fixo;
+  if (EXT) return "direto";   // com a extensão, todo site abre direto aqui dentro
   const c = ler(AUTO, {})[h];
   if (c && Date.now() - c.em < 6 * 3600e3) return c.m;
   let m = "hub";
@@ -130,6 +152,7 @@ function mostrarModo() { const b = $("#btModo"); if (!b) return; const d = atual
 // o site (no modo hub) avisa para qual página foi → atualiza a barra de endereço
 addEventListener("message", (e) => {
   const d = e.data; if (!d || e.source !== $("#quadro").contentWindow) return;
+  if (d.hubWeb === "recusou") { mostrarRecusa(String(d.url || atual)); return; }
   if (d.hubWeb === "abrir" && typeof d.url === "string" && /^https?:\/\//i.test(d.url)) { abrir(d.url); return; }   // ex.: link de vídeo dentro de um site
   if (d.hubWeb !== "url" || typeof d.url !== "string") return;
   atual = d.url; MODO_ATUAL = "hub"; registrar(d.url); $("#url").value = d.url; gravar(K.ult, d.url); $("#dicaBloq").classList.remove("mostra"); clearTimeout(timerDica); renderFavs(); mostrarModo();
@@ -178,14 +201,14 @@ async function abrir(t, doHistorico) {
   const busca = u.match(/^https:\/\/www\.bing\.com\/search\?setlang=pt-BR&cc=BR&q=(.*)$/);
   $("#url").value = busca ? decodeURIComponent(busca[1].replace(/\+/g, " ")) : u;
   $("#telaInicio").style.display = "none";
-  $("#dicaBloq").classList.remove("mostra");
+  $("#dicaBloq").classList.remove("mostra"); $("#recusa").classList.remove("mostra");
   gravar(K.ult, u);
   clearTimeout(timerDica);
   const m = await modoDe(u);
   if (meu !== pedido) return;   // a pessoa já pediu outro endereço
   MODO_ATUAL = m;
   $("#quadro").src = await srcDe(u, m);
-  timerDica = setTimeout(() => { if (!ehGoogle(u) && !videoEmbed(u)) $("#dicaBloq").classList.add("mostra"); }, m === "direto" ? 6000 : 12000);
+  if (!(EXT && m === "direto")) timerDica = setTimeout(() => { if (!ehGoogle(u) && !videoEmbed(u)) mostrarDica(m); }, m === "direto" ? 6000 : 12000);
   renderFavs(); mostrarModo();
 }
 function fora() { if (atual) window.open(atual, "_blank", "noopener"); }
@@ -202,9 +225,61 @@ $("#btModo").onclick = () => { if (!atual || ehGoogle(atual) || videoEmbed(atual
   if (m[h]) { delete m[h]; A.toast("Automático de novo para " + h); } else { m[h] = MODO_ATUAL === "direto" ? "hub" : "direto"; A.toast((m[h] === "direto" ? "Direto" : "Modo hub") + " fixado para " + h + " — clique de novo para voltar ao automático"); }
   gravar(MODO, m); abrir(atual); };
 $("#btFora").onclick = fora; $("#btFora2").onclick = fora;
+
+/* ── extensão: estado na barra, instruções e avisos ─────────────────────────── */
+function textoInstalar() {
+  const pag = EDGE ? "edge://extensions" : "chrome://extensions";
+  return `<ol class="passos-ext">
+    <li><b>Baixe</b> a extensão (botão abaixo) e <b>extraia</b> o arquivo .zip numa pasta que você não vai apagar (ex.: Documentos › hub-web).</li>
+    <li>Na barra de endereço do ${EDGE ? "Edge" : "Chrome"}, digite <code>${pag}</code> e aperte Enter.</li>
+    <li>Ligue <b>${EDGE ? "Modo de desenvolvedor" : "Modo do desenvolvedor"}</b> (chave no canto da tela).</li>
+    <li>Clique em <b>${EDGE ? "Carregar sem pacote" : "Carregar sem compactação"}</b> e escolha a pasta <b>hub-web</b>.</li>
+    <li>Volte aqui e <b>recarregue</b> o hub. A etiqueta "Extensão ativa" fica verde.</li></ol>
+    <p style="font-size:.8rem;color:var(--txt3);margin-top:10px">Grátis, sem loja. Ela só tira a trava "não pode abrir dentro de outra página" dos sites abertos <b>dentro do hub</b>; fora do hub nada muda. O ${EDGE ? "Edge" : "Chrome"} pede permissão para "todos os sites" porque é ela que solta a trava de cada site aberto aqui. Faça uma vez em cada computador.</p>`;
+}
+function baixarExt() { location.href = "/api/web/extensao.zip"; }
+function instalarExt() {
+  if (!PC_CHROMIUM) {
+    A.modal({ titulo: "Extensão Hub Web", icone: "globo", largura: 560, html: `<p>A extensão funciona em <b>computador</b> com <b>Chrome</b> ou <b>Edge</b>. Neste aparelho/navegador ela não pode ser instalada, então os sites que bloqueiam o hub não abrem aqui dentro.</p>`, botoes: [{ rotulo: "Entendi", classe: "btn" }] });
+    return;
+  }
+  A.modal({ titulo: "Abrir qualquer site aqui dentro", icone: "globo", largura: 640, html: textoInstalar(),
+    botoes: [{ rotulo: "Fechar" }, { rotulo: "Baixar extensão", icone: "baixar", classe: "btn", acao: () => { baixarExt(); return false; } }] });
+}
+function mostrarExt() {
+  const b = $("#btExt");
+  b.className = "ext " + (EXT ? "on" : PC_CHROMIUM ? "off" : "");
+  b.innerHTML = EXT ? `${svg("check")}<span>Extensão ativa</span>` : `${svg("baixar")}<span>${PC_CHROMIUM ? "Instalar extensão" : "Sobre a extensão"}</span>`;
+  b.title = EXT ? "Extensão Hub Web instalada: os sites abrem direto aqui dentro, pela sua internet e seus logins" : "Com a extensão Hub Web (grátis), sites que bloqueiam o hub abrem aqui dentro";
+  b.onclick = EXT ? () => A.toast("Extensão Hub Web ativa neste navegador ✓", [], { cor: "var(--verde)" }) : instalarExt;
+  $("#inicioExt").innerHTML = EXT ? " Com a <b>extensão Hub Web</b> ativa, os sites abrem direto aqui, com a sua internet e os seus logins."
+    : PC_CHROMIUM ? " Alguns sites bloqueiam o hub (proteção contra robôs, login, \"recusou a conexão\"). Para abrir <b>esses também aqui dentro</b>, instale a <b>extensão Hub Web</b> (grátis) — botão no canto da barra."
+    : " Alguns sites bloqueiam o hub (proteção contra robôs, login). No celular eles não abrem aqui dentro; no computador com Chrome ou Edge, a extensão Hub Web resolve.";
+}
+function mostrarDica(m) {
+  const t = $("#dicaTxt"), bx = $("#btDicaExt");
+  if (EXT) { t.textContent = "Não carregou? Alguns sites (bancos, WhatsApp Web) recusam abrir dentro de outra página mesmo com a extensão."; bx.style.display = "none"; }
+  else if (m === "direto") { t.textContent = "Apareceu \"recusou a conexão\"? O próprio site não deixa abrir dentro de outra página." + (PC_CHROMIUM ? " Com a extensão Hub Web ele abre aqui." : " Neste aparelho não há como abrir aqui dentro."); bx.style.display = PC_CHROMIUM ? "" : "none"; }
+  else { t.textContent = "Não carregou direito? Clique no escudo para trocar o modo só deste site." + (PC_CHROMIUM ? " Com a extensão Hub Web, o site abre direto aqui." : ""); bx.style.display = PC_CHROMIUM ? "" : "none"; }
+  $("#btFora2").style.display = bx.style.display === "none" ? "" : "none";
+  $("#dicaBloq").classList.add("mostra");
+}
+function mostrarRecusa(u) {
+  clearTimeout(timerDica); $("#dicaBloq").classList.remove("mostra");
+  const h = esc(hostDe(u) || u);
+  $("#recusaCx").innerHTML = `${A.orbe("escudo", "var(--ouro)")}<h2>${h} recusou a visita pelo servidor do hub</h2>
+    <p>O site usa uma proteção contra robôs que bloqueia acessos vindos de servidores. Isso é do próprio site — não há como contornar pelo servidor.</p>`
+    + (PC_CHROMIUM ? `<p><b>Para abrir aqui dentro:</b> instale a extensão <b>Hub Web</b> (grátis, 1 minuto). Com ela o site abre pela <b>sua</b> internet, como num navegador comum.</p>${textoInstalar()}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center"><button type="button" class="btn" id="rcBaixar">${svg("baixar")} Baixar extensão</button></div>`
+    : `<p><b>Neste aparelho não é possível abrir ${h} dentro do hub.</b> No computador, com Chrome ou Edge e a extensão Hub Web, ele abre aqui.</p>`);
+  $("#recusa").classList.add("mostra");
+  const rb = $("#rcBaixar"); if (rb) rb.onclick = baixarExt;
+}
+$("#btDicaExt").onclick = instalarExt;
+mostrarExt();
 $("#btVoltar").onclick = () => andar(-1); $("#btAvancar").onclick = () => andar(1);
 $("#fechaDica").onclick = () => $("#dicaBloq").classList.remove("mostra");
-$("#btInicio").onclick = () => { atual = ""; HIST.pos = HIST.lista.length - 1; $("#quadro").src = "about:blank"; $("#telaInicio").style.display = ""; $("#url").value = ""; $("#dicaBloq").classList.remove("mostra"); renderFavs(); $("#url").focus(); };
+$("#btInicio").onclick = () => { $("#recusa").classList.remove("mostra"); atual = ""; HIST.pos = HIST.lista.length - 1; $("#quadro").src = "about:blank"; $("#telaInicio").style.display = ""; $("#url").value = ""; $("#dicaBloq").classList.remove("mostra"); renderFavs(); $("#url").focus(); };
 $("#btFav").onclick = () => {
   if (!atual) { A.toast("Abra um site primeiro."); return; }
   const l = ler(K.favs, [{ t: "Google", u: "https://www.google.com.br" }]);
