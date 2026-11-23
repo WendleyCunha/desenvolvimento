@@ -25,12 +25,15 @@ from __future__ import annotations
 
 import base64
 import hmac
+import io
 import ipaddress
 import json
 import os
 import re
 import socket
 import time
+import zipfile
+from pathlib import Path
 from urllib.parse import parse_qs, quote, urljoin, urlsplit
 
 import httpx
@@ -92,6 +95,66 @@ def token(request: Request):
     if not acesso.pode_acessar(u, MOD):
         raise HTTPException(403, "Sem acesso ao módulo Web.")
     return {"token": _token(u["login"]), "origem": ORIGEM_WEB}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# EXTENSÃO "Hub Web" (Chrome/Edge, grátis, sem loja): com ela o site abre DIRETO no quadro,
+# saindo do computador da pessoa (internet e logins dela) — resolve o que o servidor não
+# consegue (sites que recusam servidores, verificação contra robôs, login).
+# ══════════════════════════════════════════════════════════════════════════════
+VERSAO_EXT = "1.0"
+_PASTA_EXT = Path(__file__).resolve().parent / "extensao_web"
+
+
+@router.get("/api/web/extensao.zip")
+def extensao(request: Request):
+    u = acesso.exigir_usuario(request)
+    if not acesso.pode_acessar(u, MOD):
+        raise HTTPException(403, "Sem acesso ao módulo Web.")
+    base = _base(request)
+    esquema, host = urlsplit(base).scheme or "https", urlsplit(base).netloc
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for nome in ("manifest.json", "bg.js", "ponte.js"):
+            txt = (_PASTA_EXT / nome).read_text(encoding="utf-8")
+            txt = txt.replace("__HUB__", host).replace("__ESQUEMA__", esquema).replace("__VERSAO__", VERSAO_EXT)
+            z.writestr(f"hub-web/{nome}", txt)
+        z.write(Path(__file__).resolve().parent / "static" / "app" / "icone-192.png", "hub-web/icone.png")
+    return Response(buf.getvalue(), media_type="application/zip",
+                    headers={"Content-Disposition": 'attachment; filename="hub-web-extensao.zip"', "Cache-Control": "no-store"})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SITE QUE RECUSA O SERVIDOR (proteção contra robôs: Akamai, Cloudflare, Imperva…)
+#   Não há como contornar pelo servidor — e não tentamos. O hub mostra o PORQUÊ e
+#   como abrir aqui dentro (extensão), em vez da página de erro do site.
+# ══════════════════════════════════════════════════════════════════════════════
+_SINAIS_ROBO = ("errors.edgesuite.net", "cf-chl-", "/cdn-cgi/challenge-platform", "cf_chl_opt", "_incapsula_resource",
+                "captcha-delivery", "px-captcha", "sgcaptcha")
+_SINAIS_CURTOS = ("just a moment...", "attention required! | cloudflare", "verificação de segurança", "verificacao de seguranca",
+                  "performing security verification", "checking your browser", "ddos-guard", "reference #18.", "access denied")
+
+
+def _recusou_servidor(status: int, texto: str) -> str:
+    """'' se a página veio normal; senão o motivo ('protecao'). Frases comuns só contam em página curta (tela de bloqueio)."""
+    amostra = (texto or "")[:60000].lower()
+    if any(s in amostra for s in _SINAIS_ROBO):
+        return "protecao"
+    if len(amostra) < 30000 and any(s in amostra for s in _SINAIS_CURTOS):
+        return "protecao"
+    if status in (401, 403, 429, 503) and len(amostra) < 3000:
+        return "protecao"
+    return ""
+
+
+def _pagina_recusa(url: str, motivo: str) -> str:
+    host = _esc(urlsplit(url).hostname or url)
+    return f"""<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<body style="margin:0;min-height:100vh;display:grid;place-items:center;font:15px system-ui,sans-serif;background:#0d1220;color:#e8ecf5;text-align:center;padding:24px">
+<div style="max-width:560px"><div style="font-size:42px">🛡️</div><h2 style="margin:8px 0">{host} recusou a visita pelo servidor do hub</h2>
+<p style="color:#aab4c8;line-height:1.6">O site usa uma proteção contra robôs que bloqueia acessos vindos de servidores. Isso é do próprio site — não há como contornar pelo servidor.</p>
+<p style="color:#aab4c8;line-height:1.6">Num computador com <b>Chrome</b> ou <b>Edge</b>, instale a extensão <b>Hub Web</b> (grátis): com ela o site abre aqui dentro, pela sua própria internet.</p></div>
+<script>try{{parent.postMessage({{hubWeb:"recusou",url:{json.dumps(url)},motivo:{json.dumps(motivo)}}},"*")}}catch(_){{}}</script></body>"""
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -428,6 +491,9 @@ async def proxy(request: Request, u: str = "", t: str = ""):
     if len(r.content) > MAX_BYTES:
         raise HTTPException(413, "Arquivo grande demais para abrir aqui — use ↗.")
     if "html" in tipo:
+        motivo = _recusou_servidor(r.status_code, r.text)
+        if motivo:
+            return HTMLResponse(_pagina_recusa(final, motivo), status_code=200, headers=cab)
         texto = _html(r.text, final, _base(request), tok, _pote(login, urlsplit(final).hostname or ""))
         return HTMLResponse(texto, status_code=r.status_code if r.status_code < 400 else 200, headers=cab)
     disp = r.headers.get("content-disposition")
