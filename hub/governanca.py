@@ -61,7 +61,7 @@ ABAS: dict[str, dict] = {
                 "rotas": [
                 _r("GET", f"{S}/membro/*", "ver"), _r("GET", f"{S}/lembretes/membros", "ver"), _r("POST", f"{S}/membros/*/status", "editar"),
                 _r("PUT", f"{S}/membros/*/transferencia", "editar"), _r("POST", f"{S}/membros/*/batismo-ok", "editar"),
-                _r("GET", f"{S}/pdf/transferencia/*", "ver"), _r("GET", f"{S}/contatos-emergencia", "ver"), _r("POST", f"{S}/membros", "incluir"),
+                _r("GET", f"{S}/pdf/transferencia/*", "ver"), _r("GET", f"{S}/carta/assinaturas", "ver"), _r("GET", f"{S}/contatos-emergencia", "ver"), _r("POST", f"{S}/membros", "incluir"),
                 _r("PUT", f"{S}/membros/*", "editar"), _r("DELETE", f"{S}/membros/*", "excluir"),
                 _r("GET", f"{S}/lixeira", "ver"), _r("POST", f"{S}/lixeira/*/restaurar", "editar"), _r("DELETE", f"{S}/lixeira/*", "excluir"),
                 _r("GET", f"{S}/pdf/s21/*", "ver"), _r("POST", f"{S}/importar-s21/ler", "ver"), _r("POST", f"{S}/importar-s21/aplicar", "editar")]},
