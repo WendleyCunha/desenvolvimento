@@ -948,26 +948,94 @@ def restaurar_membro(mid: str, request: Request):
     return {"ok": True, "id": mid}
 
 
+def _apagar_tudo_de(mid: str) -> dict:
+    """APAGA DE VEZ do banco de dados tudo o que é desta pessoa — não fica cópia, não tem como recuperar:
+    a ficha (com carta de transferência, carta recebida, contatos…), as fichas antigas de quando ela foi
+    renomeada, TODOS os relatórios dela, os lembretes do celular e o registro dos lembretes enviados,
+    e o nome dela nas pastas personalizadas do ZIP."""
+    exc = getattr(BASE, "excluidos", None) or {}
+    m = exc.get(mid) or {}
+    ids = {mid, *[str(x) for x in (m.get("nomes_anteriores") or []) if x]}
+    ren = getattr(BASE, "renomeados", None) or {}
+    mudou = True
+    while mudou:   # fichas guardadas de nomes antigos que apontam para ela (em cadeia)
+        mudou = False
+        for antigo, r in ren.items():
+            if antigo not in ids and r.get("renomeado_para") in ids:
+                ids.add(antigo)
+                mudou = True
+    rels = [rid for rid, r in BASE.rels.items() if r.get("membro_id") in ids or (r.get("nome") in ids and not r.get("membro_id"))]
+    refs = [_db().collection(COL_MEMBROS).document(i) for i in ids] + [_db().collection(COL_REL).document(r) for r in rels]
+    # lembretes (aparelhos com esta pessoa) e envios registrados
+    import relatorios_lembretes as LB   # import tardio: o módulo de lembretes importa este
+    aparelhos = 0
+    try:
+        for d in LB._col().stream(timeout=banco.TIMEOUT):
+            dd = d.to_dict() or {}
+            ms = dd.get("membros") or []
+            if not any(x in ids for x in ms):
+                continue
+            resto = [x for x in ms if x not in ids]
+            aparelhos += 1
+            if resto:
+                LB._col().document(d.id).set({"membros": resto, "desde": {k: v for k, v in (dd.get("desde") or {}).items() if k not in ids}},
+                                             merge=True, timeout=banco.TIMEOUT)
+            else:
+                refs.append(LB._col().document(d.id))
+        for d in LB._col_env().stream(timeout=banco.TIMEOUT):
+            if (d.to_dict() or {}).get("membro") in ids:
+                refs.append(LB._col_env().document(d.id))
+        LB._esquecer()
+    except Exception:   # sem lembretes configurados: segue
+        pass
+    for i in range(0, len(refs), 400):   # o Firestore aceita até 500 operações por lote
+        lote = _db().batch()
+        for ref in refs[i:i + 400]:
+            lote.delete(ref)
+        lote.commit(timeout=banco.TIMEOUT)
+    cfg = BASE.config()
+    pastas = cfg.get("pastas") or []
+    if any(set(pp.get("membros") or []) & ids for pp in pastas):
+        BASE.salvar_config({"pastas": [{**pp, "membros": [x for x in (pp.get("membros") or []) if x not in ids]} for pp in pastas]})
+    with BASE.trava:
+        for i in ids:
+            exc.pop(i, None)
+            ren.pop(i, None)
+            (BASE.membros or {}).pop(i, None)
+        for r in rels:
+            BASE.rels.pop(r, None)
+        BASE._linhas = None
+    return {"fichas": len(ids), "relatorios": len(rels), "aparelhos": aparelhos}
+
+
 @router.delete("/lixeira/{mid}")
-def apagar_de_vez(mid: str, request: Request, relatorios: int = 0):
-    """Apaga a ficha DO BANCO DE DADOS (não volta). Com relatorios=1 apaga também os relatórios dela."""
+def apagar_de_vez(mid: str, request: Request, relatorios: int = 1):
+    """Apaga a ficha DO BANCO DE DADOS, de vez, com tudo o que é dela (relatórios inclusive). Não volta."""
     u, p = _contexto(request)
     _exigir(p, "membros", "apagar fichas")
     BASE.atualizar()
     exc = getattr(BASE, "excluidos", None) or {}
     if mid not in exc:
         raise HTTPException(404, "Só dá para apagar de vez o que está na lixeira.")
-    _db().collection(COL_MEMBROS).document(mid).delete(timeout=banco.TIMEOUT)
-    apagados = 0
-    if relatorios:
-        for rid in _rels_de(mid):
-            _db().collection(COL_REL).document(rid).delete(timeout=banco.TIMEOUT)
-            BASE.rels.pop(rid, None)
-            apagados += 1
-    with BASE.trava:
-        exc.pop(mid, None)
-        BASE._linhas = None
-    return {"ok": True, "id": mid, "relatorios_apagados": apagados}
+    r = _apagar_tudo_de(mid)
+    return {"ok": True, "id": mid, "relatorios_apagados": r["relatorios"], "apagado": r}
+
+
+@router.delete("/lixeira")
+def esvaziar_lixeira(request: Request):
+    """ESVAZIAR A LIXEIRA: apaga de vez do banco todas as fichas que estão nela, com tudo o que é delas."""
+    u, p = _contexto(request)
+    _exigir(p, "membros", "esvaziar a lixeira")
+    BASE.atualizar()
+    tot = {"fichas": 0, "relatorios": 0, "aparelhos": 0, "pessoas": 0}
+    for mid in list((getattr(BASE, "excluidos", None) or {}).keys()):
+        if mid not in (getattr(BASE, "excluidos", None) or {}):
+            continue   # já saiu junto com outra (nome antigo)
+        r = _apagar_tudo_de(mid)
+        tot["pessoas"] += 1
+        for k in ("fichas", "relatorios", "aparelhos"):
+            tot[k] += r[k]
+    return {"ok": True, **tot}
 
 
 STATUS_MANUAL = ("ativo", "sem_relatorio", "inativo", "saiu")
@@ -1472,9 +1540,11 @@ async def zip_visita(request: Request):
     cfg = BASE.config()
     grupos = {g["id"]: g["nome"] for g in cfg.get("grupos", [])}
     raiz = str(c.get("titulo") or f"VISITA {datetime.now(R.FUSO).strftime('%d %m %Y')}")
-    dados = PDF.zip_visita(raiz=raiz, anos=anos, membros=membros, linhas=linhas, ate=ate, situacoes=situacoes,
-                           assist=assist, s1s=s1s, s10_=s10_, pastas=cfg.get("pastas", []),
-                           por_grupo=bool(c.get("por_grupo")), grupos=grupos, anexos=anexos)
+    from starlette.concurrency import run_in_threadpool   # fora do laço principal: o resto do sistema não trava
+    dados = await run_in_threadpool(lambda: PDF.zip_visita(raiz=raiz, anos=anos, membros=membros, linhas=linhas, ate=ate,
+                                                           situacoes=situacoes, assist=assist, s1s=s1s, s10_=s10_,
+                                                           pastas=cfg.get("pastas", []), por_grupo=bool(c.get("por_grupo")),
+                                                           grupos=grupos, anexos=anexos))
     if c.get("marcar_visita"):
         BASE.salvar_config({"visita_ultima": datetime.now(R.FUSO).date().isoformat()})
     return Response(dados, media_type="application/zip",

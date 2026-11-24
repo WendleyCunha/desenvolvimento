@@ -60,9 +60,27 @@ class _Col:
         return self
 
 
+class _Lote:
+    def __init__(self):
+        self.ops = []
+
+    def set(self, ref, d, merge=False):
+        self.ops.append(lambda: ref.set(d, merge=merge))
+
+    def delete(self, ref):
+        self.ops.append(ref.delete)
+
+    def commit(self, **k):
+        for op in self.ops:
+            op()
+
+
 class _Fake:
     def collection(self, n):
         return _Col((n,))
+
+    def batch(self):
+        return _Lote()
 
 
 @pytest.fixture()

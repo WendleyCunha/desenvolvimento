@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import io
 import re
+import threading
 import zipfile
 from pathlib import Path
 
@@ -36,9 +37,22 @@ def nome_arquivo(t: str) -> str:
     return re.sub(r"\s+", " ", t)[:120] or "sem nome"
 
 
-def _preencher(campos_txt: dict, caixas: set[str]) -> bytes:
-    leitor = PdfReader(str(MODELO_S21))
-    w = PdfWriter(clone_from=leitor)
+_MODELO_CACHE: dict = {}
+_MODELO_TRAVA = threading.Lock()
+
+
+def _novo_do_modelo() -> PdfWriter:
+    """Cópia do formulário S-21 em branco. O modelo é lido UMA vez e fica em memória:
+    no ZIP da visita (centenas de cartões) isso corta a maior parte do tempo."""
+    with _MODELO_TRAVA:
+        leitor = _MODELO_CACHE.get("leitor")
+        if leitor is None:
+            leitor = _MODELO_CACHE["leitor"] = PdfReader(io.BytesIO(MODELO_S21.read_bytes()))
+        return PdfWriter(clone_from=leitor)
+
+
+def _preencher(campos_txt: dict, caixas: set[str], carimbo: str = "") -> bytes:
+    w = _novo_do_modelo()
     pagina = w.pages[0]
     w.update_page_form_field_values(pagina, {k: str(v) for k, v in campos_txt.items()}, auto_regenerate=False)
     for a in pagina.get("/Annots", []):
@@ -49,6 +63,11 @@ def _preencher(campos_txt: dict, caixas: set[str]) -> bytes:
             a[NameObject("/V")] = estado
             a[NameObject("/AS")] = estado
     w.set_need_appearances_writer(True)
+    if carimbo:   # contato de emergência na mesma passada (sem reabrir o PDF)
+        larg, alt = float(pagina.mediabox.width), float(pagina.mediabox.height)
+        sobre = _pagina_carimbo(carimbo, larg, alt)
+        if sobre is not None:
+            pagina.merge_page(sobre)
     saida = io.BytesIO()
     w.write(saida)
     return saida.getvalue()
@@ -75,23 +94,21 @@ def _linhas_no_formulario(linhas: list[dict], txt: dict, caixas: set[str]) -> No
         txt["904_32_S21_Value"] = total
 
 
-def _carimbo_emergencia(pdf: bytes, telefone: str) -> bytes:
-    """Escreve o contato de emergência na parte branca do S-21, logo abaixo da linha 'Total'."""
+def _pagina_carimbo(telefone: str, larg: float, alt: float):
+    """Página transparente com 'Contato de emergência: …' logo abaixo da linha 'Total' do S-21."""
     telefone = " ".join(str(telefone or "").split())
     if not telefone:
-        return pdf
+        return None
     from reportlab.lib.pagesizes import A4
     from reportlab.pdfgen import canvas
 
-    leitor = PdfReader(io.BytesIO(pdf))
-    larg, alt = float(leitor.pages[0].mediabox.width), float(leitor.pages[0].mediabox.height)
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=(larg, alt) if larg and alt else A4)
     y = 366   # a linha "Total" do S-21-T vai de 385 a 402 (pontos); 1 cm abaixo dela
     c.setFont("Helvetica-Bold", 9)
     c.drawString(19, y, "Contato de emergência:")
     c.setFont("Helvetica", 9)
-    largura_max = larg - 19 - 125
+    largura_max = (larg or A4[0]) - 19 - 125
     linha, linhas = "", []
     for palavra in telefone.split():   # quebra em até 2 linhas
         teste = (linha + " " + palavra).strip()
@@ -104,19 +121,27 @@ def _carimbo_emergencia(pdf: bytes, telefone: str) -> bytes:
     for i, t in enumerate(linhas[:2]):
         c.drawString(125, y - 12 * i, t)
     c.save()
+    return PdfReader(io.BytesIO(buf.getvalue())).pages[0]
+
+
+def _carimbo_emergencia(pdf: bytes, telefone: str) -> bytes:
+    """Escreve o contato de emergência na parte branca do S-21, logo abaixo da linha 'Total'."""
+    if not " ".join(str(telefone or "").split()):
+        return pdf
+    leitor = PdfReader(io.BytesIO(pdf))
+    larg, alt = float(leitor.pages[0].mediabox.width), float(leitor.pages[0].mediabox.height)
     w = PdfWriter(clone_from=leitor)
-    w.pages[0].merge_page(PdfReader(io.BytesIO(buf.getvalue())).pages[0])
+    w.pages[0].merge_page(_pagina_carimbo(telefone, larg, alt))
     saida = io.BytesIO()
     w.write(saida)
     return saida.getvalue()
 
 
 def s21_membro(membro: dict, linhas: list[dict], as_: int) -> bytes:
-    pdf = _s21_membro_form(membro, linhas, as_)
-    return _carimbo_emergencia(pdf, membro.get("telefone_emergencia", ""))
+    return _s21_membro_form(membro, linhas, as_, carimbo=membro.get("telefone_emergencia", ""))
 
 
-def _s21_membro_form(membro: dict, linhas: list[dict], as_: int) -> bytes:
+def _s21_membro_form(membro: dict, linhas: list[dict], as_: int, carimbo: str = "") -> bytes:
     txt = {"900_1_Text_SanSerif": membro.get("nome_oficial") or membro.get("id") or "", "900_2_Text_SanSerif": membro.get("data_nascimento", ""),
            "900_5_Text_SanSerif": membro.get("data_batismo", ""), "900_13_Text_C_SanSerif": as_}
     caixas: set[str] = set()
@@ -134,7 +159,7 @@ def _s21_membro_form(membro: dict, linhas: list[dict], as_: int) -> bytes:
     if R.eh_regular(membro):
         caixas.add(CARGO_CAMPO["Pioneiro regular"])
     _linhas_no_formulario(linhas, txt, caixas)
-    return _preencher(txt, caixas)
+    return _preencher(txt, caixas, carimbo)
 
 
 def achatar(pdf: bytes) -> bytes:
