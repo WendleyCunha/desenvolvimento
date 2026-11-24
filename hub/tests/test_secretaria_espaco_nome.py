@@ -109,3 +109,37 @@ def test_lixeira_restaurar_e_apagar_de_vez(hub):
     chefe.delete("/api/secretaria/membros/Celia Exemplo")
     assert chefe.delete("/api/secretaria/lixeira/Celia Exemplo?relatorios=1").json()["relatorios_apagados"] == 1
     assert (secretaria.COL_MEMBROS, "Celia Exemplo") not in T.DB and (secretaria.COL_REL, "rc1") not in T.DB
+
+
+def test_apagar_de_vez_e_esvaziar_lixeira_nao_deixam_nada(hub):
+    """Apagar de vez / esvaziar a lixeira: some TUDO do banco (ficha, nomes antigos, relatórios, lembretes)."""
+    import secretaria
+    T.DB[(secretaria.COL_MEMBROS, "Dora Nova")] = {"nome_oficial": "Dora Nova", "categoria": "PUBLICADOR", "nomes_anteriores": ["Dora Velha"],
+                                                  "transferencia": {"conteudo": "carta"}, "carta_recebida": "texto"}
+    T.DB[(secretaria.COL_MEMBROS, "Dora Velha")] = {"nome_oficial": "Dora Velha", "renomeado_para": "Dora Nova", "status": "Renomeado"}
+    T.DB[(secretaria.COL_MEMBROS, "Eva Fica")] = {"nome_oficial": "Eva Fica", "categoria": "PUBLICADOR"}
+    T.DB[(secretaria.COL_MEMBROS, "Gil Lixo")] = {"nome_oficial": "Gil Lixo", "categoria": "PUBLICADOR"}
+    for i, n in enumerate(["Dora Nova", "Dora Nova", "Eva Fica", "Gil Lixo"]):
+        T.DB[(secretaria.COL_REL, f"r{i}")] = {"nome": n, "membro_id": n, "mes_referencia": "Outubro 2026", "participou_ministerio": True}
+    T.DB[("relatorios_lembretes", "aparelho1")] = {"membros": ["Dora Nova", "Eva Fica"], "desde": {"Dora Nova": 1, "Eva Fica": 1}}
+    T.DB[("relatorios_lembretes", "aparelho2")] = {"membros": ["Dora Nova"], "desde": {"Dora Nova": 1}}
+    T.DB[("relatorios_lembretes_envios", "e1")] = {"membro": "Dora Nova", "dia": "2026-11-01"}
+    T.DB[("relatorios_lembretes_envios", "e2")] = {"membro": "Eva Fica", "dia": "2026-11-01"}
+    chefe = entrar(hub(), "chefe", "senha-forte")
+    secretaria.BASE.membros = None
+    secretaria.BASE.atualizar(forcar=True)
+    assert chefe.delete("/api/secretaria/membros/Dora Nova").status_code == 200
+    r = chefe.delete("/api/secretaria/lixeira/Dora Nova")          # sem ?relatorios=1: apaga os relatórios mesmo assim
+    assert r.status_code == 200 and r.json()["relatorios_apagados"] == 2
+    for chave in [(secretaria.COL_MEMBROS, "Dora Nova"), (secretaria.COL_MEMBROS, "Dora Velha"), (secretaria.COL_REL, "r0"),
+                  (secretaria.COL_REL, "r1"), ("relatorios_lembretes", "aparelho2"), ("relatorios_lembretes_envios", "e1")]:
+        assert chave not in T.DB, chave
+    assert T.DB[("relatorios_lembretes", "aparelho1")]["membros"] == ["Eva Fica"]
+    assert (secretaria.COL_REL, "r2") in T.DB and ("relatorios_lembretes_envios", "e2") in T.DB
+    # esvaziar a lixeira
+    assert chefe.delete("/api/secretaria/membros/Gil Lixo").status_code == 200
+    r = chefe.delete("/api/secretaria/lixeira").json()
+    assert r["pessoas"] == 1 and r["relatorios"] == 1
+    assert (secretaria.COL_MEMBROS, "Gil Lixo") not in T.DB and (secretaria.COL_REL, "r3") not in T.DB
+    assert chefe.get("/api/secretaria/lixeira").json()["itens"] == []
+    assert (secretaria.COL_MEMBROS, "Eva Fica") in T.DB
