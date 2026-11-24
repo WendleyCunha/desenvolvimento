@@ -51,7 +51,8 @@ TIPOS_REUNIAO = {"meio": "Reunião do Meio de Semana", "fim": "Reunião do Fim d
 CAMPOS_SENSIVEIS = ["data_nascimento", "data_batismo", "telefone_emergencia"]
 CAMPOS_MEMBRO = ["nome_oficial", "categoria", "genero", "classe", "cargo", "status", "grupo", "data_nascimento",
                  "data_batismo", "telefone_emergencia", "surdo", "cego", "preso", "saiu_em", "saiu_motivo",
-                 "inicio_chave", "mes_inicio", "observacao", "inativo_desde", "status_manual", "informado_publicador"]
+                 "inicio_chave", "mes_inicio", "observacao", "inativo_desde", "status_manual", "informado_publicador",
+                 "transferencia", "carta_recebida", "batismo_ok"]
 GENEROS = ["", "Masculino", "Feminino"]
 CLASSES = ["", "Outras ovelhas", "Ungido"]
 CARGOS = ["Ancião", "Servo ministerial", "Pioneiro regular", "Pioneiro especial", "Missionário em campo"]
@@ -561,7 +562,43 @@ def _membro_saida(mid: str, m: dict, p: dict, part: set[str], atual: str) -> dic
                situacao=R.situacao_tela(m, part, atual), situacao_s1=R.situacao(m, part, atual),
                situacao_anterior=R.situacao(m, part, R.somar(atual, -1)),
                ultimo=R.ultimo_mes_com_participacao(part, atual), inicio=R.inicio_do_membro(m))
+    if "data_batismo" in out:   # só quem pode ver a data de batismo recebe o aviso
+        aniv = primeiro_aniversario_batismo(m.get("data_batismo"))
+        if aniv:
+            hoje = datetime.now(R.FUSO).date()
+            out["aniv_batismo"] = {"data": aniv.isoformat(),
+                                   "alerta": aniv <= hoje and (hoje - aniv).days <= JANELA_ANIV_BATISMO
+                                   and m.get("batismo_ok") != aniv.isoformat() and R.situacao_tela(m, part, atual) != "fora"}
     return _json(out)
+
+
+JANELA_ANIV_BATISMO = 180   # dias em que o cartão continua piscando depois de completar 1 ano de batismo (até clicar OK)
+
+
+def _data_br(v) -> date | None:
+    """Aceita DD/MM/AAAA, D/M/AA e AAAA-MM-DD. NB (não batizado) e texto livre → None."""
+    t = str(v or "").strip()
+    m = re.match(r"^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})$", t)
+    try:
+        if m:
+            d, mes, a = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            return date(a + 2000 if a < 50 else a + 1900 if a < 100 else a, mes, d)
+        m = re.match(r"^(\d{4})-(\d{2})-(\d{2})", t)
+        if m:
+            return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    except ValueError:
+        return None
+    return None
+
+
+def primeiro_aniversario_batismo(v) -> date | None:
+    d = _data_br(v)
+    if not d:
+        return None
+    try:
+        return d.replace(year=d.year + 1)
+    except ValueError:   # 29/02
+        return d.replace(year=d.year + 1, day=28)
 
 
 def _linha_saida(ln: dict, p: dict) -> dict:
@@ -588,7 +625,8 @@ def base(request: Request, mes: str = "", recarregar: int = 0):
     fech = BASE.todos_fechamentos().get(ch)
     return _json({
         "perm": p, "usuario": acesso.publico(u), "mes": ch, "mes_atual": atual, "mes_calendario": datetime.now(R.FUSO).strftime("%Y-%m"), "meses": meses,
-        "config": {k: v for k, v in cfg.items()}, "identidade": identidade(),
+        "config": {**{k: v for k, v in cfg.items() if k != "carta_assinaturas"}, "carta_assinaturas_ok": bool(cfg.get("carta_assinaturas"))},
+        "identidade": identidade(),
         "campos_publicador": [{"campo": k, "rotulo": r} for k, r in CAMPOS_PUBLICADOR],
         "opcoes": {"generos": GENEROS, "classes": CLASSES, "cargos": CARGOS, "categorias": R.CATEGORIAS},
         "membros": [_membro_saida(mid, m, p, part.get(mid, set()), ch) for mid, m in membros.items()],
@@ -790,6 +828,8 @@ def _limpar_membro(c: dict, p: dict) -> dict:
         d["saiu_motivo"] = str(c["saiu_motivo"] or "")[:300]
     if "observacao" in c:
         d["observacao"] = str(c["observacao"] or "")[:1000]
+    if "carta_recebida" in c:   # texto da carta de apresentação recebida de outra congregação
+        d["carta_recebida"] = str(c["carta_recebida"] or "")[:20000]
     for campo in ("surdo", "cego", "preso"):
         if campo in c:
             d[campo] = bool(c[campo])
@@ -965,6 +1005,126 @@ async def status_membro(mid: str, request: Request):
     return {"ok": True, "id": mid, "status": tipo, "desde": ch}
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# TRANSFERÊNCIA (carta de mudança de publicador) · ANIVERSÁRIO DE BATISMO · CONTATOS DE EMERGÊNCIA
+# ══════════════════════════════════════════════════════════════════════════════
+MESES_EXTENSO = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro",
+                 "Novembro", "Dezembro"]
+
+
+def data_extenso(d: date) -> str:
+    return f"{d.day:02d} de {MESES_EXTENSO[d.month - 1]} de {d.year}"
+
+
+def _anos_do_membro(mid: str) -> list[int]:
+    """Anos de serviço com algum relatório do membro (para o pacote de S-21). Sem relatório: o ano atual."""
+    anos = sorted({R.ano_servico(ln["chave"]) for ln in BASE.linhas() if ln["membro_id"] == mid and ln["chave"]})
+    return anos or [R.ano_servico(_mes_atual())]
+
+
+@router.put("/membros/{mid}/transferencia")
+async def salvar_transferencia(mid: str, request: Request):
+    """Grava os dados da carta de transferência. concluir=true → status TRANSFERIDO (carta feita)."""
+    u, p = _contexto(request)
+    _exigir(p, "membros", "fazer a carta de transferência")
+    c = await request.json()
+    BASE.atualizar()
+    m = (BASE.membros or {}).get(mid)
+    if m is None:
+        raise HTTPException(404, "Membro não encontrado.")
+    antes = m.get("transferencia") or {}
+    t = {"data": str(c.get("data") or "")[:60], "destino": str(c.get("destino") or "")[:1500],
+         "referencia": str(c.get("referencia") or "")[:300], "conteudo": str(c.get("conteudo") or "")[:20000],
+         "feita": bool(antes.get("feita")), "feita_em": antes.get("feita_em", ""), "feita_por": antes.get("feita_por", ""),
+         "atualizado_em": _agora(), "atualizado_por": u["login"]}
+    if c.get("concluir") is True:
+        t.update(feita=True, feita_em=_agora(), feita_por=u["login"])
+    elif c.get("concluir") is False:
+        t.update(feita=False, feita_em="", feita_por="")
+    d = {"transferencia": t, "atualizado_por": u["login"], "atualizado_em": _agora()}
+    if t["feita"] and not R.saiu_em(m):   # carta feita = saiu da congregação
+        d.update(saiu_em=_mes_atual(), saiu_motivo=m.get("saiu_motivo") or "Transferido (carta de mudança)", status="Inativo")
+    BASE.gravar_membro(mid, d)
+    return {"ok": True, "id": mid, "transferencia": t}
+
+
+@router.get("/pdf/transferencia/{mid}")
+def pdf_transferencia(mid: str, request: Request):
+    """Carta de transferência + S-21 de todos os anos de serviço da pessoa, num PDF só."""
+    _, p = _contexto(request)
+    _exigir(p, "exportar", "baixar a carta e os cartões")
+    BASE.atualizar()
+    m = (BASE.membros or {}).get(mid)
+    if m is None:
+        raise HTTPException(404, "Membro não encontrado.")
+    t = m.get("transferencia") or {}
+    cfg = BASE.config()
+    nome = m.get("nome_oficial") or mid
+    assin = None
+    if cfg.get("carta_assinaturas"):
+        try:
+            assin = base64.b64decode(cfg["carta_assinaturas"])
+        except (ValueError, TypeError):
+            assin = None
+    carta = PDF.carta_transferencia(
+        data=t.get("data") or data_extenso(datetime.now(R.FUSO).date()), destino=t.get("destino") or "A Congregação:",
+        referencia=t.get("referencia") or f"Ref.: Mudança de Publicador {nome}", conteudo=t.get("conteudo") or "",
+        cabecalho=cfg.get("carta_cabecalho") or None, assinaturas_png=assin)
+    linhas = BASE.linhas()
+    membro = _membro_para_pdf(m, p, mid)
+    dados = PDF.pacote_transferencia(carta, membro, [(a, R.cartao(mid, a, linhas)) for a in _anos_do_membro(mid)])
+    return _pdf(dados, f"Transferência {nome}")
+
+
+@router.post("/membros/{mid}/batismo-ok")
+async def batismo_ok(mid: str, request: Request):
+    """OK no aviso de 1 ano de batismo: para de piscar (guarda qual aniversário foi visto)."""
+    u, p = _contexto(request)
+    _exigir(p, "membros", "marcar o aviso de batismo")
+    BASE.atualizar()
+    m = (BASE.membros or {}).get(mid)
+    if m is None:
+        raise HTTPException(404, "Membro não encontrado.")
+    aniv = primeiro_aniversario_batismo(m.get("data_batismo"))
+    if not aniv:
+        raise HTTPException(400, "A ficha não tem data de batismo válida.")
+    BASE.gravar_membro(mid, {"batismo_ok": aniv.isoformat(), "batismo_ok_em": _agora(), "batismo_ok_por": u["login"]})
+    return {"ok": True, "id": mid, "batismo_ok": aniv.isoformat()}
+
+
+@router.get("/contatos-emergencia")
+def contatos_emergencia(request: Request, todos: int = 0):
+    """Planilha (CSV para o Excel) com cada publicador e o telefone de emergência. Sem os que saíram (todos=1 inclui)."""
+    _, p = _contexto(request)
+    _exigir(p, "exportar", "baixar os contatos de emergência")
+    if _nivel(p, "telefone_emergencia") == "oculto" or (p.get("campos_nivel") or {}).get("telefone_emergencia") == "oculto":
+        raise HTTPException(403, "Sem permissão para ver o telefone de emergência.")
+    BASE.atualizar()
+    linhas = BASE.linhas()
+    part = R.participacoes(linhas)
+    atual = _mes_atual()
+    grupos = {g["id"]: g["nome"] for g in BASE.config().get("grupos", [])}
+    rot_sit = {"ativo": "Ativo", "inativo": "Inativo", "sem_relatorio": "Sem relatório", "fora": "Saiu"}
+    saida = []
+    for mid, m in (BASE.membros or {}).items():
+        sit = R.situacao_tela(m, part.get(mid, set()), atual)
+        if sit == "fora" and not todos:
+            continue
+        saida.append([m.get("nome_oficial") or mid, str(m.get("telefone_emergencia") or "").strip(),
+                      grupos.get(m.get("grupo"), m.get("grupo") or ""), rot_sit.get(sit, sit)])
+    saida.sort(key=lambda x: R.normalizar(x[0]))
+    import csv
+    import io as _io
+    buf = _io.StringIO()
+    w = csv.writer(buf, delimiter=";")
+    w.writerow(["Publicador", "Telefone de emergência", "Grupo de campo", "Situação"])
+    w.writerows(saida)
+    dados = ("\ufeff" + buf.getvalue()).encode("utf-8")   # BOM: o Excel abre com acentos certos
+    nome = f"Contatos de emergência {datetime.now(R.FUSO).strftime('%d-%m-%Y')}"
+    return Response(dados, media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": _disposicao(nome, "csv", "attachment"), "Cache-Control": "no-store"})
+
+
 def _renomear(antigo: str, novo: str, mudancas: dict, u: dict):
     """O id do membro é o nome (padrão do Streamlit): renomear = copiar + religar relatórios.
     A ficha antiga NÃO é apagada — fica guardada com renomeado_para (fora das listas do Secretário)."""
@@ -1121,8 +1281,11 @@ def lembretes_membros(request: Request):
 @router.put("/config")
 async def salvar_config(request: Request):
     _, p = _contexto(request)
-    _exigir(p, "ajustes", "alterar os ajustes")
     c = await request.json()
+    if c and set(c) <= {"carta_cabecalho", "carta_assinaturas"}:   # modelo da carta de transferência: quem cuida de membros
+        _exigir(p, "membros", "alterar o modelo da carta")
+    else:
+        _exigir(p, "ajustes", "alterar os ajustes")
     novo = {}
     if "limite_aux" in c:
         novo["limite_aux"] = _int(c["limite_aux"], 1, 100)
@@ -1158,6 +1321,21 @@ async def salvar_config(request: Request):
         novo["lembretes_ligado"] = bool(c["lembretes_ligado"])
     if "lembrete_hora" in c:
         novo["lembrete_hora"] = _int(c["lembrete_hora"], 6, 21)
+    if "carta_cabecalho" in c:
+        novo["carta_cabecalho"] = [str(x)[:120] for x in (c["carta_cabecalho"] or []) if str(x).strip()][:5]
+    if "carta_assinaturas" in c:   # imagem PNG/JPG das assinaturas (base64), fica só no banco — nunca no código
+        b64 = str(c["carta_assinaturas"] or "")
+        b64 = b64.split(",", 1)[1] if b64.startswith("data:") else b64
+        if b64:
+            try:
+                bruto = base64.b64decode(b64, validate=False)
+            except (ValueError, TypeError):
+                raise HTTPException(400, "Imagem das assinaturas inválida.") from None
+            if len(bruto) > 600 * 1024:
+                raise HTTPException(413, "Imagem das assinaturas grande demais (máx. 600 KB).")
+            if not (bruto[:8] == b"\x89PNG\r\n\x1a\n" or bruto[:3] == b"\xff\xd8\xff"):
+                raise HTTPException(400, "Use uma imagem PNG ou JPG.")
+        novo["carta_assinaturas"] = b64
     if "campos_publicador" in c:
         validos = [k for k, _ in CAMPOS_PUBLICADOR]
         novo["campos_publicador"] = [k for k in validos if k in (c["campos_publicador"] or [])]
@@ -1168,13 +1346,28 @@ async def salvar_config(request: Request):
 # ══════════════════════════════════════════════════════════════════════════════
 # PDFs e ZIP
 # ══════════════════════════════════════════════════════════════════════════════
+def _disposicao(nome: str, ext: str, modo: str = "inline") -> str:
+    """Nome do arquivo no cabeçalho: versão sem acento + versão UTF-8 (RFC 5987) — acento não quebra o download."""
+    from urllib.parse import quote
+    import unicodedata
+    n = PDF.nome_arquivo(nome) + "." + ext
+    ascii_ = unicodedata.normalize("NFKD", n).encode("ascii", "ignore").decode() or "arquivo." + ext
+    return f"{modo}; filename=\"{ascii_}\"; filename*=UTF-8''{quote(n)}"
+
+
 def _pdf(dados: bytes, nome: str) -> Response:
     return Response(dados, media_type="application/pdf",
-                    headers={"Content-Disposition": f'inline; filename="{PDF.nome_arquivo(nome)}.pdf"', "Cache-Control": "no-store"})
+                    headers={"Content-Disposition": _disposicao(nome, "pdf"), "Cache-Control": "no-store"})
 
 
-def _membro_para_pdf(m: dict, p: dict) -> dict:
-    return {k: v for k, v in m.items() if not (k in CAMPOS_SENSIVEIS and _nivel(p, k) == "oculto")}
+def _membro_para_pdf(m: dict, p: dict, mid: str = "") -> dict:
+    """Ficha para o S-21. O nome nunca sai em branco: ficha antiga sem nome_oficial usa o id (que é o nome)."""
+    d = {k: v for k, v in m.items() if not (k in CAMPOS_SENSIVEIS and _nivel(p, k) == "oculto")}
+    for c, nv in (p.get("campos_nivel") or {}).items():
+        if nv == "oculto" and c in CAMPOS_SENSIVEIS:
+            d.pop(c, None)
+    d["nome_oficial"] = " ".join(str(m.get("nome_oficial") or mid or "").split())
+    return d
 
 
 @router.get("/pdf/s21/{mid}")
@@ -1186,7 +1379,7 @@ def pdf_s21(mid: str, request: Request, ano: int = 0):
         raise HTTPException(404, "Membro não encontrado.")
     as_ = ano or R.ano_servico(_mes_atual())
     m = BASE.membros[mid]
-    return _pdf(PDF.s21_membro(_membro_para_pdf(m, p), R.cartao(mid, as_, BASE.linhas()), as_), f"S-21 {m.get('nome_oficial', mid)} {as_}")
+    return _pdf(PDF.s21_membro(_membro_para_pdf(m, p, mid), R.cartao(mid, as_, BASE.linhas()), as_), f"S-21 {m.get('nome_oficial') or mid} {as_}")
 
 
 @router.get("/pdf/total/{cat}")
@@ -1224,7 +1417,7 @@ async def zip_visita(request: Request):
     meses = [R.somar(de, i) for i in range(R.distancia(de, ate) + 1)]
     anos = sorted({R.ano_servico(x) for x in meses})
     linhas = BASE.linhas()
-    membros = {mid: _membro_para_pdf(m, p) for mid, m in (BASE.membros or {}).items()}
+    membros = {mid: _membro_para_pdf(m, p, mid) for mid, m in (BASE.membros or {}).items()}
     part = R.participacoes(linhas)
     situacoes = {mid: R.situacao(m, part.get(mid, set()), ate) for mid, m in membros.items()}
     assist = {"meio": {}, "fim": {}}

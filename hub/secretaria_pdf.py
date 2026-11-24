@@ -75,8 +75,49 @@ def _linhas_no_formulario(linhas: list[dict], txt: dict, caixas: set[str]) -> No
         txt["904_32_S21_Value"] = total
 
 
+def _carimbo_emergencia(pdf: bytes, telefone: str) -> bytes:
+    """Escreve o contato de emergência na parte branca do S-21, logo abaixo da linha 'Total'."""
+    telefone = " ".join(str(telefone or "").split())
+    if not telefone:
+        return pdf
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfgen import canvas
+
+    leitor = PdfReader(io.BytesIO(pdf))
+    larg, alt = float(leitor.pages[0].mediabox.width), float(leitor.pages[0].mediabox.height)
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=(larg, alt) if larg and alt else A4)
+    y = 366   # a linha "Total" do S-21-T vai de 385 a 402 (pontos); 1 cm abaixo dela
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(19, y, "Contato de emergência:")
+    c.setFont("Helvetica", 9)
+    largura_max = larg - 19 - 125
+    linha, linhas = "", []
+    for palavra in telefone.split():   # quebra em até 2 linhas
+        teste = (linha + " " + palavra).strip()
+        if c.stringWidth(teste, "Helvetica", 9) > largura_max and linha:
+            linhas.append(linha)
+            linha = palavra
+        else:
+            linha = teste
+    linhas.append(linha)
+    for i, t in enumerate(linhas[:2]):
+        c.drawString(125, y - 12 * i, t)
+    c.save()
+    w = PdfWriter(clone_from=leitor)
+    w.pages[0].merge_page(PdfReader(io.BytesIO(buf.getvalue())).pages[0])
+    saida = io.BytesIO()
+    w.write(saida)
+    return saida.getvalue()
+
+
 def s21_membro(membro: dict, linhas: list[dict], as_: int) -> bytes:
-    txt = {"900_1_Text_SanSerif": membro.get("nome_oficial", ""), "900_2_Text_SanSerif": membro.get("data_nascimento", ""),
+    pdf = _s21_membro_form(membro, linhas, as_)
+    return _carimbo_emergencia(pdf, membro.get("telefone_emergencia", ""))
+
+
+def _s21_membro_form(membro: dict, linhas: list[dict], as_: int) -> bytes:
+    txt = {"900_1_Text_SanSerif": membro.get("nome_oficial") or membro.get("id") or "", "900_2_Text_SanSerif": membro.get("data_nascimento", ""),
            "900_5_Text_SanSerif": membro.get("data_batismo", ""), "900_13_Text_C_SanSerif": as_}
     caixas: set[str] = set()
     if membro.get("genero") == "Masculino":
@@ -94,6 +135,155 @@ def s21_membro(membro: dict, linhas: list[dict], as_: int) -> bytes:
         caixas.add(CARGO_CAMPO["Pioneiro regular"])
     _linhas_no_formulario(linhas, txt, caixas)
     return _preencher(txt, caixas)
+
+
+def achatar(pdf: bytes) -> bytes:
+    """Transforma os campos do formulário em desenho fixo (para juntar vários S-21 num PDF só sem
+    os campos de mesmo nome se misturarem). Funciona no pypdf 4.x: desenha a aparência (/AP) de cada campo."""
+    from pypdf.generic import ArrayObject, DecodedStreamObject, DictionaryObject, NameObject as N
+
+    leitor = PdfReader(io.BytesIO(pdf))
+    w = PdfWriter(clone_from=leitor)
+    for pagina in w.pages:
+        anots = pagina.get("/Annots")
+        if not anots:
+            continue
+        recursos = pagina.get("/Resources")
+        recursos = recursos.get_object() if recursos is not None else DictionaryObject()
+        xobjs = recursos.get("/XObject")
+        xobjs = xobjs.get_object() if xobjs is not None else DictionaryObject()
+        cmds, n = [], 0
+        for ref in anots:
+            a = ref.get_object()
+            if a.get("/Subtype") != "/Widget":
+                continue
+            ap = a.get("/AP")
+            if not ap:
+                continue
+            normal = ap.get_object().get("/N")
+            if normal is None:
+                continue
+            normal = normal.get_object()
+            if "/BBox" not in normal:   # caixa de seleção: um desenho por estado
+                estado = a.get("/AS")
+                if estado is None or str(estado) == "/Off" or estado not in normal:
+                    continue
+                normal = normal[estado].get_object()
+            r = [float(x) for x in a["/Rect"]]
+            bbox = [float(x) for x in normal.get("/BBox", [0, 0, r[2] - r[0], r[3] - r[1]])]
+            nome = f"/Fl{n}"
+            n += 1
+            xobjs[N(nome)] = w._add_object(normal) if not hasattr(normal, "indirect_reference") or normal.indirect_reference is None else normal.indirect_reference
+            cmds.append(f"q 1 0 0 1 {r[0] - bbox[0]:.3f} {r[1] - bbox[1]:.3f} cm {nome} Do Q")
+        recursos[N("/XObject")] = xobjs
+        pagina[N("/Resources")] = recursos
+        if cmds:
+            extra = DecodedStreamObject()
+            extra.set_data(("\n".join(cmds) + "\n").encode("latin-1"))
+            conteudo = pagina.get("/Contents")
+            lista = conteudo.get_object() if conteudo is not None else ArrayObject()
+            if not isinstance(lista, ArrayObject):
+                lista = ArrayObject([conteudo])
+            lista.append(w._add_object(extra))
+            pagina[N("/Contents")] = lista
+        del pagina["/Annots"]
+    if "/AcroForm" in w._root_object:
+        del w._root_object["/AcroForm"]
+    saida = io.BytesIO()
+    w.write(saida)
+    return saida.getvalue()
+
+
+def _s21_achatado(membro: dict, linhas: list[dict], as_: int) -> bytes:
+    """S-21 sem campos (preenchido e 'impresso'), com o contato de emergência."""
+    return _carimbo_emergencia(achatar(_s21_membro_form(membro, linhas, as_)), membro.get("telefone_emergencia", ""))
+
+
+CABECALHO_CARTA = ["Congregação Parque Aliança (72249)", "Av. Felipe Carrilo Puerto, 827 – Jardim Magdalena",
+                   "São Paulo – SP          CEP 05890 – 000."]
+
+
+def carta_transferencia(*, data: str, destino: str, referencia: str, conteudo: str,
+                        cabecalho: list[str] | None = None, assinaturas_png: bytes | None = None) -> bytes:
+    """Carta de mudança de publicador no modelo da congregação (cabeçalho e assinaturas fixos)."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.units import mm
+    from reportlab.lib.utils import ImageReader
+    from reportlab.pdfgen import canvas
+    from reportlab.platypus import Frame, Paragraph
+    from xml.sax.saxutils import escape
+
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=A4)
+    c.setTitle(referencia or "Carta de transferência")
+    larg, alt = A4
+    cab = [x for x in (cabecalho or CABECALHO_CARTA) if str(x).strip()] or CABECALHO_CARTA
+    y = alt - 30 * mm
+    for i, t in enumerate(cab):
+        if i == 0:
+            c.setFont("Helvetica-Bold", 15)
+        else:
+            c.setFont("Helvetica-BoldOblique", 12)
+        c.drawCentredString(larg / 2, y, str(t))
+        y -= 6.5 * mm
+    y -= 4 * mm
+    c.setFont("Helvetica-Bold", 10.5)
+    c.drawRightString(larg - 25 * mm, y, str(data or ""))
+    corpo = ParagraphStyle("corpo", fontName="Helvetica", fontSize=10.5, leading=14)
+    blocos = []
+    blocos.append(Paragraph("<br/>".join(escape(x) for x in str(destino or "").splitlines()), corpo))
+    blocos.append(Paragraph("&nbsp;", corpo))
+    blocos.append(Paragraph(escape(str(referencia or "")), corpo))
+    blocos.append(Paragraph("&nbsp;", corpo))
+    for par in re.split(r"\n\s*\n", str(conteudo or "").strip()):
+        blocos.append(Paragraph("<br/>".join(escape(x) for x in par.splitlines()), corpo))
+        blocos.append(Paragraph("&nbsp;", ParagraphStyle("esp", fontSize=4, leading=5)))
+    alt_assin = 34 * mm
+    topo_frame = y - 10 * mm
+    base_frame = 30 * mm + alt_assin
+    f = Frame(25 * mm, base_frame, larg - 50 * mm, topo_frame - base_frame, showBoundary=0, leftPadding=0, rightPadding=0)
+    sobra = f.addFromList(blocos, c)
+    if blocos:   # texto maior que uma página: continua na próxima
+        c.showPage()
+        f2 = Frame(25 * mm, base_frame, larg - 50 * mm, alt - 25 * mm - base_frame, showBoundary=0, leftPadding=0, rightPadding=0)
+        f2.addFromList(blocos, c)
+    del sobra
+    if assinaturas_png:
+        try:
+            img = ImageReader(io.BytesIO(assinaturas_png))
+            iw, ih = img.getSize()
+            w_ = min(150 * mm, larg - 50 * mm)
+            h_ = w_ * ih / iw
+            if h_ > alt_assin:
+                h_ = alt_assin
+                w_ = h_ * iw / ih
+            c.drawImage(img, (larg - w_) / 2, 30 * mm, w_, h_, mask="auto")
+        except Exception:  # noqa: BLE001 — imagem inválida: a carta sai sem as assinaturas
+            assinaturas_png = None
+    if not assinaturas_png:
+        c.setFont("Helvetica", 8)
+        for i, rot in enumerate(("Coordenador", "Secretário", "Superintendente de Serviço")):
+            x = 25 * mm + i * (larg - 50 * mm) / 3
+            c.line(x + 4 * mm, 45 * mm, x + (larg - 50 * mm) / 3 - 4 * mm, 45 * mm)
+            c.drawCentredString(x + (larg - 50 * mm) / 6, 41 * mm, rot)
+    c.save()
+    return buf.getvalue()
+
+
+def juntar(pdfs: list[bytes]) -> bytes:
+    w = PdfWriter()
+    for b in pdfs:
+        for pg in PdfReader(io.BytesIO(b)).pages:
+            w.add_page(pg)
+    saida = io.BytesIO()
+    w.write(saida)
+    return saida.getvalue()
+
+
+def pacote_transferencia(carta: bytes, membro: dict, cartoes: list[tuple[int, list[dict]]]) -> bytes:
+    """Carta + um S-21 (achatado) por ano de serviço."""
+    return juntar([carta] + [_s21_achatado(membro, linhas, as_) for as_, linhas in cartoes])
 
 
 def s21_total(titulo: str, linhas: list[dict], as_: int) -> bytes:

@@ -56,9 +56,12 @@ ABAS: dict[str, dict] = {
                 "nome_oficial": "Nome completo", "categoria": "Categoria fixa", "grupo": "Grupo de campo", "genero": "Gênero",
                 "classe": "Classe", "data_nascimento": "Data de nascimento", "data_batismo": "Data de batismo",
                 "telefone_emergencia": "Telefone de emergência", "inicio_chave": "Entrou no quadro em", "cargo": "Cargo(s)",
-                "observacao": "Observações da ficha", "surdo": "S-10: surdo", "cego": "S-10: cego", "preso": "S-10: preso"},
+                "observacao": "Observações da ficha", "surdo": "S-10: surdo", "cego": "S-10: cego", "preso": "S-10: preso",
+                "carta_recebida": "Carta de apresentação recebida"},
                 "rotas": [
-                _r("GET", f"{S}/membro/*", "ver"), _r("GET", f"{S}/lembretes/membros", "ver"), _r("POST", f"{S}/membros/*/status", "editar"), _r("POST", f"{S}/membros", "incluir"),
+                _r("GET", f"{S}/membro/*", "ver"), _r("GET", f"{S}/lembretes/membros", "ver"), _r("POST", f"{S}/membros/*/status", "editar"),
+                _r("PUT", f"{S}/membros/*/transferencia", "editar"), _r("POST", f"{S}/membros/*/batismo-ok", "editar"),
+                _r("GET", f"{S}/pdf/transferencia/*", "ver"), _r("GET", f"{S}/contatos-emergencia", "ver"), _r("POST", f"{S}/membros", "incluir"),
                 _r("PUT", f"{S}/membros/*", "editar"), _r("DELETE", f"{S}/membros/*", "excluir"),
                 _r("GET", f"{S}/lixeira", "ver"), _r("POST", f"{S}/lixeira/*/restaurar", "editar"), _r("DELETE", f"{S}/lixeira/*", "excluir"),
                 _r("GET", f"{S}/pdf/s21/*", "ver"), _r("POST", f"{S}/importar-s21/ler", "ver"), _r("POST", f"{S}/importar-s21/aplicar", "editar")]},
@@ -70,7 +73,7 @@ ABAS: dict[str, dict] = {
         },
         "por_chave": {("PUT", f"{S}/config"): {"_padrao": "ajustes", "pastas": "fechamentos", "its": "it",
                                                "territorios_total": "assistencia", "territorios_nao_trabalhados": "assistencia",
-                                               "anuncios": "anuncios"}},
+                                               "anuncios": "anuncios", "carta_cabecalho": "membros", "carta_assinaturas": "membros"}},
     },
     "passagens": {
         "prefixos": ["/api/passagens"],
