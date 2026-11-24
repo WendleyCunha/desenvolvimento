@@ -1037,6 +1037,12 @@ async def salvar_transferencia(mid: str, request: Request):
          "referencia": str(c.get("referencia") or "")[:300], "conteudo": str(c.get("conteudo") or "")[:20000],
          "feita": bool(antes.get("feita")), "feita_em": antes.get("feita_em", ""), "feita_por": antes.get("feita_por", ""),
          "atualizado_em": _agora(), "atualizado_por": u["login"]}
+    if "corpo_html" in c:   # editor com formatação (negrito, cor, tamanho, alinhamento)
+        t["corpo_html"] = PDF.html_limpo_carta(c.get("corpo_html") or "")[:60000]
+    elif antes.get("corpo_html"):
+        t["corpo_html"] = antes["corpo_html"]
+    f_in = c.get("fmt") if isinstance(c.get("fmt"), dict) else (antes.get("fmt") or {})
+    t["fmt"] = _fmt_carta(f_in)
     if c.get("concluir") is True:
         t.update(feita=True, feita_em=_agora(), feita_por=u["login"])
     elif c.get("concluir") is False:
@@ -1046,6 +1052,31 @@ async def salvar_transferencia(mid: str, request: Request):
         d.update(saiu_em=_mes_atual(), saiu_motivo=m.get("saiu_motivo") or "Transferido (carta de mudança)", status="Inativo")
     BASE.gravar_membro(mid, d)
     return {"ok": True, "id": mid, "transferencia": t}
+
+
+def _fmt_carta(f: dict) -> dict:
+    """Ajustes da página da carta, sempre dentro de limites seguros."""
+    def num(k, lo, hi):
+        try:
+            return min(max(float(f.get(k, PDF.FMT_PADRAO[k])), lo), hi)
+        except (TypeError, ValueError):
+            return PDF.FMT_PADRAO[k]
+    al = f.get("alinha_data") if f.get("alinha_data") in ("left", "center", "right") else PDF.FMT_PADRAO["alinha_data"]
+    return {"fonte": num("fonte", 8, 16), "entrelinhas": num("entrelinhas", 1.0, 2.5), "esp_par": num("esp_par", 0, 30),
+            "esp_cab": num("esp_cab", 0, 40), "alinha_data": al}
+
+
+@router.get("/carta/assinaturas")
+def carta_assinaturas(request: Request):
+    """Imagem das assinaturas (para a prévia da carta na tela)."""
+    _, p = _contexto(request)
+    _exigir(p, "membros", "ver o modelo da carta")
+    b64 = BASE.config().get("carta_assinaturas")
+    if not b64:
+        raise HTTPException(404, "Sem imagem de assinaturas.")
+    bruto = base64.b64decode(b64)
+    tipo = "image/png" if bruto[:4] == b"\x89PNG" else "image/jpeg"
+    return Response(bruto, media_type=tipo, headers={"Cache-Control": "private, max-age=300"})
 
 
 @router.get("/pdf/transferencia/{mid}")
@@ -1069,7 +1100,8 @@ def pdf_transferencia(mid: str, request: Request):
     carta = PDF.carta_transferencia(
         data=t.get("data") or data_extenso(datetime.now(R.FUSO).date()), destino=t.get("destino") or "A Congregação:",
         referencia=t.get("referencia") or f"Ref.: Mudança de Publicador {nome}", conteudo=t.get("conteudo") or "",
-        cabecalho=cfg.get("carta_cabecalho") or None, assinaturas_png=assin)
+        cabecalho=cfg.get("carta_cabecalho") or None, assinaturas_png=assin,
+        corpo_html=t.get("corpo_html") or None, fmt=t.get("fmt") or None)
     linhas = BASE.linhas()
     membro = _membro_para_pdf(m, p, mid)
     dados = PDF.pacote_transferencia(carta, membro, [(a, R.cartao(mid, a, linhas)) for a in _anos_do_membro(mid)])

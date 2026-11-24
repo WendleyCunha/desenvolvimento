@@ -104,3 +104,28 @@ def test_modelo_da_carta_guarda_imagem_no_banco(hub):
     assert c.put("/api/secretaria/config", json={"carta_cabecalho": ["Linha 1"], "carta_assinaturas": png}).status_code == 200
     b = c.get("/api/secretaria/base").json()
     assert b["config"]["carta_assinaturas_ok"] is True and "carta_assinaturas" not in b["config"]   # a imagem não vai para a tela
+
+
+def test_carta_formatada_limpa_html_e_guarda_ajustes(hub):
+    import secretaria
+    import secretaria_pdf as P
+    c = entrar(hub(), "chefe", "senha-forte")
+    _prep(secretaria)
+    html = ('<div>A Congregação:</div><div><b>Jenipapo de Minas</b></div><div><br></div>'
+            '<div style="text-align:center"><font size="5" color="#c00000">Ref.: Mudança</font></div>'
+            '<script>alert(1)</script><img src=x onerror=alert(1)><div onclick="x()">Sem mais...</div>')
+    r = c.put("/api/secretaria/membros/Neuza Cruz de Assis/transferencia",
+              json={"data": "24 de Novembro de 2026", "corpo_html": html, "fmt": {"fonte": 99, "entrelinhas": 1.5, "alinha_data": "left"}})
+    assert r.status_code == 200
+    t = T.DB[(secretaria.COL_MEMBROS, "Neuza Cruz de Assis")]["transferencia"]
+    assert "<script" not in t["corpo_html"] and "onerror" not in t["corpo_html"] and "onclick" not in t["corpo_html"]
+    assert '<b>Jenipapo de Minas</b>' in t["corpo_html"] and 'text-align:center' in t["corpo_html"]
+    assert t["fmt"]["fonte"] == 16 and t["fmt"]["entrelinhas"] == 1.5 and t["fmt"]["alinha_data"] == "left"   # limite: 16 pt
+    pdf = c.get("/api/secretaria/pdf/transferencia/Neuza Cruz de Assis")
+    assert pdf.status_code == 200
+    texto = PdfReader(io.BytesIO(pdf.content)).pages[0].extract_text()
+    assert "Jenipapo de Minas" in texto and "alert" not in texto
+    # carta antiga (só texto) continua saindo
+    assert "Jenipapo" in PdfReader(io.BytesIO(P.carta_transferencia(data="x", destino="Jenipapo", referencia="Ref", conteudo="c"))).pages[0].extract_text()
+    # sem imagem de assinaturas → 404 na prévia
+    assert c.get("/api/secretaria/carta/assinaturas").status_code == 404

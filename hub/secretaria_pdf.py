@@ -199,12 +199,218 @@ def _s21_achatado(membro: dict, linhas: list[dict], as_: int) -> bytes:
     return _carimbo_emergencia(achatar(_s21_membro_form(membro, linhas, as_)), membro.get("telefone_emergencia", ""))
 
 
+# ── Texto formatado da carta (editor do popup) ──────────────────────────────────────────────────
+# O editor (contenteditable) gera HTML; aqui ele é LIMPO (só negrito, itálico, sublinhado, cor, tamanho,
+# alinhamento, quebras) e convertido para o PDF. O mesmo HTML limpo é o que volta para a tela.
+TAMANHOS_PT = {1: 8, 2: 10, 3: None, 4: 13, 5: 16, 6: 20, 7: 26}   # <font size=N> do editor → pontos (3 = tamanho base)
+FMT_PADRAO = {"fonte": 10.5, "entrelinhas": 1.3, "esp_par": 0, "esp_cab": 4, "alinha_data": "right"}
+_ALINHAS = {"left", "center", "right", "justify"}
+
+
+def _cor_ok(v: str) -> str | None:
+    v = str(v or "").strip().lower()
+    if re.fullmatch(r"#[0-9a-f]{6}", v):
+        return v
+    if re.fullmatch(r"#[0-9a-f]{3}", v):
+        return "#" + "".join(ch * 2 for ch in v[1:])
+    m = re.fullmatch(r"rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*[\d.]+)?\s*\)", v)
+    if m:
+        return "#" + "".join(f"{min(int(x), 255):02x}" for x in m.groups())
+    return None
+
+
+def _tam_de_css(v: str) -> int | None:
+    """font-size do CSS → degrau 1..7 do editor."""
+    m = re.fullmatch(r"\s*([\d.]+)\s*(px|pt)?\s*", str(v or ""))
+    if not m:
+        return {"x-small": 1, "small": 2, "medium": 3, "large": 4, "x-large": 5, "xx-large": 6, "xxx-large": 7}.get(str(v).strip())
+    pt = float(m.group(1)) * (0.75 if (m.group(2) or "px") == "px" else 1)
+    return min(TAMANHOS_PT, key=lambda k: abs((TAMANHOS_PT[k] or 10.5) - pt))
+
+
+def ler_html_carta(html: str) -> list[dict]:
+    """HTML do editor → parágrafos [{alinha, itens:[('t', texto, estilo) | ('br',)]}]. Tudo que não é permitido é ignorado."""
+    from html.parser import HTMLParser
+
+    blocos_tag = {"div", "p", "li", "h1", "h2", "h3", "h4", "blockquote"}
+
+    class P(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=True)
+            self.pars, self.atual, self.pilha, self.alinhas, self.ignorar = [], None, [{}], [], 0
+
+        def _par(self):
+            if self.atual is None:
+                self.atual = {"alinha": next((a for a in reversed(self.alinhas) if a), "left"), "itens": []}
+            return self.atual
+
+        def _fecha(self):
+            if self.atual is not None:
+                self.pars.append(self.atual)
+                self.atual = None
+
+        def handle_starttag(self, tag, attrs):
+            a = dict(attrs)
+            if tag in ("script", "style", "head", "title"):
+                self.ignorar += 1
+                return
+            estilo = {}
+            for d in str(a.get("style") or "").split(";"):
+                if ":" in d:
+                    k, v = d.split(":", 1)
+                    estilo[k.strip().lower()] = v.strip().lower()
+            if tag in blocos_tag:
+                self._fecha()
+                al = (estilo.get("text-align") or a.get("align") or "").lower()
+                self.alinhas.append(al if al in _ALINHAS else None)
+                if tag.startswith("h"):
+                    self.pilha.append({**self.pilha[-1], "b": True})
+                return
+            if tag == "br":
+                self._par()["itens"].append(("br",))
+                return
+            novo = dict(self.pilha[-1])
+            if tag in ("b", "strong") or estilo.get("font-weight") in ("bold", "700", "600", "800", "900"):
+                novo["b"] = True
+            if tag in ("i", "em") or estilo.get("font-style") == "italic":
+                novo["i"] = True
+            if tag == "u" or "underline" in estilo.get("text-decoration", ""):
+                novo["u"] = True
+            cor = _cor_ok(a.get("color") or estilo.get("color"))
+            if cor:
+                novo["cor"] = cor
+            tam = None
+            if a.get("size") and str(a["size"]).strip().isdigit():
+                tam = min(max(int(a["size"]), 1), 7)
+            elif estilo.get("font-size"):
+                tam = _tam_de_css(estilo["font-size"])
+            if tam:
+                novo["tam"] = tam
+            if tag in ("b", "strong", "i", "em", "u", "font", "span", "a", "sub", "sup", "small", "big"):
+                self.pilha.append(novo)
+
+        def handle_endtag(self, tag):
+            if tag in ("script", "style", "head", "title"):
+                self.ignorar = max(0, self.ignorar - 1)
+                return
+            if tag in blocos_tag:
+                self._fecha()
+                if self.alinhas:
+                    self.alinhas.pop()
+                if tag.startswith("h") and len(self.pilha) > 1:
+                    self.pilha.pop()
+                return
+            if tag in ("b", "strong", "i", "em", "u", "font", "span", "a", "sub", "sup", "small", "big") and len(self.pilha) > 1:
+                self.pilha.pop()
+
+        def handle_data(self, data):
+            if self.ignorar or not data:
+                return
+            data = data.replace("\r", "").replace("\n", " ").replace("\xa0", " ")
+            if not data.strip() and self.atual is None:
+                return
+            self._par()["itens"].append(("t", data, dict(self.pilha[-1])))
+
+    p = P()
+    p.feed(str(html or "")[:80000])
+    p.close()
+    p._fecha()
+    return p.pars[:400]
+
+
+def html_limpo_carta(html: str) -> str:
+    """O HTML que fica gravado e volta para o editor/prévia (sem nada além do permitido)."""
+    from xml.sax.saxutils import escape, quoteattr
+
+    out = []
+    for par in ler_html_carta(html):
+        partes = []
+        for it in par["itens"]:
+            if it[0] == "br":
+                partes.append("<br>")
+                continue
+            _, txt, e = it
+            s = escape(txt)
+            if e.get("u"):
+                s = f"<u>{s}</u>"
+            if e.get("i"):
+                s = f"<i>{s}</i>"
+            if e.get("b"):
+                s = f"<b>{s}</b>"
+            if e.get("cor") or e.get("tam"):
+                at = (f" color={quoteattr(e['cor'])}" if e.get("cor") else "") + (f' size="{e["tam"]}"' if e.get("tam") else "")
+                s = f"<font{at}>{s}</font>"
+            partes.append(s)
+        dentro = "".join(partes) or "<br>"
+        al = par["alinha"]
+        out.append(f'<div style="text-align:{al}">{dentro}</div>' if al != "left" else f"<div>{dentro}</div>")
+    return "".join(out)
+
+
+def _paragrafos_reportlab(html: str, fmt: dict):
+    from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT, TA_RIGHT
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.platypus import Paragraph, Spacer
+    from xml.sax.saxutils import escape
+
+    base = float(fmt.get("fonte") or 10.5)
+    fator = float(fmt.get("entrelinhas") or 1.3)
+    esp = float(fmt.get("esp_par") or 0)
+    al_map = {"left": TA_LEFT, "center": TA_CENTER, "right": TA_RIGHT, "justify": TA_JUSTIFY}
+    saida = []
+    for par in ler_html_carta(html):
+        partes, maior, so_br = [], base, True
+        for it in par["itens"]:
+            if it[0] == "br":
+                partes.append("<br/>")
+                continue
+            _, txt, e = it
+            if txt.strip():
+                so_br = False
+            s = escape(txt).replace("  ", " &nbsp;")
+            if e.get("u"):
+                s = f"<u>{s}</u>"
+            if e.get("i"):
+                s = f"<i>{s}</i>"
+            if e.get("b"):
+                s = f"<b>{s}</b>"
+            pt = TAMANHOS_PT.get(e.get("tam")) if e.get("tam") else None
+            if pt:
+                maior = max(maior, pt)
+            if e.get("cor") or pt:
+                attrs = ""
+                if e.get("cor"):
+                    attrs += f' color="{e["cor"]}"'
+                if pt:
+                    attrs += f" size={pt}"
+                s = f"<font{attrs}>{s}</font>"
+            partes.append(s)
+        if so_br:   # linha em branco
+            saida.append(Spacer(1, base * fator + esp))
+            continue
+        while partes and partes[-1] == "<br/>":
+            partes.pop()
+        estilo = ParagraphStyle("p", fontName="Helvetica", fontSize=base, leading=maior * fator,
+                                alignment=al_map.get(par["alinha"], TA_LEFT), spaceAfter=esp)
+        saida.append(Paragraph("".join(partes), estilo))
+    return saida
+
+
+def texto_para_html_carta(destino: str, referencia: str, conteudo: str) -> str:
+    """Carta antiga (campos de texto) → HTML do editor, para abrir no formato novo."""
+    from xml.sax.saxutils import escape
+
+    linhas = list(str(destino or "").splitlines()) + [""] + [str(referencia or "")] + [""] + str(conteudo or "").splitlines()
+    return "".join(f"<div>{escape(x) if x.strip() else '<br>'}</div>" for x in linhas)
+
+
 CABECALHO_CARTA = ["Congregação Parque Aliança (72249)", "Av. Felipe Carrilo Puerto, 827 – Jardim Magdalena",
                    "São Paulo – SP          CEP 05890 – 000."]
 
 
-def carta_transferencia(*, data: str, destino: str, referencia: str, conteudo: str,
-                        cabecalho: list[str] | None = None, assinaturas_png: bytes | None = None) -> bytes:
+def carta_transferencia(*, data: str, destino: str = "", referencia: str = "", conteudo: str = "",
+                        cabecalho: list[str] | None = None, assinaturas_png: bytes | None = None,
+                        corpo_html: str | None = None, fmt: dict | None = None) -> bytes:
     """Carta de mudança de publicador no modelo da congregação (cabeçalho e assinaturas fixos)."""
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import ParagraphStyle
@@ -227,18 +433,28 @@ def carta_transferencia(*, data: str, destino: str, referencia: str, conteudo: s
             c.setFont("Helvetica-BoldOblique", 12)
         c.drawCentredString(larg / 2, y, str(t))
         y -= 6.5 * mm
-    y -= 4 * mm
-    c.setFont("Helvetica-Bold", 10.5)
-    c.drawRightString(larg - 25 * mm, y, str(data or ""))
-    corpo = ParagraphStyle("corpo", fontName="Helvetica", fontSize=10.5, leading=14)
-    blocos = []
-    blocos.append(Paragraph("<br/>".join(escape(x) for x in str(destino or "").splitlines()), corpo))
-    blocos.append(Paragraph("&nbsp;", corpo))
-    blocos.append(Paragraph(escape(str(referencia or "")), corpo))
-    blocos.append(Paragraph("&nbsp;", corpo))
-    for par in re.split(r"\n\s*\n", str(conteudo or "").strip()):
-        blocos.append(Paragraph("<br/>".join(escape(x) for x in par.splitlines()), corpo))
-        blocos.append(Paragraph("&nbsp;", ParagraphStyle("esp", fontSize=4, leading=5)))
+    f_ = {**FMT_PADRAO, **(fmt or {})}
+    y -= float(f_["esp_cab"]) * mm
+    c.setFont("Helvetica-Bold", float(f_["fonte"]))
+    al_data = f_.get("alinha_data")
+    if al_data == "left":
+        c.drawString(25 * mm, y, str(data or ""))
+    elif al_data == "center":
+        c.drawCentredString(larg / 2, y, str(data or ""))
+    else:
+        c.drawRightString(larg - 25 * mm, y, str(data or ""))
+    if corpo_html:   # carta feita no editor com formatação
+        blocos = _paragrafos_reportlab(corpo_html, f_)
+    else:            # carta antiga (só texto)
+        corpo = ParagraphStyle("corpo", fontName="Helvetica", fontSize=10.5, leading=14)
+        blocos = []
+        blocos.append(Paragraph("<br/>".join(escape(x) for x in str(destino or "").splitlines()), corpo))
+        blocos.append(Paragraph("&nbsp;", corpo))
+        blocos.append(Paragraph(escape(str(referencia or "")), corpo))
+        blocos.append(Paragraph("&nbsp;", corpo))
+        for par in re.split(r"\n\s*\n", str(conteudo or "").strip()):
+            blocos.append(Paragraph("<br/>".join(escape(x) for x in par.splitlines()), corpo))
+            blocos.append(Paragraph("&nbsp;", ParagraphStyle("esp", fontSize=4, leading=5)))
     alt_assin = 34 * mm
     topo_frame = y - 10 * mm
     base_frame = 30 * mm + alt_assin
