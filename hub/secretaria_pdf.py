@@ -456,15 +456,43 @@ def carta_transferencia(*, data: str, destino: str = "", referencia: str = "", c
             blocos.append(Paragraph("<br/>".join(escape(x) for x in par.splitlines()), corpo))
             blocos.append(Paragraph("&nbsp;", ParagraphStyle("esp", fontSize=4, leading=5)))
     alt_assin = 34 * mm
-    topo_frame = y - 10 * mm
-    base_frame = 30 * mm + alt_assin
-    f = Frame(25 * mm, base_frame, larg - 50 * mm, topo_frame - base_frame, showBoundary=0, leftPadding=0, rightPadding=0)
-    sobra = f.addFromList(blocos, c)
-    if blocos:   # texto maior que uma página: continua na próxima
+    margem_baixo = 20 * mm                # páginas do meio: texto até 2 cm do fim da folha
+    base_assin = 30 * mm + alt_assin      # última página: texto termina acima das assinaturas
+    topo_pag = alt - 25 * mm              # páginas 2, 3…: começam 2,5 cm abaixo do topo
+
+    def _frame(topo, base):
+        return Frame(25 * mm, base, larg - 50 * mm, max(topo - base, 10), showBoundary=0, leftPadding=0, rightPadding=0)
+
+    def _cabe_tudo(lista, topo):
+        """Testa (num rascunho) se o que falta cabe acima das assinaturas."""
+        teste = list(lista)
+        _frame(topo, base_assin).addFromList(teste, canvas.Canvas(io.BytesIO(), pagesize=A4))
+        return not teste
+
+    topo = y - 10 * mm
+    pagina = 1
+    while True:
+        if not blocos or _cabe_tudo(blocos, topo):      # última página: texto + assinaturas
+            _frame(topo, base_assin).addFromList(blocos, c)
+            break
+        antes = len(blocos)
+        teste = list(blocos)
+        _frame(topo, margem_baixo).addFromList(teste, canvas.Canvas(io.BytesIO(), pagesize=A4))
+        if not teste:
+            # O resto cabe na folha, mas não junto com as assinaturas: escreve só até o limite das assinaturas
+            # e leva o final do texto para a próxima página (a assinatura nunca fica sozinha numa página).
+            _frame(topo, base_assin).addFromList(blocos, c)
+        else:
+            _frame(topo, margem_baixo).addFromList(blocos, c)   # página cheia; o resto vai para a próxima
+        if not blocos:
+            break
+        if len(blocos) == antes and pagina > 60:             # proteção: nunca entra em laço infinito
+            break
         c.showPage()
-        f2 = Frame(25 * mm, base_frame, larg - 50 * mm, alt - 25 * mm - base_frame, showBoundary=0, leftPadding=0, rightPadding=0)
-        f2.addFromList(blocos, c)
-    del sobra
+        pagina += 1
+        topo = topo_pag
+        c.setFont("Helvetica", 7.5)
+        c.drawRightString(larg - 25 * mm, alt - 15 * mm, f"(continuação — página {pagina})")
     if assinaturas_png:
         try:
             img = ImageReader(io.BytesIO(assinaturas_png))

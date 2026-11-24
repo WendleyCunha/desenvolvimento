@@ -129,3 +129,16 @@ def test_carta_formatada_limpa_html_e_guarda_ajustes(hub):
     assert "Jenipapo" in PdfReader(io.BytesIO(P.carta_transferencia(data="x", destino="Jenipapo", referencia="Ref", conteudo="c"))).pages[0].extract_text()
     # sem imagem de assinaturas → 404 na prévia
     assert c.get("/api/secretaria/carta/assinaturas").status_code == 404
+
+
+def test_carta_longa_cria_paginas_e_assinatura_fecha_a_ultima():
+    import secretaria_pdf as P
+    for n in (1, 30, 45, 60, 88, 140, 220):
+        h = "".join(f"<div>Parágrafo {i} com algum texto para ocupar a linha toda da carta de transferência.</div>" for i in range(n))
+        r = PdfReader(io.BytesIO(P.carta_transferencia(data="24 de Novembro de 2026", corpo_html=h + "<div>FIM DO TEXTO</div>")))
+        assert "FIM DO TEXTO" in r.pages[-1].extract_text()              # a assinatura nunca fica sozinha
+        assert "Coordenador" in r.pages[-1].extract_text()               # assinaturas só na última
+        assert all("Coordenador" not in pg.extract_text() for pg in r.pages[:-1])
+        todos = "".join(pg.extract_text() for pg in r.pages)
+        assert all(f"Parágrafo {i} " in todos for i in range(n))         # nada se perde entre páginas
+    assert len(r.pages) >= 4
