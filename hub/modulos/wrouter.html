@@ -141,9 +141,16 @@ html[data-claro] .leaflet-container{background:#e9ecef}
 .duplo.com-mot.com-cli{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
 .lado-mot{display:none !important}
 .com-mot .lado-mot{display:flex !important}
+/* o card com quem estamos falando ACENDE (motorista laranja · cliente azul) */
+.lado-mot,.lado-cli{transition:box-shadow .25s ease,border-color .25s ease,opacity .25s ease}
+.lado-mot.falando{border-color:#fb923c;box-shadow:0 0 0 2px rgba(251,146,60,.55),0 0 26px rgba(251,146,60,.45),0 0 70px rgba(251,146,60,.22)}
+.lado-cli.falando{border-color:#3b82f6;box-shadow:0 0 0 2px rgba(59,130,246,.6),0 0 26px rgba(59,130,246,.5),0 0 70px rgba(59,130,246,.25)}
+.com-mot.com-cli .lado-mot:not(.falando),.com-mot.com-cli .lado-cli:not(.falando){opacity:.82}
+.atalhos{text-align:center;font-size:.7rem;opacity:.65;margin-top:6px}
+.atalhos kbd{border:1px solid var(--vidro-borda);border-radius:5px;padding:0 5px;font:inherit}
 .lado-tit .chamar{margin-left:auto;font-size:.72rem;text-transform:none;letter-spacing:0}
 /* os dois cards com a MESMA altura; a conversa ocupa o espaço que sobra e vai subindo */
-.lado-mot,.com-cli .lado-cli{display:flex;flex-direction:column;height:calc(100vh - 220px);min-height:460px}
+.lado-mot,.com-cli .lado-cli{display:flex;flex-direction:column;height:calc(100vh - 240px);min-height:460px}
 .lado-mot .chat-mot{flex:1;min-height:0;display:flex;flex-direction:column;margin:0}
 .lado-mot .chat-mot .msgs{flex:1;max-height:none;min-height:0}
 .lado-cli .msgs{flex:1;min-height:0}
@@ -508,6 +515,29 @@ async function abrirCliente(cid, pid, opts = {}) {
     const t = lado === "cli" ? $("#clTxt", cx) : $("#cvTxt", cx);
     if (t) { if (lado === "cli" && !t.value && !(cli && cli.ativo)) t.value = `Olá! Aqui é da central de entregas, sobre o seu pedido #${d.numero}. `; t.focus(); }
     if (lado === "mot") atualizar(true);
+    acender(lado, cx);
+  }
+  // card ACESO = com quem estou falando · atalhos: → + Tab = cliente · ← + Tab = motorista
+  function acender(lado, cx) { $("#cvCorpo", cx).classList.toggle("falando", lado === "mot"); $("#cvCli", cx).classList.toggle("falando", lado === "cli"); }
+  function irLado(lado, cx) {
+    if ((lado === "cli" && !ladoCli) || (lado === "mot" && !ladoMot)) mostrar(lado, cx);
+    const t = $(lado === "cli" ? "#clTxt" : "#cvTxt", cx); if (t) t.focus(); else acender(lado, cx);
+  }
+  function ligarFoco(cx) {
+    const du = $("#cvDuplo", cx);
+    du.addEventListener("focusin", (e) => { if (e.target.closest("#cvCli")) acender("cli", cx); else if (e.target.closest("#cvCorpo")) acender("mot", cx); });
+    du.addEventListener("pointerdown", (e) => { if (e.target.closest("#cvCli")) acender("cli", cx); else if (e.target.closest("#cvCorpo")) acender("mot", cx); });
+    const seta = { lado: "", t: 0 }, presas = new Set();
+    cx.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowRight" || e.key === "ArrowLeft") { presas.add(e.key); seta.lado = e.key === "ArrowRight" ? "cli" : "mot"; seta.t = Date.now(); return; }
+      if (e.key !== "Tab") return;
+      const lado = presas.has("ArrowRight") ? "cli" : presas.has("ArrowLeft") ? "mot" : (Date.now() - seta.t < 900 ? seta.lado : "");
+      if (!lado) return;
+      e.preventDefault(); seta.t = 0; irLado(lado, cx);
+    }, true);
+    cx.addEventListener("keyup", (e) => presas.delete(e.key));
+    acender(ladoCli && !ladoMot ? "cli" : "mot", cx);
+    setTimeout(() => { const t = $(ladoCli && !ladoMot ? "#clTxt" : "#cvTxt", cx); if (t) t.focus(); }, 60);
   }
   function ligarBotoes(cx) {
     const bc = $("#cvBtCli", cx); if (bc && bc.tagName === "BUTTON") bc.onclick = () => mostrar("cli", cx);
@@ -534,22 +564,25 @@ async function abrirCliente(cid, pid, opts = {}) {
 `;
   };
   const m = A.modal({ titulo: `Pedido #${d.numero} · ${d.nome}`, icone: "usuario", cor: "#a78bfa", largura: 980,
-    html: `<div class="${classes()}" id="cvDuplo"><div class="lado-mot" id="cvCorpo">${corpo()}</div><div class="lado-cli" id="cvCli">${corpoCli()}</div></div>`,
+    html: `<div class="${classes()}" id="cvDuplo" title="Atalhos: → + Tab vai para a conversa do cliente · ← + Tab vai para a do motorista"><div class="lado-mot" id="cvCorpo">${corpo()}</div><div class="lado-cli" id="cvCli">${corpoCli()}</div></div><div class="atalhos">Atalhos: <kbd>→</kbd> + <kbd>Tab</kbd> conversa do cliente · <kbd>←</kbd> + <kbd>Tab</kbd> conversa do motorista · <kbd>Enter</kbd> envia</div>`,
     esquerda: [{ rotulo: "PDF do caso", icone: "documento", acao: () => { dossie(d); return false; } }],
     botoes: [{ rotulo: "Fechar" }],
-    aoAbrir: (cx) => { ligar(cx); },
+    aoAbrir: (cx) => { ligar(cx); ligarFoco(cx); },
     aoFechar: () => { clearInterval(timer); api(`/cargas/${cid}/pedido/${pid}/presenca`, { method: "POST", body: { sair: true } }).catch(() => {}); if (V.aba === "aovivo") rAoVivo(true); else if (V.aba === "conversas") rConversas(); } });
   function ligarCli(cx) {
     const l = $("#clMsgs", cx); if (l) l.scrollTop = l.scrollHeight;
     const env = $("#clEnv", cx); if (env) env.onclick = async () => { const t = $("#clTxt", cx).value.trim(); if (!t) return;
-      try { await api(`/cargas/${cid}/pedido/${pid}/falar-cliente`, { method: "POST", body: { texto: t } }); $("#clTxt", cx).value = ""; await atualizarCli(); } catch (e) { falha(e); } };
+      try { await api(`/cargas/${cid}/pedido/${pid}/falar-cliente`, { method: "POST", body: { texto: t } }); $("#clTxt", cx).value = ""; await atualizarCli(); } catch (e) { falha(e); }
+      const n = $("#clTxt", cx); if (n) n.focus(); };
     const ti = $("#clTxt", cx); if (ti) ti.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); $("#clEnv", cx).click(); } };
     const fim = $("#clFim", cx); if (fim) fim.onclick = async () => { if (!confirm("Finalizar a conversa com o CLIENTE? A conversa com o motorista continua.")) return;
       try { await api(`/cargas/${cid}/pedido/${pid}/cliente-chat/finalizar`, { method: "POST", body: {} }); await atualizarCli(); } catch (e) { falha(e); } };
   }
   async function atualizarCli() {
     const cx = m.el; const ti = $("#clTxt", cx); if (ti && ti.value && document.activeElement === ti) return;
+    const foco = document.activeElement && document.activeElement.id;
     try { cli = await api(`/cargas/${cid}/pedido/${pid}/cliente-chat`); $("#cvCli", cx).innerHTML = corpoCli(); ligarCli(cx); const bc = $("#cvBtCli", cx); if (bc) bc.outerHTML = btCli(); ligarBotoes(cx); } catch (_) {}
+    if (foco === "clTxt" || foco === "cvTxt") { const n = $("#" + foco, cx); if (n) n.focus(); }
   }
   function ligar(cx) {
     ligarCli(cx); ligarBotoes(cx);
@@ -566,14 +599,17 @@ async function abrirCliente(cid, pid, opts = {}) {
     $$("[data-falar]", cx).forEach((b) => (b.onclick = (ev) => { ev.stopPropagation(); mostrar("cli", cx);
       const t = $("#clTxt", cx); if (t) { if (!t.value && !(cli && cli.ativo)) t.value = `Olá! Aqui é da central de entregas, sobre o seu pedido #${d.numero}. `; t.focus(); } }));
     const env = $("#cvEnv", cx); if (env) env.onclick = async () => { const t = $("#cvTxt", cx).value.trim(); if (!t) return;
-      try { await api(`/cargas/${cid}/pedido/${pid}/chat`, { method: "POST", body: { texto: t, iniciar: !d.chat_det.atual } }); await atualizar(true); } catch (e) { falha(e); } };
+      try { await api(`/cargas/${cid}/pedido/${pid}/chat`, { method: "POST", body: { texto: t, iniciar: !d.chat_det.atual } }); await atualizar(true); } catch (e) { falha(e); }
+      const n = $("#cvTxt", cx); if (n) n.focus(); };
     const ti = $("#cvTxt", cx); if (ti) ti.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); $("#cvEnv", cx).click(); } };
     const fim = $("#cvFim", cx); if (fim) fim.onclick = async () => { const n = prompt("Encerrar o atendimento. Observação (opcional):", ""); if (n === null) return;
       try { await api(`/cargas/${cid}/pedido/${pid}/chat/encerrar`, { method: "POST", body: { texto: n } }); await atualizar(true); } catch (e) { falha(e); } };
   }
   async function atualizar(forcar) {
     const cx = m.el; const ti = $("#cvTxt", cx); if (!forcar && ti && ti.value) { api(`/cargas/${cid}/pedido/${pid}/presenca`, { method: "POST", body: {} }).catch(() => {}); return; }
+    const foco = document.activeElement && document.activeElement.id;
     try { d = await api(`/cargas/${cid}/pedido/${pid}`); $("#cvCorpo", cx).innerHTML = corpo(); ligar(cx); } catch (_) {}
+    if (foco === "clTxt" || foco === "cvTxt") { const n = $("#" + foco, cx); if (n) n.focus(); }
   }
   timer = setInterval(() => { if (document.visibilityState === "visible") { if (ladoMot) atualizar(false); atualizarCli(); } }, 6000);
 }
