@@ -71,7 +71,7 @@ button{font:inherit;cursor:pointer;border:1px solid var(--rule);background:var(-
   <div class="card mapa-card" id="mapaCard" hidden><div id="mapa"></div>
     <div class="mapa-leg"><span><svg width="16" height="16" viewBox="0 0 24 24"><path d="M12 2 21 21 12 16 3 21Z" fill="#f59e0b" stroke="#111" stroke-width="1.6" stroke-linejoin="round"/></svg>Motorista</span>
       <span><svg width="13" height="17" viewBox="0 0 30 40"><path d="M15 39C15 39 2 23 2 14a13 13 0 0 1 26 0c0 9-13 25-13 25Z" fill="#111" stroke="#fff" stroke-width="2.5"/><circle cx="15" cy="14" r="5" fill="#fff"/></svg>Seu endereço</span>
-      <span id="mapaAtu" style="margin-left:auto"></span></div></div>
+      <span id="mapaRota" style="color:#22d3ee;font-weight:600"></span><span id="mapaAtu" style="margin-left:auto"></span></div></div>
   <div id="resto"></div></main>
 <script>
 "use strict";
@@ -165,6 +165,29 @@ function deslizar(marker, para, ms = 1800) {   // o triângulo anda até a nova 
     marker.setLatLng([de.lat + (para[0] - de.lat) * e, de.lng + (para[1] - de.lng) * e]); if (k < 1) M.anim = requestAnimationFrame(passo); };
   M.anim = requestAnimationFrame(passo);
 }
+// Rota PELAS RUAS do motorista até a casa do cliente (OSRM público e gratuito). Sem rota, não desenha nada (nada de linha reta).
+async function rotaRuas(de, para) {
+  const k = [de[0].toFixed(3), de[1].toFixed(3), para[0].toFixed(4), para[1].toFixed(4)].join(",");
+  if (M.rotaK === k) return M.rota;
+  if (M.rotaBusca) return M.rota;
+  M.rotaBusca = true;
+  try {
+    const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 8000);
+    const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${de[1]},${de[0]};${para[1]},${para[0]}?overview=full&geometries=geojson`, { signal: ctl.signal });
+    clearTimeout(to);
+    const j = await r.json(), rt = j && j.code === "Ok" && j.routes && j.routes[0];
+    M.rota = rt && rt.geometry && rt.geometry.coordinates.length > 2 ? { pts: rt.geometry.coordinates.map((c) => [c[1], c[0]]), km: rt.distance / 1000, min: Math.round(rt.duration / 60) } : null;
+  } catch (_) { M.rota = null; }
+  M.rotaK = k; M.rotaBusca = false;
+  return M.rota;
+}
+async function desenharRota(cam, dest) {
+  const rt = await rotaRuas(cam, dest);
+  if (M.linha) { M.map.removeLayer(M.linha); M.linha = null; }
+  if (rt) M.linha = L.polyline(rt.pts, { color: "#22d3ee", weight: 5, opacity: .85 }).addTo(M.map);
+  const el = $("#mapaRota"); if (el) el.textContent = rt ? `pelas ruas: ${rt.km.toFixed(1).replace(".", ",")} km · ~${rt.min} min` : "";
+}
+
 async function mapa(m) {
   const card = $("#mapaCard");
   if (!m) { card.hidden = true; return; }
@@ -186,6 +209,7 @@ async function mapa(m) {
   setTimeout(() => M.map.invalidateSize(), 50);
   if (!M.mexeu) { M.map.fitBounds([cam, dest], { padding: [40, 40], maxZoom: 17 }); M.ajustado = true; }
   $("#mapaAtu").textContent = m.motorista.aprox ? "posição aproximada" : "ao vivo";
+  desenharRota(cam, dest);
 }
 
 /* atualiza sozinha: a cada 10 s com o mapa aberto (motorista perto), senão a cada 30 s */
