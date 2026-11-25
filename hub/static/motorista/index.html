@@ -577,7 +577,7 @@ function atualizarMsgs() {
   const ct = $("#chCont"); if (ct && a.restante_seg != null) ct.dataset.ate = Date.now() + a.restante_seg * 1000;
   const e = $("#chErro"); if (e) { e.hidden = !S.chatErro; e.textContent = S.chatErro || ""; }
 }
-const fmtCont = seg => { const n = Math.abs(Math.round(seg)), t = `${Math.floor(n / 60)}:${String(n % 60).padStart(2, "0")}`; return seg >= 0 ? `⏱ ${t}` : `⏱ esgotado há ${t}`; };
+const fmtCont = seg => { const n = Math.abs(Math.round(seg)), t = `${Math.floor(n / 60)}:${String(n % 60).padStart(2, "0")}`; return seg >= 0 ? `⏱ ${t}` : `⏱ −${t}`; };
 setInterval(() => document.querySelectorAll("[data-ate]").forEach(el => { const seg = (+el.dataset.ate - Date.now()) / 1000;
   const t = +el.dataset.total || 900, cor = seg <= 0 || seg <= t / 3 ? "estourou" : seg <= t * 2 / 3 ? "quase" : "";   // [v5.11] terços: verde, laranja, vermelho
   el.textContent = fmtCont(seg); el.classList.toggle("estourou", cor === "estourou"); el.classList.toggle("quase", cor === "quase"); }), 1000);
@@ -595,7 +595,7 @@ function desenharChat() {
   const msgs = a ? htmlMsgs(a) : "";
   $("#app").innerHTML = `<button type="button" class="ghost" id="chVolta" style="justify-self:start">‹ Voltar para o cliente</button>
     <div class="card" id="chTela"><span class="cap">Chat com a frota · Pedido <span class="mono">#${esc(p.numero)}</span></span><h2 style="font-size:20px">${esc(p.nome)}</h2>
-      ${a ? `<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap"><span class="motivo-gde">${esc(a.motivo)}</span>
+      ${a ? `<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap">${/^contato da frota$/i.test(String(a.motivo || "").trim()) ? "<span></span>" : `<span class="motivo-gde">${esc(a.motivo)}</span>`}
         ${a.restante_seg != null ? `<span class="cont-reg" id="chCont" data-ate="${Date.now() + a.restante_seg * 1000}" data-total="${(a.prazo_min || 15) * 60}">${fmtCont(a.restante_seg)}</span>` : ""}</div>` : ""}</div>
     <div class="aviso" id="chErro" ${S.chatErro ? "" : "hidden"}>${esc(S.chatErro)}</div>
     ${!a ? `<div class="card"><h3>Qual é o motivo?</h3><p class="cap">A frota já vê o cliente, o pedido e as peças. Escolha o motivo para começar.</p>
