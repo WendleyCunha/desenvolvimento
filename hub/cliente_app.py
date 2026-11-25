@@ -720,13 +720,19 @@ def central_chama(cid: str, texto: str, me: dict, pedido: dict | None = None) ->
     return {"ok": True, "id": tid, "existente": bool(ativo), "chamado": cli["codigo"]}
 
 
-def chat_com_cliente(cid: str) -> dict:
-    """Situação do chat do app com o cliente (para a tela dividida do WROUTER)."""
+def chat_com_cliente(cid: str, tid: str = "") -> dict:
+    """Situação do chat do app com o cliente (tela dividida do WROUTER). Sem chat aberto, devolve o último
+    chat chamado pela entrega (`tid`), já finalizado — assim o PDF do caso traz a conversa inteira."""
     cli = _erp().ST.dados["parceiros"].get(cid) or {}
     if not cli.get("codigo"):
         return {"ativo": False, "sem_app": True, "mensagens": []}
-    ativo = chat_ativo(tickets_do_cliente(cid, cli))
+    ts = tickets_do_cliente(cid, cli)
+    ativo = chat_ativo(ts)
     if not ativo:
+        ant = next((t for t in ts if tid and t["id"].split("#")[-1] == str(tid).split("#")[-1]), None)
+        if ant:
+            return {"ativo": False, "id": ant["id"], "chamado": cli["codigo"], "status": ant.get("status"), "nova": False,
+                    "mensagens": mensagens_publicas(ant)[-80:]}
         return {"ativo": False, "mensagens": []}
     return {"ativo": True, "id": ativo["id"], "chamado": cli["codigo"], "status": ativo.get("status"),
             "nova": bool(ativo.get("app_pendente")), "mensagens": mensagens_publicas(ativo)[-80:]}

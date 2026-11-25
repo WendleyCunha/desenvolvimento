@@ -419,3 +419,17 @@ def test_finalizar_so_o_chat_do_cliente(t, monkeypatch):
     assert C.chat_com_cliente("c_ana")["nova"] is True, "cliente respondeu: o balão mostra o ponto"
     assert C.central_finaliza_chat("c_ana", me) is True
     assert C.chat_com_cliente("c_ana")["ativo"] is False and t.get("/api/cliente/eu").json()["chat"] is None
+
+
+def test_chat_finalizado_continua_no_pdf_do_caso(t, monkeypatch):
+    """Depois de finalizado, o WROUTER ainda lê a conversa do cliente daquela entrega (para o PDF do caso)."""
+    import promocoes
+    monkeypatch.setattr(promocoes, "avisar_cliente", lambda *a, **k: None)
+    monkeypatch.setattr(banco, "thread", lambda fn, *a, **k: fn(*a, **k))
+    me = {"login": "atendente", "nome": "Carla"}
+    entrar(t)
+    r = C.central_chama("c_ana", "Olá, Ana!", me)
+    C.central_finaliza_chat("c_ana", me)
+    assert C.chat_com_cliente("c_ana")["mensagens"] == []
+    st = C.chat_com_cliente("c_ana", r["id"])
+    assert st["ativo"] is False and st["mensagens"][0]["texto"] == "Olá, Ana!"

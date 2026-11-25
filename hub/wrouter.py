@@ -1474,8 +1474,9 @@ def ver_chat_cliente(cid: str, pid: str, request: Request):
     _ctx(request)
     with E.ST.trava:
         ped = _ped_da_carga(cid, pid)
+        tid = ((rota(E.ST.dados["cargas"][cid])["pedidos"].get(pid) or {}).get("cliente_chamado") or {}).get("tid") or ""
     import cliente_app
-    return cliente_app.chat_com_cliente(ped.get("cliente_id") or "")
+    return cliente_app.chat_com_cliente(ped.get("cliente_id") or "", tid)
 
 
 @router.post("/api/wrouter/cargas/{cid}/pedido/{pid}/cliente-chat/finalizar")

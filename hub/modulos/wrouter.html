@@ -188,7 +188,8 @@ html[data-claro] .leaflet-container{background:#e9ecef}
 .mc.cen{background:#2563eb;color:#fff}
 .mc small{display:block;font-size:.68rem;opacity:.75;margin-bottom:2px}
 .btn.azul{background:#2563eb;border-color:#2563eb;color:#fff}
-.btn.ic.azul{background:#2563eb;border-color:#3b82f6;box-shadow:0 0 0 2px rgba(59,130,246,.35)}
+.btn.ic.laranja{background:#ea580c;border-color:#fb923c;box-shadow:0 0 0 2px rgba(251,146,60,.4),0 0 14px rgba(251,146,60,.45)}
+.btn.ic.azul{background:#2563eb;border-color:#3b82f6;box-shadow:0 0 0 2px rgba(59,130,246,.4),0 0 14px rgba(59,130,246,.5)}
 .btn.ic .ponto{position:absolute;top:-3px;right:-3px;width:9px;height:9px;border-radius:50%;background:#fb7185;border:2px solid #0b1220}
 .btn.ic{position:relative}
 @media (max-width:900px){.duplo.com-mot.com-cli{grid-template-columns:1fr}}
@@ -249,7 +250,9 @@ const KM = (p) => p.km == null ? '<span class="sub">—</span>' : `<span class="
 const urlCli = (lk) => lk ? `${location.origin}${S.base || ""}/entrega/${lk}` : "";
 // Ações do cliente em ÍCONES (o nome aparece ao passar o mouse): copiar link · WhatsApp · chamar no app · motorista
 const IC_WA = `<svg viewBox="0 0 24 24" width="16" height="16" fill="#25d366" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm5.3 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2.1 1-2.4c.3-.3.6-.3.8-.3h.6c.2 0 .4 0 .6.5l.9 2.1c.1.2.1.4 0 .5l-.4.6-.4.4c-.1.1-.3.3-.1.6.2.3.8 1.3 1.7 2.1 1.2 1 2.1 1.3 2.4 1.5.3.1.5.1.6-.1l.9-1c.2-.3.4-.2.6-.1l2 .9c.3.1.5.2.5.3.1.2.1.7-.1 1.3z"/></svg>`;
-const BTLINK = (p, gid, comMotorista = true) => `<span class="icones" style="white-space:nowrap;display:inline-flex;gap:4px">${p.link ? `<button type="button" class="btn v p ic" data-lcp="${esc(urlCli(p.link))}" title="Copiar o link de acompanhamento">🔗</button><button type="button" class="btn v p ic" data-lwa="${esc(urlCli(p.link))}|${esc(String(p.nome || "").split(" ")[0])}" title="Enviar o link pelo WhatsApp">${IC_WA}</button>` : ""}${gid ? `<button type="button" class="btn v p ic${p.cliente_chat && p.cliente_chat.ativo ? " azul" : ""}" data-falar="${esc(gid)}|${esc(p.pid)}|${esc(String(p.nome || "").split(" ")[0])}|${esc(p.numero)}" data-ativo="${p.cliente_chat && p.cliente_chat.ativo ? 1 : ""}" title="${p.cliente_chat && p.cliente_chat.ativo ? "Cliente acionado pelo app — abrir a conversa (tela dividida)" + (p.cliente_chat.nova ? " · o cliente respondeu" : "") : "Falar com o cliente (chama pelo app do cliente)"}">💬${p.cliente_chat && p.cliente_chat.nova ? '<i class="ponto"></i>' : ""}</button>${comMotorista ? `<button type="button" class="btn v p ic" data-pfoco="${esc(gid)}|${esc(p.pid)}" title="1º clique: mapa com o motorista e esta entrega · 2º clique: conversa com o motorista">🚚</button>` : ""}` : ""}</span>`;
+// Situação da conversa (motorista e/ou cliente) numa linha
+const CONV = (p) => `${p.chat.aberto ? `<span class="motivo-gde">🚚 ${esc(p.chat.motivo)}</span> ${relogio(p.chat)} ${p.chat.nao_lidas ? etq(p.chat.nao_lidas + " nova(s)", "#fb7185") : ""}` : ""}${p.cliente_chat && p.cliente_chat.ativo ? ` ${etq("📱 cliente" + (p.cliente_chat.nova ? " respondeu" : " em conversa"), "#3b82f6")}` : ""}`;
+const BTLINK = (p, gid, comMotorista = true) => `<span class="icones" style="white-space:nowrap;display:inline-flex;gap:4px">${p.link ? `<button type="button" class="btn v p ic" data-lcp="${esc(urlCli(p.link))}" title="Copiar o link de acompanhamento">🔗</button><button type="button" class="btn v p ic" data-lwa="${esc(urlCli(p.link))}|${esc(String(p.nome || "").split(" ")[0])}" title="Enviar o link pelo WhatsApp">${IC_WA}</button>` : ""}${gid ? `<button type="button" class="btn v p ic${p.cliente_chat && p.cliente_chat.ativo ? " azul" : ""}" data-falar="${esc(gid)}|${esc(p.pid)}|${esc(String(p.nome || "").split(" ")[0])}|${esc(p.numero)}" data-ativo="${p.cliente_chat && p.cliente_chat.ativo ? 1 : ""}" title="${p.cliente_chat && p.cliente_chat.ativo ? "Cliente acionado pelo app — abrir a conversa (tela dividida)" + (p.cliente_chat.nova ? " · o cliente respondeu" : "") : "Falar com o cliente (chama pelo app do cliente)"}">💬${p.cliente_chat && p.cliente_chat.nova ? '<i class="ponto"></i>' : ""}</button>${comMotorista ? `<button type="button" class="btn v p ic${p.chat && p.chat.aberto ? " laranja" : ""}" data-pfoco="${esc(gid)}|${esc(p.pid)}" title="${p.chat && p.chat.aberto ? "Conversa com o motorista em andamento · " : ""}1º clique: mapa com o motorista e esta entrega · 2º clique: conversa com o motorista">🚚${p.chat && p.chat.nao_lidas ? '<i class="ponto"></i>' : ""}</button>` : ""}` : ""}</span>`;
 const VIZ = (v) => v ? `<span class="mini c viz">🏠 Vizinho nº ${esc(v.numero)}${v.tel ? " · " + esc(v.tel) : ""}</span>` : "";
 const desfTag = (p) => p.desfecho ? etq(DESF[p.desfecho][0], DESF[p.desfecho][1]) + (p.baixa_erp ? `<span class="sub">ERP: ${esc(BX[p.baixa_erp] || p.baixa_erp)}${p.manual ? " (baixa manual)" : ""}</span>` : "")
   : (p.liberacao || {}).status === "pendente" ? etq("Esperando liberação", "#a78bfa") : p.chegou ? etq(`📍 Chegou ${hora(p.chegou.em)}${p.chegou.conferido ? "" : " ⚠"}`, "#22d3ee") : etq("Pendente", "#94a3b8");
@@ -264,20 +267,19 @@ const falha = (e) => A.toast("⚠ " + esc(e.message), [], { cor: "var(--rosa)", 
 const ok = (t) => A.toast("✓ " + t, [], { cor: "var(--verde)" });
 
 /* ══════ NAVEGAÇÃO ══════ */
-const ABAS = [["aovivo", "pino", "Ao vivo", "aovivo"], ["conversas", "mensagem", "Conversas", "aovivo"], ["historico", "historico", "Histórico de entregas", "historico"], ["motoristas", "usuarios", "Motoristas e app", "motoristas"]];
+const ABAS = [["aovivo", "pino", "Ao vivo", "aovivo"], ["historico", "historico", "Histórico de entregas", "historico"], ["motoristas", "usuarios", "Motoristas e app", "motoristas"]];
 function irPara(a) { V.aba = a; lsSet("wd.wr.aba", a); render(); scrollTo({ top: 0, behavior: "smooth" }); }
 function nav() {
   const ab = ABAS.filter((a) => pode(a[3]));
   if (!ab.some((a) => a[0] === V.aba) && ab.length) V.aba = ab[0][0];
   const k = S.d?.kpi || {};
-  const bolha = { aovivo: k.liberacoes || 0, conversas: k.chats_nao_lidos || 0 };
+  const bolha = { aovivo: (k.liberacoes || 0) + (k.chats_nao_lidos || 0) };
   $("#nav").innerHTML = ab.map(([id, ic, r]) => `<button type="button" data-aba="${id}" class="${V.aba === id ? "ativo" : ""}">${svg(ic)}<span>${r}</span>${bolha[id] ? `<em class="bolha">${bolha[id]}</em>` : ""}</button>`).join("");
   $$("#nav [data-aba]").forEach((b) => (b.onclick = () => irPara(b.dataset.aba)));
 }
 async function render() {
   nav();
   if (V.aba === "aovivo") return rAoVivo();
-  if (V.aba === "conversas") return rConversas();
   if (V.aba === "historico") return rHistorico();
   if (V.aba === "motoristas") return rMotoristas();
 }
@@ -301,7 +303,9 @@ async function rAoVivo(silencioso) {
   const pertoV = sel ? perto.filter(({ g }) => g.id === sel.id) : perto;
   const libs = todos.filter(({ p }) => (p.liberacao || {}).status === "pendente");
   const vals = todos.filter(({ p }) => (p.validar_palavra || {}).status === "pendente");
-  const chats = todos.filter(({ p }) => p.chat.aberto).sort((a, b) => (b.p.chat.nao_lidas - a.p.chat.nao_lidas) || String(b.p.chat.ult_em).localeCompare(String(a.p.chat.ult_em)));
+  const pertoIds = new Set(perto.map(({ p }) => p.pid));
+  const emConversa = (p) => p.chat.aberto || (p.cliente_chat && p.cliente_chat.ativo);
+  const chats = todos.filter(({ p }) => emConversa(p) && !pertoIds.has(p.pid)).sort((a, b) => (b.p.chat.nao_lidas - a.p.chat.nao_lidas) || String(b.p.chat.ult_em).localeCompare(String(a.p.chat.ult_em)));
   const scroll = scrollY;
   const kp = (r, v, s, c, id) => `<button type="button" class="kpi kpi-bt" style="--c:${c}" data-kpi="${id}" title="Ver a lista: ${r}"><small>${r}</small><b>${v}</b><span>${s}</span></button>`;
   $("#main").innerHTML = `<section class="painel vidro vidro-borda-viva"><div class="cab">${A.orbe("pino", "#a78bfa")}<div><h2>Ao vivo — entregas na rua</h2><p>O motorista registra no app e a baixa entra sozinha no ERP. Atualiza a cada 20 s · ${hora(d.servidor)}</p></div>
@@ -312,7 +316,7 @@ async function rAoVivo(silencioso) {
     ${vals.length ? `<section class="bloco mal"><h3>🔑 Entrega feita SEM SINAL — a palavra não conferiu (${vals.length})</h3><span class="sub">Confira com o cliente: valide a entrega ou reabra para o motorista registrar de novo (a baixa no ERP é desfeita).</span>
       ${vals.map(({ g, p }) => `<div class="linha"><span><b>${esc(p.nome)}</b> · pedido #${p.numero} · carga ${g.numero} · ${esc(g.motorista)}<span class="sub">digitou “${esc(p.validar_palavra.digitada || "—")}” · palavra certa <span class="palavra">${esc(p.palavra || "—")}</span> · sem sinal às ${esc(String(p.validar_palavra.offline_em || "").slice(11, 16))}</span></span>
         ${trata ? `<span class="chips"><button type="button" class="btn p" data-vpal="${g.id}|${p.pid}|aceitar">${svg("check")}Validar entrega</button><button type="button" class="btn perigo p" data-vpal="${g.id}|${p.pid}|reabrir">Reabrir</button></span>` : ""}</div>`).join("")}</section>` : ""}
-    ${chats.length ? `<section class="bloco alerta"><h3>💬 Chat com motorista (${chats.length} aberto(s))</h3>${chats.map(({ g, p }) => `<div class="linha"><span><span class="motivo-gde">${esc(p.chat.motivo)}</span> ${relogio(p.chat)} ${p.chat.nao_lidas ? etq(p.chat.nao_lidas + " nova(s)", "#fb7185") : ""}<br><b>${esc(p.nome)}</b> · pedido #${p.numero} · carga ${g.numero} · ${esc(g.placa)} · ${esc(g.motorista)}<span class="sub">${esc(p.chat.ult_txt || "")} · ${hora(p.chat.ult_em)}${p.chat.assumido ? " · com " + esc(p.chat.assumido.por) : ""}</span></span><button type="button" class="btn p" data-cli="${g.id}|${p.pid}">Abrir conversa</button></div>`).join("")}</section>` : ""}
+    ${chats.length ? `<section class="bloco alerta conv"><h3>💬 Conversas em andamento (${chats.length})</h3><span class="sub">Entregas que ainda não estão chegando. Quando a entrega entra em "Chegando", a conversa passa para lá.</span>${chats.map(({ g, p }) => `<div class="linha"><span>${CONV(p)}<br><b>${esc(p.nome)}</b> · pedido #${p.numero} · carga ${g.numero} · ${esc(g.placa)} · <span class="mot-sel" data-mot="${g.id}" title="Ver só este motorista">${esc(g.motorista)}</span>${p.chat.aberto ? `<span class="sub">${esc(p.chat.ult_txt || "")} · ${hora(p.chat.ult_em)}${p.chat.assumido ? " · com " + esc(p.chat.assumido.por) : ""}</span>` : ""}</span><span class="chips">${BTLINK(p, g.id)}</span></div>`).join("")}</section>` : ""}
     ${libs.length ? `<section class="bloco mal"><h3>Motorista esperando liberação sem palavra</h3>${libs.map(({ g, p }) => `<div class="linha"><span><b>${esc(p.nome)}</b> · pedido #${p.numero} · carga ${g.numero} · ${esc(g.motorista)}<span class="sub">${esc(p.liberacao.motivo || "")} · pediu às ${hora(p.liberacao.pedido_em)} · ${p.tentativas} tentativa(s) errada(s) · palavra certa <b>${esc(p.palavra || "—")}</b></span></span>
       ${trata ? `<span class="chips"><button type="button" class="btn p" data-lib="${g.id}|${p.pid}|liberar">Liberar sem palavra</button><button type="button" class="btn perigo p" data-lib="${g.id}|${p.pid}|negar">Negar</button></span>` : ""}</div>`).join("")}</section>` : ""}
     <section class="av-split">
@@ -325,7 +329,7 @@ async function rAoVivo(silencioso) {
         || `<tr><td colspan="6" class="vazio">Nenhuma carga liberada ou na rua${V.data !== d.data ? "" : " hoje"}. Cargas aparecem aqui quando o WLOGISTICA libera.</td></tr>`}</tbody></table></div></section>`}</div>
       <div class="av-dir">
         ${pertoV.length ? `<section class="bloco alerta" style="margin:0"><h3>🚨 Chegando — ${sel ? `${esc(sel.motorista)} · ` : ""}entregas a menos de ${String(d.km_laranja).replace(".", ",")} km (${pertoV.length})</h3><span class="sub">Distância em linha reta do caminhão até o endereço. Laranja: menos de ${String(d.km_laranja).replace(".", ",")} km · vermelho: menos de ${String(d.km_vermelho).replace(".", ",")} km.</span>
-          ${pertoV.map(({ g, p }) => `<div class="linha"><span>${KM(p)} ${VIZ(p.vizinho)} <b>${esc(p.nome)}</b> · pedido #${p.numero} · ${esc(p.bairro || "")} · carga ${g.numero} · <span class="mot-sel" data-mot="${g.id}" title="Ver só este motorista">${esc(g.motorista)}</span></span><span class="chips">${BTLINK(p, g.id)}</span></div>`).join("")}</section>` : ""}
+          ${pertoV.map(({ g, p }) => `<div class="linha"><span>${KM(p)} ${VIZ(p.vizinho)} <b>${esc(p.nome)}</b> · pedido #${p.numero} · ${esc(p.bairro || "")} · carga ${g.numero} · <span class="mot-sel" data-mot="${g.id}" title="Ver só este motorista">${esc(g.motorista)}</span>${emConversa(p) ? `<br>${CONV(p)}${p.chat.aberto && p.chat.ult_txt ? `<span class="sub">${esc(p.chat.ult_txt)} · ${hora(p.chat.ult_em)}</span>` : ""}` : ""}</span><span class="chips">${BTLINK(p, g.id)}</span></div>`).join("")}</section>` : ""}
         <div class="bloco" style="padding:0;overflow:hidden;margin:0">${sel ? `<div class="linha" style="padding:8px 12px">${focoP ? `<span class="sub" style="margin:0">Mapa: <b>${esc(sel.motorista)}</b> → <b>#${focoP.numero} ${esc(focoP.nome)}</b> · <span id="rotaInfo"></span><br>Clique de novo no cliente para abrir a conversa com o motorista.</span><span class="chips"><button type="button" class="btn v p" data-pfoco-sair="1">Todas dele</button><button type="button" class="btn v p" data-mot="">Ver todos</button></span>` : `<span class="sub" style="margin:0">Mapa: só <b>${esc(sel.motorista)}</b> (carga ${sel.numero}) e as entregas dele</span><button type="button" class="btn v p" data-mot="">Ver todos</button>`}</div>` : ""}<div id="mapa" class="mapa"></div><div class="leg-mapa" style="margin:6px 12px 10px"><span><svg width="14" height="14" viewBox="0 0 24 24"><path d="M12 2 21 21 12 16 3 21Z" fill="#f59e0b" stroke="#111" stroke-width="1.6"/></svg>Motorista (GPS, rede ou estimada · aponta para onde vai)</span><span><svg width="11" height="15" viewBox="0 0 30 40"><path d="M15 39C15 39 2 23 2 14a13 13 0 0 1 26 0c0 9-13 25-13 25Z" fill="#111"/><circle cx="15" cy="14" r="5" fill="#fff"/></svg>Cliente (contorno laranja/vermelho = perto; cinza = atendido)</span></div>
       </div>
     </section>`;
@@ -565,10 +569,10 @@ async function abrirCliente(cid, pid, opts = {}) {
   };
   const m = A.modal({ titulo: `Pedido #${d.numero} · ${d.nome}`, icone: "usuario", cor: "#a78bfa", largura: 980,
     html: `<div class="${classes()}" id="cvDuplo" title="Atalhos: → + Tab vai para a conversa do cliente · ← + Tab vai para a do motorista"><div class="lado-mot" id="cvCorpo">${corpo()}</div><div class="lado-cli" id="cvCli">${corpoCli()}</div></div><div class="atalhos">Atalhos: <kbd>→</kbd> + <kbd>Tab</kbd> conversa do cliente · <kbd>←</kbd> + <kbd>Tab</kbd> conversa do motorista · <kbd>Enter</kbd> envia</div>`,
-    esquerda: [{ rotulo: "PDF do caso", icone: "documento", acao: () => { dossie(d); return false; } }],
+    esquerda: [{ rotulo: "PDF do caso", icone: "documento", acao: () => { dossie(d, cli); return false; } }],
     botoes: [{ rotulo: "Fechar" }],
     aoAbrir: (cx) => { ligar(cx); ligarFoco(cx); },
-    aoFechar: () => { clearInterval(timer); api(`/cargas/${cid}/pedido/${pid}/presenca`, { method: "POST", body: { sair: true } }).catch(() => {}); if (V.aba === "aovivo") rAoVivo(true); else if (V.aba === "conversas") rConversas(); } });
+    aoFechar: () => { clearInterval(timer); api(`/cargas/${cid}/pedido/${pid}/presenca`, { method: "POST", body: { sair: true } }).catch(() => {}); if (V.aba === "aovivo") rAoVivo(true); } });
   function ligarCli(cx) {
     const l = $("#clMsgs", cx); if (l) l.scrollTop = l.scrollHeight;
     const env = $("#clEnv", cx); if (env) env.onclick = async () => { const t = $("#clTxt", cx).value.trim(); if (!t) return;
@@ -613,7 +617,7 @@ async function abrirCliente(cid, pid, opts = {}) {
   }
   timer = setInterval(() => { if (document.visibilityState === "visible") { if (ladoMot) atualizar(false); atualizarCli(); } }, 6000);
 }
-function dossie(d) {
+function dossie(d, cli) {
   const w = window.open("", "_blank"); if (!w) return falha(new Error("O navegador bloqueou a janela do PDF. Libere pop-ups."));
   const end = d.endereco || {}, cod = Math.random().toString(36).slice(2, 8).toUpperCase(), agora = new Date().toLocaleString("pt-BR");
   const L2 = (r, v) => v ? `<tr><th>${r}</th><td>${v}</td></tr>` : "";
@@ -632,6 +636,7 @@ function dossie(d) {
     ${d.foto ? `<h2>Foto</h2><img src="${location.origin}${API}/foto/${esc(d.foto)}">` : ""}
     ${d.retorno_itens.length ? `<h2>Retorno no CD</h2><table>${d.retorno_itens.map((x) => L2(esc(x.desc), x.recebido ? "recebida " + dhBR(x.recebido.em) + " · " + esc(x.recebido.por) : x.nao_voltou ? "NÃO voltou: " + esc(x.nao_voltou.obs) : "a receber")).join("")}</table>` : ""}
     ${msgs ? `<h2>Conversa com o motorista</h2>${msgs}` : ""}
+    ${cli && (cli.mensagens || []).length ? `<h2>Conversa com o cliente (app)</h2><p class="mt">Chamado ${esc(cli.chamado || "")} · ${cli.ativo ? "em andamento" : "finalizada"}</p>${cli.mensagens.map((m) => `<p><small>${dhBR(m.data)} · ${m.de === "central" ? "Central" + (m.autor ? " · " + esc(m.autor) : "") : "Cliente"}</small> ${esc(m.texto)}</p>`).join("")}` : ""}
     <h2>Linha do tempo</h2><table>${(d.historico || []).map((h) => L2(dhBR(h.em), esc(`${h.acao}${h.det ? " — " + h.det : ""} · ${h.por}`))).join("")}</table>
     <div class="rod">Documento gerado pelo WROUTER a partir dos registros do sistema (app do motorista, Ao vivo e armazém). Código ${cod} · ${agora}.</div>
     <script>setTimeout(() => print(), 600)<\/script></body></html>`);
@@ -639,18 +644,6 @@ function dossie(d) {
 }
 
 /* ══════ CONVERSAS ══════ */
-async function rConversas() {
-  let d; try { d = await carregarAoVivo(); } catch (e) { return falha(e); }
-  nav();
-  const xs = []; d.cargas.forEach((g) => g.pedidos.forEach((p) => { if (p.chat.aberto || p.chat.atendimentos) xs.push({ g, p }); }));
-  xs.sort((a, b) => (b.p.chat.aberto - a.p.chat.aberto) || (b.p.chat.nao_lidas - a.p.chat.nao_lidas) || String(b.p.chat.ult_em).localeCompare(String(a.p.chat.ult_em)));
-  $("#main").innerHTML = `<section class="painel vidro vidro-borda-viva"><div class="cab">${A.orbe("mensagem", "#fb923c")}<div><h2>Conversas com os motoristas</h2><p>Abertas primeiro. Clique para responder — quem responde primeiro fica como responsável.</p></div></div>
-    ${xs.map(({ g, p }) => `<div class="linha cl" data-cli="${g.id}|${p.pid}" style="cursor:pointer"><span>${p.chat.aberto ? `<span class="motivo-gde">${esc(p.chat.motivo)}</span> ${relogio(p.chat)}` : etq("encerrada", "#64748b") + ` <span class="sub" style="display:inline">${esc(p.chat.ult_motivo || "")}${p.chat.fechado_por ? " · por " + esc(p.chat.fechado_por) : ""}</span>`} ${p.chat.nao_lidas ? etq(p.chat.nao_lidas + " nova(s)", "#fb7185") : ""}
-      <br><b>${esc(p.nome)}</b> · pedido #${p.numero} · carga ${g.numero} · ${esc(g.placa)} · ${esc(g.motorista)}<span class="sub">${esc(p.chat.ult_nome ? p.chat.ult_nome + ": " : "")}${esc(p.chat.ult_txt || "")} · ${hora(p.chat.ult_em)}${p.chat.assumido ? " · com " + esc(p.chat.assumido.por) : ""}${(p.chat.presenca || []).length ? " · 👀 " + p.chat.presenca.map((x) => esc(x.por)).join(", ") : ""}</span></span>
-      <button type="button" class="btn p">Abrir</button></div>`).join("") || `<div class="vazio">Nenhuma conversa hoje.</div>`}</section>`;
-  ligarAcoes($("#main"));
-}
-
 /* ══════ HISTÓRICO ══════ */
 async function rHistorico() {
   if (!V.hate) { const h = new Date(); V.hate = h.toISOString().slice(0, 10); const d0 = new Date(h); d0.setDate(d0.getDate() - 6); V.hde = d0.toISOString().slice(0, 10); }
@@ -738,7 +731,7 @@ $("#btAtualizar").onclick = () => render();
   if (!["aovivo", "historico", "motoristas"].some(pode)) { $("#main").innerHTML = `<section class="painel vidro"><div class="vazio">Sem permissão nas abas do WROUTER. Peça ao administrador (Configurações → Usuários → WROUTER).</div></section>`; return; }
   render();
 })();
-setInterval(() => { if (document.visibilityState !== "visible" || A.modalAberto()) return; if (V.aba === "aovivo") rAoVivo(true).catch(() => {}); else if (V.aba === "conversas") rConversas().catch(() => {}); }, 20000);
+setInterval(() => { if (document.visibilityState !== "visible" || A.modalAberto()) return; if (V.aba === "aovivo") rAoVivo(true).catch(() => {}); }, 20000);
 })();
 </script>
 </body>
