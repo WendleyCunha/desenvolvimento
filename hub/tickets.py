@@ -1186,7 +1186,9 @@ def _ped_resumo(e, pid: str, d: dict, ver_palavra: bool = False) -> dict:
                       for i in d.get("itens", [])],
             "tentativas": [{"n": x.get("n"), "data": x.get("data"), "resultado": x.get("resultado"), "motivo": x.get("motivo")}
                            for x in d.get("tentativas", [])],
-            "historico": (d.get("historico") or [])[-6:], "origem_id": d.get("origem_id"), "sem_estoque": d.get("sem_estoque")}
+            "historico": (d.get("historico") or [])[-6:], "origem_id": d.get("origem_id"), "sem_estoque": d.get("sem_estoque"),
+            "nf": {"numero": (d.get("nf") or {}).get("numero"), "serie": (d.get("nf") or {}).get("serie"), "etiqueta": bool((d.get("nf") or {}).get("chave"))} if d.get("nf") else None,
+            "entrega": {k: (d.get("entrega") or {}).get(k) for k in ("resultado", "em", "recebedor", "parentesco", "palavra", "dist_m", "motorista", "hash")} if d.get("entrega") else None}
 
 
 def erp_do_ticket(t: dict, u: dict) -> dict:

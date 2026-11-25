@@ -1098,6 +1098,189 @@ async def faturar_carga(cid: str, request: Request):
         return {"ok": True, "alterados": n, "faturada": faturada(ST.dados["cargas"][cid]), **_parcial(p, tx)}
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# NF-e DA CARGA: importar o PDF das notas completas → DANFE SIMPLIFICADO (etiqueta térmica)
+# ══════════════════════════════════════════════════════════════════════════════
+def _doc_cliente(ped: dict) -> str:
+    import nf_simplificada as NFS
+    return NFS.so_digitos((ST.dados["parceiros"].get(ped.get("cliente_id") or "") or {}).get("doc"))
+
+
+def casar_nf(nf: dict, pids: list) -> tuple[str, str]:
+    """Qual pedido da carga é desta NF: (pid, como casou). Ordem: mesma chave → mesmo nº de NF já digitado →
+    'Pedido de venda' da nota + documento do cliente → documento do cliente (único) → nome do cliente (único)."""
+    import nf_simplificada as NFS
+    peds = [(pid, ST.dados["pedidos"].get(pid) or {}) for pid in pids]
+    doc = NFS.so_digitos(nf.get("dest_doc"))
+    for pid, p in peds:
+        if (p.get("nf") or {}).get("chave") == nf.get("chave"):
+            return pid, "mesma chave"
+    for pid, p in peds:
+        if NFS.so_digitos((p.get("nf") or {}).get("numero")).lstrip("0") == str(nf.get("numero") or "").lstrip("0") and nf.get("numero"):
+            return pid, "nº da NF já informado"
+    po = str(nf.get("pedido_origem") or "")
+    if po:
+        for pid, p in peds:
+            if str(p.get("numero")) == po and (not doc or not _doc_cliente(p) or _doc_cliente(p) == doc):
+                return pid, f"pedido {po} da nota"
+    if doc:
+        achados = [pid for pid, p in peds if _doc_cliente(p) == doc]
+        if len(achados) == 1:
+            return achados[0], "CPF/CNPJ do cliente"
+    nome = _sem_acento(nf.get("dest_nome"))
+    if nome:
+        achados = [pid for pid, p in peds if _sem_acento(p.get("cliente_nome")) == nome]
+        if len(achados) == 1:
+            return achados[0], "nome do cliente"
+    return "", ""
+
+
+def _sem_acento(t) -> str:
+    import unicodedata
+    s = unicodedata.normalize("NFD", str(t or ""))
+    return re.sub(r"[^A-Z0-9]", "", "".join(ch for ch in s if unicodedata.category(ch) != "Mn").upper())
+
+
+NF_CAMPOS = ("chave", "numero", "serie", "modelo", "protocolo", "emissao", "valor", "tipo", "emit_nome", "emit_cnpj", "emit_ie", "emit_uf",
+             "dest_nome", "dest_doc", "dest_ie", "dest_uf", "dest_end", "dest_bairro", "dest_cep", "dest_cidade", "dest_fone",
+             "volumes", "especie", "peso_bruto", "pedido_origem", "itens")
+
+
+@router.post("/cargas/{cid}/nf/ler")
+async def ler_nfs_da_carga(cid: str, request: Request):
+    """Lê o PDF com as NF-e completas (base64) e sugere o pedido da carga de cada nota. Não grava nada."""
+    import base64
+    import nf_simplificada as NFS
+    _ctx(request, "faturar", "faturar cargas")
+    c = await request.json()
+    try:
+        dados = base64.b64decode(str(c.get("pdf") or "").split(",")[-1], validate=False)
+        notas = NFS.ler_pdf(dados)
+    except Exception as ex:  # noqa: BLE001
+        raise HTTPException(400, f"Não consegui ler este PDF ({type(ex).__name__}). Use o PDF do DANFE gerado pelo sistema fiscal.")
+    if not notas:
+        raise HTTPException(400, "Nenhuma NF-e encontrada no PDF (a chave de acesso não foi lida). O PDF precisa ser o DANFE com texto, não uma foto/scan.")
+    with ST.trava:
+        car = ST.dados["cargas"].get(cid)
+        if not car:
+            raise HTTPException(404, "Carga não encontrada.")
+        out = []
+        for nf in notas:
+            pid, como = casar_nf(nf, car.get("pedidos") or [])
+            out.append({"nf": nf, "pid": pid, "como": como})
+        return {"notas": out, "pedidos": car.get("pedidos") or []}
+
+
+@router.post("/cargas/{cid}/nf/aplicar")
+async def aplicar_nfs_da_carga(cid: str, request: Request):
+    """Grava a NF-e lida em cada pedido escolhido (conta como faturado)."""
+    import nf_simplificada as NFS
+    u, p = _ctx(request, "faturar", "faturar cargas")
+    c = await request.json()
+    with ST.trava:
+        tx = Tx(u)
+        car = tx.get("cargas", cid)
+        if not car:
+            raise HTTPException(404, "Carga não encontrada.")
+        if car["status"] != "montando":
+            raise HTTPException(409, "A carga já saiu.")
+        usados, n = set(), 0
+        for v in c.get("vinculos") or []:
+            pid, nf = str(v.get("pid") or ""), v.get("nf") or {}
+            if not pid or pid not in car["pedidos"]:
+                continue
+            if not NFS.chave_valida(nf.get("chave")) or nf["chave"] in usados:
+                raise HTTPException(400, f"Chave de acesso inválida ou repetida na NF {nf.get('numero') or ''}.")
+            usados.add(nf["chave"])
+            ped = tx.get("pedidos", pid)
+            atual = ped.get("nf") or {}
+            if atual.get("chave") == nf["chave"]:
+                continue
+            reg = {k: nf.get(k) for k in NF_CAMPOS if nf.get(k) not in (None, "")}
+            reg["itens"] = [{"codigo": str(i.get("codigo") or "")[:40], "desc": str(i.get("desc") or "")[:120], "un": str(i.get("un") or "")[:6],
+                             "qtd": float(i.get("qtd") or 0)} for i in (nf.get("itens") or [])[:60]]
+            reg.update(numero=str(int(NFS.so_digitos(nf.get("numero")) or 0)), em=agora(), por=u.get("login", ""), origem="pdf")
+            ped["nf"] = reg
+            _hist(ped, u, f"Faturado — NF {reg['numero']} série {reg.get('serie') or ''} (importada do PDF)"
+                  + (f" (substitui a NF {atual.get('numero')})" if atual.get("numero") and atual.get("numero") != reg["numero"] else ""))
+            ped["atualizado_em"] = agora()
+            tx.put("pedidos", pid, ped)
+            n += 1
+        car["atualizado_em"] = agora()
+        tx.put("cargas", cid, car)
+        tx.commit()
+        return {"ok": True, "alterados": n, "faturada": faturada(ST.dados["cargas"][cid]), **_parcial(p, tx)}
+
+
+def etiqueta_extra(pid: str, ped: dict, car: dict | None = None) -> dict:
+    """Bloco 'Entrega' da etiqueta com os dados do pedido do hub (endereço completo, itens, carga e parada). Sem palavra-chave."""
+    end = ped.get("endereco") or {}
+    prod = lambda i: (ST.dados["produtos"].get(i) or {}).get("nome") or "Produto"
+    itens = ped.get("pendentes") or ped.get("itens") or []
+    ex = {"pedido": ped.get("numero"),
+          "endereco": ", ".join(x for x in (" ".join(y for y in (end.get("logradouro"), end.get("numero")) if y), end.get("complemento"), end.get("bairro")) if x),
+          "cidade": " - ".join(x for x in (end.get("cidade"), end.get("uf")) if x), "cep": end.get("cep") or "", "telefone": ped.get("telefone") or "",
+          "itens": [{"qtd": i.get("qtd"), "desc": prod(i.get("produto_id"))} for i in itens]}
+    if car:
+        ex["carga"] = car.get("numero")
+        pids = car.get("pedidos") or []
+        if pid in pids:
+            ex["parada"] = pids.index(pid) + 1
+    return {k: v for k, v in ex.items() if v not in (None, "", [])}
+
+
+def etiquetas_da_carga(cid: str, so_pid: str = "", mostrar_valor: bool = True) -> tuple[bytes, int]:
+    import nf_simplificada as NFS
+    car = ST.dados["cargas"].get(cid)
+    if not car:
+        raise HTTPException(404, "Carga não encontrada.")
+    notas = []
+    for pid in car.get("pedidos") or []:
+        if so_pid and pid != so_pid:
+            continue
+        ped = ST.dados["pedidos"].get(pid) or {}
+        nf = ped.get("nf") or {}
+        if NFS.chave_valida(nf.get("chave")):
+            notas.append((nf, etiqueta_extra(pid, ped, car)))
+    if not notas:
+        raise HTTPException(404, "Nenhum pedido desta carga tem a NF-e importada (importe o PDF das notas em Faturar).")
+    return NFS.etiquetas_pdf(notas, mostrar_valor=mostrar_valor, titulo=f"Etiquetas NF - carga {car.get('numero')}"), len(notas)
+
+
+@router.get("/cargas/{cid}/etiquetas")
+def etiquetas_carga(cid: str, request: Request, pid: str = ""):
+    """PDF com uma etiqueta (DANFE Simplificado, 100 × 150 mm) por pedido faturado da carga, na ordem das paradas."""
+    u, p = _ctx(request)
+    with ST.trava:
+        pdf, n = etiquetas_da_carga(cid, pid, mostrar_valor=p["campos"].get("preco", "editar") != "oculto")
+        num = ST.dados["cargas"][cid].get("numero")
+    return Response(pdf, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="etiquetas_carga_{num}.pdf"'})
+
+
+@router.get("/pedidos/{pid}/comprovante")
+def comprovante_pedido(pid: str, request: Request):
+    """PDF do comprovante de entrega (WROUTER): quem recebeu, palavra, assinatura, foto, GPS e código de integridade."""
+    _ctx(request)
+    import wrouter
+    return wrouter.comprovante_pdf_resposta(pid)
+
+
+@router.get("/pedidos/{pid}/etiqueta")
+def etiqueta_pedido(pid: str, request: Request):
+    import nf_simplificada as NFS
+    u, p = _ctx(request)
+    with ST.trava:
+        ped = ST.dados["pedidos"].get(pid)
+        if not ped:
+            raise HTTPException(404, "Pedido não encontrado.")
+        nf = ped.get("nf") or {}
+        if not NFS.chave_valida(nf.get("chave")):
+            raise HTTPException(404, "Este pedido ainda não tem a NF-e importada.")
+        car = next((v for v in ST.dados["cargas"].values() if pid in (v.get("pedidos") or [])), None)
+        pdf = NFS.etiquetas_pdf([(nf, etiqueta_extra(pid, ped, car))], mostrar_valor=p["campos"].get("preco", "editar") != "oculto")
+    return Response(pdf, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="nf_{nf.get("numero")}_etiqueta.pdf"'})
+
+
 @router.post("/cargas/{cid}/sair")
 async def sair_carga(cid: str, request: Request):
     u, p = _ctx(request, "cargas", "liberar cargas")

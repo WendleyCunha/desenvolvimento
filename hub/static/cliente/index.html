@@ -605,6 +605,9 @@ function telaPedido(m, id) {
       ${p.valor_total ? `<div class="total"><span>Total</span><b>${brl(p.valor_total)}</b></div>` : ""}</div>
     ${p.endereco ? `<div class="sec">Endereço de entrega</div><div class="cartao vidro"><p style="margin:0">${esc(p.endereco)}</p></div>` : ""}
     ${p.tentativas.length ? `<div class="sec">Tentativas de entrega</div><div class="cartao vidro"><ul class="itens">${p.tentativas.map((t) => `<li><b>${t.n}ª</b>${dataBR(t.data)} — ${esc(t.resultado)}</li>`).join("")}</ul></div>` : ""}
+    ${p.recebido ? `<div class="sec">Comprovante de entrega</div><div class="cartao vidro"><p style="margin:0">${p.recebido.resultado === "parcial" ? "Entrega parcial" : "Entregue"} em <b>${dataBR(String(p.recebido.em || "").slice(0, 10))} às ${esc(String(p.recebido.em || "").slice(11, 16))}</b>, recebido por <b>${esc(p.recebido.recebedor || "—")}</b>${p.recebido.parentesco ? " (" + esc(p.recebido.parentesco) + ")" : ""}.</p>
+      <p style="margin:8px 0 0">Não reconhece esta entrega? Fale com a central pelo chat.</p>
+      <a class="btn v" href="${window.HUB_BASE}/api/cliente/pedido/${encodeURIComponent(p.id)}/comprovante" target="_blank" rel="noopener" style="margin-top:10px;display:inline-block;text-decoration:none">⬇ Comprovante (PDF)</a></div>` : ""}
     ${p.palavra_chave ? `<div class="sec">Palavra-chave do pedido</div><div class="cartao vidro palavra"><b>${esc(p.palavra_chave)}</b><p class="min">Use para entrar no app e para confirmar a entrega com o nosso motorista. Não compartilhe com outras pessoas.</p></div>` : ""}
     <p class="nota">Pedido feito em ${dataBR(p.criado_em)}/${String(p.criado_em).slice(0, 4)}</p>
     <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">

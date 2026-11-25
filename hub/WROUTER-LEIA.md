@@ -25,3 +25,9 @@ Testes: `pytest tests` (test_pedido_pdf, test_wlogistica, test_wrouter).
 - **Localização**: OpenStreetMap/BrasilAPI (grátis), em segundo plano, guardada no pedido (`ped.geo`), refeita se o endereço mudar. O WROUTER reaproveita.
 - **Faturamento**: botão Faturar na carga (nº da NF por pedido; a NF-e continua no sistema fiscal). Com "Exigir faturamento" ligado em Ajustes, a carga só sai e só aparece no app do motorista quando todos os pedidos têm NF.
 - Permissões novas no ERP: "Sugerir cargas" (planejar) e "Faturar cargas" (faturar).
+
+## NF simplificada e comprovante de entrega
+- **ERP › Cargas › Faturar → Importar o PDF das NF-e**: o hub lê o DANFE completo (todas as notas num PDF só), confere a chave de acesso (dígito verificador) e liga cada nota ao pedido da carga (chave → nº da NF → "Pedido de venda" + CPF/CNPJ → CPF/CNPJ → nome). Conta como faturado.
+- **Etiquetas NF** (ERP › Cargas e WLOGISTICA › montagem): um PDF com o DANFE Simplificado – Etiqueta (100 × 150 mm, térmica) de cada pedido, na ordem das paradas. A palavra-chave nunca vai na etiqueta. O motorista abre a NF simplificada no app.
+- **Comprovante de entrega** (app do motorista, Entregue/Parcial): palavra-chave + nome de quem recebeu + parentesco + final do documento + assinatura na tela + foto com marca d'água + GPS/distância, selados com SHA-256 (`entrega_prova.py`). O resumo fica no pedido (`ped.entrega`): ERP, CX e app do cliente mostram e baixam o PDF; o cliente recebe notificação no app.
+- A palavra só é exigida para o motorista com a chave ligada em WROUTER › Motoristas e app (o comprovante registra "não exigida" quando não está).

@@ -99,11 +99,11 @@ ABAS: dict[str, dict] = {
         "abas": {
             "painel": {"rotulo": "Painel", "campos": {}, "rotas": []},
             "pedidos": {"rotulo": "Pedidos", "campos": {"preco": "Preços e valores de venda"}, "rotas": [
-                _r("GET", "/api/erp/pedidos/*/pdf", "ver"), _r("POST", "/api/erp/pedidos/*/acao", "editar"),
+                _r("GET", "/api/erp/pedidos/*/pdf", "ver"), _r("GET", "/api/erp/pedidos/*/etiqueta", "ver"), _r("GET", "/api/erp/pedidos/*/comprovante", "ver"), _r("POST", "/api/erp/pedidos/*/acao", "editar"),
                 _r("POST", "/api/erp/pedidos", "incluir"), _r("PUT", "/api/erp/pedidos/*", "editar")]},
             "agenda": {"rotulo": "Agenda", "campos": {}, "rotas": []},
             "cargas": {"rotulo": "Cargas", "campos": {}, "rotas": [
-                _r("POST", "/api/erp/cargas/*/*", "editar"), _r("POST", "/api/erp/cargas", "incluir"), _r("PUT", "/api/erp/cargas/*", "editar"),
+                _r("GET", "/api/erp/cargas/*/etiquetas", "ver"), _r("POST", "/api/erp/cargas/*/nf/ler", "ver"), _r("POST", "/api/erp/cargas/*/*", "editar"), _r("POST", "/api/erp/cargas", "incluir"), _r("PUT", "/api/erp/cargas/*", "editar"),
                 _r("DELETE", "/api/erp/cargas/*", "excluir"), _r("POST", "/api/erp/plano/confirmar", "incluir"), _r("POST", "/api/erp/plano/*", "ver"),
                 _r("PUT", "/api/erp/plano/config", "editar")]},
             "retornos": {"rotulo": "Retornos", "campos": {}, "rotas": []},
@@ -147,7 +147,7 @@ ABAS: dict[str, dict] = {
             "conversas": {"rotulo": "Conversas e tratativas", "campos": {}, "rotas": [
                 _r("GET", "/api/wrouter/cargas/*/pedido/*", "ver"), _r("POST", "/api/wrouter/cargas/*/pedido/*/reabrir", "excluir"),
                 _r("POST", "/api/wrouter/cargas/*/pedido/*/*", "incluir"), _r("PUT", "/api/wrouter/cargas/*", "editar")]},
-            "historico": {"rotulo": "Histórico de entregas", "campos": {}, "rotas": [_r("GET", "/api/wrouter/historico", "ver")]},
+            "historico": {"rotulo": "Histórico de entregas", "campos": {}, "rotas": [_r("GET", "/api/wrouter/historico", "ver"), _r("GET", "/api/wrouter/comprovante/*", "ver")]},
             "motoristas": {"rotulo": "Motoristas e app", "campos": {}, "rotas": [
                 _r("GET", "/api/wrouter/motoristas", "ver"), _r("POST", "/api/wrouter/cadastros", "incluir"), _r("PUT", "/api/wrouter/cadastros/*", "editar"),
                 _r("PUT", "/api/wrouter/motoristas/*", "editar"), _r("POST", "/api/wrouter/placas/*/resetar", "editar"), _r("PUT", "/api/wrouter/cfg", "editar")]},

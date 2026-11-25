@@ -157,6 +157,28 @@ def enviar_push(sub: dict, dados: dict) -> str:
         return "falhou"
 
 
+def avisar_cliente(cod: str, titulo: str, texto: str, url: str = "", tag: str = "") -> bool:
+    """Notificação avulsa no app do cliente (ex.: comprovante de entrega). Nunca derruba quem chamou."""
+    try:
+        ins = inscricoes().get(cod) or {}
+        subs = ins.get("subs") or []
+        if not subs:
+            return False
+        dados = {"titulo": titulo, "texto": texto, "tag": tag or titulo, "url": url or f"{banco.prefixo_publico()}/cliente/"}
+        ok, vivas = False, []
+        for sub in subs:
+            r = enviar_push(sub, dados)
+            ok = ok or r == "ok"
+            if r != "expirou":
+                vivas.append(sub)
+        if len(vivas) != len(subs):
+            _gravar_insc(cod, {**ins, "subs": vivas} if vivas else None)
+        return ok
+    except Exception as ex:  # noqa: BLE001
+        print(f"[promo] não avisou o cliente {cod}: {ex}")
+        return False
+
+
 # ── carteira e vales ──────────────────────────────────────────────────────────
 def carteira(cod: str) -> dict:
     with _lock:

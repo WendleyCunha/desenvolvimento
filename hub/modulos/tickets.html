@@ -1195,6 +1195,8 @@ function erpBloco(t, erp) {
       <p class="dica" style="margin-top:3px">${d10(p.criado_em)}${p.agendamento ? ` · entrega ${d10(p.agendamento.data)} ${esc(p.agendamento.janela || "")}` : ""}${p.carga ? ` · carga ${esc(p.carga)}` : ""} · <a href="/api/erp/pedidos/${encodeURIComponent(p.id)}/pdf" target="_blank" rel="noopener">⬇ PDF do pedido</a></p>
       <ul>${p.itens.map((i) => `<li>${i.qtd}× ${esc(i.nome)}</li>`).join("")}</ul>
       ${p.tentativas.length ? `<p class="dica">Tentativas: ${p.tentativas.map((x) => `${x.n}ª ${esc(x.resultado)} ${d10(x.data)}${x.motivo ? " (" + esc(x.motivo) + ")" : ""}`).join(" · ")}</p>` : ""}
+      ${p.nf ? `<p class="dica">🧾 NF ${esc(p.nf.numero)}${p.nf.serie ? " série " + esc(p.nf.serie) : ""}${p.nf.etiqueta ? ` · <a href="/api/erp/pedidos/${encodeURIComponent(p.id)}/etiqueta" target="_blank" rel="noopener">NF simplificada</a>` : ""}</p>` : ""}
+      ${p.entrega ? `<p class="dica">📝 ${p.entrega.resultado === "parcial" ? "Entrega parcial" : "Entregue"} ${d10(p.entrega.em)} ${esc(String(p.entrega.em || "").slice(11, 16))} · recebido por <b>${esc(p.entrega.recebedor || "—")}</b>${p.entrega.parentesco ? " (" + esc(p.entrega.parentesco) + ")" : ""} · palavra ${esc(p.entrega.palavra || "")}${p.entrega.dist_m != null ? ` · ${p.entrega.dist_m} m do endereço` : ""} · <a href="/api/erp/pedidos/${encodeURIComponent(p.id)}/comprovante" target="_blank" rel="noopener">comprovante (PDF)</a></p>` : ""}
       <div class="acoes">${ac(p)}</div></div>`).join("") || `<p class="dica">Nenhum pedido encontrado.</p>`}`;
 }
 

@@ -463,7 +463,9 @@ def detalhe_carga(tx, cid: str, car: dict) -> dict:
         end = p.get("endereco") or {}
         peds.append({"id": pid, "numero": p.get("numero"), "cliente": p.get("cliente_nome"), "bairro": end.get("bairro"), "cidade": end.get("cidade"),
                      "status": p.get("status"), "tipo": p.get("tipo"), "baixa": (car.get("baixas") or {}).get(pid)})
-    return {**resumo_carga(tx, cid, car), "unidades": un, "pedidos_det": peds, "pendencias": w["pendencias"], "ajustes": w["ajustes"][-20:],
+    import nf_simplificada as NFS
+    nf_etq = sum(1 for pid in car.get("pedidos") or [] if NFS.chave_valida(((tx.get("pedidos", pid) or {}).get("nf") or {}).get("chave")))
+    return {**resumo_carga(tx, cid, car), "nf_etiquetas": nf_etq, "unidades": un, "pedidos_det": peds, "pendencias": w["pendencias"], "ajustes": w["ajustes"][-20:],
             "sobras": {n: (w.get(n) or {}).get("sobras") or [] for n in ETAPAS}, "retorno_itens": w["retorno"]["itens"],
             "hist": w["hist"][-80:], "divergencias_fim": {n: ((w.get(n) or {}).get("fim") or {}).get("divergencias") or [] for n in ETAPAS}}
 
@@ -511,6 +513,17 @@ def ver_carga(cid: str, request: Request):
     with E.ST.trava:
         tx = E.Tx(u)
         return detalhe_carga(tx, cid, _carga(tx, cid))
+
+
+@router.get("/cargas/{cid}/etiquetas")
+def etiquetas_nf(cid: str, request: Request, pid: str = ""):
+    """NF simplificada (etiqueta térmica 100 × 150 mm) dos pedidos faturados da carga — para colar no volume na montagem."""
+    from fastapi.responses import Response
+    _ctx(request)
+    with E.ST.trava:
+        pdf, _n = E.etiquetas_da_carga(cid, pid, mostrar_valor=False)
+        num = E.ST.dados["cargas"][cid].get("numero")
+    return Response(pdf, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="etiquetas_carga_{num}.pdf"'})
 
 
 def _gravar(tx, cid: str, car: dict, q: dict) -> dict:
