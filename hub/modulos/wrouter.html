@@ -140,7 +140,23 @@ html[data-claro] .leaflet-container{background:#e9ecef}
 .duplo{display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
 .duplo.com-cli{grid-template-columns:minmax(0,1.25fr) minmax(0,1fr)}
 .duplo.com-cli .g3{grid-template-columns:1fr 1fr}
-.lado-mot{border-left:4px solid #fb923c;padding-left:12px}
+.lado-mot{border:1px solid #fb923c;background:rgba(251,146,60,.06);border-radius:16px;padding:12px;align-self:start;position:sticky;top:0}
+/* informações do motorista compactas, no tamanho do card (a conversa fica do mesmo tamanho e vai subindo) */
+.info4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:10px}
+.info4 .bloco{padding:8px 10px;margin:0;font-size:.78rem;min-width:0}
+.info4 h3{font-size:.72rem;margin:0 0 4px;letter-spacing:.04em;text-transform:uppercase;opacity:.85;display:flex;gap:4px;align-items:center}
+.info4 h3 svg{width:13px;height:13px}
+.info4 p{margin:0;line-height:1.35}
+.info4 .corta{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.info4 .sub{font-size:.7rem}
+.info4 .palavra{font-size:.95rem;padding:2px 8px}
+.info4 .btn.p{padding:4px 6px;font-size:.7rem}
+.info4 .btn.ic{min-width:28px;padding:4px 6px;font-size:.85rem}
+.info4 .pecas{max-height:84px;overflow:auto}
+.info4 .pecas .linha{padding:2px 0;gap:6px}
+.lado-mot details{margin-top:10px}
+.lado-mot details summary{cursor:pointer;font-size:.78rem;opacity:.8}
+@media (max-width:1200px){.info4{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .lado-tit{display:flex;align-items:center;gap:8px;font-weight:700;font-size:.82rem;letter-spacing:.06em;text-transform:uppercase;margin:0 0 8px}
 .lado-mot .lado-tit{color:#fb923c}
 .lado-cli{display:none;border:1px solid #3b82f6;background:rgba(59,130,246,.08);border-radius:16px;padding:12px;align-self:start;position:sticky;top:0}
@@ -466,7 +482,7 @@ function falarCliente(g, p, nome, num) {
 async function abrirCliente(cid, pid, opts = {}) {
   let d; try { d = await api(`/cargas/${cid}/pedido/${pid}`); } catch (e) { return falha(e); }
   let cli = null; try { cli = await api(`/cargas/${cid}/pedido/${pid}/cliente-chat`); } catch (_) { cli = null; }
-  let comCli = !!(opts.cliente || (cli && cli.ativo));
+  let comCli = !!(opts.cliente || (cli && cli.ativo)), linhaAberta = false;
   const corpoCli = () => `<div class="lado-tit">📱 Cliente — conversa pelo app ${cli && cli.ativo ? etq("aberta", "#3b82f6") : etq("finalizada", "#64748b")}</div>
     ${cli && cli.sem_app ? '<p class="sub">Este cliente ainda não tem o app. Use o WhatsApp.</p>' : ""}
     <div class="msgs" id="clMsgs">${((cli && cli.mensagens) || []).map((m) => `<div class="mc ${m.de === "central" ? "cen" : ""}"><small>${m.de === "central" ? "Central" + (m.autor ? " · " + esc(m.autor) : "") : "Cliente"} · ${dhBR(m.data)}</small>${esc(m.texto)}</div>`).join("") || '<p class="sub">Sem mensagens.</p>'}</div>
@@ -476,17 +492,18 @@ async function abrirCliente(cid, pid, opts = {}) {
   let timer = null;
   const corpo = () => {
     const ch = d.chat_det, a = ch.atual;
-    return `<div class="lado-tit">🚚 Atendimento do motorista</div><div class="g3"><div class="bloco"><h3>${svg("pino")} Endereço</h3><p style="margin:4px 0">${esc(endTxt || "—")}${end.cep ? `<br>CEP ${esc(end.cep)}` : ""}${end.referencia ? `<br><span class="sub">Ref.: ${esc(end.referencia)}</span>` : ""}</p>${KM(d)} ${d.telefone ? `<span class="sub">📞 ${esc(d.telefone)}</span>` : ""}</div>
-      <div class="bloco"><h3>🔑 ${d.vizinho ? "Palavra (nome do vizinho)" : "Palavra-chave"}</h3><p style="margin:6px 0">${d.palavra ? `<span class="palavra">${esc(d.palavra)}</span>` : d.vizinho ? "sem palavra (vizinho sem nome)" : "—"}</p>${VIZ(d.vizinho)}${d.palavra_original ? `<span class="sub">palavra original ${esc(d.palavra_original)}</span>` : ""}<div style="margin-top:8px">${BTLINK({ ...d, pid, cliente_chat: cli && cli.ativo ? { ativo: true } : null }, cid, false)}</div></div>
-      <div class="bloco"><h3>${svg("caminhao")} Carga ${d.carga}</h3><p style="margin:4px 0">${esc(d.placa)} · ${esc(d.motorista)} · ${dBR(d.data)}</p>${desfTag(d)}${d.motivo ? `<span class="sub">${esc(d.motivo)}</span>` : ""}${d.foto ? ` <button type="button" class="btn v p" data-foto="${esc(d.foto)}">📷 foto</button>` : ""}${d.comprovante ? `<span class="sub">Recebido por ${esc(d.comprovante.recebedor || "—")}${d.comprovante.parentesco ? " (" + esc(d.comprovante.parentesco) + ")" : ""} · palavra ${esc(d.comprovante.palavra || "")}</span> <button type="button" class="btn v p" data-compr="${esc(pid)}">📝 comprovante</button>` : ""}</div></div>
-      <div class="bloco" style="margin-top:10px"><h3>Peças</h3>${d.itens.map((i) => `<div class="linha" style="padding:5px 0"><span>${esc(i.desc)} <span class="sub" style="display:inline">${esc(i.sku || "")}</span></span><b>${i.qtd}</b></div>`).join("")}
-        ${d.recolher.length ? `<span class="sub">Recolher (troca): ${d.recolher.map((r) => `${r.qtd}× ${esc(r.desc)}`).join(", ")}</span>` : ""}${d.obs_pedido ? `<span class="sub">Obs.: ${esc(d.obs_pedido)}</span>` : ""}
-        ${d.retorno_itens.length ? `<span class="sub">Retorno no CD: ${d.retorno_itens.map((x) => `${esc(x.desc)} — ${x.recebido ? "recebida" : x.nao_voltou ? "NÃO voltou" : "a receber"}`).join(" · ")}</span>` : ""}</div>
-      <div class="bloco" style="margin-top:10px"><h3>💬 Conversa com o motorista ${a ? `<span class="motivo-gde" style="margin-left:6px">${esc(a.motivo)}</span> ${relogio(a)}` : ""}</h3>
+    return `<div class="lado-tit">🚚 Atendimento do motorista</div><div class="info4">
+      <div class="bloco"><h3>${svg("pino")} Endereço</h3><p class="corta" title="${esc([endTxt, end.cep ? "CEP " + end.cep : "", end.referencia ? "Ref.: " + end.referencia : ""].filter(Boolean).join(" · "))}">${esc(endTxt || "—")}${end.cep ? ` · CEP ${esc(end.cep)}` : ""}</p>${end.referencia ? `<span class="sub corta">Ref.: ${esc(end.referencia)}</span>` : ""}<div style="margin-top:4px">${KM(d)}</div>${d.telefone ? `<span class="sub">📞 ${esc(d.telefone)}</span>` : ""}</div>
+      <div class="bloco"><h3>🔑 ${d.vizinho ? "Palavra (vizinho)" : "Palavra-chave"}</h3><p>${d.palavra ? `<span class="palavra">${esc(d.palavra)}</span>` : d.vizinho ? "sem palavra (vizinho sem nome)" : "—"}</p>${VIZ(d.vizinho)}${d.palavra_original ? `<span class="sub">original ${esc(d.palavra_original)}</span>` : ""}<div style="margin-top:6px">${BTLINK({ ...d, pid, cliente_chat: cli && cli.ativo ? { ativo: true } : null }, cid, false)}</div></div>
+      <div class="bloco"><h3>${svg("caminhao")} Carga ${d.carga}</h3><p class="corta">${esc(d.placa)} · ${esc(d.motorista)} · ${dBR(d.data)}</p><div style="margin-top:4px">${desfTag(d)}</div>${d.motivo ? `<span class="sub corta">${esc(d.motivo)}</span>` : ""}<div class="chips" style="margin-top:4px">${d.foto ? `<button type="button" class="btn v p ic" data-foto="${esc(d.foto)}" title="Foto">📷</button>` : ""}${d.comprovante ? `<button type="button" class="btn v p ic" data-compr="${esc(pid)}" title="Comprovante · recebido por ${esc(d.comprovante.recebedor || "—")}${d.comprovante.parentesco ? " (" + esc(d.comprovante.parentesco) + ")" : ""}">📝</button>` : ""}</div></div>
+      <div class="bloco"><h3>📦 Peças</h3><div class="pecas">${d.itens.map((i) => `<div class="linha"><span class="corta" title="${esc(i.desc)} ${esc(i.sku || "")}">${esc(i.desc)}</span><b>${i.qtd}</b></div>`).join("")}</div>
+        ${d.recolher.length ? `<span class="sub corta" title="${esc(d.recolher.map((r) => `${r.qtd}× ${r.desc}`).join(", "))}">Recolher: ${d.recolher.map((r) => `${r.qtd}× ${esc(r.desc)}`).join(", ")}</span>` : ""}${d.obs_pedido ? `<span class="sub corta" title="${esc(d.obs_pedido)}">Obs.: ${esc(d.obs_pedido)}</span>` : ""}
+        ${d.retorno_itens.length ? `<span class="sub corta">Retorno no CD: ${d.retorno_itens.map((x) => `${esc(x.desc)} — ${x.recebido ? "recebida" : x.nao_voltou ? "NÃO voltou" : "a receber"}`).join(" · ")}</span>` : ""}</div></div>
+      <div class="bloco" style="margin-top:0"><h3>💬 Conversa com o motorista ${a ? `<span class="motivo-gde" style="margin-left:6px">${esc(a.motivo)}</span> ${relogio(a)}` : ""}</h3>
         ${(d.presentes || []).filter((x) => x.login !== d.eu.login).length ? `<div class="aviso at">👀 ${d.presentes.filter((x) => x.login !== d.eu.login).map((x) => esc(x.por)).join(", ")} também está nesta conversa.</div>` : ""}
         <div class="msgs" id="cvMsgs">${(ch.atendimentos || []).flatMap((at) => at.msgs).map((m) => m.de === "sistema" ? `<div class="mg sis">${esc(m.txt)} · ${dhBR(m.em)}</div>` : `<div class="mg ${m.de === "frota" ? "frota" : ""}"><small>${esc(m.de === "frota" ? "Frota · " + m.nome : "Motorista · " + m.nome)} · ${dhBR(m.em)}</small>${m.foto ? `<a href="${API}/foto/${esc(m.foto)}" target="_blank"><img src="${API}/foto/${esc(m.foto)}" alt="foto"></a>` : ""}${m.txt && m.txt !== "📷 Foto" ? esc(m.txt) : ""}</div>`).join("") || '<p class="sub">Sem conversa com o motorista neste cliente.</p>'}</div>
         ${d.pode_tratar ? `<div style="display:flex;gap:8px;margin-top:8px"><input class="entrada" id="cvTxt" placeholder="${a ? "Responder ao motorista" : "Chamar o motorista (abre a conversa)"}" style="flex:1"><button type="button" class="btn" id="cvEnv">${svg("check")}${a ? "Enviar" : "Chamar"}</button>${a ? `<button type="button" class="btn perigo" id="cvFim">Encerrar</button>` : ""}</div>` : ""}</div>
-      ${d.historico.length ? `<div class="bloco" style="margin-top:10px"><h3>${svg("historico")} Linha do tempo</h3>${d.historico.slice().reverse().map((h) => `<div class="linha" style="padding:5px 0"><span>${esc(h.acao)}${h.det ? ` — <span class="sub" style="display:inline">${esc(h.det)}</span>` : ""}</span><span class="sub">${dhBR(h.em)} · ${esc(h.por)}</span></div>`).join("")}</div>` : ""}`;
+      ${d.historico.length ? `<details id="cvLinha"${linhaAberta ? " open" : ""}><summary>${svg("historico")} Linha do tempo (${d.historico.length})</summary><div class="bloco" style="margin-top:6px;max-height:30vh;overflow:auto">${d.historico.slice().reverse().map((h) => `<div class="linha" style="padding:5px 0"><span>${esc(h.acao)}${h.det ? ` — <span class="sub" style="display:inline">${esc(h.det)}</span>` : ""}</span><span class="sub">${dhBR(h.em)} · ${esc(h.por)}</span></div>`).join("")}</div></details>` : ""}`;
   };
   const m = A.modal({ titulo: `Pedido #${d.numero} · ${d.nome}`, icone: "usuario", cor: "#a78bfa", largura: 980,
     html: `<div class="duplo${comCli ? " com-cli" : ""}" id="cvDuplo"><div class="lado-mot" id="cvCorpo">${corpo()}</div><div class="lado-cli" id="cvCli">${corpoCli()}</div></div>`,
@@ -508,6 +525,7 @@ async function abrirCliente(cid, pid, opts = {}) {
   }
   function ligar(cx) {
     ligarCli(cx);
+    const dl = $("#cvLinha", cx); if (dl) dl.ontoggle = () => { linhaAberta = dl.open; };
     const l = $("#cvMsgs", cx); if (l) l.scrollTop = l.scrollHeight;
     ligarAcoes(cx);
     // 💬 dentro da ficha: abre o lado do cliente (azul) nesta mesma tela
