@@ -402,3 +402,20 @@ def test_central_chama_o_cliente_pelo_app(t, monkeypatch):
     assert r2["existente"] is True and r2["id"] == r["id"], "entra no chat que já está aberto"
     msgs = [m["texto"] for m in t.get("/api/cliente/eu").json()["chat"]["mensagens"]]
     assert msgs[-2:] == ["Pode falar!", "O motorista chega em 10 min."]
+
+
+def test_finalizar_so_o_chat_do_cliente(t, monkeypatch):
+    """Tela dividida do WROUTER: finalizar com o cliente fecha só o chat do app (o do motorista é outro)."""
+    import promocoes
+    monkeypatch.setattr(promocoes, "avisar_cliente", lambda *a, **k: None)
+    monkeypatch.setattr(banco, "thread", lambda fn, *a, **k: fn(*a, **k))
+    me = {"login": "atendente", "nome": "Carla"}
+    entrar(t)
+    assert C.chat_com_cliente("c_ana")["ativo"] is False
+    C.central_chama("c_ana", "Olá, Ana!", me)
+    st = C.chat_com_cliente("c_ana")
+    assert st["ativo"] and st["mensagens"][-1]["de"] == "central" and not st["nova"]
+    assert t.post(f"/api/cliente/chamado/{st['id'].split('#')[-1]}/mensagem", json={"texto": "Oi!"}).status_code == 200
+    assert C.chat_com_cliente("c_ana")["nova"] is True, "cliente respondeu: o balão mostra o ponto"
+    assert C.central_finaliza_chat("c_ana", me) is True
+    assert C.chat_com_cliente("c_ana")["ativo"] is False and t.get("/api/cliente/eu").json()["chat"] is None
