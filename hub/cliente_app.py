@@ -675,6 +675,51 @@ async def chat(request: Request):
     return {"ok": True, "id": sid, "existente": False}
 
 
+def central_chama(cid: str, texto: str, me: dict, pedido: dict | None = None) -> dict:
+    """A CENTRAL chama o cliente pelo app: a mensagem entra no chat ativo dele (ou abre um chat novo já com o
+    atendente) e o cliente recebe notificação no celular. O cliente responde na aba Atendimento do app."""
+    e = _erp()
+    cli = e.ST.dados["parceiros"].get(cid) or {}
+    if not cli.get("codigo"):
+        raise HTTPException(409, "Este cliente ainda não tem código do app (é gerado no primeiro pedido/cadastro). Use o WhatsApp.")
+    texto = re.sub(r"[ \t]+", " ", str(texto or "")).strip()[:2000]
+    if not texto:
+        raise HTTPException(422, "Escreva a mensagem para o cliente.")
+    eu = {"usuario": me.get("login") or me.get("usuario") or "", "nome": me.get("nome") or me.get("login") or "Central"}
+
+    def msg(s):
+        T._coment(s, eu, texto, interno=False, tipo="resposta")
+        s["app_pendente"] = False
+        s.pop("app_pendente_desde", None)
+        s["app_respondido_em"] = T.agora()
+        if s.get("status") in ("aberto", "aguardando"):
+            s["status"] = "em_andamento"
+        if eu["usuario"] and eu["usuario"] not in (s.get("atendentes") or []):
+            s.setdefault("atendentes", []).append(eu["usuario"])
+            s.setdefault("atribuido_para", eu["usuario"])
+
+    ativo = chat_ativo(tickets_do_cliente(cid, cli))
+    if ativo:
+        T._mutar_sol(ativo["id"], msg, eu)
+        tid = ativo["id"].split("#")[-1]
+    else:
+        ped = pedido or {}
+        dados = {"assunto": f"Entrega do pedido #{ped.get('numero')}" if ped else "Contato da central", "descricao": "",
+                 "departamento": T.hub_cfg().get("depto_erp") or "", "app_tipo": "chat", "app_opcao": "central",
+                 "app_pendente": False, "aberto_pela_central": True, "atendentes": [eu["usuario"]] if eu["usuario"] else [],
+                 "atribuido_para": eu["usuario"], "status": "em_andamento", "erp_pedido_id": ped.get("id"), "erp_pedido_numero": ped.get("numero")}
+        dados["categoria"] = dados["departamento"]
+        tid = _criar(cid, cli, eu, dados)
+        T._mutar_sol(T.compor(T._id_doc(cli["codigo"]), tid), msg, eu)
+    try:
+        import promocoes
+        banco.thread(promocoes.avisar_cliente, cli["codigo"], "💬 A central quer falar com você", texto[:140],
+                     f"{banco.prefixo_publico()}/cliente/", f"central-{cli['codigo']}")
+    except Exception as ex:  # noqa: BLE001
+        print(f"[cliente] sem notificação: {ex}")
+    return {"ok": True, "id": tid, "existente": bool(ativo), "chamado": cli["codigo"]}
+
+
 @router.post("/api/cliente/chamados")
 async def abrir_chamado(request: Request):
     """Aba Chamados: o cliente abre com Motivo › Submotivo (árvore de Ajustes) + pedido opcional.

@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#05060a">
 <meta name="robots" content="noindex, nofollow">
-<meta name="referrer" content="no-referrer">
+<!-- strict-origin: os blocos do mapa (OpenStreetMap) exigem Referer; vai só o domínio, nunca o código do link -->
+<meta name="referrer" content="strict-origin">
 <title>Sua entrega</title>
 <link rel="icon" href="/static/app/icone-192.png">
 <script>/* EMPRESAS: aberto como /<empresa>/APP/ → tudo o que o app pede em /api/… vai para /<empresa>/api/… (dados só daquela empresa) */
@@ -172,7 +173,7 @@ async function mapa(m) {
   const cam = [m.motorista.lat, m.motorista.lng], dest = [m.destino.lat, m.destino.lng];
   if (!M.map) {
     M.map = L.map("mapa", { zoomControl: true, attributionControl: true });
-    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OpenStreetMap", maxZoom: 19 }).addTo(M.map);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OpenStreetMap", maxZoom: 19, referrerPolicy: "strict-origin" }).addTo(M.map);
     M.bal = L.marker(dest, { icon: L.divIcon({ className: "ic-bal", html: SVG_BAL, iconSize: [30, 40], iconAnchor: [15, 39] }), keyboard: false }).addTo(M.map).bindTooltip("Seu endereço");
     M.cam = L.marker(cam, { icon: L.divIcon({ className: "ic-cam", html: SVG_CAM, iconSize: [34, 34], iconAnchor: [17, 17] }), keyboard: false, zIndexOffset: 500 }).addTo(M.map).bindTooltip("Motorista");
     M.map.on("dragstart", () => { M.mexeu = true; });   // o cliente arrastou: para de recentralizar sozinho
