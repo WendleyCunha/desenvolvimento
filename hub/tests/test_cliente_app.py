@@ -376,3 +376,29 @@ def test_chamados_no_app_mostram_o_definido_e_as_atualizacoes(t):
     assert [a["texto"] for a in s["atualizacoes"]] == ["Riscaram a parede", "Liguei: o técnico vai na quinta."]
     assert s["definido"]["etapa"] == "Apurar" and s["definido"]["prazo"] == "2099-01-15" and s["definido"]["motivo"] == "Logística › Danos à Residência"
     assert "nervoso" not in str(s)
+
+
+def test_central_chama_o_cliente_pelo_app(t, monkeypatch):
+    """WROUTER › 💬 Falar com o cliente: abre o chat do app já com a mensagem da central (ou entra no chat ativo)."""
+    import promocoes
+    avisos = []
+    monkeypatch.setattr(promocoes, "avisar_cliente", lambda *a, **k: avisos.append(a))
+    monkeypatch.setattr(banco, "thread", lambda fn, *a, **k: fn(*a, **k))
+    me = {"login": "atendente", "nome": "Carla Atendente"}
+    try:
+        C.central_chama("c_ana", "Oi", me)
+        assert False, "sem código do app não chama"
+    except Exception as ex:  # noqa: BLE001
+        assert getattr(ex, "status_code", 0) == 409
+    entrar(t)   # gera o código do app
+    r = C.central_chama("c_ana", "Olá, Ana! Aqui é da central de entregas, sobre o seu pedido #101.", me, {"id": "ped1", "numero": 101})
+    assert r["existente"] is False and avisos and avisos[0][1].startswith("💬")
+    chat = t.get("/api/cliente/eu").json()["chat"]
+    assert chat and chat["id"] == r["id"] and [(m["de"], m["texto"][:9]) for m in chat["mensagens"]] == [("central", "Olá, Ana!")]
+    tk = central(t, r["id"])
+    assert tk["app_tipo"] == "chat" and tk["status"] == "em_andamento" and not tk["app_pendente"]
+    assert t.post(f"/api/cliente/chamado/{r['id']}/mensagem", json={"texto": "Pode falar!"}).status_code == 200
+    r2 = C.central_chama("c_ana", "O motorista chega em 10 min.", me)
+    assert r2["existente"] is True and r2["id"] == r["id"], "entra no chat que já está aberto"
+    msgs = [m["texto"] for m in t.get("/api/cliente/eu").json()["chat"]["mensagens"]]
+    assert msgs[-2:] == ["Pode falar!", "O motorista chega em 10 min."]

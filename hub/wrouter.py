@@ -1436,6 +1436,27 @@ def comprovante_pdf_resposta(pid: str) -> Response:
     return Response(pdf, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="comprovante_pedido_{ped.get("numero")}.pdf"'})
 
 
+@router.post("/api/wrouter/cargas/{cid}/pedido/{pid}/falar-cliente")
+async def falar_com_cliente(cid: str, pid: str, request: Request):
+    """Chama o cliente pelo APP do cliente (chat do Atendimento + notificação no celular)."""
+    q, _p = _ctx(request)
+    c = await request.json()
+    with E.ST.trava:
+        car = E.ST.dados["cargas"].get(cid)
+        if not car or pid not in (car.get("pedidos") or []):
+            raise HTTPException(404, "Pedido não encontrado nesta carga.")
+        ped = dict(E.ST.dados["pedidos"].get(pid) or {}, id=pid)
+    import cliente_app
+    r = cliente_app.central_chama(ped.get("cliente_id") or "", c.get("texto"), q, ped)
+    with E.ST.trava:
+        tx = E.Tx(q)
+        car = tx.get("cargas", cid)
+        _hist(car, q, f"chamou o cliente do pedido #{ped.get('numero')} pelo app")
+        tx.put("cargas", cid, car)
+        tx.commit()
+    return r
+
+
 @router.get("/api/wrouter/comprovante/{pid}")
 def frota_comprovante(pid: str, request: Request):
     _ctx(request)
