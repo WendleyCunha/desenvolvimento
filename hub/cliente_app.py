@@ -720,6 +720,34 @@ def central_chama(cid: str, texto: str, me: dict, pedido: dict | None = None) ->
     return {"ok": True, "id": tid, "existente": bool(ativo), "chamado": cli["codigo"]}
 
 
+def chat_com_cliente(cid: str) -> dict:
+    """Situação do chat do app com o cliente (para a tela dividida do WROUTER)."""
+    cli = _erp().ST.dados["parceiros"].get(cid) or {}
+    if not cli.get("codigo"):
+        return {"ativo": False, "sem_app": True, "mensagens": []}
+    ativo = chat_ativo(tickets_do_cliente(cid, cli))
+    if not ativo:
+        return {"ativo": False, "mensagens": []}
+    return {"ativo": True, "id": ativo["id"], "chamado": cli["codigo"], "status": ativo.get("status"),
+            "nova": bool(ativo.get("app_pendente")), "mensagens": mensagens_publicas(ativo)[-80:]}
+
+
+def central_finaliza_chat(cid: str, me: dict) -> bool:
+    """Finaliza SÓ a conversa com o cliente (o chat com o motorista é outro e continua)."""
+    cli = _erp().ST.dados["parceiros"].get(cid) or {}
+    ativo = chat_ativo(tickets_do_cliente(cid, cli)) if cli.get("codigo") else None
+    if not ativo:
+        return False
+    eu = {"usuario": me.get("login") or me.get("usuario") or "", "nome": me.get("nome") or me.get("login") or "Central"}
+
+    def fn(s):
+        s.update(status="resolvido", resolvido_em=T.agora(), resolvido_por=eu["usuario"], app_pendente=False)
+        s.pop("app_pendente_desde", None)
+        T._coment(s, eu, "💬 Conversa com o cliente finalizada pela central de entregas (WROUTER).", tipo="sistema")
+    T._mutar_sol(ativo["id"], fn, eu)
+    return True
+
+
 @router.post("/api/cliente/chamados")
 async def abrir_chamado(request: Request):
     """Aba Chamados: o cliente abre com Motivo › Submotivo (árvore de Ajustes) + pedido opcional.

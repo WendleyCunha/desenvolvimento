@@ -1181,7 +1181,7 @@ def _ped_pub(car: dict, cid: str, pid: str, pos) -> dict:
             "comprovante": {k: (ev.get("comprovante") or {}).get(k) for k in ("recebedor", "parentesco", "palavra", "hash", "completo")} if ev.get("comprovante") else None,
             "tentativas": int(ev.get("tentativas") or 0), "liberacao": ev.get("liberacao"), "validar_palavra": ev.get("validar_palavra"),
             "offline_em": ev.get("offline_em"), "corrigidos": len(ev.get("corrigidos") or []), "chegou": ev.get("chegou"), "destino": destino(car, pid),
-            "vizinho": ev.get("vizinho"), "link": link_do_pedido(car, pid), "chat": _chat_resumo(car, pid, "frota"),
+            "vizinho": ev.get("vizinho"), "link": link_do_pedido(car, pid), "chat": _chat_resumo(car, pid, "frota"), "cliente_chat": _cliente_chat_resumo(ev, ped),
             "palavra": palavra_efetiva(car, pid, ped), "palavra_original": ped.get("palavra_chave") if ev.get("vizinho") else "",
             "retorno_esperado": len(its), "retorno_recebido": sum(1 for x in its if x.get("recebido")),
             **dist_pedido(car, pid, pos)}
@@ -1451,10 +1451,66 @@ async def falar_com_cliente(cid: str, pid: str, request: Request):
     with E.ST.trava:
         tx = E.Tx(q)
         car = tx.get("cargas", cid)
-        _hist(car, q, f"chamou o cliente do pedido #{ped.get('numero')} pelo app")
+        ev = rota(car)["pedidos"].setdefault(pid, {})
+        novo = not (ev.get("cliente_chamado") and not ev["cliente_chamado"].get("fim"))
+        ev["cliente_chamado"] = {"em": agora(), "por": q.get("nome") or q.get("login"), "tid": r.get("id")}
+        if novo:
+            _hist(car, q, f"chamou o cliente do pedido #{ped.get('numero')} pelo app")
         tx.put("cargas", cid, car)
         tx.commit()
     return r
+
+
+def _ped_da_carga(cid: str, pid: str) -> dict:
+    car = E.ST.dados["cargas"].get(cid)
+    if not car or pid not in (car.get("pedidos") or []):
+        raise HTTPException(404, "Pedido não encontrado nesta carga.")
+    return E.ST.dados["pedidos"].get(pid) or {}
+
+
+@router.get("/api/wrouter/cargas/{cid}/pedido/{pid}/cliente-chat")
+def ver_chat_cliente(cid: str, pid: str, request: Request):
+    """Lado direito (azul) da tela dividida: a conversa com o cliente pelo app."""
+    _ctx(request)
+    with E.ST.trava:
+        ped = _ped_da_carga(cid, pid)
+    import cliente_app
+    return cliente_app.chat_com_cliente(ped.get("cliente_id") or "")
+
+
+@router.post("/api/wrouter/cargas/{cid}/pedido/{pid}/cliente-chat/finalizar")
+def finalizar_chat_cliente(cid: str, pid: str, request: Request):
+    """Finaliza só a conversa com o cliente — a do motorista continua como está."""
+    q, _p = _ctx(request)
+    with E.ST.trava:
+        ped = _ped_da_carga(cid, pid)
+    import cliente_app
+    ok = cliente_app.central_finaliza_chat(ped.get("cliente_id") or "", q)
+    with E.ST.trava:
+        tx = E.Tx(q)
+        car = tx.get("cargas", cid)
+        ev = rota(car)["pedidos"].setdefault(pid, {})
+        if ev.get("cliente_chamado"):
+            ev["cliente_chamado"]["fim"] = agora()
+        _hist(car, q, f"finalizou a conversa com o cliente do pedido #{ped.get('numero')}")
+        tx.put("cargas", cid, car)
+        tx.commit()
+    return {"ok": True, "finalizado": ok}
+
+
+def _cliente_chat_resumo(ev: dict, ped: dict) -> dict | None:
+    """Balão AZUL no painel: o cliente foi chamado pelo app e a conversa ainda está aberta."""
+    cc = ev.get("cliente_chamado")
+    if not cc or cc.get("fim"):
+        return None
+    try:
+        import cliente_app
+        st = cliente_app.chat_com_cliente(ped.get("cliente_id") or "")
+    except Exception:  # noqa: BLE001
+        return {"ativo": True, "nova": False}
+    if not st.get("ativo"):
+        return None   # a central (CX) já encerrou a conversa
+    return {"ativo": True, "nova": st.get("nova", False)}
 
 
 @router.get("/api/wrouter/comprovante/{pid}")
