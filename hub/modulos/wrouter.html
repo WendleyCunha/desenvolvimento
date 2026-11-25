@@ -121,6 +121,25 @@ html[data-claro] .leaflet-container{background:#e9ecef}
 .leg-mapa{display:flex;gap:16px;flex-wrap:wrap;align-items:center;font-size:12.5px;color:var(--txt2);margin-top:8px}
 .leg-mapa span{display:inline-flex;gap:6px;align-items:center}
 @media (max-width:1100px){.grade2{grid-template-columns:1fr}}
+/* Ao vivo: lista/painel do motorista à ESQUERDA · "Chegando" + mapa à DIREITA (fixos ao rolar) */
+.av-split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:14px;align-items:start}
+.av-dir{position:sticky;top:10px;display:grid;gap:12px}
+.av-dir .mapa{height:min(62vh,600px)}
+.av-esq{display:grid;gap:12px;min-width:0}
+.av-esq .painel{margin:0}.av-esq .tab-w{overflow-x:auto}.av-esq .barra-ferr{flex-wrap:wrap}
+.mot-cab{display:flex;gap:12px;align-items:flex-start}
+.mot-cab h2{margin:0;font-size:1.05rem}
+.mot-cab .fechar{margin-left:auto}
+.mot-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:12px 0}
+.mot-kpis div{border:1px solid var(--borda,rgba(255,255,255,.08));border-radius:12px;padding:8px 10px}
+.mot-kpis b{display:block;font-size:1.25rem}
+.mot-kpis small{font-size:.68rem;letter-spacing:.06em;text-transform:uppercase;opacity:.7}
+.mot-ped{border:1px solid var(--borda,rgba(255,255,255,.08));border-radius:12px;padding:10px 12px;display:grid;gap:6px;cursor:pointer}
+.mot-ped:hover{border-color:var(--ouro2,#e8b33d)}
+.mot-ped .topo{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.mot-ped .rod{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.mot-sel{cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}
+@media (max-width:1100px){.av-split{grid-template-columns:1fr}.av-dir{position:static}}
 @media (max-width:820px){.topo{position:relative;top:0}.nav{order:3;width:100%;overflow-x:auto;flex-wrap:nowrap;margin:0}}
 @media (max-width:560px){body{padding:8px}.painel{padding:13px}.nav button span{display:none}.dl{grid-template-columns:1fr}}
 </style>
@@ -170,7 +189,7 @@ const KM = (p) => p.km == null ? '<span class="sub">—</span>' : `<span class="
 const urlCli = (lk) => lk ? `${location.origin}${S.base || ""}/entrega/${lk}` : "";
 // Ações do cliente em ÍCONES (o nome aparece ao passar o mouse): copiar link · WhatsApp · chamar no app · motorista
 const IC_WA = `<svg viewBox="0 0 24 24" width="16" height="16" fill="#25d366" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm5.3 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2.1 1-2.4c.3-.3.6-.3.8-.3h.6c.2 0 .4 0 .6.5l.9 2.1c.1.2.1.4 0 .5l-.4.6-.4.4c-.1.1-.3.3-.1.6.2.3.8 1.3 1.7 2.1 1.2 1 2.1 1.3 2.4 1.5.3.1.5.1.6-.1l.9-1c.2-.3.4-.2.6-.1l2 .9c.3.1.5.2.5.3.1.2.1.7-.1 1.3z"/></svg>`;
-const BTLINK = (p, gid, comMotorista = true) => `<span class="icones" style="white-space:nowrap;display:inline-flex;gap:4px">${p.link ? `<button type="button" class="btn v p ic" data-lcp="${esc(urlCli(p.link))}" title="Copiar o link de acompanhamento">🔗</button><button type="button" class="btn v p ic" data-lwa="${esc(urlCli(p.link))}|${esc(String(p.nome || "").split(" ")[0])}" title="Enviar o link pelo WhatsApp">${IC_WA}</button>` : ""}${gid ? `<button type="button" class="btn v p ic" data-falar="${esc(gid)}|${esc(p.pid)}|${esc(String(p.nome || "").split(" ")[0])}|${esc(p.numero)}" title="Falar com o cliente (chama pelo app do cliente)">💬</button>${comMotorista ? `<button type="button" class="btn v p ic" data-cli="${esc(gid)}|${esc(p.pid)}" title="Motorista: endereço, palavra, chat com o motorista e peças">🚚</button>` : ""}` : ""}</span>`;
+const BTLINK = (p, gid, comMotorista = true) => `<span class="icones" style="white-space:nowrap;display:inline-flex;gap:4px">${p.link ? `<button type="button" class="btn v p ic" data-lcp="${esc(urlCli(p.link))}" title="Copiar o link de acompanhamento">🔗</button><button type="button" class="btn v p ic" data-lwa="${esc(urlCli(p.link))}|${esc(String(p.nome || "").split(" ")[0])}" title="Enviar o link pelo WhatsApp">${IC_WA}</button>` : ""}${gid ? `<button type="button" class="btn v p ic" data-falar="${esc(gid)}|${esc(p.pid)}|${esc(String(p.nome || "").split(" ")[0])}|${esc(p.numero)}" title="Falar com o cliente (chama pelo app do cliente)">💬</button>${comMotorista ? `<button type="button" class="btn v p ic" data-mot="${esc(gid)}" title="Motorista: painel dele à esquerda e só as entregas dele no mapa">🚚</button>` : ""}` : ""}</span>`;
 const VIZ = (v) => v ? `<span class="mini c viz">🏠 Vizinho nº ${esc(v.numero)}${v.tel ? " · " + esc(v.tel) : ""}</span>` : "";
 const desfTag = (p) => p.desfecho ? etq(DESF[p.desfecho][0], DESF[p.desfecho][1]) + (p.baixa_erp ? `<span class="sub">ERP: ${esc(BX[p.baixa_erp] || p.baixa_erp)}${p.manual ? " (baixa manual)" : ""}</span>` : "")
   : (p.liberacao || {}).status === "pendente" ? etq("Esperando liberação", "#a78bfa") : p.chegou ? etq(`📍 Chegou ${hora(p.chegou.em)}${p.chegou.conferido ? "" : " ⚠"}`, "#22d3ee") : etq("Pendente", "#94a3b8");
@@ -217,6 +236,7 @@ async function rAoVivo(silencioso) {
   const sel = d.cargas.find((g) => g.id === V.sel);
   const todos = []; d.cargas.forEach((g) => g.pedidos.forEach((p) => todos.push({ g, p })));
   const perto = todos.filter(({ p }) => !p.desfecho && p.km != null && p.km < d.km_laranja).sort((a, b) => a.p.km - b.p.km);
+  const pertoV = sel ? perto.filter(({ g }) => g.id === sel.id) : perto;
   const libs = todos.filter(({ p }) => (p.liberacao || {}).status === "pendente");
   const vals = todos.filter(({ p }) => (p.validar_palavra || {}).status === "pendente");
   const chats = todos.filter(({ p }) => p.chat.aberto).sort((a, b) => (b.p.chat.nao_lidas - a.p.chat.nao_lidas) || String(b.p.chat.ult_em).localeCompare(String(a.p.chat.ult_em)));
@@ -230,28 +250,32 @@ async function rAoVivo(silencioso) {
     ${vals.length ? `<section class="bloco mal"><h3>🔑 Entrega feita SEM SINAL — a palavra não conferiu (${vals.length})</h3><span class="sub">Confira com o cliente: valide a entrega ou reabra para o motorista registrar de novo (a baixa no ERP é desfeita).</span>
       ${vals.map(({ g, p }) => `<div class="linha"><span><b>${esc(p.nome)}</b> · pedido #${p.numero} · carga ${g.numero} · ${esc(g.motorista)}<span class="sub">digitou “${esc(p.validar_palavra.digitada || "—")}” · palavra certa <span class="palavra">${esc(p.palavra || "—")}</span> · sem sinal às ${esc(String(p.validar_palavra.offline_em || "").slice(11, 16))}</span></span>
         ${trata ? `<span class="chips"><button type="button" class="btn p" data-vpal="${g.id}|${p.pid}|aceitar">${svg("check")}Validar entrega</button><button type="button" class="btn perigo p" data-vpal="${g.id}|${p.pid}|reabrir">Reabrir</button></span>` : ""}</div>`).join("")}</section>` : ""}
-    ${perto.length ? `<section class="bloco alerta"><h3>🚨 Chegando — entregas a menos de ${String(d.km_laranja).replace(".", ",")} km (${perto.length})</h3><span class="sub">Distância em linha reta do caminhão até o endereço. Laranja: menos de ${String(d.km_laranja).replace(".", ",")} km · vermelho: menos de ${String(d.km_vermelho).replace(".", ",")} km.</span>
-      ${perto.map(({ g, p }) => `<div class="linha"><span>${KM(p)} ${VIZ(p.vizinho)} <b>${esc(p.nome)}</b> · pedido #${p.numero} · ${esc(p.bairro || "")} · carga ${g.numero} · ${esc(g.motorista)}</span><span class="chips">${BTLINK(p, g.id)}</span></div>`).join("")}</section>` : ""}
     ${chats.length ? `<section class="bloco alerta"><h3>💬 Chat com motorista (${chats.length} aberto(s))</h3>${chats.map(({ g, p }) => `<div class="linha"><span><span class="motivo-gde">${esc(p.chat.motivo)}</span> ${relogio(p.chat)} ${p.chat.nao_lidas ? etq(p.chat.nao_lidas + " nova(s)", "#fb7185") : ""}<br><b>${esc(p.nome)}</b> · pedido #${p.numero} · carga ${g.numero} · ${esc(g.placa)} · ${esc(g.motorista)}<span class="sub">${esc(p.chat.ult_txt || "")} · ${hora(p.chat.ult_em)}${p.chat.assumido ? " · com " + esc(p.chat.assumido.por) : ""}</span></span><button type="button" class="btn p" data-cli="${g.id}|${p.pid}">Abrir conversa</button></div>`).join("")}</section>` : ""}
     ${libs.length ? `<section class="bloco mal"><h3>Motorista esperando liberação sem palavra</h3>${libs.map(({ g, p }) => `<div class="linha"><span><b>${esc(p.nome)}</b> · pedido #${p.numero} · carga ${g.numero} · ${esc(g.motorista)}<span class="sub">${esc(p.liberacao.motivo || "")} · pediu às ${hora(p.liberacao.pedido_em)} · ${p.tentativas} tentativa(s) errada(s) · palavra certa <b>${esc(p.palavra || "—")}</b></span></span>
       ${trata ? `<span class="chips"><button type="button" class="btn p" data-lib="${g.id}|${p.pid}|liberar">Liberar sem palavra</button><button type="button" class="btn perigo p" data-lib="${g.id}|${p.pid}|negar">Negar</button></span>` : ""}</div>`).join("")}</section>` : ""}
-    <section class="grade2"><div class="bloco" style="padding:0;overflow:hidden"><div id="mapa" class="mapa"></div><div class="leg-mapa" style="margin:6px 12px 10px"><span><svg width="14" height="14" viewBox="0 0 24 24"><path d="M12 2 21 21 12 16 3 21Z" fill="#f59e0b" stroke="#111" stroke-width="1.6"/></svg>Motorista (GPS, rede ou estimada · aponta para onde vai)</span><span><svg width="11" height="15" viewBox="0 0 30 40"><path d="M15 39C15 39 2 23 2 14a13 13 0 0 1 26 0c0 9-13 25-13 25Z" fill="#111"/><circle cx="15" cy="14" r="5" fill="#fff"/></svg>Cliente (contorno laranja/vermelho = perto; cinza = atendido)</span></div></div>
-      <div class="bloco"><h3>${svg("relogio")} Últimos registros</h3><div class="feed">${feed(d)}</div></div></section>
-    <section class="painel vidro"><div class="barra-ferr"><input type="search" class="entrada" id="avBusca" value="${esc(V.busca)}" placeholder="🔎 Carga, pedido, cliente, placa, motorista, palavra, bairro…">
+    <section class="av-split">
+      <div class="av-esq">${sel ? painelMotorista(sel, trata) : `    <section class="painel vidro"><div class="barra-ferr"><input type="search" class="entrada" id="avBusca" value="${esc(V.busca)}" placeholder="🔎 Carga, pedido, cliente, placa, motorista, palavra, bairro…">
       <span class="chips">${[["todas", "Todas"], ["rua", "Na rua"], ["aguardando", "Aguardando saída"], ["chegou", "No CD"]].map(([k, r]) => `<button type="button" class="chip${V.filtro === k ? " ativo" : ""}" data-avf="${k}">${r}</button>`).join("")}</span></div>
-      <div class="tab-w"><table class="t"><thead><tr><th>Carga</th><th>Placa · motorista</th><th>Situação</th><th class="num">Pedidos</th><th class="num">Entregues</th><th class="num">Retorno</th><th class="num">Pendentes</th><th class="num">Peças CD</th><th>Posição</th></tr></thead><tbody>
-      ${lista.map((g) => `<tr class="cl${g.id === V.sel ? " sel" : ""}" data-avc="${g.id}"><td><b>${g.numero}</b><span class="sub">${dBR(g.data)}</span></td><td>${esc(g.placa)}<span class="sub">${esc(g.motorista)}${g.palavra_ligada ? ' · <b style="color:var(--ouro2)">palavra</b>' : ""}</span></td>
+      <div class="tab-w"><table class="t"><thead><tr><th>Carga</th><th>Motorista · placa</th><th>Situação</th><th class="num" title="entregues / total">Entregas</th><th class="num">Ret.</th><th>Posição</th></tr></thead><tbody>
+      ${lista.map((g) => `<tr class="cl${g.id === V.sel ? " sel" : ""}" data-avc="${g.id}" title="Ver só este motorista (painel e mapa)"><td><b>${g.numero}</b><span class="sub">${dBR(g.data)}</span></td><td><b>${esc(g.motorista)}</b><span class="sub">${esc(g.placa)}${g.palavra_ligada ? ' · <b style="color:var(--ouro2)">palavra</b>' : ""}</span></td>
         <td>${etq(...(FASE[g.fase] || [g.fase, "#94a3b8"]))}<span class="sub">${g.saida ? "saiu " + hora(g.saida.em) : ""}${g.chegada ? " · chegou " + hora(g.chegada.em) : ""}</span></td>
-        <td class="num">${g.cont.total}</td><td class="num">${g.cont.entregue}</td><td class="num">${g.cont.retorno + g.cont.parcial}</td><td class="num">${g.cont.pendente}</td><td class="num">${g.cont.pecas_recebidas}/${g.cont.pecas_esperadas}</td><td>${g.fase === "rua" ? posTxt(g) : "—"}</td></tr>`).join("")
-        || `<tr><td colspan="9" class="vazio">Nenhuma carga liberada ou na rua${V.data !== d.data ? "" : " hoje"}. Cargas aparecem aqui quando o WLOGISTICA libera.</td></tr>`}</tbody></table></div></section>
-    ${sel ? detalhe(sel, trata) : ""}`;
+        <td class="num">${g.cont.entregue}/${g.cont.total}</td><td class="num">${g.cont.retorno + g.cont.parcial}</td><td>${g.fase === "rua" ? posTxt(g) : "—"}</td></tr>`).join("")
+        || `<tr><td colspan="6" class="vazio">Nenhuma carga liberada ou na rua${V.data !== d.data ? "" : " hoje"}. Cargas aparecem aqui quando o WLOGISTICA libera.</td></tr>`}</tbody></table></div></section>
+        <div class="bloco"><h3>${svg("relogio")} Últimos registros</h3><div class="feed">${feed(d)}</div></div>`}</div>
+      <div class="av-dir">
+        ${pertoV.length ? `<section class="bloco alerta" style="margin:0"><h3>🚨 Chegando — ${sel ? `${esc(sel.motorista)} · ` : ""}entregas a menos de ${String(d.km_laranja).replace(".", ",")} km (${pertoV.length})</h3><span class="sub">Distância em linha reta do caminhão até o endereço. Laranja: menos de ${String(d.km_laranja).replace(".", ",")} km · vermelho: menos de ${String(d.km_vermelho).replace(".", ",")} km.</span>
+          ${pertoV.map(({ g, p }) => `<div class="linha"><span>${KM(p)} ${VIZ(p.vizinho)} <b>${esc(p.nome)}</b> · pedido #${p.numero} · ${esc(p.bairro || "")} · carga ${g.numero} · <span class="mot-sel" data-mot="${g.id}" title="Ver só este motorista">${esc(g.motorista)}</span></span><span class="chips">${BTLINK(p, g.id)}</span></div>`).join("")}</section>` : ""}
+        <div class="bloco" style="padding:0;overflow:hidden;margin:0">${sel ? `<div class="linha" style="padding:8px 12px"><span class="sub" style="margin:0">Mapa: só <b>${esc(sel.motorista)}</b> (carga ${sel.numero}) e as entregas dele</span><button type="button" class="btn v p" data-mot="">Ver todos</button></div>` : ""}<div id="mapa" class="mapa"></div><div class="leg-mapa" style="margin:6px 12px 10px"><span><svg width="14" height="14" viewBox="0 0 24 24"><path d="M12 2 21 21 12 16 3 21Z" fill="#f59e0b" stroke="#111" stroke-width="1.6"/></svg>Motorista (GPS, rede ou estimada · aponta para onde vai)</span><span><svg width="11" height="15" viewBox="0 0 30 40"><path d="M15 39C15 39 2 23 2 14a13 13 0 0 1 26 0c0 9-13 25-13 25Z" fill="#111"/><circle cx="15" cy="14" r="5" fill="#fff"/></svg>Cliente (contorno laranja/vermelho = perto; cinza = atendido)</span></div>
+      </div>
+    </section>`;
   if (silencioso) scrollTo(0, scroll);
   $("#avData").onchange = (e) => { V.data = e.target.value; rAoVivo(); };
-  const bs = $("#avBusca"); bs.oninput = () => { V.busca = bs.value; clearTimeout(bs._t); bs._t = setTimeout(() => { rAoVivo(true).then(() => { const n = $("#avBusca"); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }); }, 300); };
+  const bs = $("#avBusca"); if (bs) bs.oninput = () => { V.busca = bs.value; clearTimeout(bs._t); bs._t = setTimeout(() => { rAoVivo(true).then(() => { const n = $("#avBusca"); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }); }, 300); };
   $$("[data-avf]").forEach((b) => (b.onclick = () => { V.filtro = b.dataset.avf; rAoVivo(true); }));
   $$("[data-avc]").forEach((r) => (r.onclick = () => { V.sel = V.sel === r.dataset.avc ? null : r.dataset.avc; rAoVivo(true); }));
+  $$("[data-mot]").forEach((b) => (b.onclick = (ev) => { ev.stopPropagation(); V.sel = b.dataset.mot || null; rAoVivo(true); }));
   ligarAcoes($("#main"));
-  mapa(d);
+  mapa(d, sel);
 }
 const relogio = (ch) => ch.restante_seg == null ? "" : `<span class="relogio" data-ate="${Date.now() + ch.restante_seg * 1000}" data-total="${(ch.prazo_min || 15) * 60}">⏱</span>`;
 setInterval(() => $$("[data-ate]").forEach((el) => { const s = (+el.dataset.ate - Date.now()) / 1000, t = +el.dataset.total || 900, n = Math.abs(Math.round(s));
@@ -275,17 +299,20 @@ function feed(d) {
   ev.sort((a, b) => String(b.em).localeCompare(String(a.em)));
   return ev.slice(0, 60).map((e) => `<div><span>${hora(e.em)}</span><span>${esc(e.t)}</span></div>`).join("") || '<p class="sub">Os registros dos motoristas aparecem aqui.</p>';
 }
-function detalhe(g, trata) {
-  return `<section class="painel vidro"><div class="cab">${A.orbe("caminhao", (FASE[g.fase] || [, "#a78bfa"])[1])}<div><h2>Carga ${g.numero} · ${esc(g.placa)} · ${esc(g.motorista)}</h2><p>${esc(g.veiculo || "")} · ${dBR(g.data)} · a baixa no ERP é automática a cada registro do motorista</p></div><div class="dir">${etq(...(FASE[g.fase] || [g.fase, "#94a3b8"]))}</div></div>
-    <div class="tab-w"><table class="t"><thead><tr><th>Pedido · cliente</th><th>Distância</th><th>Desfecho</th><th>Hora · quem</th><th>Palavra</th><th>Cliente</th><th>Peças CD</th><th></th></tr></thead><tbody>
-    ${g.pedidos.map((p) => `<tr class="cl" data-cli="${g.id}|${p.pid}"><td><b>#${p.numero} · ${esc(p.nome)}</b> ${p.chat.aberto ? etq("💬 " + p.chat.motivo + (p.chat.nao_lidas ? " · " + p.chat.nao_lidas : ""), p.chat.nao_lidas ? "#fb7185" : "#fb923c") : ""}<span class="sub">${esc([p.bairro, p.cidade].filter(Boolean).join(" · "))}${p.tipo === "troca" ? " · troca" : ""} · <u>ver tudo</u></span>${!p.desfecho ? VIZ(p.vizinho) : ""}</td>
-      <td>${KM(p)}</td><td>${desfTag(p)}${p.motivo ? `<span class="sub">${esc(p.motivo)}</span>` : ""}${p.foto ? `<button type="button" class="btn v p" data-foto="${esc(p.foto)}">📷 foto</button>` : ""}${p.corrigidos ? `<span class="sub">corrigido ${p.corrigidos}×</span>` : ""}</td>
-      <td>${p.em ? `${hora(p.em)}<span class="sub">${esc(p.por)}</span>` : "—"}</td>
-      <td>${p.palavra ? `<span class="palavra" title="${p.vizinho ? "Nome do vizinho (pedido pelo cliente)" : "Palavra-chave do pedido"}">${esc(p.palavra)}</span>` : p.vizinho ? etq("sem palavra (vizinho)", "#94a3b8") : ""}<span class="sub">${p.palavra_original ? "era " + esc(p.palavra_original) + " · " : ""}${p.palavra_ok === true ? "conferida" : p.palavra_ok === false ? "liberado pela frota" : p.tentativas ? p.tentativas + " erro(s)" : ""}</span></td>
-      <td>${BTLINK(p, g.id)}</td><td>${p.retorno_esperado ? etq(`${p.retorno_recebido}/${p.retorno_esperado} recebida(s)`, p.retorno_recebido >= p.retorno_esperado ? "#34d399" : "#e8b33d") : "—"}</td>
-      <td style="white-space:nowrap">${trata && p.desfecho && !p.manual && g.fase !== "chegou" ? `<button type="button" class="btn perigo p" data-reab="${g.id}|${p.pid}" title="Desfaz o registro e a baixa no ERP">Reabrir</button>` : ""}
-        ${trata && !p.desfecho && (p.liberacao || {}).status !== "liberada" && g.palavra_ligada ? `<button type="button" class="btn v p" data-lib="${g.id}|${p.pid}|liberar">🔓 Liberar sem palavra</button>` : ""}
-        ${(p.liberacao || {}).status === "liberada" && !p.desfecho ? etq("Liberado sem palavra", "#a78bfa") : ""}</td></tr>`).join("")}</tbody></table></div></section>`;
+// Painel do motorista (lado esquerdo — não cobre o "Chegando" nem o mapa)
+function painelMotorista(g, trata) {
+  const c = g.cont, ordem = [...g.pedidos].sort((a, b) => (!!a.desfecho - !!b.desfecho) || ((a.km ?? 999) - (b.km ?? 999)));
+  return `<section class="painel vidro" style="margin:0"><div class="mot-cab">${A.orbe("caminhao", (FASE[g.fase] || [, "#a78bfa"])[1])}<div><h2>${esc(g.motorista)}</h2><p class="sub" style="margin:2px 0 0">${esc(g.placa)}${g.veiculo ? " · " + esc(g.veiculo) : ""} · carga ${g.numero} · ${dBR(g.data)}${g.palavra_ligada ? ' · <b style="color:var(--ouro2)">palavra ligada</b>' : " · palavra desligada"}</p>
+      <div style="margin-top:6px">${etq(...(FASE[g.fase] || [g.fase, "#94a3b8"]))} <span class="sub" style="display:inline">${g.saida ? "saiu " + hora(g.saida.em) : ""}${g.chegada ? " · chegou " + hora(g.chegada.em) : ""}</span></div></div>
+      <button type="button" class="btn v p fechar" data-mot="" title="Fechar e ver todos no mapa">✕</button></div>
+    <div class="mot-kpis"><div><small>Entregas</small><b>${c.total}</b></div><div><small>Entregues</small><b style="color:var(--verde)">${c.entregue}</b></div><div><small>Retorno</small><b style="color:var(--rosa)">${c.retorno + c.parcial}</b></div><div><small>Pendentes</small><b>${c.pendente}</b></div></div>
+    <div class="sub" style="margin:-4px 0 10px">📍 ${g.fase === "rua" ? posTxt(g) : "—"} · peças no CD ${c.pecas_recebidas}/${c.pecas_esperadas}</div>
+    <div style="display:grid;gap:8px">${ordem.map((p) => `<div class="mot-ped" data-cli="${g.id}|${p.pid}" title="Abrir o pedido (endereço, palavra, conversa, peças)">
+      <div class="topo"><span><b>#${p.numero} · ${esc(p.nome)}</b> ${p.chat.aberto ? etq("💬 " + p.chat.motivo + (p.chat.nao_lidas ? " · " + p.chat.nao_lidas : ""), p.chat.nao_lidas ? "#fb7185" : "#fb923c") : ""}<span class="sub">${esc([p.bairro, p.cidade].filter(Boolean).join(" · "))}${p.tipo === "troca" ? " · troca" : ""}</span></span>${p.desfecho ? "" : KM(p)}</div>
+      <div class="rod"><span>${desfTag(p)}${p.em ? ` <span class="sub" style="display:inline">${hora(p.em)}</span>` : ""}${p.palavra ? ` <span class="palavra" title="${p.vizinho ? "Nome do vizinho" : "Palavra-chave"}">${esc(p.palavra)}</span>` : ""}${!p.desfecho ? VIZ(p.vizinho) : ""}${p.motivo ? `<span class="sub">${esc(p.motivo)}</span>` : ""}</span>
+        <span class="chips">${BTLINK(p, g.id, false)}${p.foto ? `<button type="button" class="btn v p ic" data-foto="${esc(p.foto)}" title="Foto">📷</button>` : ""}${p.comprovante ? `<button type="button" class="btn v p ic" data-compr="${esc(p.pid)}" title="Comprovante de entrega">📝</button>` : ""}
+          ${trata && p.desfecho && !p.manual && g.fase !== "chegou" ? `<button type="button" class="btn perigo p" data-reab="${g.id}|${p.pid}" title="Desfaz o registro e a baixa no ERP">Reabrir</button>` : ""}
+          ${trata && !p.desfecho && (p.liberacao || {}).status !== "liberada" && g.palavra_ligada ? `<button type="button" class="btn v p ic" data-lib="${g.id}|${p.pid}|liberar" title="Liberar sem palavra">🔓</button>` : ""}</span></div></div>`).join("")}</div></section>`;
 }
 function ligarAcoes(c) {
   $$("[data-cli]", c).forEach((b) => (b.onclick = (ev) => { if (ev.target.closest("[data-lcp],[data-lwa],[data-reab],[data-lib],[data-foto],[data-compr],[data-falar]") || (ev.target.closest("[data-cli]") !== b)) return; ev.stopPropagation(); const [g, p] = b.dataset.cli.split("|"); abrirCliente(g, p); }));
@@ -315,15 +342,15 @@ const icBal = (p) => { const cor = p.desfecho ? "#9ca3af" : "#111", anel = !p.de
   return L.divIcon({ className: "ic-mapa", iconSize: [24, 32], iconAnchor: [12, 31],
     html: `<svg width="24" height="32" viewBox="0 0 30 40"><path d="M15 39C15 39 2 23 2 14a13 13 0 0 1 26 0c0 9-13 25-13 25Z" fill="${cor}" stroke="${anel}" stroke-width="2.4"/><circle cx="15" cy="14" r="5" fill="#fff"/></svg>` }); };
 function leaflet() { return window.L ? Promise.resolve() : new Promise((ok2, er) => { const s = document.createElement("script"); s.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"; s.onload = ok2; s.onerror = er; document.head.appendChild(s); }); }
-async function mapa(d) {
+async function mapa(d, sel) {
   const box = $("#mapa"); if (!box) return;
   try { await leaflet(); } catch (_) { box.innerHTML = '<p class="sub" style="padding:14px">Não consegui carregar o mapa (OpenStreetMap).</p>'; return; }
   if (LMAP) { LMAP.remove(); LMAP = null; }
   LMAP = L.map(box, { zoomControl: true }); L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OpenStreetMap", maxZoom: 19 }).addTo(LMAP);   // OSM direto (o CARTO deixou de responder)
   const pts = [];
-  d.cargas.forEach((g) => {
+  (sel ? d.cargas.filter((g) => g.id === sel.id) : d.cargas).forEach((g) => {
     if (g.trilha.length > 1) L.polyline(g.trilha.map((t) => [t[0], t[1]]), { color: "#a78bfa", weight: 3, opacity: .6 }).addTo(LMAP);
-    if (g.pos) { L.marker([g.pos.lat, g.pos.lng], { icon: icCam(g.pos.rumo, g.pos.aprox), zIndexOffset: 500 }).addTo(LMAP).bindTooltip(`🚚 ${g.numero} · ${g.placa} · ${g.motorista}${g.pos.fonte !== "gps" ? " (" + g.pos.fonte + ")" : ""}`); pts.push([g.pos.lat, g.pos.lng]); }
+    if (g.pos) { L.marker([g.pos.lat, g.pos.lng], { icon: icCam(g.pos.rumo, g.pos.aprox), zIndexOffset: 500 }).addTo(LMAP).on("click", () => { V.sel = V.sel === g.id ? null : g.id; rAoVivo(true); }).bindTooltip(`🚚 ${g.numero} · ${g.placa} · ${g.motorista}${g.pos.fonte !== "gps" ? " (" + g.pos.fonte + ")" : ""}`); pts.push([g.pos.lat, g.pos.lng]); }
     g.pedidos.forEach((p) => { if (!p.destino) return;
       L.marker([p.destino.lat, p.destino.lng], { icon: icBal(p) }).addTo(LMAP).bindTooltip(`#${p.numero} ${p.nome}${p.desfecho ? " · " + (DESF[p.desfecho] || [p.desfecho])[0] : p.km != null ? " · " + kmTxt(p.km) : ""}`); pts.push([p.destino.lat, p.destino.lng]); });
   });
