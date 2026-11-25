@@ -138,7 +138,10 @@ html[data-claro] .leaflet-container{background:#e9ecef}
 .mot-ped:hover{border-color:var(--ouro2,#e8b33d)}
 /* Tela dividida: motorista (laranja) à esquerda · cliente pelo app (AZUL) à direita */
 .duplo{display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
-.duplo.com-cli{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.duplo.com-mot.com-cli{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.lado-mot{display:none !important}
+.com-mot .lado-mot{display:flex !important}
+.lado-tit .chamar{margin-left:auto;font-size:.72rem;text-transform:none;letter-spacing:0}
 /* os dois cards com a MESMA altura; a conversa ocupa o espaço que sobra e vai subindo */
 .lado-mot,.com-cli .lado-cli{display:flex;flex-direction:column;height:calc(100vh - 220px);min-height:460px}
 .lado-mot .chat-mot{flex:1;min-height:0;display:flex;flex-direction:column;margin:0}
@@ -147,7 +150,7 @@ html[data-claro] .leaflet-container{background:#e9ecef}
 .com-cli .lado-cli .msgs{max-height:none}
 .info4 .pecas-bt{cursor:pointer}
 .info4 .pecas-bt:hover{border-color:var(--ouro2,#e8b33d)}
-.duplo.com-cli .g3{grid-template-columns:1fr 1fr}
+.duplo.com-mot.com-cli .g3{grid-template-columns:1fr 1fr}
 .lado-mot{border:1px solid #fb923c;background:rgba(251,146,60,.06);border-radius:16px;padding:12px;align-self:start;position:sticky;top:0}
 /* informações do motorista compactas, no tamanho do card (a conversa fica do mesmo tamanho e vai subindo) */
 .info4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:10px}
@@ -181,7 +184,7 @@ html[data-claro] .leaflet-container{background:#e9ecef}
 .btn.ic.azul{background:#2563eb;border-color:#3b82f6;box-shadow:0 0 0 2px rgba(59,130,246,.35)}
 .btn.ic .ponto{position:absolute;top:-3px;right:-3px;width:9px;height:9px;border-radius:50%;background:#fb7185;border:2px solid #0b1220}
 .btn.ic{position:relative}
-@media (max-width:900px){.duplo.com-cli{grid-template-columns:1fr}}
+@media (max-width:900px){.duplo.com-mot.com-cli{grid-template-columns:1fr}}
 .mot-ped.foco{border-color:#22d3ee;box-shadow:0 0 0 2px rgba(34,211,238,.25)}
 .kpi-bt{cursor:pointer;font:inherit;color:inherit;width:100%}
 .kpi-bt:hover{border-color:var(--c)}
@@ -398,7 +401,7 @@ function painelMotorista(g, trata) {
 function ligarAcoes(c) {
   $$("[data-cli]", c).forEach((b) => (b.onclick = (ev) => { if (ev.target.closest("[data-lcp],[data-lwa],[data-reab],[data-lib],[data-foto],[data-compr],[data-falar]") || (ev.target.closest("[data-cli]") !== b)) return; ev.stopPropagation(); const [g, p] = b.dataset.cli.split("|"); abrirCliente(g, p); }));
   $$("[data-falar]", c).forEach((b) => (b.onclick = (ev) => { ev.stopPropagation(); const [g, p, nome, num] = b.dataset.falar.split("|");
-    if (b.dataset.ativo) { if (c.querySelector && c.querySelector("#cvCli")) return; abrirCliente(g, p, { cliente: true }); } else falarCliente(g, p, nome, num); }));
+    if (b.dataset.ativo) { if (c.querySelector && c.querySelector("#cvCli")) return; abrirCliente(g, p, { lado: "cli" }); } else falarCliente(g, p, nome, num); }));
   // 1º clique no cliente: mapa só com o motorista e AQUELA entrega (rota pelas ruas) · 2º clique: abre a conversa com o motorista
   $$("[data-pfoco]", c).forEach((b) => (b.onclick = (ev) => { if (ev.target.closest("[data-lcp],[data-lwa],[data-reab],[data-lib],[data-foto],[data-compr],[data-falar]") || (ev.target.closest("[data-pfoco]") !== b)) return; ev.stopPropagation();
     const [g, p] = b.dataset.pfoco.split("|"); if (V.sel === g && V.foco === p) { abrirCliente(g, p); return; }
@@ -486,15 +489,31 @@ function falarCliente(g, p, nome, num) {
     aoAbrir: (cx) => { const t = $("#falTxt", cx); if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); } },
     botoes: [{ rotulo: "Cancelar" }, { rotulo: "Chamar no app", classe: "btn", icone: "check", principal: true, acao: async (cx) => {
       const texto = ($("#falTxt", cx).value || "").trim(); if (!texto) return false;
-      try { await api(`/cargas/${g}/pedido/${p}/falar-cliente`, { method: "POST", body: { texto } }); setTimeout(() => abrirCliente(g, p, { cliente: true }), 50); }
+      try { await api(`/cargas/${g}/pedido/${p}/falar-cliente`, { method: "POST", body: { texto } }); setTimeout(() => abrirCliente(g, p, { lado: "cli" }), 50); }
       catch (e) { falha(e); return false; } } }] });
 }
 
 async function abrirCliente(cid, pid, opts = {}) {
   let d; try { d = await api(`/cargas/${cid}/pedido/${pid}`); } catch (e) { return falha(e); }
   let cli = null; try { cli = await api(`/cargas/${cid}/pedido/${pid}/cliente-chat`); } catch (_) { cli = null; }
-  let comCli = !!(opts.cliente || (cli && cli.ativo));
-  const corpoCli = () => `<div class="lado-tit">📱 Cliente — conversa pelo app ${cli && cli.ativo ? etq("aberta", "#3b82f6") : etq("finalizada", "#64748b")}</div>
+  // 🚚 abre SÓ o motorista · 💬 abre SÓ o cliente. O outro lado entra só pelo botão "Chamar…" (nunca sozinho).
+  let ladoMot = opts.lado !== "cli", ladoCli = opts.lado === "cli";
+  const classes = () => `duplo${ladoMot ? " com-mot" : ""}${ladoCli ? " com-cli" : ""}`;
+  const btCli = () => ladoCli ? `<span id="cvBtCli"></span>` : `<button type="button" class="btn v p${cli && cli.ativo ? " azul" : ""}" id="cvBtCli" title="Abre a conversa com o cliente ao lado (não envia nada sozinho)">📱 ${cli && cli.ativo ? "Cliente (conversa aberta)" : "Chamar o cliente"}</button>`;
+  const btMot = () => ladoMot ? "" : `<button type="button" class="btn v p chamar" id="cvBtMot" style="border-color:#fb923c;color:#fb923c" title="Abre o atendimento do motorista ao lado (não envia nada sozinho)">🚚 Chamar o motorista</button>`;
+  function mostrar(lado, cx) {
+    if (lado === "cli") ladoCli = true; else ladoMot = true;
+    $("#cvDuplo", cx).className = classes();
+    $("#cvCorpo", cx).innerHTML = corpo(); $("#cvCli", cx).innerHTML = corpoCli(); ligar(cx);
+    const t = lado === "cli" ? $("#clTxt", cx) : $("#cvTxt", cx);
+    if (t) { if (lado === "cli" && !t.value && !(cli && cli.ativo)) t.value = `Olá! Aqui é da central de entregas, sobre o seu pedido #${d.numero}. `; t.focus(); }
+    if (lado === "mot") atualizar(true);
+  }
+  function ligarBotoes(cx) {
+    const bc = $("#cvBtCli", cx); if (bc && bc.tagName === "BUTTON") bc.onclick = () => mostrar("cli", cx);
+    const bm = $("#cvBtMot", cx); if (bm) bm.onclick = () => mostrar("mot", cx);
+  }
+  const corpoCli = () => `<div class="lado-tit">📱 Cliente — conversa pelo app ${cli && cli.ativo ? etq("aberta", "#3b82f6") : etq("finalizada", "#64748b")}${btMot()}</div>
     ${cli && cli.sem_app ? '<p class="sub">Este cliente ainda não tem o app. Use o WhatsApp.</p>' : ""}
     <div class="msgs" id="clMsgs">${((cli && cli.mensagens) || []).map((m) => `<div class="mc ${m.de === "central" ? "cen" : ""}"><small>${m.de === "central" ? "Central" + (m.autor ? " · " + esc(m.autor) : "") : "Cliente"} · ${dhBR(m.data)}</small>${esc(m.texto)}</div>`).join("") || '<p class="sub">Sem mensagens.</p>'}</div>
     ${cli && !cli.sem_app ? `<div style="display:flex;gap:8px;margin-top:8px"><input class="entrada" id="clTxt" placeholder="${cli.ativo ? "Responder ao cliente" : "Chamar o cliente de novo"}" style="flex:1"><button type="button" class="btn azul" id="clEnv">${svg("check")}${cli.ativo ? "Enviar" : "Chamar"}</button></div>
@@ -503,7 +522,7 @@ async function abrirCliente(cid, pid, opts = {}) {
   let timer = null;
   const corpo = () => {
     const ch = d.chat_det, a = ch.atual;
-    return `<div class="lado-tit">🚚 Atendimento do motorista${d.historico.length ? `<button type="button" class="btn v p ic" id="cvLinhaBt" title="Linha do tempo (${d.historico.length})" style="margin-left:auto">${svg("historico")}</button>` : ""}</div><div class="info4">
+    return `<div class="lado-tit">🚚 Atendimento do motorista<span class="chamar chips">${btCli()}${d.historico.length ? `<button type="button" class="btn v p ic" id="cvLinhaBt" title="Linha do tempo (${d.historico.length})">${svg("historico")}</button>` : ""}</span></div><div class="info4">
       <div class="bloco"><h3>${svg("pino")} Endereço</h3><p class="corta" title="${esc([endTxt, end.cep ? "CEP " + end.cep : "", end.referencia ? "Ref.: " + end.referencia : ""].filter(Boolean).join(" · "))}">${esc(endTxt || "—")}${end.cep ? ` · CEP ${esc(end.cep)}` : ""}</p>${end.referencia ? `<span class="sub corta">Ref.: ${esc(end.referencia)}</span>` : ""}<div style="margin-top:4px">${KM(d)}</div>${d.telefone ? `<span class="sub">📞 ${esc(d.telefone)}</span>` : ""}</div>
       <div class="bloco"><h3>🔑 ${d.vizinho ? "Palavra (vizinho)" : "Palavra-chave"}</h3><p>${d.palavra ? `<span class="palavra">${esc(d.palavra)}</span>` : d.vizinho ? "sem palavra (vizinho sem nome)" : "—"}</p>${VIZ(d.vizinho)}${d.palavra_original ? `<span class="sub">original ${esc(d.palavra_original)}</span>` : ""}<div style="margin-top:6px">${BTLINK({ ...d, pid, cliente_chat: cli && cli.ativo ? { ativo: true } : null }, cid, false)}</div></div>
       <div class="bloco"><h3>${svg("caminhao")} Carga ${d.carga}</h3><p class="corta">${esc(d.placa)} · ${esc(d.motorista)} · ${dBR(d.data)}</p><div style="margin-top:4px">${desfTag(d)}</div>${d.motivo ? `<span class="sub corta">${esc(d.motivo)}</span>` : ""}<div class="chips" style="margin-top:4px">${d.foto ? `<button type="button" class="btn v p ic" data-foto="${esc(d.foto)}" title="Foto">📷</button>` : ""}${d.comprovante ? `<button type="button" class="btn v p ic" data-compr="${esc(pid)}" title="Comprovante · recebido por ${esc(d.comprovante.recebedor || "—")}${d.comprovante.parentesco ? " (" + esc(d.comprovante.parentesco) + ")" : ""}">📝</button>` : ""}</div></div>
@@ -515,7 +534,7 @@ async function abrirCliente(cid, pid, opts = {}) {
 `;
   };
   const m = A.modal({ titulo: `Pedido #${d.numero} · ${d.nome}`, icone: "usuario", cor: "#a78bfa", largura: 980,
-    html: `<div class="duplo${comCli ? " com-cli" : ""}" id="cvDuplo"><div class="lado-mot" id="cvCorpo">${corpo()}</div><div class="lado-cli" id="cvCli">${corpoCli()}</div></div>`,
+    html: `<div class="${classes()}" id="cvDuplo"><div class="lado-mot" id="cvCorpo">${corpo()}</div><div class="lado-cli" id="cvCli">${corpoCli()}</div></div>`,
     esquerda: [{ rotulo: "PDF do caso", icone: "documento", acao: () => { dossie(d); return false; } }],
     botoes: [{ rotulo: "Fechar" }],
     aoAbrir: (cx) => { ligar(cx); },
@@ -530,10 +549,10 @@ async function abrirCliente(cid, pid, opts = {}) {
   }
   async function atualizarCli() {
     const cx = m.el; const ti = $("#clTxt", cx); if (ti && ti.value && document.activeElement === ti) return;
-    try { cli = await api(`/cargas/${cid}/pedido/${pid}/cliente-chat`); if (cli.ativo) comCli = true; $("#cvDuplo", cx).classList.toggle("com-cli", comCli); $("#cvCli", cx).innerHTML = corpoCli(); ligarCli(cx); } catch (_) {}
+    try { cli = await api(`/cargas/${cid}/pedido/${pid}/cliente-chat`); $("#cvCli", cx).innerHTML = corpoCli(); ligarCli(cx); const bc = $("#cvBtCli", cx); if (bc) bc.outerHTML = btCli(); ligarBotoes(cx); } catch (_) {}
   }
   function ligar(cx) {
-    ligarCli(cx);
+    ligarCli(cx); ligarBotoes(cx);
     const lb = $("#cvLinhaBt", cx); if (lb) lb.onclick = () => A.modal({ titulo: `Linha do tempo · pedido #${d.numero}`, icone: "historico", cor: "#fb923c", largura: 460,
       html: `<div style="max-height:60vh;overflow:auto">${d.historico.slice().reverse().map((h) => `<div class="linha" style="padding:5px 0"><span>${esc(h.acao)}${h.det ? ` — <span class="sub" style="display:inline">${esc(h.det)}</span>` : ""}</span><span class="sub">${dhBR(h.em)} · ${esc(h.por)}</span></div>`).join("")}</div>`, botoes: [{ rotulo: "Fechar" }] });
     const pc = $("#cvPecas", cx); if (pc) pc.onclick = () => A.modal({ titulo: `Peças · pedido #${d.numero}`, icone: "caixa", cor: "#fb923c", largura: 460,
@@ -544,7 +563,7 @@ async function abrirCliente(cid, pid, opts = {}) {
     const l = $("#cvMsgs", cx); if (l) l.scrollTop = l.scrollHeight;
     ligarAcoes(cx);
     // 💬 dentro da ficha: abre o lado do cliente (azul) nesta mesma tela
-    $$("[data-falar]", cx).forEach((b) => (b.onclick = (ev) => { ev.stopPropagation(); comCli = true; $("#cvDuplo", cx).classList.add("com-cli");
+    $$("[data-falar]", cx).forEach((b) => (b.onclick = (ev) => { ev.stopPropagation(); mostrar("cli", cx);
       const t = $("#clTxt", cx); if (t) { if (!t.value && !(cli && cli.ativo)) t.value = `Olá! Aqui é da central de entregas, sobre o seu pedido #${d.numero}. `; t.focus(); } }));
     const env = $("#cvEnv", cx); if (env) env.onclick = async () => { const t = $("#cvTxt", cx).value.trim(); if (!t) return;
       try { await api(`/cargas/${cid}/pedido/${pid}/chat`, { method: "POST", body: { texto: t, iniciar: !d.chat_det.atual } }); await atualizar(true); } catch (e) { falha(e); } };
@@ -556,7 +575,7 @@ async function abrirCliente(cid, pid, opts = {}) {
     const cx = m.el; const ti = $("#cvTxt", cx); if (!forcar && ti && ti.value) { api(`/cargas/${cid}/pedido/${pid}/presenca`, { method: "POST", body: {} }).catch(() => {}); return; }
     try { d = await api(`/cargas/${cid}/pedido/${pid}`); $("#cvCorpo", cx).innerHTML = corpo(); ligar(cx); } catch (_) {}
   }
-  timer = setInterval(() => { if (document.visibilityState === "visible") { atualizar(false); if (comCli) atualizarCli(); } }, 6000);
+  timer = setInterval(() => { if (document.visibilityState === "visible") { if (ladoMot) atualizar(false); atualizarCli(); } }, 6000);
 }
 function dossie(d) {
   const w = window.open("", "_blank"); if (!w) return falha(new Error("O navegador bloqueou a janela do PDF. Libere pop-ups."));
