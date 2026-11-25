@@ -569,6 +569,8 @@ def _ped_app(car: dict, pid: str, mid: str) -> dict:
             "endereco": " ".join(x for x in (end.get("logradouro"), end.get("numero")) if x), "compl": end.get("complemento"),
             "bairro": end.get("bairro"), "cidade": end.get("cidade"), "uf": end.get("uf"), "cep": end.get("cep"), "referencia": end.get("referencia"),
             "tipo": ped.get("tipo"), "obs": ped.get("obs") or "", "obs_entrega": (ped.get("agendamento") or {}).get("obs") or "",
+            "nf": {"numero": (ped.get("nf") or {}).get("numero"), "serie": (ped.get("nf") or {}).get("serie"), "tem_etiqueta": bool((ped.get("nf") or {}).get("chave"))} if ped.get("nf") else None,
+            "recebido": {k: (ev.get("comprovante") or {}).get(k) for k in ("recebedor", "parentesco", "palavra")} if ev.get("comprovante") else None,
             "itens": [{"produto_id": i["produto_id"], "desc": prod(i["produto_id"]).get("nome", "Produto"), "qtd": i["qtd"]} for i in ped.get("pendentes") or []]
             if not ev.get("desfecho") else [{"produto_id": i["produto_id"], "desc": prod(i["produto_id"]).get("nome", "Produto"), "qtd": i["qtd"]}
                                             for i in (ev.get("itens_saida") or ped.get("itens") or [])],
@@ -707,6 +709,56 @@ def _abrir_ticket_auto(pid: str, resultado: str, motivo: str, q: dict):
         print(f"[wrouter] não abriu ticket automático: {ex}")
 
 
+def _comprovante(tx, car: dict, cid: str, pid: str, ev: dict, q: dict, desf: str, prova: dict | None, c: dict, foto: str, assinatura: str, vz):
+    """Monta e sela o comprovante de entrega; o resumo vai para o pedido (ERP, CX e app do cliente)."""
+    import entrega_prova as P
+    ped = tx.get("pedidos", pid) or {}
+    dest = destino(car, pid)
+    lat, lng = c.get("lat"), c.get("lng")
+    dist = distancia_m(lat, lng, dest["lat"], dest["lng"]) if dest and isinstance(lat, (int, float)) and isinstance(lng, (int, float)) else None
+    nf = ped.get("nf") or {}
+    vz_sem_nome = bool(vz and not str(vz.get("nome") or "").strip())
+    reg = {"resultado": desf, "em": ev.get("em") or agora(), "pedido": ped.get("numero"), "pid": pid, "cliente": ped.get("cliente_nome"),
+           "recebedor": str((prova or {}).get("recebedor") or ("" if not vz else f"vizinho nº {vz.get('numero')}")).strip()[:80],
+           "parentesco": str((prova or {}).get("parentesco") or ("Vizinho" if vz else "")).strip()[:40],
+           "doc_final": re.sub(r"[^0-9Xx]", "", str((prova or {}).get("doc_final") or ""))[-4:],
+           "palavra": P.texto_palavra(ev.get("palavra_ok"), (ev.get("liberacao") or {}).get("status") or "", ev.get("validar_palavra"),
+                                      palavra_ligada(q["mid"]), vz_sem_nome),
+           "lat": round(lat, 6) if isinstance(lat, (int, float)) else None, "lng": round(lng, 6) if isinstance(lng, (int, float)) else None,
+           "dist_m": dist, "chegou_em": (ev.get("chegou") or {}).get("em"), "motorista": q.get("nome"), "placa": placa_da_carga(car),
+           "carga": car.get("numero"), "carga_id": cid, "nf_numero": nf.get("numero") or "", "nf_chave": nf.get("chave") or "",
+           "foto": foto, "assinatura": assinatura, "offline_em": str(c.get("offline_em") or "")[:40] or None,
+           "completo": bool(prova and foto and assinatura)}
+    fb = ab = ""
+    if c.get("foto"):
+        fb = str(c["foto"]).split(",", 1)[-1]
+    if prova and prova.get("assinatura"):
+        ab = str(prova["assinatura"]).split(",", 1)[-1]
+    P.selar(reg, fb, ab)
+    ev["comprovante"] = reg
+    ped["entrega"] = {k: reg.get(k) for k in ("resultado", "em", "recebedor", "parentesco", "doc_final", "palavra", "dist_m", "motorista", "placa",
+                                              "carga", "carga_id", "nf_numero", "hash", "completo")}
+    ped.setdefault("historico", []).append({"em": agora(), "por": f"motorista:{q.get('placa') or ''}",
+                                            "evento": f"Comprovante de entrega: recebido por {reg['recebedor'] or '—'}"
+                                                      + (f" ({reg['parentesco']})" if reg["parentesco"] else "") + f" · palavra {reg['palavra']}"})
+    tx.put("pedidos", pid, ped)
+
+
+def _comprovante_evento(tx, car: dict, pid: str, texto: str, por: str):
+    """Fato posterior (frota validou/liberou) — entra como evento, sem mexer no código de integridade."""
+    ev = rota(car)["pedidos"].get(pid) or {}
+    reg = ev.get("comprovante")
+    if not reg:
+        return
+    reg.setdefault("eventos", []).append({"em": agora(), "por": por, "texto": texto[:200]})
+    if "validada" in texto:
+        reg["palavra"] = "validada pela frota (registro sem sinal)"
+    ped = tx.get("pedidos", pid)
+    if ped and ped.get("entrega"):
+        ped["entrega"]["palavra"] = reg["palavra"]
+        tx.put("pedidos", pid, ped)
+
+
 @router.post("/api/wrouter/app/cargas/{cid}/pedido/{pid}")
 async def app_desfecho(cid: str, pid: str, request: Request):
     s = _sessao(request)
@@ -776,9 +828,23 @@ async def app_desfecho(cid: str, pid: str, request: Request):
                     linhas.append({"produto_id": prd, "qtd": n})
             if not linhas:
                 raise HTTPException(400, "Marque quais peças voltaram.")
+        prova = c.get("prova") if desf in ("entregue", "parcial") and isinstance(c.get("prova"), dict) else None
+        if prova is not None:   # app novo: comprovante completo é obrigatório
+            if not str(prova.get("recebedor") or "").strip():
+                raise HTTPException(400, "Digite o nome de quem recebeu.")
+            if not str(prova.get("parentesco") or "").strip():
+                raise HTTPException(400, "Escolha quem recebeu (próprio cliente, familiar, vizinho…).")
+            if not prova.get("assinatura"):
+                raise HTTPException(400, "Falta a assinatura de quem recebeu.")
+            if not c.get("foto"):
+                raise HTTPException(400, "Tire a foto da entrega para registrar.")
         foto = _salvar_foto(c["foto"], cid, pid) if c.get("foto") else ""
+        assinatura = _salvar_foto(prova["assinatura"], cid, pid) if prova else ""
         ev["itens_saida"] = [dict(i) for i in ped.get("pendentes") or []]
         recebedor = (f"vizinho nº {vz.get('numero')}" + (f" ({vz.get('nome')})" if vz.get("nome") else "")) if vz else "cliente"
+        if prova:
+            recebedor = str(prova.get("recebedor") or "").strip()[:80] + (f" ({str(prova.get('parentesco'))[:40]})" if prova.get("parentesco") else "") \
+                + (f" · vizinho nº {vz.get('numero')}" if vz else "")
         tx.put("cargas", cid, {k: v for k, v in car.items() if k != "id"})   # a baixa do ERP lê a carga da transação
         resultado = baixa_no_erp(tx, q, cid, car, pid, desf, motivo, linhas, str(c.get("obs") or "")[:300], recebedor)
         car = tx.get("cargas", cid)
@@ -787,18 +853,43 @@ async def app_desfecho(cid: str, pid: str, request: Request):
                   obs=str(c.get("obs") or "")[:300], foto=foto, em=agora(), mid=q["mid"], por=q["nome"], lat=c.get("lat"), lng=c.get("lng"),
                   palavra_ok=palavra_ok, validar_palavra=validar, offline_em=str(c.get("offline_em") or "")[:40] or None, baixa_erp=resultado,
                   itens_saida=ev.get("itens_saida") or [dict(i) for i in ped.get("pendentes") or []])
+        if desf in ("entregue", "parcial"):
+            _comprovante(tx, car, cid, pid, ev, q, desf, prova, c, foto, assinatura, vz)
         rot = {"entregue": "ENTREGUE", "retorno": "RETORNO", "parcial": "ENTREGA PARCIAL"}[desf]
         _hist(car, q, f"{rot} (app)", f"pedido #{ped.get('numero')} · {ped.get('cliente_nome')}" + (f" · {motivo}" if motivo and desf != "entregue" else "")
               + (" · palavra conferida" if palavra_ok else " · liberado pela frota" if palavra_ok is False else "") + (" · vizinho" if vz else "")
               + (f" · SEM SINAL às {str(c.get('offline_em'))[11:16]}" if offline else "") + (" · PALAVRA NÃO CONFERIU: frota valida" if validar else ""))
         _gravar(tx, cid, car)
     _abrir_ticket_auto(pid, resultado, motivo, q)
+    if desf in ("entregue", "parcial"):
+        _avisar_cliente_entrega(pid)
     return {"resultado": "ok", "validar_palavra": bool(validar), "carga": carga_app(cid, E.ST.dados["cargas"][cid])}
+
+
+def _avisar_cliente_entrega(pid: str):
+    """Logo depois da entrega o cliente recebe no app: quem recebeu e a hora (dificulta contestar depois)."""
+    try:
+        ped = E.ST.dados["pedidos"].get(pid) or {}
+        ent = ped.get("entrega") or {}
+        cod = (E.ST.dados["parceiros"].get(ped.get("cliente_id") or "") or {}).get("codigo")
+        if not cod or not ent:
+            return
+        import promocoes
+        texto = (f"Pedido #{ped.get('numero')} {'entregue' if ent.get('resultado') == 'entregue' else 'entregue em parte'} às "
+                 f"{str(ent.get('em') or '')[11:16]}, recebido por {ent.get('recebedor') or '—'}. Não reconhece? Fale com a central no app.")
+        banco.thread(promocoes.avisar_cliente, cod, "📦 Entrega realizada", texto, f"{banco.prefixo_publico()}/cliente/", f"entrega-{pid}")
+    except Exception as ex:  # noqa: BLE001
+        print(f"[wrouter] não avisou o cliente: {ex}")
 
 
 def _desfazer(tx, q: dict, cid: str, car: dict, pid: str, nota: str, pela_frota: str = ""):
     ev = ev_de(car, pid)
     ant = {k: ev.get(k) for k in ("desfecho", "motivo", "em", "por")}
+    if ev.get("comprovante"):
+        ant["comprovante"] = ev.pop("comprovante")
+        ped = tx.get("pedidos", pid)
+        if ped and ped.pop("entrega", None) is not None:
+            tx.put("pedidos", pid, ped)
     tx.put("cargas", cid, {k: v for k, v in car.items() if k != "id"})
     E.desfazer_baixa(tx, q, cid, pid, nota or "registro corrigido")
     car = tx.get("cargas", cid)
@@ -1087,6 +1178,7 @@ def _ped_pub(car: dict, cid: str, pid: str, pos) -> dict:
             "desfecho": _desfecho_de(car, pid), "baixa_erp": (car.get("baixas") or {}).get(pid) or "", "manual": bool((car.get("baixas") or {}).get(pid) and not ev.get("desfecho")),
             "motivo": ev.get("motivo") or "", "obs": ev.get("obs") or "", "em": ev.get("em") or "", "por": ev.get("por") or "", "foto": ev.get("foto") or "",
             "lat": ev.get("lat"), "lng": ev.get("lng"), "linhas": ev.get("linhas") or [], "palavra_ok": ev.get("palavra_ok"),
+            "comprovante": {k: (ev.get("comprovante") or {}).get(k) for k in ("recebedor", "parentesco", "palavra", "hash", "completo")} if ev.get("comprovante") else None,
             "tentativas": int(ev.get("tentativas") or 0), "liberacao": ev.get("liberacao"), "validar_palavra": ev.get("validar_palavra"),
             "offline_em": ev.get("offline_em"), "corrigidos": len(ev.get("corrigidos") or []), "chegou": ev.get("chegou"), "destino": destino(car, pid),
             "vizinho": ev.get("vizinho"), "link": link_do_pedido(car, pid), "chat": _chat_resumo(car, pid, "frota"),
@@ -1291,6 +1383,7 @@ async def frota_validar(cid: str, pid: str, request: Request):
         if c.get("acao") == "aceitar":
             v.update(status="aceita", por=q["nome"], decidido_em=agora())
             ev["palavra_ok"] = False
+            _comprovante_evento(tx, car, pid, "palavra validada pela frota (registro sem sinal)", q["nome"])
             _hist(car, q, "entrega sem sinal VALIDADA pela frota", f"pedido #{(E.ST.dados['pedidos'].get(pid) or {}).get('numero')} · digitou {v.get('digitada') or '—'}")
         elif c.get("acao") == "reabrir":
             car = _desfazer(tx, q, cid, car, pid, "palavra não conferiu (sem sinal)", pela_frota=q["nome"])
@@ -1320,6 +1413,50 @@ async def frota_reabrir(cid: str, pid: str, request: Request):
         _hist(car, q, "registro do motorista reaberto", f"pedido #{(E.ST.dados['pedidos'].get(pid) or {}).get('numero')} · {nota}")
         _gravar(tx, cid, car)
         return {"ok": True}
+
+
+def comprovante_do_pedido(pid: str) -> tuple[dict, dict]:
+    """(comprovante, pedido) da entrega mais recente do pedido. 404 se não houver."""
+    ped = E.ST.dados["pedidos"].get(pid)
+    if not ped:
+        raise HTTPException(404, "Pedido não encontrado.")
+    regs = [(rota(car)["pedidos"].get(pid) or {}).get("comprovante") for car in E.ST.dados["cargas"].values() if pid in (car.get("pedidos") or [])]
+    regs = [r for r in regs if r]
+    if not regs:
+        raise HTTPException(404, "Este pedido ainda não tem comprovante de entrega.")
+    return max(regs, key=lambda r: str(r.get("em") or "")), ped
+
+
+def comprovante_pdf_resposta(pid: str) -> Response:
+    import entrega_prova as P
+    with E.ST.trava:
+        reg, ped = comprovante_do_pedido(pid)
+        reg, ped = json.loads(json.dumps(reg)), json.loads(json.dumps(ped))
+    pdf = P.pdf(reg, ped, empresa=str(E.ST.config.get("empresa") or ""))
+    return Response(pdf, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="comprovante_pedido_{ped.get("numero")}.pdf"'})
+
+
+@router.get("/api/wrouter/comprovante/{pid}")
+def frota_comprovante(pid: str, request: Request):
+    _ctx(request)
+    return comprovante_pdf_resposta(pid)
+
+
+@router.get("/api/wrouter/app/cargas/{cid}/pedido/{pid}/nf")
+def app_nf(cid: str, pid: str, request: Request):
+    """NF simplificada (etiqueta) do pedido, para o motorista mostrar na fiscalização."""
+    s = _sessao(request)
+    import nf_simplificada as NFS
+    with E.ST.trava:
+        car = E.ST.dados["cargas"].get(cid)
+        if not car or placa_da_carga(car) != s["placa"] or pid not in (car.get("pedidos") or []):
+            raise HTTPException(404, "Pedido não encontrado nesta carga.")
+        ped = E.ST.dados["pedidos"].get(pid) or {}
+        nf = ped.get("nf") or {}
+        if not NFS.chave_valida(nf.get("chave")):
+            raise HTTPException(404, "A NF-e deste pedido ainda não foi importada no ERP.")
+        pdf = NFS.etiquetas_pdf([(nf, E.etiqueta_extra(pid, ped, car))], mostrar_valor=False)
+    return Response(pdf, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="nf_{nf.get("numero")}.pdf"'})
 
 
 @router.get("/api/wrouter/foto/{fid}")
@@ -1354,6 +1491,7 @@ def historico(request: Request, de: str = "", ate: str = "", busca: str = ""):
                             "pid": pid, "numero": ped.get("numero"), "nome": ped.get("cliente_nome"), "codigo": cli.get("codigo"), "bairro": end.get("bairro"),
                             "desfecho": _desfecho_de(car, pid), "baixa_erp": (car.get("baixas") or {}).get(pid) or "", "motivo": ev.get("motivo") or "",
                             "em": ev.get("em") or "", "foto": bool(ev.get("foto")), "palavra_ok": ev.get("palavra_ok"), "vizinho": bool(ev.get("vizinho")),
+                            "comprovante": bool(ev.get("comprovante")), "recebedor": (ev.get("comprovante") or {}).get("recebedor") or "",
                             "chats": len(ch.get("atendimentos") or []), "chat_aberto": bool(ch.get("atual")),
                             "motivos_chat": [a.get("motivo") for a in ch.get("atendimentos") or []]})
     out.sort(key=lambda x: (x["data"] or "", x["carga"] or 0, x["em"] or ""), reverse=True)

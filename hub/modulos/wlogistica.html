@@ -238,7 +238,7 @@ function rCarga() {
   const ped = Object.fromEntries(c.pedidos_det.map((p) => [p.id, p]));
   const sobras = c.sobras[et] || [];
   $("#main").innerHTML = `<section class="painel vidro vidro-borda-viva"><div class="cab">${A.orbe(ic, cor)}<div><h2>${nome} · carga ${c.numero}</h2><p>${esc(c.placa || "sem veículo")} · ${esc(c.motorista || "sem motorista")} · ${dBR(c.data)} · ${c.pedidos} pedido(s)</p></div>
-      <div class="dir">${etq(c.status)}<button type="button" class="btn v p" id="voltar">${svg("voltar")}Cargas</button></div></div>
+      <div class="dir">${etq(c.status)}${c.nf_etiquetas ? `<button type="button" class="btn v p" id="etqNf" title="DANFE Simplificado – Etiqueta (100 × 150 mm) de cada pedido faturado">🧾 Etiquetas NF (${c.nf_etiquetas})</button>` : ""}<button type="button" class="btn v p" id="voltar">${svg("voltar")}Cargas</button></div></div>
     ${c.ajuste ? `<div class="travado-b">🔒 Carga TRAVADA: ${c.ajuste.tipo === "retirar" ? "RETIRAR" : "AGRUPAR"} o pedido #${c.ajuste.numero} (${esc(c.ajuste.cliente || "")}) — ${esc(c.ajuste.motivo)}. Faça no palete e confirme.
       ${pode("montagem") || pode("doca") || pode("apontamentos") ? `<button type="button" class="btn p" id="ajFeito">${svg("check")}Ajuste feito no palete</button>` : ""}</div>` : ""}
     ${fechada ? `<div class="aviso ${c[et].ok ? "ok" : "at"}">${nome} fechada por <b>${esc(c[et].fim_por)}</b> em ${dhBR(c[et].fim_em)}${c[et].ok ? " — tudo conferido." : ` com ${c[et].divergencias} divergência(s) → Apontamentos.`}</div>` : ""}
@@ -257,6 +257,7 @@ function rCarga() {
         ${podeEt && !c.ajuste ? `<div class="bloco"><h3>${svg("check")} Fechar ${nome.toLowerCase()}</h3><p class="sub">Faltou ou sobrou volume? O sistema pede o motivo de cada divergência e ela vira apontamento.</p><button type="button" class="btn" id="btFechar" style="margin-top:10px;width:100%">${svg("check")}Fechar ${et === "montagem" ? "o palete" : "a conferência"}</button></div>` : ""}
         <div class="bloco" style="margin-top:12px"><h3>${svg("relogio")} Linha do tempo</h3><ul class="linha-tempo">${c.hist.slice().reverse().slice(0, 25).map((h) => `<li>${esc(h.acao)}${h.det ? ` — ${esc(h.det)}` : ""}<small>${dhBR(h.em)} · ${esc(h.por)}</small></li>`).join("") || "<li>Sem registros ainda.</li>"}</ul></div></div></div></section>`;
   $("#voltar").onclick = () => { pararCam(); V.cid = null; S.carga = null; carregar(); };
+  const en = $("#etqNf"); if (en) en.onclick = () => window.open(`${API}/cargas/${encodeURIComponent(V.cid)}/etiquetas`, "_blank", "noopener");
   const inp = $("#cod"); if (inp) { inp.focus(); inp.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); lerCodigo(inp.value); } }; }
   const bl = $("#btLer"); if (bl) bl.onclick = () => lerCodigo($("#cod").value);
   const bc = $("#btCam"); if (bc) bc.onclick = abrirCam;

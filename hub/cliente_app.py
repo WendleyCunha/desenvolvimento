@@ -350,6 +350,7 @@ def pedidos_do_cliente(cid: str) -> list[dict]:
             "tentativas": [{"n": x.get("n"), "data": str(x.get("data") or "")[:10], "resultado": RES_TENT.get(x.get("resultado"), x.get("resultado"))}
                            for x in p.get("tentativas", [])],
             "palavra_chave": p.get("palavra_chave") if st not in ("cancelado", "recusado") else "",
+            "recebido": {k: (p.get("entrega") or {}).get(k) for k in ("em", "recebedor", "parentesco", "resultado")} if p.get("entrega") else None,
             "rota": _rota_do_pedido(pid) if st in ("agendado", "em_carga", "em_rota", "entregue", "reagendar") else None,
             "endereco": ", ".join(x for x in (f"{end.get('logradouro', '')} {end.get('numero', '')}".strip(), end.get("bairro"),
                                                 f"{end.get('cidade', '')}/{end.get('uf', '')}".strip("/")) if x),
@@ -525,6 +526,18 @@ def pdf_pedido_cliente(pid: str, request: Request):
         raise HTTPException(404, "Pedido não encontrado.")
     pdf = e.pdf_do_pedido(ped, palavra=(ped.get("palavra_chave") or "") if ped.get("status") not in ("cancelado", "recusado", "entregue") else "")
     return Response(pdf, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="pedido_{ped.get("numero")}.pdf"'})
+
+
+@router.get("/api/cliente/pedido/{pid}/comprovante")
+def comprovante_cliente(pid: str, request: Request):
+    """O cliente baixa o comprovante de entrega do próprio pedido (quem recebeu, assinatura, foto, código de integridade)."""
+    cid, _cli = _cliente_da_sessao(request)
+    e = _erp()
+    ped = e.ST.dados["pedidos"].get(pid)
+    if not ped or ped.get("cliente_id") != cid:
+        raise HTTPException(404, "Pedido não encontrado.")
+    import wrouter
+    return wrouter.comprovante_pdf_resposta(pid)
 
 
 @router.get("/api/cliente/novidades")

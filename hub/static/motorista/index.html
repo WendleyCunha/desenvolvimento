@@ -111,6 +111,10 @@ a.nav{color:var(--steel);font-weight:600;text-decoration:none}
 .vizinho{background:#0E7490;color:#fff;border-radius:12px;padding:12px 14px;display:grid;gap:2px}
 .vizinho b{font-size:20px;letter-spacing:.04em} .vizinho span{font-size:14px} .vizinho a{color:#fff;font-weight:700}
 .p-viz{background:#0E7490;color:#fff}
+.ass{position:relative;border:2px dashed var(--rule);border-radius:12px;background:#fff;touch-action:none}
+.ass canvas{display:block;width:100%;height:170px;touch-action:none;border-radius:10px}
+.ass .ass-lbl{position:absolute;left:12px;bottom:8px;font-size:12px;color:#94a3b8;pointer-events:none}
+.ass button{position:absolute;right:8px;top:8px;padding:6px 10px;font-size:12px;background:#eef1f6;color:#0b1220;border:1px solid #cbd2de}
 .aviso{background:var(--bad-soft);color:var(--bad);border-radius:12px;padding:10px 12px;font-size:14px;font-weight:600}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -135,7 +139,8 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 
 const ls = { get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (_) { return d; } },
              set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} } };
 
-const S = { me: null, dados: null, carga: null, ped: null, chat: false, chatDados: null, chatErro: "", chatRascunho: "", modo: "", msg: "", erro: "", foto: null, linhas: {}, palavra: "", motivo: "", obs: "",
+const PARENTESCOS = ["Próprio cliente", "Cônjuge", "Familiar", "Vizinho", "Porteiro / zelador", "Funcionário", "Outro"];
+const S = { me: null, dados: null, carga: null, ped: null, chat: false, chatDados: null, chatErro: "", chatRascunho: "", modo: "", msg: "", erro: "", foto: null, linhas: {}, palavra: "", motivo: "", obs: "", rec: { nome: "", par: "", doc: "" }, ass: null,
             gps: { estado: "parado", ult: null, enviado: 0, watch: null }, wake: null, online: navigator.onLine };
 
 async function api(url, corpo, metodo) {
@@ -321,7 +326,7 @@ function telaCarga() {
     catch (e) { bs.disabled = false; if (!e.tratado) avisar(e.offline ? "Sem internet. Para iniciar a rota e baixar os dados das entregas, o celular precisa de conexão." : e.message); } };
 }
 
-function abrirPedido(pv) { S.ped = pv; S.chat = false; S.modo = ""; S.erro = ""; S.msg = ""; S.foto = null; S.linhas = {}; S.palavra = ""; S.motivo = ""; S.obs = ""; render(); window.scrollTo(0, 0); }
+function abrirPedido(pv) { S.ped = pv; S.chat = false; S.modo = ""; S.erro = ""; S.msg = ""; S.foto = null; S.linhas = {}; S.palavra = ""; S.motivo = ""; S.obs = ""; S.rec = { nome: "", par: "", doc: "" }; S.ass = null; render(); window.scrollTo(0, 0); }
 function telaPedido() {
   const c = cargaAtual(); const p = c && c.pedidos.find(x => x.pid === S.ped);
   if (!p) { S.ped = null; return render(); }
@@ -333,6 +338,7 @@ function telaPedido() {
   if (p.desfecho || p.enviando) {
     acao = `<div class="card"><b>${p.enviando ? "Registro guardado — vai assim que tiver sinal." : `${{ entregue: "Entregue", retorno: "Retorno", parcial: "Entrega parcial" }[p.desfecho]} às ${hora(p.em)}`}</b>
       ${p.motivo ? `<span class="cap">${esc(p.motivo)}</span>` : ""}${p.liberacao === "liberada" ? '<span class="pill p-aco">Liberado pela frota sem palavra</span>' : ""}
+      ${p.recebido ? `<span class="cap">Recebido por <b>${esc(p.recebido.recebedor || "—")}</b>${p.recebido.parentesco ? " (" + esc(p.recebido.parentesco) + ")" : ""} · palavra ${esc(p.recebido.palavra || "")}</span>` : ""}
       ${p.pode_desfazer && !fechada ? `<button type="button" id="btDesf">Corrigir (errei)</button><p class="cap">Dá para corrigir até 15 minutos depois. Depois disso, só a frota.</p>` : ""}</div>`;
   } else if (fechada) {
     acao = `<div class="card"><p class="cap">Carga já fechada no CD.</p></div>`;
@@ -347,11 +353,19 @@ function telaPedido() {
         <div class="foto"><label class="pri" style="padding:12px 14px;border-radius:12px;cursor:pointer">📷 Tirar foto<input id="pFoto" type="file" accept="image/*" capture="environment" hidden></label>${S.foto ? `<img src="${S.foto}" alt="foto da peça">` : ""}</div></div>
       <label class="f">Observação<textarea id="pObs" rows="2">${esc(S.obs)}</textarea></label>
       ${c.palavra_ligada && parc && !(p.vizinho && p.vizinho.sem_palavra) ? blocoPalavra(c, p, bloqueio) : ""}
+      ${parc ? blocoRecebimento(p, false) : ""}
       <p class="msg erro">${esc(S.erro)}</p>
       <div class="row"><button type="button" id="pCanc">Voltar</button><button type="button" class="${parc ? "warnb" : "bad"}" id="pConf">Confirmar ${parc ? "parcial" : "retorno"}</button></div>
       <p class="cap">A peça volta para o CD e ganha etiqueta na conferência, mesmo se estiver perfeita.</p></div>`;
+  } else if (S.modo === "entregue") {
+    acao = `<div class="card"><h3>Entrega — comprovante</h3>
+      ${c.palavra_ligada && !(p.vizinho && p.vizinho.sem_palavra) ? blocoPalavra(c, p, bloqueio) : ""}
+      ${blocoRecebimento(p, true)}
+      <p class="msg erro">${esc(S.erro)}</p>
+      <div class="row"><button type="button" id="pCanc">Voltar</button><button type="button" class="ok" id="pConf" ${bloqueio || (c.palavra_ligada && p.liberacao === "pendente") ? "disabled" : ""}>✓ Confirmar entrega</button></div>
+      <p class="cap">Palavra, nome, assinatura, foto e GPS ficam juntos no comprovante, com código de integridade.</p></div>`;
   } else {
-    acao = `${blocoChegou(c, p)}${c.palavra_ligada && !(p.vizinho && p.vizinho.sem_palavra) ? blocoPalavra(c, p, bloqueio) : ""}<p class="msg erro">${esc(S.erro)}</p>
+    acao = `${blocoChegou(c, p)}<p class="msg erro">${esc(S.erro)}</p>
       <button type="button" class="ok big" id="btEnt" ${bloqueio || (c.palavra_ligada && p.liberacao === "pendente") ? "disabled" : ""}>✓ Entregue</button>
       <div class="row"><button type="button" class="bad" id="btRet">↩ Retorno</button><button type="button" class="warnb" id="btPar">½ Parcial</button></div>`;
   }
@@ -370,6 +384,7 @@ function telaPedido() {
       ${p.referencia ? `<p class="cap" style="color:var(--ink-2)"><b>Referência:</b> ${esc(p.referencia)}</p>` : ""}
       ${p.obs || p.obs_entrega ? `<p class="cap" style="color:var(--ink-2)"><b>Observações:</b> ${esc([p.obs, p.obs_entrega].filter(Boolean).join(" · "))}</p>` : ""}
       ${p.telefone ? `<a class="nav" href="tel:${esc(String(p.telefone).replace(/\D/g, ""))}">📞 Ligar para o cliente</a>` : ""}
+      ${p.nf && p.nf.tem_etiqueta ? `<a class="nav" href="${window.HUB_BASE}/api/wrouter/app/cargas/${esc(c.id)}/pedido/${encodeURIComponent(p.pid)}/nf" target="_blank" rel="noopener">🧾 NF ${esc(p.nf.numero)} (simplificada)</a>` : p.nf ? `<span class="cap">NF ${esc(p.nf.numero)}</span>` : ""}
     </div>${S.cacheEm || !S.online ? `<div class="aviso">Sem sinal: o registro fica guardado no celular e vai sozinho quando a conexão voltar. A palavra é conferida no envio — se não bater, a frota valida.</div>` : ""}${acao}`;
   ligarPedido(c, p);
 }
@@ -420,7 +435,8 @@ function ligarPedido(c, p) {
   const lib = $("#btLib"); if (lib) lib.onclick = async () => {
     try { atualizarCarga(await api(`/cargas/${c.id}/pedido/${encodeURIComponent(p.pid)}/liberacao`, { motivo: "Cliente não tem a palavra" })); render(); }
     catch (e) { if (!e.tratado) { S.erro = e.offline ? "Sem sinal: tente de novo quando tiver conexão." : e.message; render(); } } };
-  const ent = $("#btEnt"); if (ent) ent.onclick = () => registrar(c, p, "entregue");
+  const ent = $("#btEnt"); if (ent) ent.onclick = () => { S.modo = "entregue"; S.erro = ""; render(); };
+  ligarRecebimento(p);
   const rt = $("#btRet"); if (rt) rt.onclick = () => { S.modo = "retorno"; S.erro = ""; render(); };
   const pr = $("#btPar"); if (pr) pr.onclick = () => { S.modo = "parcial"; S.erro = ""; render(); };
   const cn = $("#pCanc"); if (cn) cn.onclick = () => { S.modo = ""; S.erro = ""; render(); };
@@ -435,6 +451,36 @@ function ligarPedido(c, p) {
     try { atualizarCarga(await api(`/cargas/${c.id}/pedido/${encodeURIComponent(p.pid)}/desfazer`, {})); S.modo = ""; render(); }
     catch (e) { if (!e.tratado) { S.erro = e.message; render(); } } };
 }
+// ═══ COMPROVANTE: quem recebeu, assinatura na tela e foto da entrega ═══
+function blocoRecebimento(p, comFoto) {
+  return `<div style="display:grid;gap:10px">
+    <label class="f">Quem recebeu (nome)<input id="rNome" autocomplete="off" value="${esc(S.rec.nome)}" placeholder="Nome de quem está recebendo"></label>
+    <label class="f">Quem é<select id="rPar"><option value="">Escolha…</option>${PARENTESCOS.map(x => `<option ${S.rec.par === x ? "selected" : ""}>${esc(x)}</option>`).join("")}</select></label>
+    <label class="f">Final do RG ou CPF (opcional)<input id="rDoc" inputmode="numeric" maxlength="4" autocomplete="off" value="${esc(S.rec.doc)}" placeholder="4 últimos dígitos"></label>
+    ${comFoto ? `<div class="f" style="display:grid;gap:6px"><span style="font-size:14px;font-weight:600;color:var(--ink-2)">Foto da entrega (obrigatória) — o produto no local, sem rosto</span>
+      <div class="foto"><label class="pri" style="padding:12px 14px;border-radius:12px;cursor:pointer">📷 Tirar foto<input id="pFoto" type="file" accept="image/*" capture="environment" hidden></label>${S.foto ? `<img src="${S.foto}" alt="foto da entrega">` : ""}</div></div>` : ""}
+    <div class="f" style="display:grid;gap:6px"><span style="font-size:14px;font-weight:600;color:var(--ink-2)">Assinatura de quem recebeu</span>
+      <div class="ass"><canvas id="rAss" aria-label="Assine aqui com o dedo"></canvas><span class="ass-lbl">${S.ass ? "" : "Assine aqui com o dedo"}</span><button type="button" id="rAssLimpa">Limpar</button></div></div></div>`;
+}
+function ligarRecebimento(p) {
+  const n = $("#rNome"); if (n) n.oninput = () => { S.rec.nome = n.value; };
+  const d = $("#rDoc"); if (d) d.oninput = () => { S.rec.doc = d.value.replace(/[^0-9Xx]/g, "").slice(-4); };
+  const pr = $("#rPar"); if (pr) pr.onchange = () => { S.rec.par = pr.value; if (pr.value === "Próprio cliente" && !S.rec.nome) { S.rec.nome = p.nome || ""; if (n) n.value = S.rec.nome; } };
+  const cv = $("#rAss"); if (!cv) return;
+  const dpr = Math.max(1, window.devicePixelRatio || 1), w = cv.clientWidth || 320, h = cv.clientHeight || 170;
+  cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+  const ctx = cv.getContext("2d"); ctx.scale(dpr, dpr); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
+  ctx.lineWidth = 2.6; ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.strokeStyle = "#0b1220";
+  if (S.ass) { const img = new Image(); img.onload = () => ctx.drawImage(img, 0, 0, w, h); img.src = S.ass; }
+  let des = false, tracos = 0;
+  const pt = e => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+  cv.onpointerdown = e => { des = true; cv.setPointerCapture(e.pointerId); const [x, y] = pt(e); ctx.beginPath(); ctx.moveTo(x, y); e.preventDefault(); };
+  cv.onpointermove = e => { if (!des) return; const [x, y] = pt(e); ctx.lineTo(x, y); ctx.stroke(); tracos++; e.preventDefault(); };
+  const fim = () => { if (!des) return; des = false; if (tracos > 3) { S.ass = cv.toDataURL("image/png"); const l = $(".ass-lbl"); if (l) l.textContent = ""; } };
+  cv.onpointerup = fim; cv.onpointercancel = fim; cv.onpointerleave = fim;
+  const lp = $("#rAssLimpa"); if (lp) lp.onclick = () => { S.ass = null; tracos = 0; ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h); const l = $(".ass-lbl"); if (l) l.textContent = "Assine aqui com o dedo"; };
+}
+
 // [v6.1] marca d'água: dia, horário, latitude/longitude, cliente, motorista e carga — gravada NA foto (não dá para tirar depois)
 function marca(c, p) {
   const g = S.gps.ult, agora = new Date();
@@ -474,6 +520,14 @@ async function registrar(c, p, desfecho) {
   if (c.palavra_ligada && desfecho !== "retorno" && p.liberacao !== "liberada") {
     corpo.palavra = (S.palavra || "").trim();
     if (!corpo.palavra) { S.erro = "Digite a palavra que o cliente informou."; return render(); }
+  }
+  if (desfecho === "entregue" || desfecho === "parcial") {
+    if (!(S.rec.nome || "").trim()) { S.erro = "Digite o nome de quem recebeu."; return render(); }
+    if (!S.rec.par) { S.erro = "Escolha quem recebeu (próprio cliente, familiar, vizinho…)."; return render(); }
+    if (!S.ass) { S.erro = "Peça a assinatura na tela."; return render(); }
+    if (!S.foto) { S.erro = desfecho === "entregue" ? "Tire a foto da entrega." : "Tire a foto da peça para registrar."; return render(); }
+    corpo.prova = { recebedor: S.rec.nome.trim(), parentesco: S.rec.par, doc_final: S.rec.doc, assinatura: S.ass };
+    if (desfecho === "entregue") corpo.foto = S.foto;
   }
   if (desfecho !== "entregue") {
     corpo.motivo = p.motivo_chat || S.motivo; corpo.obs = S.obs; corpo.foto = S.foto || "";
