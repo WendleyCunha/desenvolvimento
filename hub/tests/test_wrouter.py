@@ -282,3 +282,20 @@ def test_anexo_no_chat_com_o_motorista(t):
     assert mot.get(f"/api/wrouter/app/cargas/{cid}/pedido/ped1/anexo/{aid}").status_code == 200, "o motorista abre"
     assert pq.get(f"/api/wrouter/cargas/{cid}/pedido/ped2/anexo/{aid}").status_code == 404, "anexo de outro pedido não abre"
     assert pq.post(url, json={"anexos": [{"nome": "x.zip", "dados": "data:application/zip;base64,AAAA"}]}).status_code == 415
+
+
+def test_caixa_marca_chat_de_cliente_em_rastreio_como_frota(t):
+    """CX › Caixa: chat do app de cliente com pedido em rastreio vai para a fila Frota (não para Atendimentos agora)."""
+    import tickets as TK
+    pq, cid = montar(t)
+    cli_id = E.ST.dados["pedidos"]["ped1"]["cliente_id"]
+    assert cli_id not in TK.clientes_em_rastreio()[0], "carga ainda não saiu"
+    mot = TestClient(t)
+    entrar(mot)
+    mot.post(f"/api/wrouter/app/cargas/{cid}/saida", json={})
+    assert cli_id in TK.clientes_em_rastreio()[0], "na rua: em rastreio"
+    for pid in ("ped1", "ped2"):
+        mot.post(f"/api/wrouter/app/cargas/{cid}/pedido/{pid}", json={"desfecho": "entregue", "cid": pid, "palavra": E.ST.dados["pedidos"][pid].get("palavra_chave") or ""})
+    import wrouter as WR
+    if all(WR._desfecho_de(E.ST.dados["cargas"][cid], p) for p in ("ped1", "ped2")):
+        assert not TK.clientes_em_rastreio()[0], "entregue: sai da Frota"

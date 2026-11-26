@@ -477,18 +477,43 @@ def resumo(t: dict, me: dict, agora_dt: datetime) -> dict:
 # ══════════════════════════════════════════════════════════════════════════════
 # ROTAS — leitura
 # ══════════════════════════════════════════════════════════════════════════════
+def clientes_em_rastreio() -> tuple[set, set]:
+    """Clientes com pedido EM RASTREIO (frota na rua, sem desfecho): (ids do ERP, códigos do app).
+    O chat do app desses clientes vai para a fila "Frota" da Caixa (e também aparece no WROUTER)."""
+    ids, cods = set(), set()
+    try:
+        import wrouter
+        e = _erp()
+        for car in list((e.ST.dados.get("cargas") or {}).values()):
+            for pid in car.get("pedidos") or []:
+                if wrouter.em_rastreio(car, pid):
+                    cid = (e.ST.dados["pedidos"].get(pid) or {}).get("cliente_id")
+                    if cid:
+                        ids.add(cid)
+                        cod = (e.ST.dados["parceiros"].get(cid) or {}).get("codigo")
+                        if cod:
+                            cods.add(norm(cod))
+    except Exception:  # noqa: BLE001
+        pass
+    return ids, cods
+
+
 @router.get("/estado")
 def estado(request: Request, dias_concluidos: int = 30):
     u, p, me = _contexto(request)
     agora_dt = datetime.now(BRT)
     corte = (agora_dt - timedelta(days=max(1, min(dias_concluidos, 400)))).strftime("%Y-%m-%d")
     lista = []
+    r_ids, r_cods = clientes_em_rastreio()
     for t in BASE.tickets():
         if not visivel(t, p, me):
             continue
         if t.get("status") not in ABERTOS and str(t.get("atualizado_em", ""))[:10] < corte:
             continue
-        lista.append(resumo(t, me, agora_dt))
+        r = resumo(t, me, agora_dt)
+        if r["chat"] and (t.get("erp_cliente_id") in r_ids or norm(t.get("cliente_codigo")) in r_cods):
+            r["frota"] = True   # cliente com pedido em rastreio: fila "Frota"
+        lista.append(r)
     usu = usuarios()
     return {"perm": p, "eu": me, "tickets": lista, "versao": BASE.ver, "fila": fila_sem_dono(me),
             "departamentos": departamentos(), "motivos": motivos(), "motivos_setor": motivos_por_setor(), "status": STATUS, "prioridades": PRIORIDADES,
