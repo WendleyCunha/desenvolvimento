@@ -150,7 +150,7 @@ html[data-claro] .leaflet-container{background:#e9ecef}
 .atalhos kbd{border:1px solid var(--vidro-borda);border-radius:5px;padding:0 5px;font:inherit}
 .lado-tit .chamar{margin-left:auto;font-size:.72rem;text-transform:none;letter-spacing:0}
 /* os dois cards com a MESMA altura; a conversa ocupa o espaço que sobra e vai subindo */
-.lado-mot,.com-cli .lado-cli{display:flex;flex-direction:column;height:calc(100vh - 240px);min-height:460px}
+.lado-mot,.com-cli .lado-cli{display:flex;flex-direction:column;height:calc(100vh - 205px);min-height:480px}
 .lado-mot .chat-mot{flex:1;min-height:0;display:flex;flex-direction:column;margin:0}
 .lado-mot .chat-mot .msgs{flex:1;max-height:none;min-height:0}
 .lado-cli .msgs{flex:1;min-height:0}
@@ -503,6 +503,13 @@ async function mapa(d, sel) {
 }
 
 /* ══════ CLIENTE COMPLETO + CONVERSA ══════ */
+// leva a conversa até a última mensagem — de novo no próximo quadro e quando as imagens (anexos) terminam de carregar
+function irAoFim(l) {
+  if (!l) return;
+  const fim = () => { l.scrollTop = l.scrollHeight; };
+  fim(); requestAnimationFrame(fim);
+  l.querySelectorAll("img").forEach((i) => { if (!i.complete) i.addEventListener("load", fim, { once: true }); });
+}
 // 💬 Falar com o cliente: entra no chat do app do cliente (aba Atendimento) e ele recebe notificação no celular
 function falarCliente(g, p, nome, num) {
   const nm = nome ? nome.charAt(0) + nome.slice(1).toLowerCase() : "";
@@ -588,6 +595,7 @@ async function abrirCliente(cid, pid, opts = {}) {
   function ligarCli(cx) {
     const l = $("#clMsgs", cx); if (l) l.scrollTop = l.scrollHeight;
     const bcl = $("#clTxt", cx) ? ChatFmt.barra($("#clTxt", cx), { chave: `wr:cli:${cid}:${pid}`, junto: $("#clTxt", cx).parentElement }) : null;
+    irAoFim(l);   // a barra 😊 B 📎 entrou embaixo e encolheu a conversa: a última mensagem continua visível
     const env = $("#clEnv", cx); if (env) env.onclick = async () => { const t = $("#clTxt", cx).value.trim(), anx = bcl ? bcl.pegar() : []; if (!t && !anx.length) return;
       try { await api(`/cargas/${cid}/pedido/${pid}/falar-cliente`, { method: "POST", body: { texto: t, ...(anx.length ? { anexos: anx } : {}) } }); $("#clTxt", cx).value = ""; if (bcl) bcl.limpar(); await atualizarCli(); } catch (e) { falha(e); }
       const n = $("#clTxt", cx); if (n) n.focus(); };
@@ -596,7 +604,7 @@ async function abrirCliente(cid, pid, opts = {}) {
       try { await api(`/cargas/${cid}/pedido/${pid}/cliente-chat/finalizar`, { method: "POST", body: {} }); await atualizarCli(); } catch (e) { falha(e); } };
   }
   async function atualizarCli() {
-    const cx = m.el; const ti = $("#clTxt", cx); if (ti && ti.value && document.activeElement === ti) return;
+    const cx = m.el; const ti = $("#clTxt", cx); if ((ti && ti.value && document.activeElement === ti) || $("#cvCli .cf-emo", cx)) return;   // não fecha o quadro de emoji no meio da escolha
     const foco = document.activeElement && document.activeElement.id;
     try { cli = await api(`/cargas/${cid}/pedido/${pid}/cliente-chat`); $("#cvCli", cx).innerHTML = corpoCli(); ligarCli(cx); const bc = $("#cvBtCli", cx); if (bc) bc.outerHTML = btCli(); ligarBotoes(cx); } catch (_) {}
     if (foco === "clTxt" || foco === "cvTxt") { const n = $("#" + foco, cx); if (n) n.focus(); }
@@ -616,6 +624,7 @@ async function abrirCliente(cid, pid, opts = {}) {
     $$("[data-falar]", cx).forEach((b) => (b.onclick = (ev) => { ev.stopPropagation(); mostrar("cli", cx);
       const t = $("#clTxt", cx); if (t) { if (!t.value && !(cli && cli.ativo)) t.value = `Olá! Aqui é da central de entregas, sobre o seu pedido #${d.numero}. `; t.focus(); } }));
     const bmo = $("#cvTxt", cx) ? ChatFmt.barra($("#cvTxt", cx), { chave: `wr:mot:${cid}:${pid}`, junto: $("#cvTxt", cx).parentElement }) : null;
+    irAoFim($("#cvMsgs", cx));
     const env = $("#cvEnv", cx); if (env) env.onclick = async () => { const t = $("#cvTxt", cx).value.trim(), anx = bmo ? bmo.pegar() : []; if (!t && !anx.length) return;
       try { await api(`/cargas/${cid}/pedido/${pid}/chat`, { method: "POST", body: { texto: t, iniciar: !d.chat_det.atual, ...(anx.length ? { anexos: anx } : {}) } }); if (bmo) bmo.limpar(); await atualizar(true); } catch (e) { falha(e); }
       const n = $("#cvTxt", cx); if (n) n.focus(); };
@@ -624,7 +633,7 @@ async function abrirCliente(cid, pid, opts = {}) {
       try { await api(`/cargas/${cid}/pedido/${pid}/chat/encerrar`, { method: "POST", body: { texto: n } }); await atualizar(true); } catch (e) { falha(e); } };
   }
   async function atualizar(forcar) {
-    const cx = m.el; const ti = $("#cvTxt", cx); if (!forcar && ti && ti.value) { api(`/cargas/${cid}/pedido/${pid}/presenca`, { method: "POST", body: {} }).catch(() => {}); return; }
+    const cx = m.el; const ti = $("#cvTxt", cx); if (!forcar && ((ti && ti.value) || $("#cvCorpo .cf-emo", cx))) { api(`/cargas/${cid}/pedido/${pid}/presenca`, { method: "POST", body: {} }).catch(() => {}); return; }
     const foco = document.activeElement && document.activeElement.id;
     try { d = await api(`/cargas/${cid}/pedido/${pid}`); $("#cvCorpo", cx).innerHTML = corpo(); ligar(cx); } catch (_) {}
     if (foco === "clTxt" || foco === "cvTxt") { const n = $("#" + foco, cx); if (n) n.focus(); }
