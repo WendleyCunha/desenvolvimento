@@ -299,3 +299,44 @@ def test_caixa_marca_chat_de_cliente_em_rastreio_como_frota(t):
     import wrouter as WR
     if all(WR._desfecho_de(E.ST.dados["cargas"][cid], p) for p in ("ped1", "ped2")):
         assert not TK.clientes_em_rastreio()[0], "entregue: sai da Frota"
+
+
+def test_corrigir_baixa_errada_no_retorno_do_cd(t, monkeypatch):
+    """Motorista baixou invertido: no Retorno do WLOGISTICA a baixa é desfeita e refeita na hora (estoque, pedido, peças no CD, tickets)."""
+    import tickets
+    abertos, encerrados = [], []
+    monkeypatch.setattr(tickets, "auto_de_baixa", lambda pid, res, *a, **k: abertos.append((pid, res)))
+    monkeypatch.setattr(tickets, "encerrar_auto_de_baixa", lambda pid, ev, *a, **k: encerrados.append((pid, ev)))
+    monkeypatch.setattr(banco, "thread", lambda fn, *a, **k: fn(*a, **k))
+    pq, cid = montar(t)
+    mot = TestClient(t)
+    entrar(mot)
+    mot.post(f"/api/wrouter/app/cargas/{cid}/saida", json={})
+    assert mot.post(f"/api/wrouter/app/cargas/{cid}/pedido/ped1", json={"desfecho": "entregue", "palavra": "SOL42", "cid": "a1"}).json()["resultado"] == "ok"
+    assert mot.post(f"/api/wrouter/app/cargas/{cid}/pedido/ped2", json={"desfecho": "retorno", "motivo": "Cliente ausente", "foto": FOTO, "cid": "b1"}).json()["resultado"] == "ok"
+    sal = lambda: E.ST.dados["saldos"]["p1"]
+    assert sal()["entregue"] == 1 and sal()["reservado"] == 2 and E.ST.dados["cargas"][cid]["status"] == "finalizada"
+    url = f"/api/wlog/cargas/{cid}/retorno/corrigir-baixa"
+    assert pq.post(url, json={"pedido_id": "ped1", "resultado": "ausente"}).status_code == 400, "motivo obrigatório"
+
+    # 1) era ENTREGUE, virou AUSENTE: a peça fica no estoque (reservada para o reenvio) e já entra como recebida no CD
+    r = pq.post(url, json={"pedido_id": "ped1", "resultado": "ausente", "motivo": "cliente não estava; motorista apertou errado", "peca_no_cd": True})
+    assert r.status_code == 200, r.text
+    p1 = E.ST.dados["pedidos"]["ped1"]
+    assert p1["status"] == "reagendar" and p1["reservado"] and sal()["entregue"] == 0 and sal()["reservado"] == 3, "volta ao estoque reservado para o reenvio"
+    its = [x for x in W.wl(E.ST.dados["cargas"][cid])["retorno"]["itens"] if x["pid"] == "ped1"]
+    assert its and all(x["recebido"] for x in its), "peça já recebida no CD"
+    assert "entrega" not in p1, "o comprovante da entrega errada deixa de valer"
+    assert ("ped1", "ausente") in abertos, "abre o ticket de ausente"
+    assert E.ST.dados["cargas"][cid]["status"] == "finalizada"
+    assert pq.post(url, json={"pedido_id": "ped1", "resultado": "entregue", "motivo": "x"}).status_code == 409, "já recebida no CD: corrigir o retorno é o plano B"
+
+    # 2) era AUSENTE (esperando a peça), virou ENTREGUE: baixa no estoque e o CD deixa de esperar
+    r = pq.post(url, json={"pedido_id": "ped2", "resultado": "entregue", "motivo": "cliente recebeu, motorista errou", "recebedor": "Pedro"})
+    assert r.status_code == 200, r.text
+    p2 = E.ST.dados["pedidos"]["ped2"]
+    assert p2["status"] == "entregue" and sal()["entregue"] == 2 and sal()["reservado"] == 1, "a peça sai do estoque"
+    assert not [x for x in W.wl(E.ST.dados["cargas"][cid])["retorno"]["itens"] if x["pid"] == "ped2"], "o CD não espera mais a peça"
+    assert ("ped2", "ausente") in encerrados, "o ticket de ausente é encerrado"
+    ev = E.ST.dados["cargas"][cid]["rota"]["pedidos"]["ped2"]
+    assert ev["desfecho"] == "entregue" and ev["corrigidos"][-1]["no_cd"], "o WROUTER mostra a baixa certa e guarda a correção"

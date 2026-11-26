@@ -415,6 +415,59 @@ def nao_voltou(car: dict, q: dict, item_id: str, obs: str) -> dict:
     return it
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# CORRIGIR A BAIXA NO RETORNO (o motorista baixou errado: entregue × ausente/avaria/recusa)
+# Desfaz a baixa errada e aplica a certa NA MESMA TRANSAÇÃO: estoque, status do pedido, peças a receber
+# no CD e o registro do motorista no WROUTER. Tickets automáticos são ajustados depois (fora da transação).
+#   era ENTREGUE → virou devolvido: a peça volta ao estoque (ausente = reservada para o reenvio; recusa/avaria = triagem)
+#   era DEVOLVIDO → virou ENTREGUE: a peça sai do estoque (vai para entregue) e deixa de ser esperada no CD
+# Já houve recebimento no retorno deste pedido → bloqueado (corrigir o próprio retorno é o "plano B").
+# ══════════════════════════════════════════════════════════════════════════════
+RES_BAIXA = {"entregue": "Entregue", "ausente": "Ausente", "avaria": "Avaria", "recusado": "Recusado"}
+DESFECHO_WR = {"entregue": "entregue", "avaria": "parcial", "ausente": "retorno", "recusado": "retorno"}
+
+
+def corrigir_baixa(tx, u: dict, cid: str, c: dict) -> tuple[dict, str, str, dict]:
+    q = _quem(u)
+    pid, novo, motivo = str(c.get("pedido_id") or ""), str(c.get("resultado") or ""), str(c.get("motivo") or "").strip()
+    car = _carga(tx, cid)
+    antigo = (car.get("baixas") or {}).get(pid)
+    if not antigo:
+        raise HTTPException(409, "Este pedido ainda não tem baixa nesta carga.")
+    if novo not in RES_BAIXA:
+        raise HTTPException(400, "Escolha a baixa certa.")
+    if novo == antigo and novo != "avaria":
+        raise HTTPException(400, f"A baixa já está como {RES_BAIXA[novo]}.")
+    if not motivo:
+        raise HTTPException(400, "Diga o motivo da correção.")
+    if any(x.get("recebido") or x.get("nao_voltou") for x in wl(car)["retorno"]["itens"] if x.get("pid") == pid):
+        raise HTTPException(409, "O CD já recebeu (ou marcou que não voltou) peça deste pedido no retorno. Corrigir o próprio retorno ainda não é possível.")
+    ped0 = tx.get("pedidos", pid) or {}
+    # WROUTER: o registro do motorista vai para o histórico de correções; o comprovante de entrega deixa de valer
+    ev = ((car.get("rota") or {}).get("pedidos") or {}).get(pid)
+    ant_ev = {k: (ev or {}).get(k) for k in ("desfecho", "motivo", "em", "por")}
+    if ev and ev.get("comprovante"):
+        ant_ev["comprovante"] = ev.pop("comprovante")
+        if ped0.pop("entrega", None) is not None:
+            tx.put("pedidos", pid, ped0)
+    tx.put("cargas", cid, {k: v for k, v in car.items() if k != "id"})
+    nota = f"Baixa corrigida no CD por {q['nome']}: {RES_BAIXA[antigo]} → {RES_BAIXA[novo]} — {motivo}"
+    E.desfazer_baixa(tx, u, cid, pid, nota)
+    E._baixa(tx, u, cid, {"pedido_id": pid, "resultado": novo, "motivo": f"Correção no CD: {motivo}"[:200], "obs": nota[:300],
+                          "recebedor": str(c.get("recebedor") or ""), "avariados": c.get("avariados") or []})
+    car = _carga(tx, cid)
+    ev = ((car.get("rota") or {}).get("pedidos") or {}).get(pid)
+    if ev is not None:
+        ev["desfecho"], ev["baixa_erp"], ev["motivo"] = DESFECHO_WR[novo], novo, f"Correção no CD: {motivo}"[:200]
+        ev.setdefault("corrigidos", []).append({**ant_ev, "desfeito_em": E.agora(), "pela_frota": q["nome"], "nota": nota, "no_cd": True})
+    # a peça já está no CD? marca como recebida na hora (avaria = recebida avariada)
+    if c.get("peca_no_cd") and novo in ("ausente", "recusado", "avaria"):
+        for it in [x for x in wl(car)["retorno"]["itens"] if x.get("pid") == pid and not x.get("recebido") and not x.get("nao_voltou")]:
+            receber(car, q, it["id"], "avariada" if it.get("origem") == "avaria" else "ok", "recebida na correção da baixa")
+    hist(car, q, "baixa corrigida no CD", f"pedido #{ped0.get('numero')}: {RES_BAIXA[antigo]} → {RES_BAIXA[novo]} — {motivo}")
+    return car, antigo, novo, ped0
+
+
 def retorno_resumo(car: dict) -> dict:
     its = wl(car)["retorno"]["itens"]
     return {"total": len(its), "recebidos": sum(1 for x in its if x.get("recebido")), "nao_voltou": sum(1 for x in its if x.get("nao_voltou")),
@@ -472,7 +525,10 @@ def detalhe_carga(tx, cid: str, car: dict) -> dict:
         p = tx.get("pedidos", pid) or {}
         end = p.get("endereco") or {}
         peds.append({"id": pid, "numero": p.get("numero"), "cliente": p.get("cliente_nome"), "bairro": end.get("bairro"), "cidade": end.get("cidade"),
-                     "status": p.get("status"), "tipo": p.get("tipo"), "baixa": (car.get("baixas") or {}).get(pid)})
+                     "status": p.get("status"), "tipo": p.get("tipo"), "baixa": (car.get("baixas") or {}).get(pid),
+                     "itens": [{"produto_id": i.get("produto_id"), "qtd": i.get("qtd"), "desc": ((tx.get("produtos", i.get("produto_id") or "") or {}).get("nome") or "Produto")}
+                               for i in p.get("itens") or []],
+                     "corrigida": any(x.get("no_cd") for x in (((car.get("rota") or {}).get("pedidos") or {}).get(pid) or {}).get("corrigidos") or [])})
     import nf_simplificada as NFS
     nf_etq = sum(1 for pid in car.get("pedidos") or [] if NFS.chave_valida(((tx.get("pedidos", pid) or {}).get("nf") or {}).get("chave")))
     return {**resumo_carga(tx, cid, car), "nf_etiquetas": nf_etq, "unidades": un, "pedidos_det": peds, "pendencias": w["pendencias"], "ajustes": w["ajustes"][-20:],
@@ -669,6 +725,28 @@ async def rota_nao_voltou(cid: str, request: Request):
         car = _carga(tx, cid)
         nao_voltou(car, _quem(u), str(c.get("item_id") or ""), str(c.get("obs") or ""))
         return _gravar(tx, cid, car, _quem(u))
+
+
+@router.post("/cargas/{cid}/retorno/corrigir-baixa")
+async def rota_corrigir_baixa(cid: str, request: Request):
+    u, p = _ctx(request, "corrigir_baixa", "corrigir a baixa de uma entrega")
+    c = await request.json()
+    with E.ST.trava:
+        tx = E.Tx(u)
+        car, antigo, novo, ped = corrigir_baixa(tx, u, cid, c)
+        r = _gravar(tx, cid, car, _quem(u))
+    # tickets automáticos: encerra o da baixa errada e abre o da certa (nunca derruba a correção)
+    try:
+        import tickets
+        pid = str(c.get("pedido_id") or "")
+        nota = f"Baixa corrigida no CD: {RES_BAIXA[antigo]} → {RES_BAIXA[novo]}. {str(c.get('motivo') or '').strip()}"
+        if antigo != novo and antigo in ("ausente", "avaria", "recusado"):
+            banco.thread(tickets.encerrar_auto_de_baixa, pid, antigo, nota, u)
+        if antigo != novo and novo in ("ausente", "avaria", "recusado"):
+            banco.thread(tickets.auto_de_baixa, pid, novo, f"Correção no CD: {str(c.get('motivo') or '').strip()}", u)
+    except Exception as ex:  # noqa: BLE001
+        print(f"[wlog] tickets da correção: {ex}")
+    return r
 
 
 @router.post("/cargas/{cid}/retorno/concluir")
