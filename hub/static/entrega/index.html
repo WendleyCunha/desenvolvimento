@@ -63,9 +63,22 @@ button{font:inherit;cursor:pointer;border:1px solid var(--rule);background:var(-
 .ic-cam{width:34px;height:34px}.ic-cam svg{width:34px;height:34px;transition:transform .6s ease;filter:drop-shadow(0 2px 3px rgba(0,0,0,.45))}
 .ic-bal svg{width:30px;height:40px;filter:drop-shadow(0 3px 3px rgba(0,0,0,.4))}
 .leaflet-div-icon{background:transparent;border:0}
+/* ?app=1 → dentro do app do cliente: sem a barra própria e mais compacto (tudo cabe sem arrastar) */
+html.no-app,html.no-app body{background:transparent;min-height:0}
+html.no-app .bar{display:none}
+html.no-app main{padding:2px 2px 10px;gap:8px}
+html.no-app .card{padding:12px;gap:8px;border-radius:16px}
+html.no-app #topo h1{font-size:19px!important}
+html.no-app .km{padding:10px 12px;gap:2px}
+html.no-app .km b{font-size:40px}
+html.no-app .km span{font-size:13px}
+html.no-app #mapa{height:230px}
+html.no-app .mapa-leg{padding:7px 12px;font-size:12px}
+html.no-app .so-link{display:none}
 </style>
 </head>
 <body>
+<script>if (new URLSearchParams(location.search).get("app")) document.documentElement.classList.add("no-app");</script>
 <div class="bar"><span id="emp"></span><b id="empSep" hidden> · </b><b>Sua entrega</b></div>
 <main id="app"><div id="topo"><div class="card"><p class="cap">Carregando…</p></div></div>
   <div class="card mapa-card" id="mapaCard" hidden><div id="mapa"></div>
@@ -120,11 +133,11 @@ function render() {
         <span>${viz.nome ? `O vizinho <b>${esc(viz.nome)}</b> deve dizer o próprio nome ao motorista.` : "Sem palavra-chave: o motorista entrega ao vizinho sem pedir palavra."}</span>
         ${d.pode_vizinho ? `<button type="button" class="ghost" id="vzCanc" style="justify-self:start">Cancelar — vou receber eu mesmo</button>` : ""}</div>` : ""}
     ${d.pode_vizinho && !viz ? (S.form ? formVizinho() : `<button type="button" id="vzAbrir">🏠 Entregar ao vizinho</button>`) : ""}
-    <div class="card"><b>Seu pedido${d.pedidos.length > 1 ? "s" : ""}</b>
+    <div class="card so-link"><b>Seu pedido${d.pedidos.length > 1 ? "s" : ""}</b>
       ${d.pedidos.map(p => `<div style="display:grid;gap:4px"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><span class="cap">Pedido #${esc(p.numero)}</span>
         ${p.desfecho ? `<span class="pill ${DESF[p.desfecho][1]}">${DESF[p.desfecho][0]} ${hora(p.em)}</span>` : p.chegou ? '<span class="pill p-aco">Motorista no local</span>' : d.fase === "rua" ? '<span class="pill p-warn">A caminho</span>' : '<span class="pill p-aco">Preparando</span>'}</div>
         ${p.pecas.map(x => `<div class="it"><span>${esc(x.desc)}</span><b>${x.qtd}</b></div>`).join("")}</div>`).join("")}</div>
-    <p class="cap" style="text-align:center">Esta página atualiza sozinha. Dúvidas? Fale com a nossa central.</p>`;
+    <p class="cap so-link" style="text-align:center">Esta página atualiza sozinha. Dúvidas? Fale com a nossa central.</p>`;
   const ab = $("#vzAbrir"); if (ab) ab.onclick = () => { S.form = true; S.erro = ""; render(); const n = $("#vzNum"); if (n) n.focus(); };
   const vc = $("#vzCanc"); if (vc) vc.onclick = () => enviar({ cancelar: true });
   const fc = $("#vzFechar"); if (fc) fc.onclick = () => { S.form = false; render(); };

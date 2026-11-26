@@ -46,6 +46,12 @@ html[data-claro] .topo.vidro{background:rgba(255,255,255,.82)}
 
 main{flex:1;padding:16px 14px calc(92px + env(safe-area-inset-bottom))}
 main.chat-modo{padding-bottom:calc(160px + env(safe-area-inset-bottom))}
+/* rastreio dentro do app: cabe entre a barra de cima e as abas, sem arrastar a tela */
+main.rastreio{padding:8px 10px calc(84px + env(safe-area-inset-bottom))}
+.rastreio-fr{display:block;width:100%;height:calc(100dvh - 160px - env(safe-area-inset-top) - env(safe-area-inset-bottom));min-height:420px;border:0;border-radius:18px;background:transparent}
+.pisca{animation:pisca 1.1s ease-in-out infinite;font-weight:800;letter-spacing:.06em}
+@keyframes pisca{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(34,211,238,.0)}50%{opacity:.55;box-shadow:0 0 18px 2px rgba(34,211,238,.55)}}
+@media (prefers-reduced-motion:reduce){.pisca{animation:none}}
 
 /* abas de baixo (vidro) */
 .abas{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(10px + env(safe-area-inset-bottom));z-index:20;width:calc(100% - 24px);max-width:536px;padding:5px;border-radius:20px;display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
@@ -357,8 +363,18 @@ async function atualizar() {
     if (S.sub?.tela === "chamado") { const c = await api("/api/cliente/chamado/" + encodeURIComponent(S.sub.id)); cache.salvarCh(c); }
     if (S.aba === "vantagens") await carregarVantagens();
   } catch (e) { if (e.status === 401) { telaEntrar(); return; } if (e.codigo === SEM_REDE) S.offline = true; }
+  if (S.sub?.tela === "rastreio") { marcarAbas(); return; }   // o rastreio se atualiza sozinho; redesenhar recarregaria o mapa
   if (!(document.activeElement && document.activeElement.id === "txt" && document.activeElement.value)) render();
   else marcarAbas();
+}
+
+/* ═══════════ RASTREIO DA ENTREGA (dentro do app: mesma barra, mesmo voltar, mesmas abas) ═══════════ */
+function telaRastreio(m, id) {
+  const p = S.eu.pedidos.find((x) => x.id === id);
+  if (!p || !p.rota || !p.rota.link) { ir("pedidos", { tela: "pedido", id }); return; }
+  const src = p.rota.link + (p.rota.link.includes("?") ? "&" : "?") + "app=1";
+  m.classList.add("rastreio");
+  m.innerHTML = `<iframe id="rastreioFrame" class="rastreio-fr" src="${esc(src)}" title="Rastreio da entrega" allow="geolocation"></iframe>`;
 }
 
 /* ═══════════ CASCA ═══════════ */
@@ -375,6 +391,7 @@ function render() {
   let titulo = eu.empresa || "Central do Cliente", linha = `Olá, ${eu.nome}`;
   if (S.aba === "atendimento" && eu.chat) { titulo = eu.chat.assunto; linha = `Protocolo ${eu.chat.id.slice(0, 6).toUpperCase()} · ${eu.chat.rotulo}`; }
   if (sub?.tela === "pedido") { const p = eu.pedidos.find((x) => x.id === sub.id); titulo = p ? `Pedido #${p.numero}` : "Pedido"; }
+  if (sub?.tela === "rastreio") { const p = eu.pedidos.find((x) => x.id === sub.id); titulo = "Rastreio da entrega"; linha = p ? `Pedido #${p.numero}` : ""; }
   if (sub?.tela === "chamado") { const c = cache.ch(sub.id) || eu.chamados.find((x) => x.id === sub.id); titulo = c?.assunto || "Chamado"; linha = `Protocolo ${sub.id.slice(0, 6).toUpperCase()}`; }
   if (sub?.tela === "novo") { titulo = "Novo chamado"; }
   if (S.aba === "vantagens") { titulo = "Vantagens"; linha = "Cupons, brindes e avisos da loja"; }
@@ -395,11 +412,11 @@ function render() {
       <button data-aba="vantagens" class="${S.aba === "vantagens" ? "ativo" : ""}">${ICO.estrela}Vantagens${valesNovos() ? `<em>${valesNovos()}</em>` : ""}</button>
     </nav>`;
   app.querySelectorAll("[data-aba]").forEach((b) => (b.onclick = () => ir(b.dataset.aba)));
-  const v = $("#voltar"); if (v) v.onclick = () => ir(S.aba);
+  const v = $("#voltar"); if (v) v.onclick = () => (sub?.tela === "rastreio" ? ir("pedidos", { tela: "pedido", id: sub.id }) : ir(S.aba));
   const s = $("#sair"); if (s) s.onclick = sair;
   ligarInstalar(app.querySelector(".topo"));
   const m = $("#main");
-  if (S.aba === "pedidos") sub?.tela === "pedido" ? telaPedido(m, sub.id) : telaPedidos(m);
+  if (S.aba === "pedidos") sub?.tela === "rastreio" ? telaRastreio(m, sub.id) : sub?.tela === "pedido" ? telaPedido(m, sub.id) : telaPedidos(m);
   else if (S.aba === "chamados") sub?.tela === "chamado" ? telaThread(m, sub.id) : sub?.tela === "novo" ? telaNovoChamado(m) : telaChamados(m);
   else if (S.aba === "vantagens") telaVantagens(m);
   else telaAtendimento(m);
@@ -598,7 +615,7 @@ function telaPedido(m, id) {
       ${p.entrega && !["entregue", "cancelado"].includes(p.status) ? `<div class="entrega">${ICO.cal}<span><b>${esc(dataLonga(p.entrega.data))}</b><small>${p.entrega.janela ? "Período: " + esc(p.entrega.janela) : "Entrega agendada"}</small></span></div>` : ""}
       ${rotaKm(p)}
       ${p.rota && p.rota.vizinho && !p.rota.desfecho ? `<p class="min">🏠 Entregar ao vizinho · casa/apto <b>${esc(p.rota.vizinho.numero)}</b>${p.rota.vizinho.nome ? ` · o vizinho <b>${esc(p.rota.vizinho.nome)}</b> diz o próprio nome ao motorista` : " · sem palavra-chave"}</p>` : ""}
-      ${p.rota && p.rota.link && !p.rota.desfecho ? `<a class="btn v grande" href="${esc(p.rota.link)}" style="margin-top:12px;text-align:center;text-decoration:none">${p.rota.mapa ? "📍 Ver o motorista no mapa" : p.rota.pode_vizinho ? "📍 Acompanhar a entrega · entregar ao vizinho" : "📍 Acompanhar a entrega"}</a>` : ""}
+      ${p.rota && p.rota.link && !p.rota.desfecho ? `<button type="button" class="btn v grande pisca" id="btRastreio" style="margin-top:12px;width:100%">📍 RASTREIO DA ENTREGA</button>` : ""}
     </div>
     <div class="sec">Itens</div>
     <div class="cartao vidro"><ul class="itens">${p.itens.map((i) => `<li><b>${i.qtd}×</b>${esc(i.nome)}</li>`).join("")}</ul>
@@ -616,6 +633,7 @@ function telaPedido(m, id) {
       <a class="btn v grande" href="${window.HUB_BASE}/api/cliente/pedido/${encodeURIComponent(p.id)}/pdf" target="_blank" rel="noopener" style="text-align:center;text-decoration:none">⬇ Baixar o PDF do pedido</a></div>`;
   $("#falar").onclick = () => { S.rascunho = `Sobre o pedido #${p.numero}: `; if (!S.eu.chat && !S.assunto) S.assunto = (S.eu.ura.find((u) => u.id === "entrega") || S.eu.ura[0]).id; ir("atendimento"); setTimeout(() => $("#txt")?.focus(), 80); };
   $("#chamado").onclick = () => ir("chamados", { tela: "novo", pedido: p.id });
+  const rs = $("#btRastreio"); if (rs) rs.onclick = () => ir("pedidos", { tela: "rastreio", id: p.id });
 }
 
 /* ═══════════ CHAMADOS ═══════════ */
