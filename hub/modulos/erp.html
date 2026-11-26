@@ -146,6 +146,16 @@ table.t .baixo{color:#fda4af;font-weight:700}
 
 /* cargas */
 .cargas{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:12px}
+.lst-cargas{display:flex;flex-direction:column;gap:8px}
+.carga-item{--c:var(--ciano);border-radius:16px;border:1px solid var(--vidro-borda);background:rgba(255,255,255,.02);overflow:hidden}
+.carga-item.aberta{border-color:color-mix(in srgb,var(--c) 55%,transparent);box-shadow:0 0 0 1px color-mix(in srgb,var(--c) 25%,transparent)}
+.carga-linha{display:flex;align-items:center;gap:10px;width:100%;padding:10px 14px;background:none;border:0;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.carga-linha:hover{background:rgba(127,127,127,.07)}
+.carga-linha .cl-t{display:flex;flex-direction:column;min-width:0;flex:1}
+.carga-linha .cl-t b{font:700 .98rem var(--titulo)}
+.carga-linha .cl-seta{font-size:1rem;opacity:.7;padding-left:4px}
+.carga-item .carga .t1 > :not(.etq){display:none}
+.carga-item .carga{border:0;border-top:1px solid var(--vidro-borda);border-radius:0;background:none}
 .carga{--c:var(--ciano);border-radius:18px;padding:14px;background:rgba(255,255,255,.03);border:1px solid var(--vidro-borda);display:flex;flex-direction:column;gap:9px}
 .carga .t1{display:flex;align-items:center;gap:10px}
 .carga .t1 b{font:700 1rem var(--titulo)}
@@ -252,7 +262,7 @@ document.querySelector('link[rel="icon"]').href = A.ATOMO_SVG;
 const API = "/api/erp";
 const COLS = ["produtos", "parceiros", "saldos", "pedidos", "cargas", "movimentos"];
 const S = { produtos: {}, parceiros: {}, saldos: {}, pedidos: {}, cargas: {}, movimentos: {}, config: {}, perm: { acoes: {}, campos: {} }, locais: [], destinos: [], hoje: "" };
-const V = { aba: ls("wd.erp.aba", "painel"), periodo: +ls("wd.erp.per", "30"), fPed: "abertos", bPed: "", dia: "", cadTipo: "cliente", bProd: "", bEst: "", bCad: "", bAg: "", sel: new Set(), pDe: "", pAte: "", pJan: "", pBusca: "", pSemAg: false, pData: "", geo: {}, geoPedido: new Set() };
+const V = { aba: ls("wd.erp.aba", "painel"), periodo: +ls("wd.erp.per", "30"), fPed: "abertos", bPed: "", dia: "", cadTipo: "cliente", bProd: "", bEst: "", bCad: "", bAg: "", sel: new Set(), pDe: "", pAte: "", pJan: "", pBusca: "", pSemAg: false, pData: "", geo: {}, geoPedido: new Set(), agEt: ls("wd.erp.agEt", "sem"), cEt: ls("wd.erp.cEt", "montando"), cAberta: "" };
 function ls(k, d) { try { return localStorage.getItem(k) ?? d; } catch (_) { return d; } }
 function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (_) {} }
 const $ = (s, r = document) => r.querySelector(s);
@@ -276,7 +286,7 @@ const lista = (col) => Object.values(S[col]);
 const saldo = (pid) => S.saldos[pid] || {};
 const STATUS = {
   rascunho: ["Rascunho", "#94a3b8"], confirmado: ["A agendar", "#60a5fa"], agendado: ["Agendado", "#8b5cf6"], em_carga: ["Em carga", "#22d3ee"],
-  em_rota: ["Em rota", "#e8b33d"], reagendar: ["Reagendar", "#fb923c"], entregue: ["Entregue", "#34d399"], recusado: ["Recusado", "#fb7185"], cancelado: ["Cancelado", "#6b7183"],
+  em_rota: ["Em rota", "#e8b33d"], reagendar: ["Retorno · reenviar", "#fb923c"], entregue: ["Entregue", "#34d399"], recusado: ["Recusado", "#fb7185"], cancelado: ["Cancelado", "#6b7183"],
 };
 const RES = { entregue: ["Entregue", "#34d399"], ausente: ["Ausente", "#fb923c"], avaria: ["Avaria", "#fb7185"], recusado: ["Recusado", "#f43f5e"] };
 const COR_LOCAL = { disponivel: "#34d399", reservado: "#60a5fa", transito: "#e8b33d", triagem: "#fb923c", assistencia: "#8b5cf6", at: "#a78bfa", fornecedor: "#22d3ee", outlet: "#f472b6", entregue: "#94a3b8", perdas: "#fb7185" };
@@ -319,7 +329,7 @@ const ABAS = [
 function bolhas() {
   const peds = lista("pedidos");
   return {
-    agenda: peds.filter((p) => ["confirmado", "reagendar"].includes(p.status)).length,
+    agenda: peds.filter(aptoAgendar).length,
     cargas: lista("cargas").filter((c) => c.status === "em_rota").length,
     retornos: lista("saldos").reduce((s, x) => s + (x.triagem || 0), 0),
   };
@@ -472,9 +482,12 @@ function grafSemanas(sem) {
 }
 
 /* ══════ PEDIDOS ══════ */
-const FILTROS = [["abertos", "Em aberto", "#60a5fa", (p) => !["entregue", "cancelado", "recusado"].includes(p.status)], ["rascunho", "Rascunho", "#94a3b8"], ["confirmado", "A agendar", "#60a5fa"],
-  ["agendado", "Agendados", "#8b5cf6"], ["em_rota", "Em carga / rota", "#e8b33d", (p) => ["em_carga", "em_rota"].includes(p.status)], ["reagendar", "Reagendar", "#fb923c"], ["entregue", "Entregues", "#34d399"],
-  ["recusado", "Recusados", "#fb7185"], ["cancelado", "Cancelados", "#6b7183"], ["todos", "Todos", "#94a3b8", () => true]];
+// bloqueado = confirmado (ou de volta para reenvio) SEM estoque reservado: fica só aqui em Pedidos, não vai para a Agenda
+const bloqueado = (p) => ["confirmado", "reagendar"].includes(p.status) && !p.reservado && (p.pendentes || []).length > 0;
+const aptoAgendar = (p) => ["confirmado", "reagendar"].includes(p.status) && !bloqueado(p);
+const FILTROS = [["abertos", "Em aberto", "#60a5fa", (p) => !["entregue", "cancelado", "recusado"].includes(p.status)], ["bloqueados", "Bloqueados", "#fb7185", bloqueado], ["rascunho", "Rascunho", "#94a3b8"],
+  ["confirmado", "A agendar", "#60a5fa", (p) => p.status === "confirmado" && !bloqueado(p)], ["agendado", "Agendados", "#8b5cf6"], ["em_carga", "Em carga", "#22d3ee"], ["em_rota", "Em rota", "#e8b33d"],
+  ["reagendar", "Retorno · reenviar", "#fb923c"], ["entregue", "Entregues", "#34d399"], ["recusado", "Recusados", "#fb7185"], ["cancelado", "Cancelados", "#6b7183"], ["todos", "Todos", "#94a3b8", () => true]];
 const testeFiltro = (f) => f[3] || ((p) => p.status === f[0]);
 function rPedidos() {
   const peds = lista("pedidos").sort((a, b) => b.numero - a.numero);
@@ -728,7 +741,7 @@ function agendar(ids) {
 /* ══════ AGENDA + MONTAGEM DE CARGA ══════ */
 function rAgenda() {
   const peds = lista("pedidos");
-  const aAg = peds.filter((p) => ["confirmado", "reagendar"].includes(p.status)).sort((a, b) => (b.status === "reagendar") - (a.status === "reagendar") || a.numero - b.numero);
+  const aAg = peds.filter(aptoAgendar).sort((a, b) => (b.status === "reagendar") - (a.status === "reagendar") || a.numero - b.numero);
   const dias = Array.from({ length: 14 }, (_, i) => addDia(S.hoje, i - 1));
   if (V.dia && !dias.includes(V.dia)) { dias.push(V.dia); dias.sort(); }   // dia vindo da busca, fora da faixa: aparece também
   const doDia = peds.filter((p) => p.agendamento?.data === V.dia && ["agendado", "em_carga", "em_rota"].includes(p.status)).sort((a, b) => a.numero - b.numero);
@@ -736,35 +749,40 @@ function rAgenda() {
   const selec = [...V.sel].filter((id) => livres.some((p) => p.id === id));
   // BUSCA em todos os dias: nome, código do cliente, nº do pedido, telefone, CPF/CNPJ, bairro
   const bq = norm(V.bAg).trim();
-  const achados = !bq ? [] : peds.filter((p) => !["cancelado"].includes(p.status) && (p.agendamento?.data || ["confirmado", "reagendar"].includes(p.status))).filter((p) => {
+  const achados = !bq ? [] : peds.filter((p) => !["cancelado"].includes(p.status) && (p.agendamento?.data || aptoAgendar(p))).filter((p) => {
     const c = parc(p.cliente_id) || {}, num = bq.replace(/^#/, "");
     if (/^\d+$/.test(num) && String(p.numero) === num) return true;
     const txt = norm(`${p.cliente_nome} ${c.codigo || ""} ${p.endereco?.bairro || ""} ${p.endereco?.cidade || ""}`), dig = bq.replace(/\D/g, "");
     return bq.split(/\s+/).every((w) => txt.includes(w)) || (dig.length >= 4 && `${c.telefone || ""}${c.doc || ""}`.replace(/\D/g, "").includes(dig));
   }).sort((a, b) => (b.agendamento?.data || "").localeCompare(a.agendamento?.data || "") || b.numero - a.numero).slice(0, 40);
+  const nAgend = peds.filter((p) => p.status === "agendado").length;
   const botaoReag = (p) => pode("agendar") && ["agendado", "confirmado", "reagendar"].includes(p.status) && (p.reservado || !(p.pendentes || []).length)
     ? `<br><button type="button" class="btn v p" data-ag="${p.id}" style="margin-top:6px">${svg("calendario")}${p.status === "agendado" ? "Reagendar" : "Agendar"}</button>` : "";
   $("#main").innerHTML = `<section class="painel vidro vidro-borda-viva">
-    <div class="cab">${A.orbe("calendario", "#8b5cf6")}<div><h2>Agenda de entregas</h2><p>Agende os confirmados e os que voltaram (ausentes e reposições). Depois selecione e monte a carga do dia.</p></div></div>
+    <div class="cab">${A.orbe("calendario", "#8b5cf6")}<div><h2>Agenda de entregas</h2><p><b>Sem agendamento</b>: só os pedidos aptos (com estoque). <b>Agendados</b>: o calendário com os pedidos de cada dia — selecione e monte a carga.</p></div></div>
     <div class="barra-ferr" style="margin-bottom:12px"><input class="entrada" id="bAg" value="${esc(V.bAg)}" placeholder="🔎 Buscar cliente em todos os dias: nome, código, nº do pedido, telefone ou CPF/CNPJ" style="flex:1;min-width:260px" autocomplete="off">${V.bAg ? `<button type="button" class="btn v p" id="bAgLimpa">Limpar</button>` : ""}</div>
     ${bq ? `<div class="bloco" style="margin-bottom:14px"><h3>${svg("filtro")} ${achados.length} resultado(s) para “${esc(V.bAg)}” <small>todos os dias</small></h3>
       ${achados.length ? `<div class="lst">${achados.map((p) => cardPed(p, { extra: (p.agendamento?.data ? `<br><button type="button" class="btn v p" data-irdia="${p.agendamento.data}" style="margin-top:6px">${svg("calendario")}Ver o dia ${dBR(p.agendamento.data)}</button>` : `<br><span class="mini c" style="--c:#60a5fa">a agendar</span>`) + botaoReag(p) })).join("")}</div>` : `<p class="dica">Nenhum pedido encontrado.</p>`}</div>` : ""}
+    <div class="chips" style="margin-bottom:12px">${[["sem", "Sem agendamento", aAg.length], ["agendados", "Agendados", nAgend]].map(([k, r, n]) => `<button type="button" class="chip${V.agEt === k ? " ativo" : ""}" data-aget="${k}">${r}<small>${n}</small></button>`).join("")}</div>
+    ${V.agEt === "sem" ? `
+      <div class="bloco"><h3>${svg("relogio")} Sem agendamento <small>${aAg.length} apto(s) para agendar</small></h3>
+        ${aAg.length ? `<div class="lst">${aAg.map((p) => cardPed(p, { extra: pode("agendar") ? `<br><button type="button" class="btn v p" data-ag="${p.id}" style="margin-top:6px">${svg("calendario")}Agendar</button>` : "" })).join("")}</div>` : `<p class="dica">Nada para agendar. Pedidos sem estoque ficam em <b>Pedidos → Bloqueados</b>.</p>`}
+      </div>
+` : `
     <div class="dias">${dias.map((d) => { const ps = peds.filter((p) => p.agendamento?.data === d && ["agendado", "em_carga", "em_rota"].includes(p.status)); const dt = new Date(d + "T12:00:00");
       return `<button type="button" class="dia${d === V.dia ? " ativo" : ""}${d === S.hoje ? " hoje" : ""}" data-dia="${d}"><small>${d === S.hoje ? "hoje" : SEM[dt.getDay()]}</small><b>${dBR(d)}</b><span>${ps.length} ped. · ${ps.reduce((s, p) => s + volumes(p), 0)} vol.</span></button>`; }).join("")}</div>
-    <div class="grade2">
       <div class="bloco"><h3>${svg("caminhao")} ${dBR(V.dia)} · ${doDia.length} pedido(s) <small>${livres.length} sem carga</small></h3>
         ${doDia.length ? `<div class="lst">${doDia.map((p) => cardPed(p, { check: p.status === "agendado" && pode("cargas"), extra: botaoReag(p) })).join("")}</div>` : `<p class="dica">Nenhum pedido agendado nesse dia.</p>`}
         ${pode("cargas") && livres.length ? `<div class="sep chips"><button type="button" class="btn v p" id="selTodos">Selecionar todos sem carga</button>
           <button type="button" class="btn" id="btMontar" ${selec.length ? "" : "disabled"}>${svg("caminhao")}Montar carga · ${selec.length} pedido(s) · ${selec.reduce((s, id) => s + volumes(S.pedidos[id]), 0)} vol.</button></div>` : ""}
       </div>
-      <div class="bloco"><h3>${svg("relogio")} A agendar <small>${aAg.length}</small></h3>
-        ${aAg.length ? `<div class="lst">${aAg.map((p) => cardPed(p, { extra: pode("agendar") && (p.reservado || !(p.pendentes || []).length) ? `<br><button type="button" class="btn v p" data-ag="${p.id}" style="margin-top:6px">${svg("calendario")}Agendar</button>` : "" })).join("")}</div>` : `<p class="dica">Nada para agendar.</p>`}
-      </div>
-    </div></section>`;
+`}
+    </section>`;
+  $$("[data-aget]").forEach((b) => (b.onclick = () => { V.agEt = b.dataset.aget; lsSet("wd.erp.agEt", V.agEt); V.sel.clear(); rAgenda(); }));
   $$("[data-dia]").forEach((b) => (b.onclick = () => { V.dia = b.dataset.dia; V.sel.clear(); rAgenda(); }));
   buscaViva("bAg", "bAg", rAgenda);
   $("#bAgLimpa")?.addEventListener("click", () => { V.bAg = ""; rAgenda(); });
-  $$("[data-irdia]").forEach((b) => (b.onclick = () => { V.dia = b.dataset.irdia; V.bAg = ""; V.sel.clear(); rAgenda(); $(".dia.ativo")?.scrollIntoView({ block: "nearest", inline: "center" }); }));
+  $$("[data-irdia]").forEach((b) => (b.onclick = () => { V.dia = b.dataset.irdia; V.bAg = ""; V.agEt = "agendados"; V.sel.clear(); rAgenda(); $(".dia.ativo")?.scrollIntoView({ block: "nearest", inline: "center" }); }));
   $$("[data-ag]").forEach((b) => (b.onclick = () => agendar([b.dataset.ag])));
   $("#selTodos")?.addEventListener("click", () => { livres.forEach((p) => V.sel.add(p.id)); rAgenda(); });
   $("#btMontar")?.addEventListener("click", () => montarCarga(selec, null));
@@ -1026,14 +1044,41 @@ function blocoEntrega(p) {
     <span class="mono">Código ${esc(String(e.hash || "").slice(0, 16))}</span> · <a href="/api/erp/pedidos/${encodeURIComponent(p.id)}/comprovante" target="_blank" rel="noopener">PDF do comprovante</a></div></div>`;
 }
 
-function rCargas() {
+// Etapas da aba Cargas (a montagem da carga continua aqui no ERP; o WLOGISTICA começa depois, no palete)
+function etapasCarga() {
   const cs = lista("cargas").sort((a, b) => b.data.localeCompare(a.data) || b.numero - a.numero);
-  const ab = cs.filter((c) => c.status !== "finalizada"), fin = cs.filter((c) => c.status === "finalizada").slice(0, 24);
+  return {
+    prontos: lista("pedidos").filter(prontoCarga),
+    montando: cs.filter((c) => c.status === "montando"),
+    em_rota: cs.filter((c) => c.status === "em_rota" && c.data >= S.hoje),
+    baixa: cs.filter((c) => c.status === "em_rota" && c.data < S.hoje),
+    finalizada: cs.filter((c) => c.status === "finalizada").slice(0, 24),
+  };
+}
+const ET_CARGA = [["prontos", "Prontos para carga", "#60a5fa"], ["montando", "Cargas em montagem", "#22d3ee"], ["em_rota", "Em rota", "#e8b33d"], ["baixa", "Aguardando baixa", "#fb923c"], ["finalizada", "Finalizadas", "#34d399"]];
+// linha compacta: "Carga 2 · 26/11 · veículo · motorista" — clicar abre os pedidos da carga
+function linhaCarga(c, cor) {
+  const aberta = V.cAberta === c.id;
+  return `<div class="carga-item${aberta ? " aberta" : ""}" style="--c:${cor}">
+    <button type="button" class="carga-linha" data-cabre="${c.id}" aria-expanded="${aberta}">${A.orbe("caminhao", cor)}
+      <span class="cl-t"><b>Carga ${c.numero} · ${dBR(c.data)}</b><span class="sub">${esc(parc(c.veiculo_id)?.nome || "sem veículo")} · ${esc(parc(c.motorista_id)?.nome || "sem motorista")}${c.ajudante ? " + " + esc(c.ajudante) : ""}</span></span>
+      <span class="mini">${c.pedidos.length} parada(s)</span><span class="cl-seta" aria-hidden="true">${aberta ? "▴" : "▾"}</span></button>
+    ${aberta ? cardCarga(c) : ""}</div>`;
+}
+function rCargas() {
+  const et = etapasCarga();
+  if (!ET_CARGA.some((x) => x[0] === V.cEt)) V.cEt = "montando";
+  const [, rotEt, corEt] = ET_CARGA.find((x) => x[0] === V.cEt);
+  const lst = V.cEt === "prontos" ? null : et[V.cEt];
   $("#main").innerHTML = `<section class="painel vidro vidro-borda-viva">
-    <div class="cab">${A.orbe("caminhao", "#22d3ee")}<div><h2>Cargas</h2><p>Puxe pedidos de qualquer dia, monte à mão ou peça uma sugestão por distância, paradas, m³ e kg. Liberar a saída baixa o estoque reservado para <b>${esc(rot("transito"))}</b>. Na volta, a baixa de cada parada define para onde vai cada peça.</p></div></div>
-    ${blocoPuxar()}
-    ${ab.length ? `<div class="cargas">${ab.map(cardCarga).join("")}</div>` : `<div class="vazio">${A.orbe("caminhao", "#22d3ee")}<b>Nenhuma carga aberta</b>Selecione pedidos acima (ou na Agenda) e monte a carga — ou peça uma sugestão.</div>`}
-    ${fin.length ? `<div class="sep"><h4>Finalizadas</h4><div class="cargas">${fin.map(cardCarga).join("")}</div></div>` : ""}</section>`;
+    <div class="cab">${A.orbe("caminhao", "#22d3ee")}<div><h2>Cargas</h2><p>Puxe pedidos de qualquer dia, monte à mão ou peça uma sugestão por distância, paradas, m³ e kg. Liberar a saída baixa o estoque reservado para <b>${esc(rot("transito"))}</b>. Clique na carga para ver os pedidos dela.</p></div></div>
+    <div class="chips" style="margin-bottom:12px">${ET_CARGA.map(([k, r, cor]) => `<button type="button" class="chip${V.cEt === k ? " ativo" : ""}" data-cet="${k}" style="--c:${cor}">${r}<small>${et[k].length}</small></button>`).join("")}</div>
+    ${V.cEt === "prontos" ? (blocoPuxar() || `<div class="vazio">${A.orbe("caminhao", "#60a5fa")}<b>Sem permissão para montar cargas</b></div>`)
+      : lst.length ? `<div class="lst-cargas">${lst.map((c) => linhaCarga(c, corEt)).join("")}</div>`
+      : `<div class="vazio">${A.orbe("caminhao", corEt)}<b>Nenhuma carga em “${esc(rotEt)}”</b>${V.cEt === "montando" ? "Monte em <b>Prontos para carga</b> ou na Agenda." : ""}</div>`}
+  </section>`;
+  $$("[data-cet]").forEach((b) => (b.onclick = () => { V.cEt = b.dataset.cet; lsSet("wd.erp.cEt", V.cEt); V.cAberta = ""; rCargas(); }));
+  $$("[data-cabre]").forEach((b) => (b.onclick = () => { V.cAberta = V.cAberta === b.dataset.cabre ? "" : b.dataset.cabre; rCargas(); }));
   $$("[data-csair]").forEach((b) => (b.onclick = async () => { const c = S.cargas[b.dataset.csair];
     if (!(await A.confirmar(`Liberar a saída da carga <b>${c.numero}</b>? O estoque reservado de ${c.pedidos.length} pedido(s) vai para <b>${esc(rot("transito"))}</b>.`, { titulo: "Saída da carga", rotulo: "Liberar saída" }))) return;
     try { await api(`/cargas/${c.id}/sair`, { method: "POST" }); ok(`Carga ${c.numero} em rota.`); render(); } catch (e) { falha(e); } }));
