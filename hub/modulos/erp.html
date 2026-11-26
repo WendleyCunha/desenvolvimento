@@ -1420,6 +1420,11 @@ $("#btAtualizar").innerHTML = svg("repetir");
 $("#btNovoPed").innerHTML = svg("mais") + "Novo pedido";
 $("#btNovoPed").onclick = () => editarPedido();
 $("#btAtualizar").onclick = () => carregar().catch(falha);
+// Reflete a rua sem precisar clicar em atualizar: baixa pelo app do motorista, WROUTER, WLOGISTICA…
+// (não atualiza com janela aberta nem enquanto alguém digita, para não perder o que está sendo feito)
+const podeAtualizar = () => { const a = document.activeElement; return document.visibilityState === "visible" && !A.modalAberto() && !(a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)); };
+setInterval(() => { if (podeAtualizar()) carregar().catch(() => {}); }, 20000);
+document.addEventListener("visibilitychange", () => { if (podeAtualizar()) carregar().catch(() => {}); });
 addEventListener("keydown", (e) => { if (A.modalAberto() || /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || "")) return; if ((e.key === "n" || e.key === "N") && pode("pedidos")) { e.preventDefault(); editarPedido(); } });
 (async () => {
   try { await A.permissoes.carregar("erp"); }

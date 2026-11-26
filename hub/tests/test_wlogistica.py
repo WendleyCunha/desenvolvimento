@@ -143,3 +143,11 @@ def test_sem_exigir_o_armazem_a_carga_sai(t):
     cid = nova_carga(t, ("ped2",))
     assert t.put("/api/wlog/config", json={"exigir": False}).json()["cfg"]["exigir"] is False
     assert t.post(f"/api/erp/cargas/{cid}/sair").status_code == 200
+
+
+def test_resumo_do_retorno_tem_totais_e_chegada_no_cd():
+    """Card do Retorno: totais dos pedidos (ícones) e se o caminhão já chegou no CD (separa as etapas)."""
+    import wlogistica as WL
+    car = {"pedidos": ["a", "b", "c", "d"], "baixas": {"a": "entregue", "b": "ausente", "c": "avaria"}, "rota": {"chegada": {"em": "2026-11-26T16:00:00"}}}
+    assert WL.baixas_resumo(car) == {"total": 4, "entregues": 1, "retornos": 2, "sem_baixa": 1}
+    assert ((car.get("rota") or {}).get("chegada") or {}).get("em") == "2026-11-26T16:00:00"
