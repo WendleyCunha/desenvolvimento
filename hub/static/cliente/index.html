@@ -49,6 +49,9 @@ main.chat-modo{padding-bottom:calc(160px + env(safe-area-inset-bottom))}
 /* rastreio dentro do app: cabe entre a barra de cima e as abas, sem arrastar a tela */
 main.rastreio{padding:8px 10px calc(84px + env(safe-area-inset-bottom))}
 .rastreio-fr{display:block;width:100%;height:calc(100dvh - 160px - env(safe-area-inset-top) - env(safe-area-inset-bottom));min-height:420px;border:0;border-radius:18px;background:transparent}
+.bt-rastreio{display:block;width:100%;text-align:center;margin:0 0 12px;cursor:pointer}
+.cartao .bt-rastreio{margin:0 0 10px}
+.bt-rastreio small{display:block;font-size:.72rem;letter-spacing:.08em;opacity:.8;margin-top:2px}
 .pisca{animation:pisca 1.1s ease-in-out infinite;font-weight:800;letter-spacing:.06em}
 @keyframes pisca{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(34,211,238,.0)}50%{opacity:.55;box-shadow:0 0 18px 2px rgba(34,211,238,.55)}}
 @media (prefers-reduced-motion:reduce){.pisca{animation:none}}
@@ -588,13 +591,18 @@ function telaPedidos(m) {
   const ps = S.eu.pedidos;
   if (!ps.length) { m.innerHTML = `<div class="vazio">${A.orbe("caixa", "var(--ouro)")}<b>Nenhum pedido por aqui</b>Seus pedidos aparecem assim que forem confirmados pela loja.</div>`; return; }
   const ab = ps.filter((p) => !["entregue", "cancelado", "recusado"].includes(p.status)), fe = ps.filter((p) => !ab.includes(p));
-  const cartao = (p) => `<button class="cartao vidro" data-p="${esc(p.id)}"><div class="l1"><b>${p.tipo === "troca" ? "Troca" : "Pedido"} #${p.numero}</b><span class="etq ${ST_COR[p.status] || ""} dir">${esc(p.rotulo)}</span></div>
+  // [rastreio] pedido na rua hoje: o botão já aparece aqui, sem precisar abrir o pedido
+  const naRua = ab.filter((p) => p.rota && p.rota.link && !p.rota.desfecho);
+  const btR = (p, txt) => `<span role="button" tabindex="0" class="btn v grande pisca bt-rastreio" data-rastreio="${esc(p.id)}">📍 ${txt}</span>`;
+  const cartao = (p) => `<button class="cartao vidro" data-p="${esc(p.id)}">${naRua.length > 1 && naRua.includes(p) ? btR(p, "RASTREIO DA ENTREGA") : ""}<div class="l1"><b>${p.tipo === "troca" ? "Troca" : "Pedido"} #${p.numero}</b><span class="etq ${ST_COR[p.status] || ""} dir">${esc(p.rotulo)}</span></div>
     <p>${esc(p.itens.map((i) => `${i.qtd}× ${i.nome}`).join(", "))}</p>
     ${p.palavra_chave ? `<p class="min">🔑 Palavra-chave: <b style="color:var(--ouro2);letter-spacing:1px">${esc(p.palavra_chave)}</b></p>` : ""}
     ${rotaKm(p)}
     ${p.entrega && !["entregue", "cancelado"].includes(p.status) ? `<div class="entrega">${ICO.cal}<span><b>${esc(dataLonga(p.entrega.data))}</b><small>${p.entrega.janela ? "Período: " + esc(p.entrega.janela) : "Entrega agendada"}</small></span></div>` : p.texto && p.status !== "entregue" ? `<p>${esc(p.texto)}</p>` : ""}</button>`;
-  m.innerHTML = `${ab.length ? `<h2 class="tit">Em andamento</h2>${ab.map(cartao).join("")}` : ""}${fe.length ? `<div class="sec">Concluídos</div>${fe.map(cartao).join("")}` : ""}`;
+  m.innerHTML = `${naRua.length === 1 ? btR(naRua[0], `RASTREIO DA ENTREGA<small>pedido #${esc(naRua[0].numero)}</small>`) : ""}${ab.length ? `<h2 class="tit">Em andamento</h2>${ab.map(cartao).join("")}` : ""}${fe.length ? `<div class="sec">Concluídos</div>${fe.map(cartao).join("")}` : ""}`;
   m.querySelectorAll("[data-p]").forEach((b) => (b.onclick = () => ir("pedidos", { tela: "pedido", id: b.dataset.p })));
+  m.querySelectorAll("[data-rastreio]").forEach((b) => { const vai = (e) => { e.stopPropagation(); ir("pedidos", { tela: "rastreio", id: b.dataset.rastreio }); };
+    b.onclick = vai; b.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); vai(e); } }; });
 }
 const kmTxt = (k) => k < 1 ? `${Math.round(k * 1000)} m` : `${k.toFixed(1).replace(".", ",")} km`;
 function rotaKm(p) {   // [WROUTER] o motorista a caminho: distância em linha reta até o endereço
