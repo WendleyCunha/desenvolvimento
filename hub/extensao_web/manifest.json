@@ -3,9 +3,38 @@
   "name": "Hub Web — abrir sites dentro do hub",
   "version": "__VERSAO__",
   "description": "Deixa o módulo Web do hub (__HUB__) abrir aqui dentro os sites que bloqueiam quadro. Não muda nada fora do hub.",
-  "permissions": ["declarativeNetRequest"],
-  "host_permissions": ["<all_urls>"],
-  "background": { "service_worker": "bg.js" },
-  "content_scripts": [{ "matches": ["__ESQUEMA__://__HUB__/*"], "js": ["ponte.js"], "all_frames": true, "run_at": "document_start" }],
-  "icons": { "128": "icone.png" }
+  "permissions": [
+    "declarativeNetRequest"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "bg.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "__ESQUEMA__://__HUB__/*"
+      ],
+      "js": [
+        "ponte.js"
+      ],
+      "all_frames": true,
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "*://*.youtube.com/*"
+      ],
+      "js": [
+        "youtube.js"
+      ],
+      "all_frames": true,
+      "run_at": "document_start"
+    }
+  ],
+  "icons": {
+    "128": "icone.png"
+  }
 }
