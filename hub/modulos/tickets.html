@@ -303,7 +303,8 @@ button.kpi:hover{border-color:color-mix(in srgb,var(--c) 50%,transparent)}
 .aba-tk.app .nm small{color:rgba(34,211,238,.7)}
 .aba-tk.app.ativo{background:linear-gradient(180deg,rgba(34,211,238,.22),rgba(34,211,238,.08));color:var(--txt);border-color:rgba(34,211,238,.6);box-shadow:0 -3px 0 var(--ciano) inset}
 .aba-tk.pend{border-color:var(--rosa);color:var(--txt)}
-.aba-tk.curta{min-width:84px;justify-content:center;gap:10px;padding:8px 6px 8px 12px;font-weight:800;letter-spacing:.04em}
+.aba-tk.curta{width:auto;min-width:84px;max-width:none;justify-content:center;gap:10px;padding:8px 6px 8px 12px;font-weight:700}
+.aba-tk.curta .nm{overflow:visible;text-overflow:clip}
 .aba-tk.pend::after{content:attr(data-sinal);position:absolute;top:-8px;right:6px;padding:0 6px;border-radius:8px;font:700 .56rem/15px var(--sans);letter-spacing:.4px;text-transform:uppercase;background:var(--rosa);color:#fff;box-shadow:0 0 12px var(--rosa)}
 .bt-rastreio{--c:#22c55e;display:inline-flex;align-items:center;gap:5px;margin:6px 0 2px;padding:4px 11px;border-radius:999px;cursor:pointer;font:700 .68rem/1.4 var(--sans);letter-spacing:.08em;
   color:var(--c)!important;border:1px solid color-mix(in srgb,var(--c) 45%,transparent)!important;
@@ -502,7 +503,7 @@ function renderAbas() {
   const sinal = (c) => c.app_pendente ? "respondeu" : c.nao_visto ? "novo" : "";
   const ini = (n) => { const p = String(n || "").trim().split(/\s+/).filter(Boolean); return ((p[0] || "?")[0] + (p.length > 1 ? p[p.length - 1][0] : "")).toUpperCase(); };
   const aba = (cid) => { const c = info(cid), sn = sinal(c), nome = String(c.cliente_nome || cid).split(" ")[0];
-    if (ehApp(cid)) return `<button type="button" class="aba-tk app curta${S.aberto === cid ? " ativo" : ""}${sn ? " pend" : ""}" data-aba-tk="${esc(cid)}" data-sinal="${sn}" title="${esc((c.cliente_nome || "") + " · chamado " + (c.cliente_codigo || cid))}"><span class="nm">${esc(ini(c.cliente_nome || cid))}</span><span class="x" data-fechar="${esc(cid)}" title="Fechar aba">×</span></button>`;
+    if (ehApp(cid)) return `<button type="button" class="aba-tk app curta${S.aberto === cid ? " ativo" : ""}${sn ? " pend" : ""}" data-aba-tk="${esc(cid)}" data-sinal="${sn}" title="${esc((c.cliente_nome || "") + " · chamado " + (c.cliente_codigo || cid))}"><span class="nm">${esc(nome.charAt(0).toUpperCase() + nome.slice(1).toLowerCase())}</span><span class="x" data-fechar="${esc(cid)}" title="Fechar aba">×</span></button>`;
     return `<button type="button" class="aba-tk${ehApp(cid) ? " app" : ""}${S.aberto === cid ? " ativo" : ""}${sn ? " pend" : ""}" data-aba-tk="${esc(cid)}" data-sinal="${sn}" title="${esc((c.cliente_nome || "") + " · chamado " + (c.cliente_codigo || cid))}">
       ${sn ? `<span class="pisca"></span>` : ""}<span class="nm"><small>${ehApp(cid) ? "📱" : "#"}${esc(String(c.cliente_codigo || cid).slice(0, 8))}</small>${esc(nome)}${(c.solsAb || []).length > 1 ? ` <small>· ${c.solsAb.length}</small>` : ""}</span><span class="x" data-fechar="${esc(cid)}" title="Fechar aba">×</span></button>`; };
   const app = S.abas.filter(ehApp).sort((a, b) => (sinal(info(b)) ? 1 : 0) - (sinal(info(a)) ? 1 : 0));   // quem respondeu vem primeiro
@@ -1117,7 +1118,7 @@ async function telaCliente(m, cid) {
           <p class="dica" style="margin-top:4px">Registrar: o cliente vê no app · Nota interna: o cliente nunca vê · Concluir: finaliza a solicitação.</p>
         </div>` : ""}`}
       </div>` : ""}
-      ${fechadas.length ? `<details style="margin-top:6px"><summary class="dica" style="cursor:pointer">Concluídas (${fechadas.length})</summary><div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">${fechadas.slice().sort((a, b) => fimDe(b).localeCompare(fimDe(a))).map(cartao).join("")}</div></details>` : ""}`,
+      ${fechadas.length ? `<details id="solConcl" style="margin-top:6px"${S.concAberta ? " open" : ""}><summary class="dica" style="cursor:pointer">Concluídas (${fechadas.length})</summary><div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">${fechadas.slice().sort((a, b) => fimDe(b).localeCompare(fimDe(a))).map(cartao).join("")}</div></details>` : ""}`,
     cli: `<dl class="ficha"><dt>Nome</dt><dd>${esc(D.cliente.nome || "—")}</dd><dt>Chamado</dt><dd>nº ${esc(D.cliente.codigo || "—")}</dd><dt>Telefone</dt><dd>${esc(D.cliente.telefone || "não informado")}</dd><dt>Dono</dt><dd>${temDono ? esc(nomeU(D.dono[0])) : "ninguém"}</dd></dl>
       ${erpBloco(sel, D.erp)}`,
   };
@@ -1285,6 +1286,7 @@ function ligarCliente(m, D, sel, chat, abertas) {
   const pm = $("#paraMim"); if (pm) pm.onclick = async () => { try { await assumirCliente(cid, S.e.eu.usuario); ok("O cliente agora está com você."); await recarregarDet(); } catch (e) { falha(e); } };
   const tr = $("#transf"); if (tr) tr.onclick = () => popupTransferir([cid], recarregarDet);
   const pr = $("#prio"); if (pr) pr.onchange = async () => { try { await chamar(tidUrl(sel.id) + "/alterar", { method: "POST", body: { prioridade: pr.value } }); await recarregarDet(); } catch (e) { falha(e); } };
+  const dc = $("#solConcl"); if (dc) dc.ontoggle = () => { S.concAberta = dc.open; };
   m.querySelectorAll("[data-sol]").forEach((b) => (b.onclick = () => {
     const s = D.solicitacoes.find((x) => x.id === b.dataset.sol);
     if (s && !ABERTOS.includes(s.status)) return popupSolicitacao(s, D);   // concluída (solicitação ou chat): abre em popup — fecha e abre outra
@@ -1475,12 +1477,12 @@ function popupSolicitacao(s, D) {
   const rot = s.chat ? "📱 Chat do app" + (s.assunto ? " · " + s.assunto : "") : (s.motivo_filho || s.assunto || "Solicitação") + (s.erp_pedido_numero ? " #" + s.erp_pedido_numero : "");
   const desde = s.chat ? "" : String(s.criado_em || "");   // chat: a conversa inteira
   const reg = [{ tipo: s.chat || (s.origem === "app" && !s.convertido_de_chat) ? "app" : "abertura", autor: s.solicitante_nome || nomeU(s.aberto_por) || (s.chat ? "Cliente" : "Abertura"), data: s.chat ? (s.chat_iniciado_em || s.criado_em) : s.criado_em, texto: s.descricao || "" }]
-    .concat((s.comentarios || []).filter((c) => String(c.data || "") >= desde).map((c) => ({ tipo: tipoMsg(c), autor: c.autor, data: c.data, texto: c.texto })));
+    .concat((s.comentarios || []).filter((c) => String(c.data || "") >= desde).map((c) => ({ tipo: tipoMsg(c), autor: c.autor, data: c.data, texto: c.texto, anexos: c.anexos })));
   const pend = s.solicitacoes_setor || [], resp = Object.fromEntries(pend.filter((x) => x.tipo === "resposta").map((x) => [x.pedido_id, x]));
   const peds = pend.filter((x) => x.tipo === "pedido");
   A.modal({ titulo: rot, icone: "lista", cor: corSol(s.cor), largura: 760,
     html: `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">${etqSt(s.status)}<span class="dica">${esc(s.motivo_pai || "não classificado")}${s.etapa_atual ? " › " + esc(String(s.etapa_atual).split(" › ").slice(1).join(" › ") || s.etapa_atual) : ""}${s.departamento ? " · " + esc(s.departamento) : ""} · aberta ${dh(s.criado_em)} · atualizada ${dh(s.atualizado_em)}</span></div>
-      <div class="registro" id="popReg" style="--c:${corSol(s.cor)};max-height:52vh;overflow:auto;display:flex;flex-direction:column;gap:6px">${reg.map((x) => `<div class="msg ${CLS_TIPO[x.tipo] || x.tipo}" style="--sol:${corSol(s.cor)}"><span class="q">${ROT_TIPO[x.tipo] ? `<b>${ROT_TIPO[x.tipo]}</b> · ` : ""}${esc(x.autor || "")} · ${dh(x.data)}</span>${txtRico(x.texto)}${anxRico(x.anexos, sel.id)}</div>`).join("")}</div>
+      <div class="registro" id="popReg" style="--c:${corSol(s.cor)};max-height:52vh;overflow:auto;display:flex;flex-direction:column;gap:6px">${reg.map((x) => `<div class="msg ${CLS_TIPO[x.tipo] || x.tipo}" style="--sol:${corSol(s.cor)}"><span class="q">${ROT_TIPO[x.tipo] ? `<b>${ROT_TIPO[x.tipo]}</b> · ` : ""}${esc(x.autor || "")} · ${dh(x.data)}</span>${txtRico(x.texto)}${anxRico(x.anexos, s.id)}</div>`).join("")}</div>
       ${peds.length ? `<div class="sec">Pedidos de ajuda</div>${peds.map((p) => { const r = resp[p.id]; return `<div class="pend-it ${r ? "ok" : ""}"><b>${esc(p.setor_origem)} → ${esc(p.setor_destino)}</b> · ${dh(p.solicitado_em)} · ${esc(p.solicitado_por_nome || "")}<br>${esc(p.mensagem || "")}${r ? `<p class="dica" style="margin-top:4px">✅ ${esc(r.respondido_por_nome || "")} · ${dh(r.respondido_em)}: ${esc(r.resposta || "")}</p>` : ""}</div>`; }).join("")}` : ""}
       ${(s.historico_etapas || []).length ? `<details style="margin-top:8px"><summary class="dica" style="cursor:pointer">Trilha de etapas (${s.historico_etapas.length})</summary>${s.historico_etapas.slice().reverse().map((h) => `<p class="dica">${dh(h.quando)} · ${esc(h.etapa)} · ${esc(h.por || "")}${h.vermelha ? ` · prazo ${d10(h.data_prevista)}` : ""}</p>`).join("")}</details>` : ""}`,
     esquerda: pode("atender") && !s.chat ? [{ rotulo: "Reabrir", classe: "btn v", acao: async () => {
