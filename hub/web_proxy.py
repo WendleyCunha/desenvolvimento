@@ -388,7 +388,13 @@ document.addEventListener("submit",function(e){
   document.body.appendChild(t); HTMLFormElement.prototype.submit.call(t);
 },true);
 var oo=window.open; window.open=function(u,n,f){ var x=u?abs(String(u)):null; if(x&&/^https?:/i.test(x)){ ir(x); return window; } return oo.apply(window,arguments); };
-["pushState","replaceState"].forEach(function(k){ var o=history[k]; history[k]=function(){ try{ return o.apply(history,arguments); }catch(_){ } }; });
+["pushState","replaceState"].forEach(function(k){ var o=history[k]; history[k]=function(){
+  /* YouTube/Vimeo trocam de página sem recarregar (o vídeo começaria a tocar AQUI, pelo hub, e trava em segundos):
+     ao ir para um vídeo, o hub abre o player oficial deles, que toca inteiro */
+  try{ var d=arguments[2]!=null?abs(String(arguments[2])):null; if(d&&VIDEO.test(d)&&d.split("#")[0]!==AQUI.split("#")[0]){ ir(d); return; } }catch(_){}
+  try{ return o.apply(history,arguments); }catch(_){ } }; });
+/* no YouTube pelo hub, a prévia que toca sozinha (passar o mouse) também trava: desliga */
+if(/(^|\.)youtube\.com$/i.test(location.hostname)||/youtube\.com/i.test(AQUI)){ try{ document.addEventListener("play",function(e){ var v=e.target; if(v&&v.tagName==="VIDEO"){ v.pause(); v.muted=true; } },true); }catch(_){} }
 /* fetch: tenta direto; se o site barrar (CORS), repete pelo hub */
 var of=window.fetch;
 if(of){ window.fetch=function(rq,op){
