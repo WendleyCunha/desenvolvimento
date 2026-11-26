@@ -304,6 +304,21 @@ button.kpi:hover{border-color:color-mix(in srgb,var(--c) 50%,transparent)}
 .aba-tk.app.ativo{background:linear-gradient(180deg,rgba(34,211,238,.22),rgba(34,211,238,.08));color:var(--txt);border-color:rgba(34,211,238,.6);box-shadow:0 -3px 0 var(--ciano) inset}
 .aba-tk.pend{border-color:var(--rosa);color:var(--txt)}
 .aba-tk.pend::after{content:attr(data-sinal);position:absolute;top:-8px;right:6px;padding:0 6px;border-radius:8px;font:700 .56rem/15px var(--sans);letter-spacing:.4px;text-transform:uppercase;background:var(--rosa);color:#fff;box-shadow:0 0 12px var(--rosa)}
+.bt-rastreio{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;margin:0 0 8px;padding:7px 10px;border-radius:10px;cursor:pointer;font:inherit;font-weight:800;letter-spacing:.06em;color:#fff!important;background:linear-gradient(135deg,#f97316,#ea580c)!important;border:1px solid rgba(255,255,255,.25)!important;animation:rastPisca 1.1s ease-in-out infinite}
+.bt-rastreio small{font-weight:600;letter-spacing:0;opacity:.9}
+.ped .bt-rastreio{margin:6px 0 2px}
+@keyframes rastPisca{0%,100%{box-shadow:0 0 0 0 rgba(249,115,22,.65);opacity:1}50%{box-shadow:0 0 14px 3px rgba(249,115,22,.55);opacity:.72}}
+/* BOLINHAS (estilo Instagram): os chats do app abertos com este atendente, na vertical à esquerda — clicar = mesma coisa que clicar na aba */
+#bolhas{position:fixed;left:8px;top:50%;transform:translateY(-50%);z-index:40;display:flex;flex-direction:column;gap:10px;padding:10px 6px;border-radius:30px;background:var(--vidro,rgba(15,23,42,.55));border:1px solid var(--vidro-borda,rgba(255,255,255,.12));backdrop-filter:blur(10px);max-height:80vh;overflow:auto;scrollbar-width:none}
+#bolhas:empty{display:none}
+body.com-bolhas .app{padding-left:64px}
+.bolinha{position:relative;width:44px;height:44px;border-radius:50%;padding:2px;border:0;cursor:pointer;flex:none;background:conic-gradient(from 210deg,#22d3ee,#8b5cf6,#f472b6,#f59e0b,#22d3ee)}
+.bolinha span{display:grid;place-items:center;width:100%;height:100%;border-radius:50%;background:var(--fundo,#0b1220);color:var(--txt);font-weight:800;font-size:.86rem;letter-spacing:.02em;overflow:hidden;border:2px solid var(--fundo,#0b1220)}
+.bolinha img{width:100%;height:100%;object-fit:cover}
+.bolinha.ativo{background:var(--ciano);box-shadow:0 0 0 2px var(--ciano),0 0 14px var(--ciano)}
+.bolinha.pend::after{content:"";position:absolute;top:0;right:0;width:11px;height:11px;border-radius:50%;background:var(--rosa);box-shadow:0 0 8px var(--rosa);animation:aurRespira 1.2s infinite}
+.bolinha.vista{background:rgba(148,163,184,.5)}
+html[data-claro] .bolinha span{background:#fff;border-color:#fff}
 .aba-tk.pend .pisca{background:var(--rosa);box-shadow:0 0 10px var(--rosa)}
 .aba-caixa{display:flex;align-items:center;gap:6px;padding:8px 12px;border-radius:12px 12px 0 0;font-size:.78rem;font-weight:700;color:var(--txt2);border:1px solid var(--vidro-borda);border-bottom:0;background:rgba(255,255,255,.03);flex:none}
 .aba-caixa.ativo{color:var(--ouro2);background:rgba(var(--ouro-rgb),.12);border-color:rgba(var(--ouro-rgb),.45);box-shadow:0 -3px 0 var(--ouro) inset}
@@ -326,12 +341,14 @@ button.kpi:hover{border-color:color-mix(in srgb,var(--c) 50%,transparent)}
     <span class="sync" id="sync"><i></i><span>…</span></span>
   </header>
   <div class="abas-tk" id="abasTk"></div>
+  <div id="bolhas" aria-label="Chats abertos com você"></div>
   <div id="cabCli"></div>
   </div>
   <main id="main"><div class="vazio"><b>Carregando…</b></div></main>
 </div>
 
 <script src="/static/aurora.js?v=6"></script>
+<script src="/static/chatfmt.js?v=1"></script>
 <script>
 (() => {
 "use strict";
@@ -468,8 +485,9 @@ function fecharAba(cid) {
 }
 /* faixa de abas: Caixa · [em atendimento no app — ciano, quem respondeu primeiro] ……… [tickets — neutros] */
 function renderAbas() {
-  const el = $("#abasTk");
-  if (!S.e || S.sec !== "caixa" || !S.abas.length) { el.innerHTML = ""; return; }
+  const el = $("#abasTk"), bo = $("#bolhas");
+  if (bo.parentElement !== document.body) document.body.appendChild(bo);   // fora do bloco congelado (fixo de verdade na tela)
+  if (!S.e || S.sec !== "caixa" || !S.abas.length) { el.innerHTML = ""; bo.innerHTML = ""; document.body.classList.remove("com-bolhas"); return; }
   const info = (cid) => cliDe(cid) || (S.det?.cid === cid ? { cid, estado: "ticket", cliente_nome: S.det.cliente.nome, solsAb: [] } : { cid, estado: "concluido", solsAb: [] });
   const ehApp = (cid) => info(cid).estado === "atendimento";
   const sinal = (c) => c.app_pendente ? "respondeu" : c.nao_visto ? "novo" : "";
@@ -483,6 +501,12 @@ function renderAbas() {
     <span class="meio"></span>
     ${tks.length ? `<div class="grupo"><span class="rot">Tickets</span>${tks.map(aba).join("")}</div>` : ""}`;
   $("#abaCaixa").onclick = () => { guardarRascunho(); ir("caixa"); };
+  // bolinhas: os mesmos chats do app das abas de cima (iniciais do cliente; com foto do app, mostra a foto)
+  const ini = (n) => { const p = String(n || "").trim().split(/\s+/).filter(Boolean); return ((p[0] || "?")[0] + (p.length > 1 ? p[p.length - 1][0] : "")).toUpperCase(); };
+  bo.innerHTML = app.map((cid) => { const c = info(cid), sn = sinal(c);
+    return `<button type="button" class="bolinha${S.aberto === cid ? " ativo" : ""}${sn ? " pend" : ""}" data-bolha="${esc(cid)}" title="${esc((c.cliente_nome || cid) + (sn === "respondeu" ? " · respondeu" : ""))}"><span>${c.foto ? `<img src="${esc(c.foto)}" alt="">` : esc(ini(c.cliente_nome || cid))}</span></button>`; }).join("");
+  document.body.classList.toggle("com-bolhas", app.length > 0);
+  bo.querySelectorAll("[data-bolha]").forEach((b) => (b.onclick = () => { if (S.aberto === b.dataset.bolha) return; guardarRascunho(); abrirTicket(b.dataset.bolha); }));
   el.querySelectorAll("[data-aba-tk]").forEach((b) => {
     b.onclick = (ev) => {
       const f = ev.target.closest("[data-fechar]");
@@ -1035,14 +1059,14 @@ async function telaCliente(m, cid) {
   const tl = [];
   for (const s of sols) {
     tl.push({ s, tipo: s.origem === "app" ? "app" : "abertura", autor: s.solicitante_nome || nomeU(s.aberto_por) || "Abertura", data: s.chat_iniciado_em || s.criado_em, texto: s.descricao || "" });
-    (s.comentarios || []).forEach((c) => tl.push({ s, tipo: tipoMsg(c), autor: c.autor, data: c.data, texto: c.texto, escrito_em: c.escrito_em }));
+    (s.comentarios || []).forEach((c) => tl.push({ s, tipo: tipoMsg(c), autor: c.autor, data: c.data, texto: c.texto, escrito_em: c.escrito_em, anexos: c.anexos }));
   }
   tl.sort((a, b) => String(a.data || "").localeCompare(String(b.data || "")));
-  const balao = (x) => `<div class="msg ${CLS_TIPO[x.tipo] || x.tipo}" style="--sol:${corSol(x.s.cor)}"><span class="q"><i class="tag-sol" style="--c:${corSol(x.s.cor)}">${esc(rot(x.s))}</i> ${ROT_TIPO[x.tipo] ? `<b>${ROT_TIPO[x.tipo]}</b> · ` : ""}${esc(x.autor || "")} · ${dh(x.data)}${x.escrito_em ? ` · escrito sem internet às ${dh(x.escrito_em)}` : ""}</span>${esc(x.texto || "")}</div>`;
+  const balao = (x) => `<div class="msg ${CLS_TIPO[x.tipo] || x.tipo}" style="--sol:${corSol(x.s.cor)}"><span class="q"><i class="tag-sol" style="--c:${corSol(x.s.cor)}">${esc(rot(x.s))}</i> ${ROT_TIPO[x.tipo] ? `<b>${ROT_TIPO[x.tipo]}</b> · ` : ""}${esc(x.autor || "")} · ${dh(x.data)}${x.escrito_em ? ` · escrito sem internet às ${dh(x.escrito_em)}` : ""}</span>${txtRico(x.texto)}${anxRico(x.anexos, x.s.id)}</div>`;
   // Registro da solicitação selecionada (o que o cliente vê no app = contato/atualização)
   const desde = String(sel.criado_em || "");
   const registro = sel.chat ? [] : [{ tipo: sel.origem === "app" && !sel.convertido_de_chat ? "app" : "abertura", autor: sel.solicitante_nome || nomeU(sel.aberto_por) || "Abertura", data: sel.criado_em, texto: sel.descricao || "" }]
-    .concat((sel.comentarios || []).filter((c) => String(c.data || "") >= desde).map((c) => ({ tipo: tipoMsg(c), autor: c.autor, data: c.data, texto: c.texto })));
+    .concat((sel.comentarios || []).filter((c) => String(c.data || "") >= desde).map((c) => ({ tipo: tipoMsg(c), autor: c.autor, data: c.data, texto: c.texto, anexos: c.anexos })));
   const filhos = Object.entries(arv[sel.motivo_pai] || {}).filter(([, i]) => i.ativo !== false);
   const pend = sel.solicitacoes_setor || [], pedidosAb = pend.filter((x) => x.tipo === "pedido"), resp = Object.fromEntries(pend.filter((x) => x.tipo === "resposta").map((x) => [x.pedido_id, x]));
   const selAberta = ABERTOS.includes(sel.status), caminho = String(sel.etapa_atual || "").split(" › ");
@@ -1084,7 +1108,7 @@ async function telaCliente(m, cid) {
         </div>` : ""}`}
       </div>` : ""}
       ${fechadas.length ? `<details style="margin-top:6px"><summary class="dica" style="cursor:pointer">Concluídas (${fechadas.length})</summary><div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">${fechadas.slice().sort((a, b) => fimDe(b).localeCompare(fimDe(a))).map(cartao).join("")}</div></details>` : ""}`,
-    cli: `<dl class="ficha"><dt>Nome</dt><dd>${esc(D.cliente.nome || "—")}</dd><dt>Chamado</dt><dd>nº ${esc(D.cliente.codigo || "—")}</dd><dt>Telefone</dt><dd>${esc(D.cliente.telefone || "não informado")}</dd><dt>Dono</dt><dd>${temDono ? esc(nomeU(D.dono[0])) : "ninguém"}</dd></dl>
+    cli: `${btRastreio((D.erp?.pedidos || []).filter((p) => p.rastreio))}<dl class="ficha"><dt>Nome</dt><dd>${esc(D.cliente.nome || "—")}</dd><dt>Chamado</dt><dd>nº ${esc(D.cliente.codigo || "—")}</dd><dt>Telefone</dt><dd>${esc(D.cliente.telefone || "não informado")}</dd><dt>Dono</dt><dd>${temDono ? esc(nomeU(D.dono[0])) : "ninguém"}</dd></dl>
       ${erpBloco(sel, D.erp)}`,
   };
   // cabeçalho FINO (fica no bloco congelado, lá em cima)
@@ -1175,6 +1199,21 @@ function caberNaTela() {
 function medirCongelado() { const c = document.getElementById("congelado"); if (c) document.documentElement.style.setProperty("--alt-cong", c.offsetHeight + "px"); }
 addEventListener("resize", () => { medirCongelado(); if (S.gradeCli) { clearTimeout(S._rz); S._rz = setTimeout(caberNaTela, 120); } });
 
+/* mensagens com emoji, *negrito*, links e anexos (mesmo formato no app do cliente, no WROUTER e no app do motorista) */
+const txtRico = (t) => (window.ChatFmt ? ChatFmt.fmt(t || "") : esc(t || ""));
+const anxRico = (l, tid) => (window.ChatFmt && l && l.length ? ChatFmt.anexos(l, (id) => `/api/tickets/anexo/${id}?t=${encodeURIComponent(tid)}`) : "");
+/* RASTREIO: pedido na rua com a frota (sem desfecho) → botão piscando; abre o MESMO link de acompanhamento do cliente */
+function btRastreio(peds, noPedido) {
+  if (!peds.length) return "";
+  return peds.map((p) => `<button type="button" class="bt-rastreio" data-rastreio="${esc(p.rastreio)}" data-rnum="${esc(p.numero)}" title="Abrir o rastreio deste cliente (o mesmo link que ele usa)">📍 RASTREIO${noPedido ? "" : ` <small>pedido #${esc(p.numero)}</small>`}</button>`).join("");
+}
+function abrirRastreio(link, num) {
+  A.modal({ titulo: `Rastreio · pedido #${num}`, icone: "mapa", cor: "#f97316", largura: 900,
+    html: `<iframe src="${esc(link)}" title="Rastreio da entrega" style="width:100%;height:72vh;border:0;border-radius:12px;background:transparent" allow="geolocation"></iframe>
+      <p class="dica" style="margin-top:6px">É o mesmo acompanhamento que o cliente vê. <a href="${esc(link)}" target="_blank" rel="noopener">Abrir em outra aba ↗</a></p>`,
+    botoes: [{ rotulo: "Fechar" }] });
+}
+document.addEventListener("click", (ev) => { const b = ev.target.closest("[data-rastreio]"); if (b) { ev.preventDefault(); abrirRastreio(b.dataset.rastreio, b.dataset.rnum); } });
 function erpBloco(t, erp) {
   if (!erp) return "";
   if (erp.sem_acesso) return `<div class="sec">Pedidos (ERP)</div><p class="dica">Sem acesso ao ERP.</p>`;
@@ -1193,6 +1232,7 @@ function erpBloco(t, erp) {
       <div class="t1"><b>${p.tipo === "troca" ? "Troca" : "Pedido"} #${p.numero}</b>${etq((ERP_ST[p.status] || [p.status])[0], (ERP_ST[p.status] || ["", "#888"])[1])}${p.pendencia === "ausente" ? etq("ausente — reagendar", "#fb923c") : ""}${p.pendencia === "reposicao" ? etq("reposição de avaria", "#fb7185") : ""}${p.sem_estoque ? etq("sem estoque", "#fb7185") : ""}</div>
       ${erp.pode.palavra && p.status !== "rascunho" ? `<p class="dica" style="margin-top:4px">🔑 Palavra-chave: ${p.palavra_chave ? `<b style="color:var(--ouro2);letter-spacing:1px">${esc(p.palavra_chave)}</b>` : "<i>sem palavra</i>"} · <a href="#" data-nova-palavra="${p.id}">${p.palavra_chave ? "gerar outra" : "gerar"}</a></p>` : ""}
       <p class="dica" style="margin-top:3px">${d10(p.criado_em)}${p.agendamento ? ` · entrega ${d10(p.agendamento.data)} ${esc(p.agendamento.janela || "")}` : ""}${p.carga ? ` · carga ${esc(p.carga)}` : ""} · <a href="/api/erp/pedidos/${encodeURIComponent(p.id)}/pdf" target="_blank" rel="noopener">⬇ PDF do pedido</a></p>
+      ${p.rastreio ? btRastreio([p], true) : ""}
       <ul>${p.itens.map((i) => `<li>${i.qtd}× ${esc(i.nome)}</li>`).join("")}</ul>
       ${p.tentativas.length ? `<p class="dica">Tentativas: ${p.tentativas.map((x) => `${x.n}ª ${esc(x.resultado)} ${d10(x.data)}${x.motivo ? " (" + esc(x.motivo) + ")" : ""}`).join(" · ")}</p>` : ""}
       ${p.nf ? `<p class="dica">🧾 NF ${esc(p.nf.numero)}${p.nf.serie ? " série " + esc(p.nf.serie) : ""}${p.nf.etiqueta ? ` · <a href="/api/erp/pedidos/${encodeURIComponent(p.id)}/etiqueta" target="_blank" rel="noopener">NF simplificada</a>` : ""}</p>` : ""}
@@ -1237,10 +1277,12 @@ function ligarCliente(m, D, sel, chat, abertas) {
     if (st === "cancelado" && !(await A.confirmar("Cancelar esta solicitação?", { perigo: true, rotulo: "Cancelar solicitação" }))) return;
     try { await chamar(tidUrl(sel.id) + "/alterar", { method: "POST", body: { status: st } }); ok("Situação: " + (ST_INFO[st] || [st])[0]); await recarregarDet(); } catch (e) { falha(e); }
   }));
+  const barraChat = window.ChatFmt && $("#txtChat") ? ChatFmt.barra($("#txtChat"), { chave: "cx:" + cid }) : null;
   const registrar = async (campo, alvoId, tipo, chave, status) => {
-    const txt = $("#" + campo).value.trim(); if (!txt) return;
-    const body = { texto: txt, tipo }; if (status) body.status = status;
-    try { await chamar(tidUrl(alvoId) + "/comentar", { method: "POST", body }); delete S.rasc[chave]; await recarregarDet(); } catch (e) { falha(e); }
+    const txt = $("#" + campo).value.trim(), anx = campo === "txtChat" && barraChat ? barraChat.pegar() : [];
+    if (!txt && !anx.length) return;
+    const body = { texto: txt, tipo }; if (status) body.status = status; if (anx.length) body.anexos = anx;
+    try { await chamar(tidUrl(alvoId) + "/comentar", { method: "POST", body }); delete S.rasc[chave]; if (anx.length) barraChat.limpar(); await recarregarDet(); } catch (e) { falha(e); }
   };
   // solicitação: 👁 Registrar (o cliente vê; a situação vai para "Em andamento") · 🔒 Nota interna (nunca vê) · ✅ Concluir (finaliza)
   const tx = $("#txt");
@@ -1266,7 +1308,7 @@ function ligarCliente(m, D, sel, chat, abertas) {
   const ip = $("#icPend"); if (ip) ip.onclick = () => popupPendencias(sel);
   const it = $("#icTab"); if (it) it.onclick = () => popupTabulacao(sel);
   const ra = $("#respApp");   // chat: 📱 Responder no app (o cliente vê) · 🔒 Nota interna (só a equipe)
-  if (ra) { const vai = (tipo) => { if (!$("#txtChat").value.trim()) { A.toast("Escreva a mensagem."); $("#txtChat").focus(); return; } registrar("txtChat", chat.id, tipo, cid + ":chat"); };
+  if (ra) { const vai = (tipo) => { if (!$("#txtChat").value.trim() && !(barraChat && barraChat.tem())) { A.toast("Escreva a mensagem."); $("#txtChat").focus(); return; } registrar("txtChat", chat.id, tipo, cid + ":chat"); };
     ra.onclick = () => vai("resposta"); $("#notaChat").onclick = () => vai("nota");
     $("#txtChat").onkeydown = (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) vai("resposta"); }; }
   // concluir o chat: anexar ao chamado OU virar solicitação
@@ -1420,7 +1462,7 @@ function popupSolicitacao(s, D) {
   const peds = pend.filter((x) => x.tipo === "pedido");
   A.modal({ titulo: rot, icone: "lista", cor: corSol(s.cor), largura: 760,
     html: `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">${etqSt(s.status)}<span class="dica">${esc(s.motivo_pai || "não classificado")}${s.etapa_atual ? " › " + esc(String(s.etapa_atual).split(" › ").slice(1).join(" › ") || s.etapa_atual) : ""}${s.departamento ? " · " + esc(s.departamento) : ""} · aberta ${dh(s.criado_em)} · atualizada ${dh(s.atualizado_em)}</span></div>
-      <div class="registro" id="popReg" style="--c:${corSol(s.cor)};max-height:52vh;overflow:auto;display:flex;flex-direction:column;gap:6px">${reg.map((x) => `<div class="msg ${CLS_TIPO[x.tipo] || x.tipo}" style="--sol:${corSol(s.cor)}"><span class="q">${ROT_TIPO[x.tipo] ? `<b>${ROT_TIPO[x.tipo]}</b> · ` : ""}${esc(x.autor || "")} · ${dh(x.data)}</span>${esc(x.texto || "")}</div>`).join("")}</div>
+      <div class="registro" id="popReg" style="--c:${corSol(s.cor)};max-height:52vh;overflow:auto;display:flex;flex-direction:column;gap:6px">${reg.map((x) => `<div class="msg ${CLS_TIPO[x.tipo] || x.tipo}" style="--sol:${corSol(s.cor)}"><span class="q">${ROT_TIPO[x.tipo] ? `<b>${ROT_TIPO[x.tipo]}</b> · ` : ""}${esc(x.autor || "")} · ${dh(x.data)}</span>${txtRico(x.texto)}${anxRico(x.anexos, sel.id)}</div>`).join("")}</div>
       ${peds.length ? `<div class="sec">Pedidos de ajuda</div>${peds.map((p) => { const r = resp[p.id]; return `<div class="pend-it ${r ? "ok" : ""}"><b>${esc(p.setor_origem)} → ${esc(p.setor_destino)}</b> · ${dh(p.solicitado_em)} · ${esc(p.solicitado_por_nome || "")}<br>${esc(p.mensagem || "")}${r ? `<p class="dica" style="margin-top:4px">✅ ${esc(r.respondido_por_nome || "")} · ${dh(r.respondido_em)}: ${esc(r.resposta || "")}</p>` : ""}</div>`; }).join("")}` : ""}
       ${(s.historico_etapas || []).length ? `<details style="margin-top:8px"><summary class="dica" style="cursor:pointer">Trilha de etapas (${s.historico_etapas.length})</summary>${s.historico_etapas.slice().reverse().map((h) => `<p class="dica">${dh(h.quando)} · ${esc(h.etapa)} · ${esc(h.por || "")}${h.vermelha ? ` · prazo ${d10(h.data_prevista)}` : ""}</p>`).join("")}</details>` : ""}`,
     esquerda: pode("atender") && !s.chat ? [{ rotulo: "Reabrir", classe: "btn v", acao: async () => {

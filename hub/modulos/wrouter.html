@@ -219,6 +219,7 @@ html .btn.ic .ponto{display:block!important}
   <main id="main"></main>
 </div>
 <script src="/static/aurora.js?v=6"></script>
+<script src="/static/chatfmt.js?v=1"></script>
 <script>
 (() => {
 "use strict";
@@ -508,10 +509,10 @@ function falarCliente(g, p, nome, num) {
   A.modal({ titulo: `Falar com o cliente · pedido #${num}`, icone: "balao", cor: "#22d3ee", largura: 460,
     html: `<p class="dica" style="margin-top:0">A mensagem chega no <b>app do cliente</b> (aba Atendimento) com notificação no celular. A resposta dele aparece no CX.</p>
       <textarea class="entrada" id="falTxt" rows="4" style="width:100%">Olá${nm ? ", " + esc(nm) : ""}! Aqui é da central de entregas, sobre o seu pedido #${esc(num)}. </textarea>`,
-    aoAbrir: (cx) => { const t = $("#falTxt", cx); if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); } },
+    aoAbrir: (cx) => { const t = $("#falTxt", cx); if (t) { ChatFmt.barra(t, { chave: `wr:cli:${g}:${p}` }); t.focus(); t.setSelectionRange(t.value.length, t.value.length); } },
     botoes: [{ rotulo: "Cancelar" }, { rotulo: "Chamar no app", classe: "btn", icone: "check", principal: true, acao: async (cx) => {
-      const texto = ($("#falTxt", cx).value || "").trim(); if (!texto) return false;
-      try { await api(`/cargas/${g}/pedido/${p}/falar-cliente`, { method: "POST", body: { texto } }); setTimeout(() => abrirCliente(g, p, { lado: "cli" }), 50); }
+      const texto = ($("#falTxt", cx).value || "").trim(), b = ChatFmt.barra($("#falTxt", cx), { chave: `wr:cli:${g}:${p}` }), anexos = b.pegar(); if (!texto && !anexos.length) return false;
+      try { await api(`/cargas/${g}/pedido/${p}/falar-cliente`, { method: "POST", body: { texto, ...(anexos.length ? { anexos } : {}) } }); b.limpar(); setTimeout(() => abrirCliente(g, p, { lado: "cli" }), 50); }
       catch (e) { falha(e); return false; } } }] });
 }
 
@@ -560,7 +561,7 @@ async function abrirCliente(cid, pid, opts = {}) {
   }
   const corpoCli = () => `<div class="lado-tit">📱 Cliente — conversa pelo app ${cli && cli.ativo ? etq("aberta", "#3b82f6") : etq("finalizada", "#64748b")}${btMot()}</div>
     ${cli && cli.sem_app ? '<p class="sub">Este cliente ainda não tem o app. Use o WhatsApp.</p>' : ""}
-    <div class="msgs" id="clMsgs">${((cli && cli.mensagens) || []).map((m) => `<div class="mc ${m.de === "central" ? "cen" : ""}"><small>${m.de === "central" ? "Central" + (m.autor ? " · " + esc(m.autor) : "") : "Cliente"} · ${dhBR(m.data)}</small>${esc(m.texto)}</div>`).join("") || '<p class="sub">Sem mensagens.</p>'}</div>
+    <div class="msgs" id="clMsgs">${((cli && cli.mensagens) || []).map((m) => `<div class="mc ${m.de === "central" ? "cen" : ""}"><small>${m.de === "central" ? "Central" + (m.autor ? " · " + esc(m.autor) : "") : "Cliente"} · ${dhBR(m.data)}</small>${ChatFmt.fmt(m.texto)}${ChatFmt.anexos(m.anexos, (id) => `${API}/cargas/${cid}/pedido/${pid}/cliente-anexo/${id}`)}</div>`).join("") || '<p class="sub">Sem mensagens.</p>'}</div>
     ${cli && !cli.sem_app ? `<div style="display:flex;gap:8px;margin-top:8px"><input class="entrada" id="clTxt" placeholder="${cli.ativo ? "Responder ao cliente" : "Chamar o cliente de novo"}" style="flex:1"><button type="button" class="btn azul" id="clEnv">${svg("check")}${cli.ativo ? "Enviar" : "Chamar"}</button></div>
       ${cli.ativo ? `<button type="button" class="btn v p" id="clFim" style="margin-top:8px;border-color:#3b82f6;color:#93c5fd">Finalizar com o cliente</button><span class="sub">Finalizar aqui não encerra a conversa com o motorista.</span>` : ""}` : ""}`;
   const end = d.endereco || {}, endTxt = [[end.logradouro, end.numero].filter(Boolean).join(", "), end.complemento, end.bairro, [end.cidade, end.uf].filter(Boolean).join("/")].filter(Boolean).join(" · ");
@@ -574,7 +575,7 @@ async function abrirCliente(cid, pid, opts = {}) {
       <div class="bloco pecas-bt" id="cvPecas" title="Ver todas as peças"><h3>📦 Peças (${d.itens.reduce((t, i) => t + (+i.qtd || 0), 0)})</h3>${d.itens.slice(0, 2).map((i) => `<p class="corta" style="-webkit-line-clamp:1">${i.qtd}× ${esc(i.desc)}</p>`).join("")}${d.itens.length > 2 ? `<span class="sub">+ ${d.itens.length - 2} item(ns) · clique para ver tudo</span>` : `<span class="sub">clique para detalhes</span>`}${d.recolher.length ? `<span class="sub">♻ recolher ${d.recolher.length}</span>` : ""}</div></div>
       <div class="bloco chat-mot"><h3>💬 Conversa com o motorista ${a ? `${MOTV(a.motivo) ? `<span class="motivo-gde" style="margin-left:6px">${esc(MOTV(a.motivo))}</span>` : ""} ${relogio(a)}` : ""}</h3>
         ${(d.presentes || []).filter((x) => x.login !== d.eu.login).length ? `<div class="aviso at">👀 ${d.presentes.filter((x) => x.login !== d.eu.login).map((x) => esc(x.por)).join(", ")} também está nesta conversa.</div>` : ""}
-        <div class="msgs" id="cvMsgs">${(ch.atendimentos || []).flatMap((at) => at.msgs).map((m) => m.de === "sistema" ? `<div class="mg sis">${esc(m.txt)} · ${dhBR(m.em)}</div>` : `<div class="mg ${m.de === "frota" ? "frota" : ""}"><small>${esc(m.de === "frota" ? "Frota · " + m.nome : "Motorista · " + m.nome)} · ${dhBR(m.em)}</small>${m.foto ? `<a href="${API}/foto/${esc(m.foto)}" target="_blank"><img src="${API}/foto/${esc(m.foto)}" alt="foto"></a>` : ""}${m.txt && m.txt !== "📷 Foto" ? esc(m.txt) : ""}</div>`).join("") || '<p class="sub">Sem conversa com o motorista neste cliente.</p>'}</div>
+        <div class="msgs" id="cvMsgs">${(ch.atendimentos || []).flatMap((at) => at.msgs).map((m) => m.de === "sistema" ? `<div class="mg sis">${esc(m.txt)} · ${dhBR(m.em)}</div>` : `<div class="mg ${m.de === "frota" ? "frota" : ""}"><small>${esc(m.de === "frota" ? "Frota · " + m.nome : "Motorista · " + m.nome)} · ${dhBR(m.em)}</small>${m.foto ? `<a href="${API}/foto/${esc(m.foto)}" target="_blank"><img src="${API}/foto/${esc(m.foto)}" alt="foto"></a>` : ""}${m.txt && m.txt !== "📷 Foto" ? ChatFmt.fmt(m.txt) : ""}${ChatFmt.anexos(m.anexos, (id) => `${API}/cargas/${cid}/pedido/${pid}/anexo/${id}`)}</div>`).join("") || '<p class="sub">Sem conversa com o motorista neste cliente.</p>'}</div>
         ${d.pode_tratar ? `<div style="display:flex;gap:8px;margin-top:8px"><input class="entrada" id="cvTxt" placeholder="${a ? "Responder ao motorista" : "Chamar o motorista (abre a conversa)"}" style="flex:1"><button type="button" class="btn" id="cvEnv">${svg("check")}${a ? "Enviar" : "Chamar"}</button>${a ? `<button type="button" class="btn perigo" id="cvFim">Encerrar</button>` : ""}</div>` : ""}</div>
 `;
   };
@@ -586,8 +587,9 @@ async function abrirCliente(cid, pid, opts = {}) {
     aoFechar: () => { clearInterval(timer); api(`/cargas/${cid}/pedido/${pid}/presenca`, { method: "POST", body: { sair: true } }).catch(() => {}); if (V.aba === "aovivo") rAoVivo(true); } });
   function ligarCli(cx) {
     const l = $("#clMsgs", cx); if (l) l.scrollTop = l.scrollHeight;
-    const env = $("#clEnv", cx); if (env) env.onclick = async () => { const t = $("#clTxt", cx).value.trim(); if (!t) return;
-      try { await api(`/cargas/${cid}/pedido/${pid}/falar-cliente`, { method: "POST", body: { texto: t } }); $("#clTxt", cx).value = ""; await atualizarCli(); } catch (e) { falha(e); }
+    const bcl = $("#clTxt", cx) ? ChatFmt.barra($("#clTxt", cx), { chave: `wr:cli:${cid}:${pid}`, junto: $("#clTxt", cx).parentElement }) : null;
+    const env = $("#clEnv", cx); if (env) env.onclick = async () => { const t = $("#clTxt", cx).value.trim(), anx = bcl ? bcl.pegar() : []; if (!t && !anx.length) return;
+      try { await api(`/cargas/${cid}/pedido/${pid}/falar-cliente`, { method: "POST", body: { texto: t, ...(anx.length ? { anexos: anx } : {}) } }); $("#clTxt", cx).value = ""; if (bcl) bcl.limpar(); await atualizarCli(); } catch (e) { falha(e); }
       const n = $("#clTxt", cx); if (n) n.focus(); };
     const ti = $("#clTxt", cx); if (ti) ti.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); $("#clEnv", cx).click(); } };
     const fim = $("#clFim", cx); if (fim) fim.onclick = async () => { if (!confirm("Finalizar a conversa com o CLIENTE? A conversa com o motorista continua.")) return;
@@ -613,8 +615,9 @@ async function abrirCliente(cid, pid, opts = {}) {
     // 💬 dentro da ficha: abre o lado do cliente (azul) nesta mesma tela
     $$("[data-falar]", cx).forEach((b) => (b.onclick = (ev) => { ev.stopPropagation(); mostrar("cli", cx);
       const t = $("#clTxt", cx); if (t) { if (!t.value && !(cli && cli.ativo)) t.value = `Olá! Aqui é da central de entregas, sobre o seu pedido #${d.numero}. `; t.focus(); } }));
-    const env = $("#cvEnv", cx); if (env) env.onclick = async () => { const t = $("#cvTxt", cx).value.trim(); if (!t) return;
-      try { await api(`/cargas/${cid}/pedido/${pid}/chat`, { method: "POST", body: { texto: t, iniciar: !d.chat_det.atual } }); await atualizar(true); } catch (e) { falha(e); }
+    const bmo = $("#cvTxt", cx) ? ChatFmt.barra($("#cvTxt", cx), { chave: `wr:mot:${cid}:${pid}`, junto: $("#cvTxt", cx).parentElement }) : null;
+    const env = $("#cvEnv", cx); if (env) env.onclick = async () => { const t = $("#cvTxt", cx).value.trim(), anx = bmo ? bmo.pegar() : []; if (!t && !anx.length) return;
+      try { await api(`/cargas/${cid}/pedido/${pid}/chat`, { method: "POST", body: { texto: t, iniciar: !d.chat_det.atual, ...(anx.length ? { anexos: anx } : {}) } }); if (bmo) bmo.limpar(); await atualizar(true); } catch (e) { falha(e); }
       const n = $("#cvTxt", cx); if (n) n.focus(); };
     const ti = $("#cvTxt", cx); if (ti) ti.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); $("#cvEnv", cx).click(); } };
     const fim = $("#cvFim", cx); if (fim) fim.onclick = async () => { const n = prompt("Encerrar o atendimento. Observação (opcional):", ""); if (n === null) return;

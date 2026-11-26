@@ -219,6 +219,7 @@ html[data-claro] .pref.off small{color:#be123c}
 <div class="app" id="app"><div class="carregando"><span id="logo0"></span></div></div>
 
 <script src="/static/aurora.js?v=6"></script>
+<script src="/static/chatfmt.js?v=1"></script>
 <script src="/static/vendor/qrcode.js" defer></script>
 <script>
 (() => {
@@ -523,7 +524,7 @@ function mostrarVale(x) {
 function bolhas(msgs, pendentes = []) {
   let dia = "";
   const sep = (d) => { d = String(d || "").slice(0, 10); if (!d || d === dia) return ""; dia = d; return `<div class="dia">${esc(dataLonga(d))}</div>`; };
-  return msgs.map((x) => sep(x.data) + `<div class="bolha ${x.de === "cliente" ? "cli" : "central"}">${x.de !== "cliente" ? `<span class="quem">${esc(x.autor ? x.autor + " · Central" : "Central")}</span>` : ""}${esc(x.texto)}<small>${hora(x.data)}</small></div>`).join("")
+  return msgs.map((x) => sep(x.data) + `<div class="bolha ${x.de === "cliente" ? "cli" : "central"}">${x.de !== "cliente" ? `<span class="quem">${esc(x.autor ? x.autor + " · Central" : "Central")}</span>` : ""}${window.ChatFmt ? ChatFmt.fmt(x.texto) + ChatFmt.anexos(x.anexos, (id) => `${window.HUB_BASE}/api/cliente/anexo/${id}`) : esc(x.texto)}<small>${hora(x.data)}</small></div>`).join("")
     + pendentes.map((it) => `<div class="bolha cli pend">${esc(it.body.texto)}<small>⏳ aguardando internet · ${hora(it.quando)}</small></div>`).join("");
 }
 function compositor(ph) { return `<div class="compor"><div class="caixa vidro vidro-borda-viva"><textarea id="txt" rows="1" maxlength="2000" placeholder="${esc(ph)}" aria-label="Mensagem"></textarea><button class="btn" id="env" aria-label="Enviar" disabled>${ICO.enviar}</button></div></div>`; }

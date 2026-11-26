@@ -403,7 +403,7 @@ def mensagens_publicas(t: dict) -> list[dict]:
             continue
         de = "cliente" if c.get("tipo") == "cliente" else "central"
         msgs.append({"de": de, "autor": "" if de == "cliente" else _primeiro_nome(c.get("autor")), "texto": c.get("texto", ""),
-                     "data": c.get("data"), "req": c.get("req")})
+                     "data": c.get("data"), "req": c.get("req"), **({"anexos": c["anexos"]} if c.get("anexos") else {})})
     return msgs
 
 
@@ -675,7 +675,7 @@ async def chat(request: Request):
     return {"ok": True, "id": sid, "existente": False}
 
 
-def central_chama(cid: str, texto: str, me: dict, pedido: dict | None = None) -> dict:
+def central_chama(cid: str, texto: str, me: dict, pedido: dict | None = None, anexos: list | None = None) -> dict:
     """A CENTRAL chama o cliente pelo app: a mensagem entra no chat ativo dele (ou abre um chat novo já com o
     atendente) e o cliente recebe notificação no celular. O cliente responde na aba Atendimento do app."""
     e = _erp()
@@ -683,12 +683,16 @@ def central_chama(cid: str, texto: str, me: dict, pedido: dict | None = None) ->
     if not cli.get("codigo"):
         raise HTTPException(409, "Este cliente ainda não tem código do app (é gerado no primeiro pedido/cadastro). Use o WhatsApp.")
     texto = re.sub(r"[ \t]+", " ", str(texto or "")).strip()[:2000]
-    if not texto:
+    if not texto and not anexos:
         raise HTTPException(422, "Escreva a mensagem para o cliente.")
     eu = {"usuario": me.get("login") or me.get("usuario") or "", "nome": me.get("nome") or me.get("login") or "Central"}
+    anx = []
+    if anexos:
+        import anexos as A
+        anx = A.salvar_lista(anexos, {"cont": T._id_doc(cli["codigo"])})
 
     def msg(s):
-        T._coment(s, eu, texto, interno=False, tipo="resposta")
+        T._coment(s, eu, texto, interno=False, tipo="resposta", anexos=anx)
         s["app_pendente"] = False
         s.pop("app_pendente_desde", None)
         s["app_respondido_em"] = T.agora()
@@ -713,7 +717,7 @@ def central_chama(cid: str, texto: str, me: dict, pedido: dict | None = None) ->
         T._mutar_sol(T.compor(T._id_doc(cli["codigo"]), tid), msg, eu)
     try:
         import promocoes
-        banco.thread(promocoes.avisar_cliente, cli["codigo"], "💬 A central quer falar com você", texto[:140],
+        banco.thread(promocoes.avisar_cliente, cli["codigo"], "💬 A central quer falar com você", texto[:140] or "📎 Anexo",
                      f"{banco.prefixo_publico()}/cliente/", f"central-{cli['codigo']}")
     except Exception as ex:  # noqa: BLE001
         print(f"[cliente] sem notificação: {ex}")
@@ -796,6 +800,17 @@ async def abrir_chamado(request: Request):
         dados.update(erp_pedido_id=ped_id, erp_pedido_numero=ped.get("numero"))
     sid = _criar(cid, cli, me, dados)
     return {"ok": True, "id": sid, "existente": False, "agrupado": bool(havia), "chamado": cli.get("codigo"), "solicitacoes": havia + 1}
+
+
+@router.get("/api/cliente/anexo/{aid}")
+def ver_anexo(aid: str, request: Request):
+    """Anexo que a central mandou no chat/chamado — só o próprio cliente abre."""
+    cid, cli = _cliente_da_sessao(request)
+    import anexos as A
+    doc = A.ler(aid)
+    if not cli.get("codigo") or doc.get("cont") != T._id_doc(cli["codigo"]):
+        raise HTTPException(404, "Anexo não encontrado.")
+    return A.resposta(doc)
 
 
 @router.post("/api/cliente/chamado/mensagem")

@@ -240,3 +240,45 @@ def test_cadastro_de_motoristas_e_veiculos_no_wrouter(t):
     r = pq.post("/api/erp/cargas", json={"pedidos": ["ped1"], "veiculo_id": vid, "motorista_id": "m1", "data": E.hoje()})
     assert r.status_code == 200, "a montagem da carga no ERP usa o veículo cadastrado no WROUTER"
     assert "KST2E45" in R.placas_cadastradas(), "e a placa já serve de login do app"
+
+
+PNG_1PX = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+
+
+def test_chat_do_cliente_so_aparece_com_pedido_em_rastreio(t, monkeypatch):
+    """O cliente escreveu no app: no WROUTER só aparece se o pedido está EM RASTREIO (frota na rua, sem desfecho).
+    Montando carga / na doca / já entregue → a conversa fica só no CX."""
+    import cliente_app
+    monkeypatch.setattr(cliente_app, "chat_com_cliente", lambda cid, tid="": {"ativo": True, "id": "x#s1", "nova": True})
+    pq, cid = montar(t)
+    cc = lambda pid: next(p for p in pq.get("/api/wrouter/ao-vivo").json()["cargas"][0]["pedidos"] if p["pid"] == pid)["cliente_chat"]
+    assert cc("ped1") is None, "carga montada, ainda não saiu: só no CX"
+    mot = TestClient(t)
+    entrar(mot)
+    mot.post(f"/api/wrouter/app/cargas/{cid}/saida", json={})
+    assert cc("ped1") == {"ativo": True, "nova": True, "chamado_wrouter": False}, "na rua: aparece no WROUTER (balão azul)"
+    import tickets as TK
+    rs = TK._ped_resumo(E, "ped1", E.ST.dados["pedidos"]["ped1"])["rastreio"]
+    lk = next(p for p in pq.get("/api/wrouter/ao-vivo").json()["cargas"][0]["pedidos"] if p["pid"] == "ped1")["link"]
+    assert lk and rs.endswith("/entrega/" + lk), "CX: RASTREIO piscando abre o MESMO link do cliente"
+    assert mot.post(f"/api/wrouter/app/cargas/{cid}/pedido/ped1", json={"desfecho": "entregue", "cid": "z"}).json()["resultado"] == "ok"
+    assert cc("ped1") is None, "entregue: não está mais em rastreio"
+    assert TK._ped_resumo(E, "ped1", E.ST.dados["pedidos"]["ped1"])["rastreio"] == "", "entregue: sai o RASTREIO do CX"
+    assert cc("ped2") is not None
+
+
+def test_anexo_no_chat_com_o_motorista(t):
+    pq, cid = montar(t)
+    mot = TestClient(t)
+    entrar(mot)
+    mot.post(f"/api/wrouter/app/cargas/{cid}/saida", json={})
+    url = f"/api/wrouter/cargas/{cid}/pedido/ped1/chat"
+    r = pq.post(url, json={"iniciar": True, "texto": "*Atenção*: veja o mapa", "anexos": [{"nome": "mapa.png", "dados": PNG_1PX}]})
+    assert r.status_code == 200, r.text
+    m = r.json()["atual"]["msgs"][-1]
+    assert m["txt"] == "*Atenção*: veja o mapa" and m["anexos"][0]["nome"] == "mapa.png"
+    aid = m["anexos"][0]["id"]
+    assert pq.get(f"/api/wrouter/cargas/{cid}/pedido/ped1/anexo/{aid}").status_code == 200
+    assert mot.get(f"/api/wrouter/app/cargas/{cid}/pedido/ped1/anexo/{aid}").status_code == 200, "o motorista abre"
+    assert pq.get(f"/api/wrouter/cargas/{cid}/pedido/ped2/anexo/{aid}").status_code == 404, "anexo de outro pedido não abre"
+    assert pq.post(url, json={"anexos": [{"nome": "x.zip", "dados": "data:application/zip;base64,AAAA"}]}).status_code == 415
