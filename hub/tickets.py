@@ -565,9 +565,9 @@ def _mutar_sol(tid: str, fn, me: dict, interacao=True):
     return _transacao(cid, m)
 
 
-def _coment(s: dict, me: dict, texto: str, interno=True, tipo="nota"):
+def _coment(s: dict, me: dict, texto: str, interno=True, tipo="nota", anexos: list | None = None):
     s.setdefault("comentarios", []).append({"autor": me["nome"], "usuario": me["usuario"], "texto": texto, "data": agora(),
-                                            "interno": interno, "tipo": tipo, "via": "hub"})
+                                            "interno": interno, "tipo": tipo, "via": "hub", **({"anexos": anexos} if anexos else {})})
 
 
 def criar_solicitacao(dados: dict, me: dict, bloquear_duplicado=False) -> str:
@@ -658,6 +658,18 @@ def chamado_aberto(cid: str) -> int:
     return sum(1 for s in cont.get("solicitacoes", []) if not eh_chat(s) and s.get("status") in ABERTOS)
 
 
+@router.get("/anexo/{aid}")
+def ver_anexo(aid: str, request: Request, t: str = ""):
+    """Anexo de uma conversa do CX (o atendente precisa enxergar o chamado: ?t=<id do ticket>)."""
+    u, p, me = _contexto(request)
+    import anexos as A
+    doc = A.ler(aid)
+    tk = _ticket(t, p, me)
+    if doc.get("cont") != decompor(tk["id"])[0]:
+        raise HTTPException(404, "Anexo não encontrado.")
+    return A.resposta(doc)
+
+
 @router.post("/ticket/{tid:path}/comentar")
 async def comentar(tid: str, request: Request):
     u, p, me = _contexto(request)
@@ -665,13 +677,15 @@ async def comentar(tid: str, request: Request):
     _ticket(tid, p, me)
     c = await request.json()
     texto = str(c.get("texto") or "").strip()
-    if not texto:
+    if not texto and not c.get("anexos"):
         raise HTTPException(400, "Escreva alguma coisa.")
     tipo = c.get("tipo") if c.get("tipo") in ("nota", "contato", "resposta") else "nota"
+    import anexos as A
+    anx = A.salvar_lista(c.get("anexos"), {"cont": decompor(tid)[0], "tid": tid}) if c.get("anexos") else []
 
     def fn(s):
         # "resposta" (no chat) e "contato" (atualização da solicitação) o cliente VÊ no app; nota interna não
-        _coment(s, me, texto[:5000], interno=tipo not in ("resposta", "contato"), tipo=tipo)
+        _coment(s, me, texto[:5000], interno=tipo not in ("resposta", "contato"), tipo=tipo, anexos=anx)
         if tipo == "resposta":   # "Responder no app": o cliente vê no app e sai da fila "cliente aguardando"
             s["app_pendente"] = False
             s.pop("app_pendente_desde", None)
@@ -1177,6 +1191,20 @@ def clientes_erp_do_ticket(t: dict) -> list[str]:
     return achados
 
 
+def _rastreio_link(car: dict | None, pid: str) -> str:
+    """Pedido EM RASTREIO (frota na rua, sem desfecho) → o MESMO link de acompanhamento que o cliente usa."""
+    if not car:
+        return ""
+    try:
+        import wrouter
+        if not wrouter.em_rastreio(car, pid):
+            return ""
+        tk = wrouter.link_do_pedido(car, pid)
+    except Exception:  # noqa: BLE001
+        return ""
+    return f"{banco.prefixo_publico()}/entrega/{tk}" if tk else ""
+
+
 def _ped_resumo(e, pid: str, d: dict, ver_palavra: bool = False) -> dict:
     car = e.ST.dados["cargas"].get(d.get("carga_id") or "")
     return ({"palavra_chave": d.get("palavra_chave") or ""} if ver_palavra else {}) | {"id": pid, "numero": d.get("numero"), "tipo": d.get("tipo"), "status": d.get("status"), "pendencia": d.get("pendencia"),
@@ -1188,7 +1216,8 @@ def _ped_resumo(e, pid: str, d: dict, ver_palavra: bool = False) -> dict:
                            for x in d.get("tentativas", [])],
             "historico": (d.get("historico") or [])[-6:], "origem_id": d.get("origem_id"), "sem_estoque": d.get("sem_estoque"),
             "nf": {"numero": (d.get("nf") or {}).get("numero"), "serie": (d.get("nf") or {}).get("serie"), "etiqueta": bool((d.get("nf") or {}).get("chave"))} if d.get("nf") else None,
-            "entrega": {k: (d.get("entrega") or {}).get(k) for k in ("resultado", "em", "recebedor", "parentesco", "palavra", "dist_m", "motorista", "hash")} if d.get("entrega") else None}
+            "entrega": {k: (d.get("entrega") or {}).get(k) for k in ("resultado", "em", "recebedor", "parentesco", "palavra", "dist_m", "motorista", "hash")} if d.get("entrega") else None,
+            "rastreio": _rastreio_link(car, pid)}
 
 
 def erp_do_ticket(t: dict, u: dict) -> dict:

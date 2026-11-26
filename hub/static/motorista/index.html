@@ -10,6 +10,7 @@
 (function () { var m = location.pathname.match(/^\/([a-z0-9][a-z0-9-]{1,30})\/(cliente|motorista|relatorios|entrega)(\/|$)/); if (m && /^(cliente|motorista|relatorios|entrega)$/.test(m[1])) m = null; window.HUB_BASE = m ? "/" + m[1] : "";
   if (!m) return; var f = window.fetch; window.fetch = function (u, o) { return f.call(this, typeof u === "string" && u.indexOf("/api/") === 0 ? window.HUB_BASE + u : u, o); };
   document.querySelectorAll('link[rel="manifest"]').forEach(function (l) { l.setAttribute("href", window.HUB_BASE + l.getAttribute("href")); }); })();</script>
+<script src="/static/chatfmt.js?v=1" defer></script>
 <link rel="icon" href="/static/app/icone-192.png">
 <link rel="apple-touch-icon" href="/static/app/icone-180.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -566,9 +567,15 @@ async function carregarChat(redesenhar) {
   const id = d => (d && d.atual && d.atual.id) || "";
   if (!$("#chTela") || id(antes) !== id(S.chatDados)) desenharChat(); else atualizarMsgs();
 }
+// mensagens com *negrito*, links e anexos (formato igual ao do WROUTER; sem o arquivo, mostra o texto puro)
+const fmtMsg = t => window.ChatFmt ? ChatFmt.fmt(t || "") : esc(t || "");
+function anxMsg(m) {
+  const c = cargaAtual(), p = c && c.pedidos.find(x => x.pid === S.ped);
+  return window.ChatFmt && m.anexos && c && p ? ChatFmt.anexos(m.anexos, id => `${window.HUB_BASE}/api/wrouter/app/cargas/${c.id}/pedido/${encodeURIComponent(p.pid)}/anexo/${id}`) : "";
+}
 function htmlMsgs(a) {
   return a.msgs.map(m => m.de === "sistema" ? `<div class="cap" style="text-align:center">${esc(m.txt)} · ${hora(m.em)}</div>` :
-    `<div class="msg-ch ${m.de === "motorista" ? "eu" : ""}"><small>${esc(m.de === "motorista" ? "Você" : "Frota · " + m.nome)} · ${hora(m.em)}</small>${m.foto ? `<a href="${window.HUB_BASE}/api/wrouter/app/foto/${esc(m.foto)}" target="_blank" rel="noopener"><img src="${window.HUB_BASE}/api/wrouter/app/foto/${esc(m.foto)}" alt="foto enviada no chat" loading="lazy"></a>${m.txt && m.txt !== "📷 Foto" ? esc(m.txt) : ""}` : esc(m.txt)}</div>`).join("");
+    `<div class="msg-ch ${m.de === "motorista" ? "eu" : ""}"><small>${esc(m.de === "motorista" ? "Você" : "Frota · " + m.nome)} · ${hora(m.em)}</small>${m.foto ? `<a href="${window.HUB_BASE}/api/wrouter/app/foto/${esc(m.foto)}" target="_blank" rel="noopener"><img src="${window.HUB_BASE}/api/wrouter/app/foto/${esc(m.foto)}" alt="foto enviada no chat" loading="lazy"></a>${m.txt && m.txt !== "📷 Foto" ? fmtMsg(m.txt) : ""}` : fmtMsg(m.txt)}${anxMsg(m)}</div>`).join("");
 }
 function atualizarMsgs() {
   const a = (S.chatDados || {}).atual, l = $("#chLista"); if (!a || !l) return;

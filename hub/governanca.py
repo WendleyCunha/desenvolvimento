@@ -160,7 +160,7 @@ ABAS: dict[str, dict] = {
             "meudia": {"rotulo": "Meu dia", "campos": {}, "rotas": [_r("POST", "/api/tickets/proximo", "editar")]},
             "caixa": {"rotulo": "Caixa e atendimento", "campos": {}, "rotas": [
                 _r("GET", "/api/tickets/ticket/*", "ver"), _r("POST", "/api/tickets/ticket/*", "editar"), _r("POST", "/api/tickets/lote", "editar"),
-                _r("GET", "/api/tickets/conversa/*", "ver"), _r("POST", "/api/tickets/conversa*", "incluir"),
+                _r("GET", "/api/tickets/conversa/*", "ver"), _r("POST", "/api/tickets/conversa*", "incluir"), _r("GET", "/api/tickets/anexo/*", "ver"),
                 _r("GET", "/api/tickets/cliente/*", "ver"), _r("POST", "/api/tickets/cliente/*", "editar"),
                 _r("GET", "/api/tickets/erp/*", "ver"), _r("POST", "/api/tickets/erp/pedido/*/abrir", "incluir"), _r("POST", "/api/tickets/erp/*", "editar"),
                 _r("GET", "/api/tickets/app/palavras", "ver"), _r("POST", "/api/tickets/app/*", "editar")]},

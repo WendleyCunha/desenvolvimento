@@ -43,6 +43,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 
 import acesso
+import anexos as A
 import banco
 import erp as E
 
@@ -1092,8 +1093,8 @@ def _chat_resumo(car: dict, pid: str, lado: str) -> dict:
             "nao_lidas": sum(1 for m in a["msgs"][lidas:] if m.get("de") == outro), "atendimentos": len(ch["atendimentos"]), **extra}
 
 
-def _msg(a: dict, de: str, nome: str, txt: str, foto: str = ""):
-    a["msgs"].append({"de": de, "nome": nome, "txt": txt[:500], "em": agora(), **({"foto": foto} if foto else {})})
+def _msg(a: dict, de: str, nome: str, txt: str, foto: str = "", anexos: list | None = None):
+    a["msgs"].append({"de": de, "nome": nome, "txt": txt[:2000], "em": agora(), **({"foto": foto} if foto else {}), **({"anexos": anexos} if anexos else {})})
     a["msgs"] = a["msgs"][-CHAT_MAX:]
 
 
@@ -1138,10 +1139,11 @@ async def app_chat_enviar(cid: str, pid: str, request: Request):
             ch["atendimentos"].append(a)
             ch["atual"] = a["id"]
             _hist(car, q, "chat com a frota aberto", f"pedido #{(E.ST.dados['pedidos'].get(pid) or {}).get('numero')} · {motivo}")
+        anx = A.salvar_lista(c.get("anexos"), {"carga": cid, "pid": pid}) if c.get("anexos") else []
         if c.get("foto"):
-            _msg(a, "motorista", q["nome"], txt or "📷 Foto", _salvar_foto(c["foto"], cid, pid))
-        elif txt:
-            _msg(a, "motorista", q["nome"], txt)
+            _msg(a, "motorista", q["nome"], txt or "📷 Foto", _salvar_foto(c["foto"], cid, pid), anx)
+        elif txt or anx:
+            _msg(a, "motorista", q["nome"], txt, anexos=anx)
         a["lido_motorista"] = len(a["msgs"])
         _gravar(tx, cid, car)
         return {"atual": _a_pub(a), "motivos": motivos()}
@@ -1181,7 +1183,7 @@ def _ped_pub(car: dict, cid: str, pid: str, pos) -> dict:
             "comprovante": {k: (ev.get("comprovante") or {}).get(k) for k in ("recebedor", "parentesco", "palavra", "hash", "completo")} if ev.get("comprovante") else None,
             "tentativas": int(ev.get("tentativas") or 0), "liberacao": ev.get("liberacao"), "validar_palavra": ev.get("validar_palavra"),
             "offline_em": ev.get("offline_em"), "corrigidos": len(ev.get("corrigidos") or []), "chegou": ev.get("chegou"), "destino": destino(car, pid),
-            "vizinho": ev.get("vizinho"), "link": link_do_pedido(car, pid), "chat": _chat_resumo(car, pid, "frota"), "cliente_chat": _cliente_chat_resumo(ev, ped),
+            "vizinho": ev.get("vizinho"), "link": link_do_pedido(car, pid), "chat": _chat_resumo(car, pid, "frota"), "cliente_chat": _cliente_chat_resumo(ev, ped, car, pid),
             "palavra": palavra_efetiva(car, pid, ped), "palavra_original": ped.get("palavra_chave") if ev.get("vizinho") else "",
             "retorno_esperado": len(its), "retorno_recebido": sum(1 for x in its if x.get("recebido")),
             **dist_pedido(car, pid, pos)}
@@ -1309,7 +1311,7 @@ async def frota_chat(cid: str, pid: str, request: Request):
         if not a:
             if not c.get("iniciar"):
                 raise HTTPException(409, "Não há atendimento aberto com o motorista.")
-            if not txt:
+            if not txt and not c.get("anexos"):
                 raise HTTPException(400, "Escreva a mensagem para o motorista.")
             a = _novo_atendimento(FROTA_MOTIVO, motorista_da_carga(car) | {"mid": car.get("motorista_id")}, "frota")
             _msg(a, "sistema", "", f"{q['nome']} chamou o motorista")
@@ -1317,10 +1319,11 @@ async def frota_chat(cid: str, pid: str, request: Request):
             ch["atual"] = a["id"]
         if not a.get("assumido"):
             a["assumido"] = {"por": q["nome"], "login": q["login"], "em": agora()}
+        anx = A.salvar_lista(c.get("anexos"), {"carga": cid, "pid": pid}) if c.get("anexos") else []
         if c.get("foto"):
-            _msg(a, "frota", q["nome"], txt or "📷 Foto", _salvar_foto(c["foto"], cid, pid))
-        elif txt:
-            _msg(a, "frota", q["nome"], txt)
+            _msg(a, "frota", q["nome"], txt or "📷 Foto", _salvar_foto(c["foto"], cid, pid), anx)
+        elif txt or anx:
+            _msg(a, "frota", q["nome"], txt, anexos=anx)
         a["lido_frota"] = len(a["msgs"])
         _gravar(tx, cid, car)
         return {"atual": _a_pub(a), "atendimentos": ch["atendimentos"]}
@@ -1447,7 +1450,7 @@ async def falar_com_cliente(cid: str, pid: str, request: Request):
             raise HTTPException(404, "Pedido não encontrado nesta carga.")
         ped = dict(E.ST.dados["pedidos"].get(pid) or {}, id=pid)
     import cliente_app
-    r = cliente_app.central_chama(ped.get("cliente_id") or "", c.get("texto"), q, ped)
+    r = cliente_app.central_chama(ped.get("cliente_id") or "", c.get("texto"), q, ped, anexos=c.get("anexos"))
     with E.ST.trava:
         tx = E.Tx(q)
         car = tx.get("cargas", cid)
@@ -1499,19 +1502,31 @@ def finalizar_chat_cliente(cid: str, pid: str, request: Request):
     return {"ok": True, "finalizado": ok}
 
 
-def _cliente_chat_resumo(ev: dict, ped: dict) -> dict | None:
-    """Balão AZUL no painel: o cliente foi chamado pelo app e a conversa ainda está aberta."""
-    cc = ev.get("cliente_chamado")
-    if not cc or cc.get("fim"):
+def em_rastreio(car: dict, pid: str) -> bool:
+    """Pedido EM RASTREIO = é entrega da frota, a carga já saiu (na rua) e este pedido ainda não teve desfecho.
+    Só nesse caso a conversa do cliente pelo app aparece também no WROUTER; fora disso ela fica só no CX."""
+    r = rota(car)
+    if r.get("chegada") or not (r.get("saida") or car.get("status") == "em_rota"):
+        return False
+    return not _desfecho_de(car, pid)
+
+
+def _cliente_chat_resumo(ev: dict, ped: dict, car: dict | None = None, pid: str = "") -> dict | None:
+    """Balão AZUL no painel: conversa do cliente pelo app — SÓ para pedido em rastreio (frota na rua).
+    Cliente sem pedido em rastreio (montando carga, conferindo na doca…) → a conversa cai apenas no CX."""
+    if car is not None and not em_rastreio(car, pid):
         return None
+    cc = ev.get("cliente_chamado") or {}
     try:
         import cliente_app
         st = cliente_app.chat_com_cliente(ped.get("cliente_id") or "")
     except Exception:  # noqa: BLE001
-        return {"ativo": True, "nova": False}
+        return {"ativo": True, "nova": False} if cc and not cc.get("fim") else None
     if not st.get("ativo"):
-        return None   # a central (CX) já encerrou a conversa
-    return {"ativo": True, "nova": st.get("nova", False)}
+        return None   # sem conversa aberta (ou a central/CX já encerrou)
+    if cc.get("fim") and cc.get("tid") and str(st.get("id", "")).split("#")[-1] == str(cc["tid"]).split("#")[-1]:
+        return None
+    return {"ativo": True, "nova": st.get("nova", False), "chamado_wrouter": bool(cc and not cc.get("fim"))}
 
 
 @router.get("/api/wrouter/comprovante/{pid}")
@@ -1535,6 +1550,41 @@ def app_nf(cid: str, pid: str, request: Request):
             raise HTTPException(404, "A NF-e deste pedido ainda não foi importada no ERP.")
         pdf = NFS.etiquetas_pdf([(nf, E.etiqueta_extra(pid, ped, car))], mostrar_valor=False)
     return Response(pdf, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="nf_{nf.get("numero")}.pdf"'})
+
+
+def _anexo_da_carga(aid: str, cid: str, pid: str):
+    doc = A.ler(aid)
+    if doc.get("carga") != cid or doc.get("pid") != pid:
+        raise HTTPException(404, "Anexo não encontrado.")
+    return A.resposta(doc)
+
+
+@router.get("/api/wrouter/app/cargas/{cid}/pedido/{pid}/anexo/{aid}")
+def app_anexo(cid: str, pid: str, aid: str, request: Request):
+    s = _sessao(request)
+    with E.ST.trava:
+        _carga_mot(E.Tx({"login": "motorista"}), s, cid, aberta=False)
+    return _anexo_da_carga(aid, cid, pid)
+
+
+@router.get("/api/wrouter/cargas/{cid}/pedido/{pid}/anexo/{aid}")
+def frota_anexo(cid: str, pid: str, aid: str, request: Request):
+    _ctx(request)
+    return _anexo_da_carga(aid, cid, pid)
+
+
+@router.get("/api/wrouter/cargas/{cid}/pedido/{pid}/cliente-anexo/{aid}")
+def frota_cliente_anexo(cid: str, pid: str, aid: str, request: Request):
+    """Anexo da conversa com o cliente (fica no chamado do cliente, no CX)."""
+    _ctx(request)
+    with E.ST.trava:
+        ped = _ped_da_carga(cid, pid)
+    cli = E.ST.dados["parceiros"].get(ped.get("cliente_id") or "") or {}
+    doc = A.ler(aid)
+    import tickets as T
+    if not cli.get("codigo") or doc.get("cont") != T._id_doc(cli["codigo"]):
+        raise HTTPException(404, "Anexo não encontrado.")
+    return A.resposta(doc)
 
 
 @router.get("/api/wrouter/foto/{fid}")

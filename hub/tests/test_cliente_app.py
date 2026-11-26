@@ -433,3 +433,30 @@ def test_chat_finalizado_continua_no_pdf_do_caso(t, monkeypatch):
     assert C.chat_com_cliente("c_ana")["mensagens"] == []
     st = C.chat_com_cliente("c_ana", r["id"])
     assert st["ativo"] is False and st["mensagens"][0]["texto"] == "Olá, Ana!"
+
+
+PNG_1PX = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+
+
+def test_anexo_no_chat_do_cliente(t, monkeypatch):
+    """Central manda anexo (com limite) no chat do app: o cliente abre só o que é dele."""
+    import promocoes
+    import anexos
+    monkeypatch.setattr(promocoes, "avisar_cliente", lambda *a, **k: None)
+    monkeypatch.setattr(banco, "thread", lambda fn, *a, **k: fn(*a, **k))
+    me = {"login": "atendente", "nome": "Carla"}
+    entrar(t)
+    C.central_chama("c_ana", "Segue a *foto* da NF: https://exemplo.com", me, anexos=[{"nome": "nf.png", "dados": PNG_1PX}])
+    m = t.get("/api/cliente/eu").json()["chat"]["mensagens"][-1]
+    assert m["texto"].startswith("Segue a *foto*") and m["anexos"][0]["tipo"] == "image/png"
+    r = t.get(f"/api/cliente/anexo/{m['anexos'][0]['id']}")
+    assert r.status_code == 200 and r.headers["content-type"] == "image/png"
+    assert t.get("/api/cliente/anexo/" + "0" * 20).status_code == 404
+    grande = "data:application/pdf;base64," + __import__("base64").b64encode(b"x" * (anexos.MAX_BYTES + 1)).decode()
+    for ruim, cod in (([{"nome": "a.pdf", "dados": grande}], 413), ([{"nome": "a.exe", "dados": "data:application/x-msdownload;base64,AAAA"}], 415),
+                      ([{"nome": "a.png", "dados": PNG_1PX}] * 4, 413)):
+        try:
+            C.central_chama("c_ana", "x", me, anexos=ruim)
+            assert False, "devia recusar"
+        except Exception as ex:  # noqa: BLE001
+            assert getattr(ex, "status_code", 0) == cod
