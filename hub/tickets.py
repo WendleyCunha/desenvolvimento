@@ -1505,6 +1505,23 @@ def auto_de_baixa(pid: str, resultado: str, motivo: str, usuario_hub: dict):
         print(f"[tickets] ticket automático da baixa falhou: {type(ex).__name__}: {ex}")
 
 
+def encerrar_auto_de_baixa(pid: str, evento: str, nota: str, usuario_hub: dict):
+    """A baixa foi corrigida no CD: o ticket automático da baixa errada é encerrado com uma nota. Nunca derruba nada."""
+    try:
+        if not configurado():
+            return
+        BASE.atualizar()
+        me = {"usuario": "erp", "nome": "ERP (automático)", "depto": "", "hub": usuario_hub.get("login", "")}
+        for t in list(BASE.tickets()):
+            if t.get("erp_pedido_id") == pid and t.get("origem") == "erp_auto" and t.get("erp_evento") == evento and t.get("status") in ABERTOS:
+                def fn(s):
+                    s.update(status="resolvido", resolvido_em=agora(), resolvido_por="erp")
+                    _coment(s, me, f"🔁 {nota} — ticket encerrado automaticamente.", tipo="sistema")
+                _mutar_sol(t["id"], fn, me)
+    except Exception as ex:  # noqa: BLE001
+        print(f"[tickets] não encerrou o ticket automático: {type(ex).__name__}: {ex}")
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # PALAVRA-CHAVE DO PEDIDO (login do app do cliente · futuro: confirmar entrega)
 # Gerada pelo ERP quando o pedido nasce (erp._novo_pedido). Só quem tem a

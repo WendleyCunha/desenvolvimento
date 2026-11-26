@@ -16,6 +16,7 @@
     "montagem": "Montagem do palete (1ª conferência)",
     "doca": "Conferência na doca (2ª conferência)",
     "retorno": "Receber o retorno no CD",
+    "corrigir_baixa": "Corrigir a baixa de uma entrega no retorno (motorista baixou errado)",
     "apontamentos": "Apontamentos: resolver divergências, ajustar a carga, refazer etapa",
     "configurar": "Configurar o WLOGISTICA"
   }
@@ -96,6 +97,15 @@ main{margin-top:16px;display:flex;flex-direction:column;gap:16px}
 .ret-ics{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px}
 .ret-ic{display:inline-flex;align-items:center;gap:5px;padding:5px 9px;border-radius:10px;border:1px solid color-mix(in srgb,var(--c) 40%,transparent);background:color-mix(in srgb,var(--c) 10%,transparent);font-size:.78rem;font-weight:700}
 .ret-ic b{font-size:.92rem}
+.ent-grade{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px}
+@media (min-width:1100px){.ent-grade{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.ent-card{--c:#94a3b8;display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:12px;background:rgba(255,255,255,.025);border:1px solid var(--vidro-borda);border-left:3px solid var(--c);font-size:.8rem;min-width:0}
+.ent-card .ec-t{display:flex;flex-direction:column;min-width:0;flex:1}
+.ent-card .ec-t b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ent-card .btn{padding:4px 8px;font-size:.7rem;min-height:0;flex:none}
+.cb-ops{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin:6px 0 10px}
+.cb-ops label{display:flex;align-items:center;gap:6px;padding:8px 10px;border-radius:10px;border:1px solid var(--vidro-borda);cursor:pointer;font-weight:700}
+.cb-ops label:has(input:checked){border-color:var(--c);background:color-mix(in srgb,var(--c) 14%,transparent)}
 .pager{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:12px}
 .pager button{min-width:34px}
 .ped{border-radius:16px;padding:12px;background:rgba(255,255,255,.025);border:1px solid var(--vidro-borda);margin-bottom:10px}
@@ -368,6 +378,33 @@ function rRetorno() {
   $$("[data-retet]").forEach((b) => (b.onclick = () => { V.retEt = b.dataset.retet; lsSet("wd.wlog.retEt", V.retEt); rRetorno(); }));
   ligarCards();
 }
+const BAIXA_ROT = { entregue: ["Entregue", "#34d399"], ausente: ["Ausente", "#fb923c"], avaria: ["Avaria", "#fb7185"], recusado: ["Recusado", "#f43f5e"] };
+// O motorista baixou errado: desfaz a baixa e aplica a certa na hora (estoque, pedido, peças no CD, WROUTER e tickets)
+function corrigirBaixa(c, p) {
+  if (!p) return;
+  const ops = Object.entries(BAIXA_ROT).filter(([k]) => k !== p.baixa || k === "avaria");
+  A.modal({ titulo: `Corrigir baixa · #${p.numero} ${p.cliente || ""}`, icone: "retorno", cor: "#22d3ee", largura: 460,
+    html: `<p class="sub" style="margin:0 0 6px">Baixa atual: <b style="color:${BAIXA_ROT[p.baixa][1]}">${BAIXA_ROT[p.baixa][0]}</b>. Qual é a baixa certa?</p>
+      <div class="cb-ops">${ops.map(([k, [r, col]], i) => `<label style="--c:${col}"><input type="radio" name="cbRes" value="${k}"${i ? "" : " checked"}>${r}</label>`).join("")}</div>
+      <div id="cbAv" hidden><p class="sub" style="margin:0 0 4px">Quantas peças chegaram avariadas?</p>${(p.itens || []).map((i) => `<label class="campo" style="margin-bottom:6px">${esc(i.desc)} <small class="sub">enviado: ${i.qtd}</small><input class="entrada" type="number" min="0" max="${i.qtd}" value="${(p.itens || []).length === 1 ? 1 : 0}" data-cbav="${i.produto_id}"></label>`).join("")}</div>
+      <label class="campo" id="cbRecW" hidden>Recebido por<input id="cbRec" placeholder="nome de quem recebeu (se souber)"></label>
+      <label class="chk" id="cbCdW" style="display:flex;gap:6px;align-items:center;margin:4px 0 8px"><input type="checkbox" id="cbCd" checked> A peça está aqui no CD — marcar como recebida agora</label>
+      <label class="campo">Motivo da correção (obrigatório)<textarea id="cbMot" rows="2" placeholder="Ex.: o cliente não estava; o motorista apertou Entregue por engano"></textarea></label>
+      <div class="aviso at" id="cbAviso" style="margin-top:8px"></div>`,
+    aoAbrir: (cx) => { const at = () => { const v = cx.querySelector("[name=cbRes]:checked").value;
+        $("#cbAv", cx).hidden = v !== "avaria"; $("#cbRecW", cx).hidden = v !== "entregue"; $("#cbCdW", cx).style.display = v === "entregue" ? "none" : "flex";
+        $("#cbAviso", cx).innerHTML = v === "entregue" ? "A peça <b>sai do estoque</b> (entregue), o CD deixa de esperá-la e o ticket automático da baixa errada é encerrado."
+          : v === "ausente" ? "A peça <b>volta ao estoque reservada</b> e o pedido vai para <b>Retorno · reenviar</b> (pronto para reagendar). Abre o ticket de cliente ausente."
+          : "A peça vai para a <b>triagem</b> do ERP" + (v === "avaria" ? " (só as avariadas; a reposição é reservada para o reenvio)" : " e o pedido fecha como recusado") + ". Abre o ticket automático."; };
+      cx.querySelectorAll("[name=cbRes]").forEach((x) => (x.onchange = at)); at(); },
+    botoes: [{ rotulo: "Cancelar" }, { rotulo: "Corrigir agora", classe: "btn", icone: "check", principal: true, acao: async (cx) => {
+      const res = cx.querySelector("[name=cbRes]:checked").value, mot = $("#cbMot", cx).value.trim();
+      if (!mot) { A.toast("Diga o motivo da correção.", [], { cor: "var(--rosa)" }); return false; }
+      const body = { pedido_id: p.id, resultado: res, motivo: mot, recebedor: $("#cbRec", cx).value, peca_no_cd: $("#cbCd", cx).checked };
+      if (res === "avaria") body.avariados = [...cx.querySelectorAll("[data-cbav]")].map((x) => ({ produto_id: x.dataset.cbav, qtd: +x.value || 0 })).filter((x) => x.qtd > 0);
+      try { S.carga = await api(`/cargas/${c.id}/retorno/corrigir-baixa`, { method: "POST", body }); ok(`Baixa de #${p.numero} corrigida: ${BAIXA_ROT[res][0]}.`); render(); }
+      catch (e) { falha(e); return false; } } }] });
+}
 function rRetornoCarga() {
   const c = S.carga, its = c.retorno_itens, pend = its.filter((x) => !x.recebido && !x.nao_voltou);
   const grupos = {}; its.forEach((x) => (grupos[x.pid] = grupos[x.pid] || []).push(x));
@@ -391,6 +428,11 @@ function rRetornoCarga() {
           ${podeR && !feito ? `<span class="rc-acts"><button type="button" class="btn p" data-rec="${x.id}|ok" title="Recebida OK">${svg("check")}OK</button><button type="button" class="btn v p" data-rec="${x.id}|avariada" title="Recebida avariada">Avariada</button><button type="button" class="btn perigo p" data-nv="${x.id}" title="Não voltou">Não voltou</button></span>` : ""}</div>`; }).join("")}</div>
         ${pags > 1 ? `<div class="pager"><button type="button" class="btn v p" data-rpg="${V.retPg - 1}"${V.retPg ? "" : " disabled"}>‹</button>${Array.from({ length: pags }, (_, i) => `<button type="button" class="btn ${i === V.retPg ? "" : "v "}p" data-rpg="${i}">${i + 1}</button>`).join("")}<button type="button" class="btn v p" data-rpg="${V.retPg + 1}"${V.retPg < pags - 1 ? "" : " disabled"}>›</button></div>` : ""}`; })()
       : `<div class="vazio">${A.orbe("check", "#34d399")}<b>Nada voltou nesta carga até agora</b>Quando o motorista registrar ausente, avaria, recusa ou recolha, as peças aparecem aqui.</div>`}
+    ${(c.pedidos_det || []).length ? `<div class="sep" style="margin-top:14px"><h4>Entregas da carga e baixas${pode("corrigir_baixa") ? ` <small class="sub">— baixa errada? use <b>Corrigir</b></small>` : ""}</h4>
+      <div class="ent-grade">${c.pedidos_det.map((p) => { const [r, col] = BAIXA_ROT[p.baixa] || ["sem baixa", "#a78bfa"];
+        return `<div class="ent-card" style="--c:${col}"><span class="ec-t"><b>#${p.numero} · ${esc(p.cliente || "")}</b><span class="sub">${esc([p.bairro, p.cidade].filter(Boolean).join(" · "))}</span>
+          <span><span class="mini c" style="--c:${col}">${r}</span>${p.corrigida ? ` <span class="mini c" style="--c:#22d3ee" title="baixa corrigida no CD">🔁 corrigida</span>` : ""}</span></span>
+          ${p.baixa && pode("corrigir_baixa") ? `<button type="button" class="btn v p" data-corr="${p.id}" title="Corrigir a baixa deste pedido">Corrigir</button>` : ""}</div>`; }).join("")}</div></div>` : ""}
     ${podeR && its.length && !c.retorno.fim && c.erp_status !== "montando" ? `<button type="button" class="btn" id="btConcluir" style="margin-top:8px"${pend.length ? " disabled" : ""}>${svg("check")}Concluir o retorno${pend.length ? ` (faltam ${pend.length})` : ""}</button>` : ""}
     <p class="sub" style="margin-top:10px">O estoque já foi movido na baixa do ERP (ausente volta reservado; avaria, recusa e recolha vão para a triagem do ERP, que decide o destino). Aqui é a conferência física de que a peça chegou.</p></section>`;
   $("#voltar").onclick = () => { V.cid = null; S.carga = null; carregar(); };
@@ -402,6 +444,7 @@ function rRetornoCarga() {
     html: `<p class="sub">Vira apontamento para investigar.</p><label class="campo" style="margin-top:8px">O que aconteceu?<input id="nvObs" autofocus></label>`,
     botoes: [{ rotulo: "Cancelar" }, { rotulo: "Registrar", classe: "btn perigo", acao: async () => { try { S.carga = await api(`/cargas/${c.id}/retorno/nao-voltou`, { method: "POST", body: { item_id: b.dataset.nv, obs: $("#nvObs").value } }); render(); } catch (e) { falha(e); return false; } } }] })));
   $$("[data-rpg]").forEach((b) => (b.onclick = () => { V.retPg = +b.dataset.rpg; render(); }));
+  $$("[data-corr]").forEach((b) => (b.onclick = () => corrigirBaixa(c, (c.pedidos_det || []).find((x) => x.id === b.dataset.corr))));
   const bc = $("#btConcluir"); if (bc) bc.onclick = async () => { try { S.carga = await api(`/cargas/${c.id}/retorno/concluir`, { method: "POST" }); ok("Retorno concluído."); render(); } catch (e) { falha(e); } };
 }
 
