@@ -102,7 +102,7 @@ def token(request: Request):
 # saindo do computador da pessoa (internet e logins dela) — resolve o que o servidor não
 # consegue (sites que recusam servidores, verificação contra robôs, login).
 # ══════════════════════════════════════════════════════════════════════════════
-VERSAO_EXT = "1.0"
+VERSAO_EXT = "1.1"   # 1.1: YouTube no quadro entrega o vídeo ao player oficial
 _PASTA_EXT = Path(__file__).resolve().parent / "extensao_web"
 
 
@@ -115,7 +115,7 @@ def extensao(request: Request):
     esquema, host = urlsplit(base).scheme or "https", urlsplit(base).netloc
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        for nome in ("manifest.json", "bg.js", "ponte.js"):
+        for nome in ("manifest.json", "bg.js", "ponte.js", "youtube.js"):
             txt = (_PASTA_EXT / nome).read_text(encoding="utf-8")
             txt = txt.replace("__HUB__", host).replace("__ESQUEMA__", esquema).replace("__VERSAO__", VERSAO_EXT)
             z.writestr(f"hub-web/{nome}", txt)

@@ -16,12 +16,14 @@ def test_extensao_zip_feita_para_este_hub(hub):
     r = c.get("/api/web/extensao.zip")
     assert r.status_code == 200 and r.headers["content-type"] == "application/zip"
     z = zipfile.ZipFile(io.BytesIO(r.content))
-    assert set(z.namelist()) == {"hub-web/manifest.json", "hub-web/bg.js", "hub-web/ponte.js", "hub-web/icone.png"}
+    assert set(z.namelist()) == {"hub-web/manifest.json", "hub-web/bg.js", "hub-web/ponte.js", "hub-web/youtube.js", "hub-web/icone.png"}
     m = json.loads(z.read("hub-web/manifest.json"))
     assert m["manifest_version"] == 3 and m["content_scripts"][0]["matches"] == ["http://testserver/*"]
     bg = z.read("hub-web/bg.js").decode()
     assert 'const HUB = "testserver"' in bg and "x-frame-options" in bg
     assert "__HUB__" not in bg and "__VERSAO__" not in z.read("hub-web/ponte.js").decode()
+    yt = z.read("hub-web/youtube.js").decode()
+    assert "__HUB__" not in yt and "__ESQUEMA__" not in yt and "hubWeb" in yt, "YouTube no quadro entrega o vídeo ao player oficial"
 
 
 def test_site_que_recusa_o_servidor_vira_aviso():

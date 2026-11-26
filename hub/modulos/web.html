@@ -98,6 +98,9 @@ const gravar = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } c
 let atual = "";
 /* EXTENSÃO Hub Web: instalada neste navegador → os sites abrem DIRETO no quadro (pela internet e logins da pessoa) */
 const EXT = document.documentElement.dataset.wdWebExt || "";
+const EXT_ATUAL = "1.1";   // 1.1: YouTube aberto direto entrega o vídeo ao player oficial (o site completo trava no quadro)
+const EXT_VELHA = !!EXT && EXT !== EXT_ATUAL;
+const ehYouTube = (u) => /(^|\.)(youtube\.com|youtu\.be)$/i.test(hostDe(u));
 const UAD = navigator.userAgentData;
 const PC_CHROMIUM = UAD ? !UAD.mobile && UAD.brands.some((b) => /Chrom|Edge|Opera|Brave/i.test(b.brand))
   : /Chrome\/|Edg\//.test(navigator.userAgent) && !/Mobile|Android|iPhone|iPad/i.test(navigator.userAgent);
@@ -133,6 +136,7 @@ async function modoDe(u) {
   if (videoEmbed(u) || ehGoogle(u)) return "direto";
   const h = hostDe(u), fixo = ler(MODO, {})[h];
   if (fixo === "direto" || fixo === "hub") return fixo;
+  if (EXT_VELHA && ehYouTube(u)) return "hub";   // extensão antiga: o YouTube completo trava no quadro → modo hub (que já entrega o vídeo ao player oficial)
   if (EXT) return "direto";   // com a extensão, todo site abre direto aqui dentro
   const c = ler(AUTO, {})[h];
   if (c && Date.now() - c.em < 6 * 3600e3) return c.m;
@@ -229,7 +233,7 @@ $("#btFora").onclick = fora; $("#btFora2").onclick = fora;
 /* ── extensão: estado na barra, instruções e avisos ─────────────────────────── */
 function textoInstalar() {
   const pag = EDGE ? "edge://extensions" : "chrome://extensions";
-  return `<ol class="passos-ext">
+  return `${EXT_VELHA ? `<div class="aviso" style="margin-bottom:10px"><b>Atualizar:</b> baixe de novo, extraia <b>por cima da mesma pasta</b> hub-web e, em <code>${pag}</code>, clique no ↻ (recarregar) da extensão Hub Web. Depois recarregue o hub.</div>` : ""}<ol class="passos-ext">
     <li><b>Baixe</b> a extensão (botão abaixo) e <b>extraia</b> o arquivo .zip numa pasta que você não vai apagar (ex.: Documentos › hub-web).</li>
     <li>Na barra de endereço do ${EDGE ? "Edge" : "Chrome"}, digite <code>${pag}</code> e aperte Enter.</li>
     <li>Ligue <b>${EDGE ? "Modo de desenvolvedor" : "Modo do desenvolvedor"}</b> (chave no canto da tela).</li>
@@ -248,10 +252,16 @@ function instalarExt() {
 }
 function mostrarExt() {
   const b = $("#btExt");
+  if (EXT_VELHA) {   // extensão instalada, mas de versão anterior
+    b.className = "ext off"; b.innerHTML = `${svg("baixar")}<span>Atualizar extensão</span>`;
+    b.title = `Há uma versão nova da extensão Hub Web (${EXT_ATUAL}; a sua é ${EXT}). Ela corrige o YouTube aqui dentro.`;
+    b.onclick = instalarExt;
+  } else {
   b.className = "ext " + (EXT ? "on" : PC_CHROMIUM ? "off" : "");
   b.innerHTML = EXT ? `${svg("check")}<span>Extensão ativa</span>` : `${svg("baixar")}<span>${PC_CHROMIUM ? "Instalar extensão" : "Sobre a extensão"}</span>`;
   b.title = EXT ? "Extensão Hub Web instalada: os sites abrem direto aqui dentro, pela sua internet e seus logins" : "Com a extensão Hub Web (grátis), sites que bloqueiam o hub abrem aqui dentro";
   b.onclick = EXT ? () => A.toast("Extensão Hub Web ativa neste navegador ✓", [], { cor: "var(--verde)" }) : instalarExt;
+  }
   $("#inicioExt").innerHTML = EXT ? " Com a <b>extensão Hub Web</b> ativa, os sites abrem direto aqui, com a sua internet e os seus logins."
     : PC_CHROMIUM ? " Alguns sites bloqueiam o hub (proteção contra robôs, login, \"recusou a conexão\"). Para abrir <b>esses também aqui dentro</b>, instale a <b>extensão Hub Web</b> (grátis) — botão no canto da barra."
     : " Alguns sites bloqueiam o hub (proteção contra robôs, login). No celular eles não abrem aqui dentro; no computador com Chrome ou Edge, a extensão Hub Web resolve.";
