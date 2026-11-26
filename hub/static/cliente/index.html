@@ -378,6 +378,7 @@ function telaRastreio(m, id) {
   const src = p.rota.link + (p.rota.link.includes("?") ? "&" : "?") + "app=1";
   m.classList.add("rastreio");
   m.innerHTML = `<iframe id="rastreioFrame" class="rastreio-fr" src="${esc(src)}" title="Rastreio da entrega" allow="geolocation"></iframe>`;
+  const fr = $("#rastreioFrame"); if (fr && p.palavra_chave) fr.onload = () => { try { fr.contentWindow.postMessage({ tipo: "palavra", palavra: p.palavra_chave }, location.origin); } catch (_) {} };
 }
 
 /* ═══════════ CASCA ═══════════ */

@@ -75,6 +75,8 @@ html.no-app .km span{font-size:13px}
 html.no-app #mapa{height:230px}
 html.no-app .mapa-leg{padding:7px 12px;font-size:12px}
 html.no-app .so-link{display:none}
+.pal-mini{margin:0;font-size:13px;color:var(--ink-2)}
+.pal-mini b{color:var(--gold);letter-spacing:1px;font-size:14px}
 </style>
 </head>
 <body>
@@ -91,6 +93,9 @@ html.no-app .so-link{display:none}
 /* [v6.6] Página do link de acompanhamento: /entrega/<código> → /api/entrega/<código> (pública; o código é a chave). */
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const APP = document.documentElement.classList.contains("no-app");
+// o app do cliente (mesmo site) informa a palavra-chave do pedido aberto
+addEventListener("message", (e) => { if (e.origin !== location.origin || !e.data || e.data.tipo !== "palavra") return; S.palavraApp = String(e.data.palavra || "").slice(0, 30); if (S.d && !S.form) render(); });
 const TOKEN = decodeURIComponent(location.pathname.split("/").filter(Boolean).pop() || "");
 const hora = iso => iso ? String(iso).slice(11, 16) : "";
 const dataBR = iso => iso ? iso.slice(8, 10) + "/" + iso.slice(5, 7) : "";
@@ -125,10 +130,13 @@ function render() {
       <small class="cap" style="color:inherit;opacity:.85">em linha reta${d.km_aprox ? " · aproximada" : ""}${d.pos_ha_seg != null ? " · atualizado " + haQuanto(d.pos_ha_seg) : ""}</small></div>`;
   else if (d.fase === "rua") situ = `<div class="fase"><i>🚚</i><span>Sua entrega saiu para a rota. A distância aparece aqui assim que tivermos a localização do motorista.</span></div>`;
   else situ = `<div class="fase"><i>📦</i><span>Sua entrega${d.data ? ` de ${dataBR(d.data)}` : ""} está sendo preparada. A distância aparece quando o motorista iniciar a rota.</span></div>`;
+  // no app: a palavra-chave aparece pequena, logo acima da distância (o app manda a do pedido; a do link vale também)
+  const pals = APP ? [...new Set([...palavras, ...(S.palavraApp ? [S.palavraApp] : [])])] : [];
+  const palMini = APP && pend.length && pals.length ? `<p class="pal-mini">🔑 Palavra-chave: ${pals.map(w => `<b>${esc(w)}</b>`).join(" · ")}</p>` : "";
   $("#topo").innerHTML = `<div class="card"><h1 style="font-size:26px">Olá${d.nome ? ", " + esc(d.nome) : ""}!</h1>
-      <p class="cap">${esc(d.endereco)}${d.cep ? " · CEP " + esc(d.cep) : ""}</p>${situ}</div>`;
+      <p class="cap">${esc(d.endereco)}${d.cep ? " · CEP " + esc(d.cep) : ""}</p>${palMini}${situ}</div>`;
   mapa(chegou ? null : d.mapa);
-  $("#resto").innerHTML = `${pend.length && palavras.length ? `<div class="palavra"><span class="cap" style="color:var(--ink-2)">Sua palavra-chave — diga ao motorista na entrega</span>${palavras.map(w => `<b>${esc(w)}</b>`).join("")}<span class="cap">Não compartilhe com ninguém além do motorista.</span></div>` : ""}
+  $("#resto").innerHTML = `${!APP && pend.length && palavras.length ? `<div class="palavra"><span class="cap" style="color:var(--ink-2)">Sua palavra-chave — diga ao motorista na entrega</span>${palavras.map(w => `<b>${esc(w)}</b>`).join("")}<span class="cap">Não compartilhe com ninguém além do motorista.</span></div>` : ""}
     ${pend.length && viz ? `<div class="viz"><b>🏠 Entrega ao vizinho</b><span>Casa/apto <b>${esc(viz.numero)}</b>${viz.tel ? " · tel. " + esc(viz.tel) : ""}</span>
         <span>${viz.nome ? `O vizinho <b>${esc(viz.nome)}</b> deve dizer o próprio nome ao motorista.` : "Sem palavra-chave: o motorista entrega ao vizinho sem pedir palavra."}</span>
         ${d.pode_vizinho ? `<button type="button" class="ghost" id="vzCanc" style="justify-self:start">Cancelar — vou receber eu mesmo</button>` : ""}</div>` : ""}
