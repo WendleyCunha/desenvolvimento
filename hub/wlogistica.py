@@ -443,7 +443,17 @@ def resumo_carga(tx, cid: str, car: dict) -> dict:
             "volumes": len(un), "montagem": _etapa_pub(w.get("montagem")), "doca": _etapa_pub(w.get("doca")),
             "pend_abertas": sum(1 for a in w["pendencias"] if a.get("status") == "aberta"),
             "ajuste": ajuste_pendente(car), "liberada": w.get("liberada"), "retorno": retorno_resumo(car),
-            "saiu_em": car.get("saiu_em"), "fechada_em": car.get("fechada_em"), "status_em": w.get("status_em")}
+            "saiu_em": car.get("saiu_em"), "fechada_em": car.get("fechada_em"), "status_em": w.get("status_em"),
+            "chegou_cd": ((car.get("rota") or {}).get("chegada") or {}).get("em"), "baixas": baixas_resumo(car)}
+
+
+def baixas_resumo(car: dict) -> dict:
+    """Totais dos pedidos da carga (para os ícones do card): entregues, retornos e sem baixa."""
+    bx = car.get("baixas") or {}
+    peds = car.get("pedidos") or []
+    ent = sum(1 for p in peds if bx.get(p) == "entregue")
+    ret = sum(1 for p in peds if bx.get(p) in ("ausente", "avaria", "recusado"))
+    return {"total": len(peds), "entregues": ent, "retornos": ret, "sem_baixa": len(peds) - ent - ret}
 
 
 def detalhe_carga(tx, cid: str, car: dict) -> dict:

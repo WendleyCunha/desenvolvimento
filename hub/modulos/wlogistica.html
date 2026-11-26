@@ -84,6 +84,20 @@ main{margin-top:16px;display:flex;flex-direction:column;gap:16px}
 .leitor input{font:600 1.25rem var(--titulo);letter-spacing:1px;padding:14px 16px;border-radius:14px}
 .prog{height:12px;border-radius:7px;background:rgba(255,255,255,.07);overflow:hidden;margin:10px 0 4px}
 .prog i{display:block;height:100%;background:linear-gradient(90deg,#fb923c,#34d399);box-shadow:0 0 14px #fb923c;transition:width .4s}
+.ret-grade{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+@media (min-width:1100px){.ret-grade{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.ret-card{--c:#fb923c;display:flex;flex-direction:column;gap:6px;padding:10px 11px;border-radius:14px;background:rgba(255,255,255,.03);border:1px solid var(--vidro-borda);border-left:3px solid var(--c);font-size:.8rem;min-width:0}
+.ret-card.ok{opacity:.62}
+.ret-card .rc-ped{font-weight:700;font-size:.78rem;color:var(--txt2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ret-card .rc-desc{font-weight:700;font-size:.86rem;line-height:1.25}
+.ret-card .rc-sub{color:var(--txt3);font-size:.72rem;line-height:1.3}
+.ret-card .rc-acts{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-top:auto}
+.ret-card .rc-acts .btn{padding:5px 4px;font-size:.7rem;justify-content:center;min-height:0}
+.ret-ics{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px}
+.ret-ic{display:inline-flex;align-items:center;gap:5px;padding:5px 9px;border-radius:10px;border:1px solid color-mix(in srgb,var(--c) 40%,transparent);background:color-mix(in srgb,var(--c) 10%,transparent);font-size:.78rem;font-weight:700}
+.ret-ic b{font-size:.92rem}
+.pager{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:12px}
+.pager button{min-width:34px}
 .ped{border-radius:16px;padding:12px;background:rgba(255,255,255,.025);border:1px solid var(--vidro-borda);margin-bottom:10px}
 .ped>.t1{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
 .ped>.t1 b{font:700 .95rem var(--titulo)}
@@ -147,7 +161,7 @@ document.querySelector('link[rel="icon"]').href = A.ATOMO_SVG;
 
 const API = "/api/wlog";
 const S = { cargas: [], pendencias: [], agendados: [], perm: { acoes: {} }, cfg: {}, estados: {}, eu: {}, carga: null };
-const V = { aba: ls("wd.wlog.aba", "painel"), cid: null, etapa: null, cam: null };
+const V = { aba: ls("wd.wlog.aba", "painel"), cid: null, etapa: null, cam: null, retEt: ls("wd.wlog.retEt", "cd"), retPg: 0 };
 function ls(k, d) { try { return localStorage.getItem(k) ?? d; } catch (_) { return d; } }
 function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (_) {} }
 const $ = (s, r = document) => r.querySelector(s);
@@ -224,7 +238,7 @@ function rLista(et) {
   ligarCards();
 }
 async function abrirCarga(cid) {
-  try { S.carga = await api(`/cargas/${cid}`); V.cid = cid; V.etapa = V.aba === "doca" ? "doca" : V.aba === "montagem" ? "montagem" : (S.carga.montagem?.fim_em ? "doca" : "montagem"); render(); scrollTo({ top: 0 }); }
+  try { S.carga = await api(`/cargas/${cid}`); V.cid = cid; V.retPg = 0; V.etapa = V.aba === "doca" ? "doca" : V.aba === "montagem" ? "montagem" : (S.carga.montagem?.fim_em ? "doca" : "montagem"); render(); scrollTo({ top: 0 }); }
   catch (e) { falha(e); }
 }
 
@@ -326,11 +340,32 @@ async function abrirCam() {
 function pararCam() { if (!V.cam) return; clearInterval(V.cam.timer); V.cam.st.getTracks().forEach((t) => t.stop()); V.cam = null; const b = $("#camBox"); if (b) b.innerHTML = ""; }
 
 /* ══════ RETORNO ══════ */
+// Etapas do retorno: o que ainda está na rua, o que já foi baixado e volta ao CD, o que chegou e falta receber, o que terminou
+const RET_ET = [["rota", "Em rota", "#a78bfa", "com o motorista"], ["baixado", "Baixado · voltando ao CD", "#e8b33d", "todas as entregas com baixa; caminhão ainda não chegou"],
+  ["cd", "Chegou no CD · receber", "#fb923c", "caminhão no CD com peças a receber"], ["concluido", "Concluído", "#34d399", "retorno recebido ou nada voltou"]];
+function etapaRetorno(c) {
+  if (c.erp_status === "em_rota" && !c.chegou_cd) return "rota";
+  if (c.retorno.pendentes) return c.chegou_cd ? "cd" : "baixado";
+  if (c.erp_status === "em_rota") return "cd";   // chegou ao CD e ainda falta baixa de alguma entrega
+  return "concluido";
+}
+function icBaixas(c) {
+  const b = c.baixas || {}, r = c.retorno || {};
+  return `<span class="mini" title="pedidos na carga">📦 ${b.total ?? c.pedidos}</span><span class="mini c" style="--c:#34d399" title="entregues">✓ ${b.entregues || 0}</span>`
+    + `<span class="mini c" style="--c:#fb923c" title="voltaram (ausente, avaria, recusa)">↩ ${b.retornos || 0}</span>${b.sem_baixa ? `<span class="mini c" style="--c:#a78bfa" title="sem baixa">⏳ ${b.sem_baixa}</span>` : ""}`
+    + (r.total ? `<span class="mini c" style="--c:${r.pendentes ? "#fb923c" : "#34d399"}" title="peças do retorno recebidas no CD">peças ${r.recebidos + r.nao_voltou}/${r.total}</span>` : "");
+}
 function rRetorno() {
-  const cs = S.cargas.filter((c) => c.retorno.total || c.status === "em_rota");
+  const cs = S.cargas.filter((c) => c.retorno.total || ["em_rota", "finalizada"].includes(c.erp_status));
+  const por = Object.fromEntries(RET_ET.map(([k]) => [k, []])); cs.forEach((c) => por[etapaRetorno(c)].push(c));
+  if (!por[V.retEt]) V.retEt = "cd";
+  const [, rotEt, corEt, dica] = RET_ET.find((x) => x[0] === V.retEt), lst = por[V.retEt];
   $("#main").innerHTML = `<section class="painel vidro vidro-borda-viva"><div class="cab">${A.orbe("retorno", "#fb923c")}<div><h2>Retorno no CD</h2><p>O que o motorista não entregou (ausente, avaria, recusa) e o que foi recolhido nas trocas volta para o CD. Receba peça por peça; o que não voltou vira apontamento.</p></div></div>
-    <div class="lst">${cs.map((c) => cardCarga(c, c.retorno.total ? `<span class="mini c" style="--c:${c.retorno.pendentes ? "#fb923c" : "#34d399"}">retorno ${c.retorno.recebidos + c.retorno.nao_voltou}/${c.retorno.total}${c.retorno.fim ? " · concluído" : ""}</span>` : `<span class="mini">sem retorno até agora</span>`)).join("")
-      || `<div class="vazio">${A.orbe("check", "#34d399")}<b>Nenhum retorno esperado</b>As baixas com ausente, avaria, recusa ou recolha aparecem aqui.</div>`}</div></section>`;
+    <div class="chips" style="margin-bottom:12px">${RET_ET.map(([k, r, cor]) => `<button type="button" class="chip${V.retEt === k ? " ativo" : ""}" data-retet="${k}" style="--c:${cor}">${r}<small>${por[k].length}</small></button>`).join("")}</div>
+    <p class="sub" style="margin:0 0 10px">${esc(dica)}</p>
+    <div class="lst">${lst.map((c) => cardCarga(c, icBaixas(c))).join("")
+      || `<div class="vazio">${A.orbe(V.retEt === "concluido" ? "check" : "retorno", corEt)}<b>Nenhuma carga em “${esc(rotEt)}”</b></div>`}</div></section>`;
+  $$("[data-retet]").forEach((b) => (b.onclick = () => { V.retEt = b.dataset.retet; lsSet("wd.wlog.retEt", V.retEt); rRetorno(); }));
   ligarCards();
 }
 function rRetornoCarga() {
@@ -340,14 +375,22 @@ function rRetornoCarga() {
   $("#main").innerHTML = `<section class="painel vidro vidro-borda-viva"><div class="cab">${A.orbe("retorno", "#fb923c")}<div><h2>Retorno · carga ${c.numero}</h2><p>${esc(c.placa || "")} · ${esc(c.motorista || "")} · ${dBR(c.data)}</p></div>
       <div class="dir">${etq(c.status)}<button type="button" class="btn v p" id="voltar">${svg("voltar")}Cargas</button></div></div>
     ${c.retorno.fim ? `<div class="aviso ok">Retorno concluído por <b>${esc(c.retorno.fim.por)}</b> em ${dhBR(c.retorno.fim.em)}.</div>` : ""}
+    <div class="ret-ics">${(() => { const pd = c.pedidos_det || [], n = (f) => pd.filter(f).length;
+      return [["📦", "pedidos", pd.length, "#94a3b8"], ["✓", "entregues", n((x) => x.baixa === "entregue"), "#34d399"], ["↩", "voltaram", n((x) => ["ausente", "avaria", "recusado"].includes(x.baixa)), "#fb923c"],
+        ["⏳", "sem baixa", n((x) => !x.baixa), "#a78bfa"], ["🧩", "peças a receber", pend.length, pend.length ? "#fb7185" : "#34d399"]]
+        .map(([ic, r, q, cor]) => `<span class="ret-ic" style="--c:${cor}" title="${r}">${ic} <b>${q}</b> ${r}</span>`).join(""); })()}</div>
     <div class="prog"><i style="width:${its.length ? Math.round((its.length - pend.length) / its.length * 100) : 0}%"></i></div>
     <p class="sub" style="margin:0 0 12px"><b style="color:var(--txt)">${its.length - pend.length} de ${its.length}</b> peça(s) tratada(s)</p>
-    ${Object.entries(grupos).map(([pid, xs]) => `<div class="ped"><div class="t1">${A.orbe("pedido", "#fb923c")}<span><b>Pedido #${xs[0].numero} · ${esc(xs[0].cliente || "")}</b></span></div>
-      ${xs.map((x) => { const [r, col] = ORIG[x.origem] || [x.origem, "#94a3b8"]; const feito = x.recebido || x.nao_voltou;
-        return `<div class="un ${feito ? "ok" : ""}"><span class="ck">${x.recebido ? "✓" : x.nao_voltou ? "✕" : ""}</span><span style="min-width:0"><b>${esc(x.desc)}</b> <span class="mini c" style="--c:${col}">${esc(r)}</span>
-          <span class="sub">${esc(x.sku || "")}${x.motivo ? " · " + esc(x.motivo) : ""}${x.recebido ? ` · recebida ${esc(S.estados[x.recebido.estado] || "")} por ${esc(x.recebido.por)} ${dhBR(x.recebido.em)}${x.recebido.obs ? " · " + esc(x.recebido.obs) : ""}` : ""}${x.nao_voltou ? ` · NÃO voltou: ${esc(x.nao_voltou.obs)}` : ""}</span></span>
-          <span class="acts">${podeR && !feito ? `<button type="button" class="btn p" data-rec="${x.id}|ok">${svg("check")}Recebida OK</button><button type="button" class="btn v p" data-rec="${x.id}|avariada">Avariada</button><button type="button" class="btn perigo p" data-nv="${x.id}">Não voltou</button>` : ""}</span></div>`; }).join("")}</div>`).join("")
-      || `<div class="vazio">${A.orbe("check", "#34d399")}<b>Nada voltou nesta carga até agora</b>Quando o motorista registrar ausente, avaria, recusa ou recolha, as peças aparecem aqui.</div>`}
+    ${its.length ? (() => { const ord = [...its].sort((a, b) => (!!(a.recebido || a.nao_voltou) - !!(b.recebido || b.nao_voltou)) || (a.numero || 0) - (b.numero || 0));
+      const TAM = 20, pags = Math.max(1, Math.ceil(ord.length / TAM)); if (V.retPg >= pags) V.retPg = pags - 1;
+      const pg = ord.slice(V.retPg * TAM, V.retPg * TAM + TAM);
+      return `<div class="ret-grade">${pg.map((x) => { const [r, col] = ORIG[x.origem] || [x.origem, "#94a3b8"]; const feito = x.recebido || x.nao_voltou;
+        return `<div class="ret-card${feito ? " ok" : ""}" style="--c:${col}"><span class="rc-ped">#${x.numero} · ${esc(x.cliente || "")}</span><span class="rc-desc">${esc(x.desc)}</span>
+          <span><span class="mini c" style="--c:${col}">${esc(r)}</span></span>
+          <span class="rc-sub">${esc(x.sku || "")}${x.motivo ? " · " + esc(x.motivo) : ""}${x.recebido ? `<br>✓ ${esc(S.estados[x.recebido.estado] || "")} · ${esc(x.recebido.por)} ${dhBR(x.recebido.em)}${x.recebido.obs ? " · " + esc(x.recebido.obs) : ""}` : ""}${x.nao_voltou ? `<br>✕ NÃO voltou: ${esc(x.nao_voltou.obs)}` : ""}</span>
+          ${podeR && !feito ? `<span class="rc-acts"><button type="button" class="btn p" data-rec="${x.id}|ok" title="Recebida OK">${svg("check")}OK</button><button type="button" class="btn v p" data-rec="${x.id}|avariada" title="Recebida avariada">Avariada</button><button type="button" class="btn perigo p" data-nv="${x.id}" title="Não voltou">Não voltou</button></span>` : ""}</div>`; }).join("")}</div>
+        ${pags > 1 ? `<div class="pager"><button type="button" class="btn v p" data-rpg="${V.retPg - 1}"${V.retPg ? "" : " disabled"}>‹</button>${Array.from({ length: pags }, (_, i) => `<button type="button" class="btn ${i === V.retPg ? "" : "v "}p" data-rpg="${i}">${i + 1}</button>`).join("")}<button type="button" class="btn v p" data-rpg="${V.retPg + 1}"${V.retPg < pags - 1 ? "" : " disabled"}>›</button></div>` : ""}`; })()
+      : `<div class="vazio">${A.orbe("check", "#34d399")}<b>Nada voltou nesta carga até agora</b>Quando o motorista registrar ausente, avaria, recusa ou recolha, as peças aparecem aqui.</div>`}
     ${podeR && its.length && !c.retorno.fim && c.erp_status !== "montando" ? `<button type="button" class="btn" id="btConcluir" style="margin-top:8px"${pend.length ? " disabled" : ""}>${svg("check")}Concluir o retorno${pend.length ? ` (faltam ${pend.length})` : ""}</button>` : ""}
     <p class="sub" style="margin-top:10px">O estoque já foi movido na baixa do ERP (ausente volta reservado; avaria, recusa e recolha vão para a triagem do ERP, que decide o destino). Aqui é a conferência física de que a peça chegou.</p></section>`;
   $("#voltar").onclick = () => { V.cid = null; S.carga = null; carregar(); };
@@ -358,6 +401,7 @@ function rRetornoCarga() {
   $$("[data-nv]").forEach((b) => (b.onclick = () => A.modal({ titulo: "A peça NÃO voltou", icone: "atencao", cor: "#fb7185", largura: 460,
     html: `<p class="sub">Vira apontamento para investigar.</p><label class="campo" style="margin-top:8px">O que aconteceu?<input id="nvObs" autofocus></label>`,
     botoes: [{ rotulo: "Cancelar" }, { rotulo: "Registrar", classe: "btn perigo", acao: async () => { try { S.carga = await api(`/cargas/${c.id}/retorno/nao-voltou`, { method: "POST", body: { item_id: b.dataset.nv, obs: $("#nvObs").value } }); render(); } catch (e) { falha(e); return false; } } }] })));
+  $$("[data-rpg]").forEach((b) => (b.onclick = () => { V.retPg = +b.dataset.rpg; render(); }));
   const bc = $("#btConcluir"); if (bc) bc.onclick = async () => { try { S.carga = await api(`/cargas/${c.id}/retorno/concluir`, { method: "POST" }); ok("Retorno concluído."); render(); } catch (e) { falha(e); } };
 }
 
