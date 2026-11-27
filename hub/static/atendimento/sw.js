@@ -16,6 +16,7 @@ self.addEventListener("notificationclick", (e) => {
   e.notification.close();
   const url = (e.notification.data && e.notification.data.url) || self.registration.scope;
   e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((ws) => {
+    if (new URL(url, self.location.origin).pathname.indexOf("/atendimento") < 0) return self.clients.openWindow(url);   // ex.: pesquisa CSAT/NPS
     const w = ws.find((x) => new URL(x.url).pathname.indexOf("/atendimento") >= 0);
     if (w) return w.focus();
     return self.clients.openWindow(url);

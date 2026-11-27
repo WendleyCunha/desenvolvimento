@@ -172,8 +172,9 @@ def avisar_cliente_detalhe(cod: str, titulo: str, texto: str, url: str = "", tag
             return r
         dados = {"titulo": titulo, "texto": texto, "tag": tag or titulo, "url": url or f"{banco.prefixo_publico()}/cliente/"}
         vivas = []
+        proprio = bool(url) and "/cliente" not in url   # endereço próprio (ex.: pesquisa CSAT/NPS) vale em qualquer celular
         for sub in subs:   # celular inscrito pelo link de atendimento abre o link; pelo app, o app
-            res = enviar_push({k: v for k, v in sub.items() if k != "url"}, {**dados, "url": sub["url"]} if sub.get("url") else dados, urgente)
+            res = enviar_push({k: v for k, v in sub.items() if k != "url"}, {**dados, "url": sub["url"]} if sub.get("url") and not proprio else dados, urgente)
             r["enviados" if res == "ok" else "expirados" if res == "expirou" else "falhas"] += 1
             if res != "expirou":
                 vivas.append(sub)

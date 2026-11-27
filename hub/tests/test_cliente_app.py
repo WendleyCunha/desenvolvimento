@@ -672,6 +672,8 @@ def test_chamar_visitante_do_link_e_avisar_no_link(t, monkeypatch):
     assert r["avisados"] == 1
     assert t.get("/api/cliente/atendimento/chat").json()["mensagens"][-1]["texto"] == "Maria, pode falar?"
     assert all(x.get("url") for x in guardadas[cod]["subs"])                                       # celular só do link (fora dos disparos)
+    promocoes.avisar_cliente_detalhe(cod, "Como foi?", "Dê sua nota", "/pesquisa/tok123", "pesq")
+    assert enviados[-1][1]["url"] == "/pesquisa/tok123"                                           # pesquisa abre a pesquisa, não o link
 
 
 def test_presenca_online_pausa_offline_e_sem_sinal(t, monkeypatch):
