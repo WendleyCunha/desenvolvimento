@@ -194,6 +194,8 @@ async function recomecar() { S.fase = "cpf"; S.conversa = ""; S.errosCpf = 0; aw
 function entrarNoChat(nome, agoraMesmo) {
   S.fase = "chat"; $("#sub").textContent = nome ? `Olá, ${nome}` : "Online";
   $("#sair").classList.remove("oculto");
+  const fn = S.info && S.info.funcionamento;
+  if (fn && fn.aberto === false) bot("🕘 " + (fn.msg || "Estamos fora do horário de atendimento."));   // Ajustes › Wwhat
   if (!S.visitante) oferecerApp();
   oferecerAvisos();
   S.areaChat = document.createElement("div"); S.areaChat.style.cssText = "display:flex;flex-direction:column;gap:10px";

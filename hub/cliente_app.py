@@ -519,7 +519,7 @@ def eu(request: Request):
         for p in pedidos:
             p["palavra_protegida"] = bool(p.get("palavra_chave"))
             p["palavra_chave"] = ""
-    return {"palavra_protegida": protegida, "tem_senha": cliente_acesso.tem_senha(cid),
+    return {"palavra_protegida": protegida, "tem_senha": cliente_acesso.tem_senha(cid), "funcionamento": funcionamento(),
             "nome": _primeiro_nome(cli.get("nome")), "nome_completo": cli.get("nome"), "codigo": cli.get("codigo"),
             "empresa": c.get("empresa"), "saudacao": c.get("saudacao"),
             "ura": [{k: u.get(k) for k in ("id", "rotulo", "descricao")} for u in c["ura"]],
@@ -923,7 +923,48 @@ WWHAT_PADRAO = {
     "pedir_cpf": "Digite o seu CPF (só os números).",
     "direcionando": "Pronto, {nome}! ✅ Dados confirmados. Estou te direcionando ao atendimento — escreva sua mensagem que um atendente já te responde.",
     "departamento": "CX", "motivo_pai": "",
+    # horário de funcionamento do atendimento (app e link) — 0 = segunda … 6 = domingo
+    "horario_ativo": False,
+    "horario": {str(i): {"aberto": i < 6, "ini": "08:00", "fim": "18:00" if i < 5 else "12:00"} for i in range(7)},
+    "feriados": [],
+    "msg_fechado": "No momento estamos fora do horário de atendimento ({horario}). Deixe sua mensagem aqui — respondemos assim que abrirmos. 😉",
 }
+DIAS_SEM = ["segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo"]
+
+
+def resumo_horario(h: dict) -> str:
+    """'segunda a sexta 08:00–18:00 · sábado 08:00–12:00' (junta dias seguidos com o mesmo horário)."""
+    grupos = []
+    for i in range(7):
+        d = h.get(str(i)) or {}
+        chave = f"{d.get('ini')}–{d.get('fim')}" if d.get("aberto") else None
+        if grupos and grupos[-1][2] == chave and grupos[-1][1] == i - 1:
+            grupos[-1][1] = i
+        else:
+            grupos.append([i, i, chave])
+    partes = [(DIAS_SEM[a] if a == b else f"{DIAS_SEM[a]} a {DIAS_SEM[b]}") + " " + c for a, b, c in grupos if c]
+    return " · ".join(partes) or "sem horário definido"
+
+
+def funcionamento(agora_dt=None) -> dict:
+    """Atendimento aberto agora? (Ajustes › Wwhat: horário por dia da semana e feriados)."""
+    w = cfg_wwhat()
+    if not w.get("horario_ativo"):
+        return {"aberto": True}
+    from datetime import datetime
+    agora_dt = agora_dt or datetime.now(T.BRT)
+    h = {**WWHAT_PADRAO["horario"], **(w.get("horario") or {})}
+    txt = resumo_horario(h)
+    dia = agora_dt.strftime("%Y-%m-%d")
+    fer = next((f for f in (w.get("feriados") or []) if f.get("data") == dia), None)
+    msg = _tpl(w.get("msg_fechado") or WWHAT_PADRAO["msg_fechado"], horario=txt)
+    if fer:
+        return {"aberto": False, "feriado": fer.get("nome") or "Feriado", "horario": txt,
+                "msg": f"Hoje é {fer.get('nome') or 'feriado'} e não temos atendimento. " + msg}
+    d = h.get(str(agora_dt.weekday())) or {}
+    hm = agora_dt.strftime("%H:%M")
+    aberto = bool(d.get("aberto")) and str(d.get("ini") or "00:00") <= hm < str(d.get("fim") or "23:59")
+    return {"aberto": aberto, "horario": txt, **({} if aberto else {"msg": msg})}
 COOKIE_AT = "cli_atend"
 ETIQUETA_AT = "cliente-atend:"
 HORAS_AT = 12
@@ -938,6 +979,7 @@ def cfg_wwhat() -> dict:
         bruto = {}
     c = {**WWHAT_PADRAO, **{k: v for k, v in bruto.items() if v not in (None, "")}}
     c["ativo"] = bool(c.get("ativo"))
+    c["horario_ativo"] = bool(c.get("horario_ativo"))
     return c
 
 
@@ -1229,7 +1271,7 @@ def at_info(request: Request):
     emp = c.get("empresa") or "Central do Cliente"
     return {"ativo": w["ativo"] and bool(c.get("ativo")), "empresa": emp, "saudacao": _tpl(w["saudacao"], empresa=emp, nome=""),
             "pedir_cpf": w["pedir_cpf"], "validado": bool(nome), "nome": nome, "visitante": visitante,
-            "continua": {k: v for k, v in cont.items() if not k.startswith("_")} if cont else None,
+            "continua": {k: v for k, v in cont.items() if not k.startswith("_")} if cont else None, "funcionamento": funcionamento(),
             "direcionando": _tpl(w["direcionando"], nome=nome, empresa=emp) if nome else ""}
 
 

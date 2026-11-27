@@ -1287,9 +1287,29 @@ async def salvar_config(request: Request):
         atual = dict(novo.get("wwhat") or {})
         if "ativo" in a:
             atual["ativo"] = bool(a["ativo"])
-        for k, lim in (("saudacao", 400), ("pedir_cpf", 200), ("direcionando", 400), ("departamento", 60), ("motivo_pai", 80)):
+        for k, lim in (("saudacao", 400), ("pedir_cpf", 200), ("direcionando", 400), ("departamento", 60), ("motivo_pai", 80), ("msg_fechado", 400)):
             if k in a:
                 atual[k] = str(a[k] or "").strip()[:lim]
+        if "horario_ativo" in a:
+            atual["horario_ativo"] = bool(a["horario_ativo"])
+        if "horario" in a:   # 0 = segunda … 6 = domingo
+            hr = {}
+            for i in range(7):
+                d = (a["horario"] or {}).get(str(i)) or {}
+                ini, fim = str(d.get("ini") or "08:00")[:5], str(d.get("fim") or "18:00")[:5]
+                if not (re.match(r"^\d{2}:\d{2}$", ini) and re.match(r"^\d{2}:\d{2}$", fim)):
+                    raise HTTPException(400, "Horário inválido (use HH:MM).")
+                if d.get("aberto") and fim <= ini:
+                    raise HTTPException(400, "O horário de fechar precisa ser depois do de abrir.")
+                hr[str(i)] = {"aberto": bool(d.get("aberto")), "ini": ini, "fim": fim}
+            atual["horario"] = hr
+        if "feriados" in a:
+            fer = []
+            for f in (a["feriados"] or [])[:80]:
+                dt = str((f or {}).get("data") or "")[:10]
+                if re.match(r"^\d{4}-\d{2}-\d{2}$", dt):
+                    fer.append({"data": dt, "nome": str(f.get("nome") or "Feriado").strip()[:60]})
+            atual["feriados"] = sorted(fer, key=lambda x: x["data"])
         novo["wwhat"] = atual
     doc_cfg("tickets_hub").set(novo, timeout=banco.TIMEOUT)
     BASE.cfg_cache["tickets_hub"] = novo

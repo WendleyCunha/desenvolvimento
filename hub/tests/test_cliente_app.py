@@ -911,3 +911,22 @@ def test_ociosa_volta_online_ao_mexer_mas_offline_manual_fica(t, monkeypatch):
 def test_pedidos_de_ajuda_so_tem_interno():
     s = open(Path(__file__).resolve().parents[1] / "modulos" / "tickets.html", encoding="utf-8").read()
     assert "function filaSetor(setor) { return setor ? S.e.tickets.filter((t) => t.interno && " in s
+
+
+def test_horario_de_funcionamento_e_feriados(t):
+    from datetime import datetime
+    assert C.funcionamento()["aberto"] is True                                        # desligado: sempre aberto
+    hr = {str(i): {"aberto": i < 5, "ini": "08:00", "fim": "18:00"} for i in range(7)}
+    assert t.put("/api/tickets/config", json={"wwhat": {"horario_ativo": True, "horario": hr, "feriados": [{"data": "2026-12-25", "nome": "Natal"}, {"data": "x"}]}}).status_code == 200
+    T.BASE.t_cfg = time.time() + 3600
+    seg_10h = datetime(2026, 11, 30, 10, 0, tzinfo=T.BRT)                               # segunda
+    assert C.funcionamento(seg_10h)["aberto"] is True
+    f = C.funcionamento(datetime(2026, 11, 30, 19, 0, tzinfo=T.BRT))
+    assert f["aberto"] is False and "segunda a sexta 08:00–18:00" in f["msg"]
+    assert C.funcionamento(datetime(2026, 11, 29, 10, 0, tzinfo=T.BRT))["aberto"] is False      # domingo
+    n = C.funcionamento(datetime(2026, 12, 25, 10, 0, tzinfo=T.BRT))                    # sexta, mas é Natal
+    assert n["aberto"] is False and n["feriado"] == "Natal" and n["msg"].startswith("Hoje é Natal")
+    assert C.cfg_wwhat()["feriados"] == [{"data": "2026-12-25", "nome": "Natal"}]
+    ruim = {**hr, "0": {"aberto": True, "ini": "18:00", "fim": "08:00"}}
+    assert t.put("/api/tickets/config", json={"wwhat": {"horario": ruim}}).status_code == 400
+    assert "funcionamento" in t.get("/api/cliente/atendimento/info").json()
