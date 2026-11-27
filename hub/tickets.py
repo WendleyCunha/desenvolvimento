@@ -382,6 +382,84 @@ def online(usuario: str) -> bool:
     return time.time() - ONLINE.get(usuario, 0) < ONLINE_SEG
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# PRESENÇA (status na barra do hub): Online · pausas (Ajustes › Setor e perfil) · Offline
+#   Ao abrir o hub, entra Online. Sem sinal do navegador por 5 min → Offline sozinho.
+#   Diferente de Online = não recebe atendimento (a distribuição olha isto).
+#   O tempo em cada status fica gravado por dia (cx_presenca/<usuario>_<AAAA-MM-DD>) para a Gestão.
+# ══════════════════════════════════════════════════════════════════════════════
+PAUSAS_PADRAO = [{"id": "pausa", "rotulo": "Pausa", "emoji": "☕"}, {"id": "almoco", "rotulo": "Almoço", "emoji": "🍽️"},
+                 {"id": "banheiro", "rotulo": "Banheiro", "emoji": "🚻"}, {"id": "reuniao", "rotulo": "Reunião", "emoji": "👥"}]
+SEM_SINAL_SEG = 300
+PRESENCA = banco.por_empresa(dict)   # usuario → {"status", "desde", "ping"}
+_trava_pres = threading.Lock()
+
+
+def pausas() -> list[dict]:
+    lst = [x for x in (hub_cfg().get("pausas") or []) if isinstance(x, dict) and x.get("id") and x.get("rotulo")]
+    return lst or PAUSAS_PADRAO
+
+
+def limite_de(usuario: str) -> int | None:
+    """Atendimentos (chats) simultâneos: None = sem limite · 0 = só tickets."""
+    v = (hub_cfg().get("limites") or {}).get(usuario)
+    return None if v in (None, "") else max(0, int(v))
+
+
+def _seg_doc(usuario: str, dia: str):
+    return banco.db().collection("cx_presenca").document(f"{usuario}_{dia}")
+
+
+def _registrar(usuario: str, status: str, ini: float, fim_anterior: float | None):
+    """Fecha o trecho aberto (em fim_anterior) e abre um novo com `status` — no dia de cada um."""
+    def hh(t):
+        return datetime.fromtimestamp(t, BRT).strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        if fim_anterior is not None:
+            dia = hh(fim_anterior)[:10]
+            ref = _seg_doc(usuario, dia)
+            snap = ref.get(timeout=banco.TIMEOUT)
+            d = (snap.to_dict() if snap.exists else None) or {"usuario": usuario, "dia": dia, "segs": []}
+            if d["segs"] and not d["segs"][-1].get("f"):
+                d["segs"][-1]["f"] = hh(fim_anterior)
+                ref.set(d, timeout=banco.TIMEOUT)
+        if status != "offline":
+            dia = hh(ini)[:10]
+            ref = _seg_doc(usuario, dia)
+            snap = ref.get(timeout=banco.TIMEOUT)
+            d = (snap.to_dict() if snap.exists else None) or {"usuario": usuario, "dia": dia, "segs": []}
+            d["segs"] = (d["segs"] + [{"s": status, "i": hh(ini), "f": None}])[-400:]
+            ref.set(d, timeout=banco.TIMEOUT)
+    except Exception as ex:  # noqa: BLE001
+        print(f"[presença] não gravou {usuario}: {ex}")
+
+
+def _mudar(usuario: str, status: str, agora_s: float, fim_anterior: float | None = None):
+    atual = PRESENCA.get(usuario)
+    if atual and atual["status"] == status:
+        return
+    PRESENCA[usuario] = {"status": status, "desde": agora_s, "ping": agora_s}
+    if atual and atual["status"] != "offline":
+        fim = fim_anterior if fim_anterior is not None else agora_s
+    else:
+        fim = None
+    banco.thread(_registrar, usuario, status, agora_s, fim)
+
+
+def presenca(usuario: str) -> dict:
+    """Status atual (já tratando o "sem sinal": 5 min sem o navegador avisar → Offline desde o último sinal)."""
+    with _trava_pres:
+        p = PRESENCA.get(usuario)
+        if p and p["status"] != "offline" and time.time() - p["ping"] > SEM_SINAL_SEG:
+            _mudar(usuario, "offline", p["ping"] + 60, fim_anterior=p["ping"] + 60)
+            p = PRESENCA[usuario]
+        return dict(p) if p else {"status": "offline", "desde": None, "ping": 0}
+
+
+def disponivel(usuario: str) -> bool:
+    return presenca(usuario)["status"] == "online"
+
+
 def _contexto(request: Request):
     u = acesso.exigir_usuario(request)
     esq = acesso.obter_esquema(MOD)
@@ -520,7 +598,7 @@ def estado(request: Request, dias_concluidos: int = 30):
             "usuarios": [{"usuario": k, "nome": v["nome"], "depto": v["depto"]} for k, v in sorted(usu.items(), key=lambda kv: norm(kv[1]["nome"]))],
             "config": {k: v for k, v in hub_cfg().items() if k != "mapa_usuarios"} | ({"mapa_usuarios": hub_cfg().get("mapa_usuarios")} if p["acoes"].get("configurar") else {}),
             "sync": {"leituras": BASE.leituras, "completa": BASE.t_completa}, "erp": _erp_ligado(),
-            "banco": "bancowendley" if banco_proprio() else "hub", "app_cliente": _app_cliente(), "wwhat": _wwhat()}
+            "banco": "bancowendley" if banco_proprio() else "hub", "app_cliente": _app_cliente(), "wwhat": _wwhat(), "pausas": pausas()}
 
 
 def _wwhat() -> dict:
@@ -1115,6 +1193,26 @@ async def salvar_config(request: Request):
             raise HTTPException(400, "SLA inválido.") from None
     if "perfis" in c:
         novo["perfis"] = {str(k): str(v) for k, v in (c["perfis"] or {}).items() if k and v in PERFIS}
+    if "limites" in c:   # atendimentos simultâneos por pessoa (vazio = sem limite · 0 = só tickets)
+        lim = {}
+        for k, v in (c["limites"] or {}).items():
+            if k and str(v).strip() != "":
+                try:
+                    lim[str(k)] = max(0, min(int(v), 50))
+                except (TypeError, ValueError):
+                    raise HTTPException(400, "Limite de atendimentos inválido.") from None
+        novo["limites"] = lim
+    if "pausas" in c:   # motivos de pausa do botão de status (Online e Offline são fixos)
+        lst = []
+        for x in (c["pausas"] or [])[:12]:
+            rot = str((x or {}).get("rotulo") or "").strip()[:30]
+            if rot:
+                pid = re.sub(r"[^a-z0-9]+", "-", norm(rot)).strip("-")[:20] or f"p{len(lst) + 1}"
+                if pid in ("online", "offline"):
+                    continue
+                lst.append({"id": str(x.get("id") or pid)[:20] if x.get("id") not in ("online", "offline") else pid, "rotulo": rot,
+                            "emoji": str(x.get("emoji") or "⏸").strip()[:4]})
+        novo["pausas"] = lst
     if "setor_usuarios" in c:
         novo["setor_usuarios"] = {str(k): str(v) for k, v in (c["setor_usuarios"] or {}).items() if k}
     if "app_cliente" in c:   # app do cliente (/cliente/) — liga/desliga, nome, saudação, menu da URA, palavra-chave
@@ -1734,6 +1832,37 @@ def fila_sem_dono(me: dict, setor: str | None = None) -> dict:
     return {"clientes": len(c), "chats": sum(1 for x in c if x[2]), "aguardando_app": sum(1 for x in c if x[0][0] == 0)}
 
 
+@router.get("/presenca")
+def ver_presenca(request: Request, inicio: int = 0):
+    """O botão de status da barra do hub chama a cada minuto (é o "sinal"). inicio=1: abriu o hub → entra Online."""
+    u, p, me = _contexto(request)
+    usu, agora_s = me["usuario"], time.time()
+    with _trava_pres:
+        atual = PRESENCA.get(usu)
+        if inicio and (not atual or atual["status"] == "offline" or agora_s - atual["ping"] > SEM_SINAL_SEG):
+            _mudar(usu, "online", agora_s, fim_anterior=atual["ping"] + 60 if atual and atual["status"] != "offline" else None)
+        elif atual and atual["status"] != "offline":
+            if agora_s - atual["ping"] > SEM_SINAL_SEG:   # voltou depois de ficar sem sinal: fecha o trecho e reabre
+                _mudar(usu, "offline", atual["ping"] + 60, fim_anterior=atual["ping"] + 60)
+                _mudar(usu, "online", agora_s)
+            else:
+                atual["ping"] = agora_s
+    st = presenca(usu)
+    return {"status": st["status"], "desde": st["desde"], "pausas": pausas(), "limite": limite_de(usu), "nome": me["nome"]}
+
+
+@router.post("/presenca")
+async def mudar_presenca(request: Request):
+    u, p, me = _contexto(request)
+    d = await request.json()
+    st = str(d.get("status") or "")
+    if st not in ({"online", "offline"} | {x["id"] for x in pausas()}):
+        raise HTTPException(400, "Status inválido.")
+    with _trava_pres:
+        _mudar(me["usuario"], st, time.time())
+    return {"ok": True, "status": st}
+
+
 @router.post("/proximo")
 def pegar_proximo(request: Request):
     """Pegar o próximo: o cliente mais urgente sem dono do meu setor vem para mim (sem precisar ver a fila inteira)."""
@@ -1762,7 +1891,7 @@ def equipe(request: Request, dias: int = 1, setor: str = ""):
     else:
         quem = {k for k, v in usu.items() if not alvo_setor or norm(v.get("depto")) == norm(alvo_setor)}
     linhas = {k: {"usuario": k, "nome": usu.get(k, {}).get("nome", k), "depto": usu.get(k, {}).get("depto", ""), "online": online(k),
-                  "visto_em": ONLINE.get(k), "chats_atendidos": 0, "tickets_concluidos": 0, "respostas": 0,
+                  "visto_em": ONLINE.get(k), "status": presenca(k)["status"], "limite": limite_de(k), "chats_atendidos": 0, "tickets_concluidos": 0, "respostas": 0,
                   "chats_ativos": 0, "cliente_aguardando": 0, "tickets_pendentes": 0, "vencidos": 0} for k in quem}
     agora_dt = datetime.now(BRT)
     for t in BASE.tickets():

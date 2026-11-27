@@ -155,7 +155,8 @@ ABAS: dict[str, dict] = {
     },
     "tickets": {
         "prefixos": ["/api/tickets", "/api/promo"],
-        "comum": [_r("GET", "/api/tickets/estado", ACESSO), _r("POST", "/api/tickets/recarregar", ACESSO), _r("GET", "/api/tickets/equipe", ACESSO)],
+        "comum": [_r("GET", "/api/tickets/estado", ACESSO), _r("POST", "/api/tickets/recarregar", ACESSO), _r("GET", "/api/tickets/equipe", ACESSO),
+                  _r("GET", "/api/tickets/presenca", ACESSO), _r("POST", "/api/tickets/presenca", ACESSO)],
         "abas": {
             "meudia": {"rotulo": "Meu dia", "campos": {}, "rotas": [_r("POST", "/api/tickets/proximo", "editar")]},
             "caixa": {"rotulo": "Caixa e atendimento", "campos": {}, "rotas": [

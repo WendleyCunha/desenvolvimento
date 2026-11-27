@@ -666,3 +666,41 @@ def test_chamar_visitante_do_link_e_avisar_no_link(t, monkeypatch):
     assert r["aparelhos"] == 1 and enviados[-1][1]["url"] == "/atendimento/" and "url" not in enviados[-1][0]   # toque abre o link
     assert t.get("/api/cliente/atendimento/chat").json()["mensagens"][-1]["texto"] == "Maria, pode falar?"
     assert all(x.get("url") for x in guardadas[cod]["subs"])                                       # celular só do link (fora dos disparos)
+
+
+def test_presenca_online_pausa_offline_e_sem_sinal(t, monkeypatch):
+    gravados = []
+    monkeypatch.setattr(T, "_registrar", lambda *a: gravados.append(a))
+    monkeypatch.setattr(banco, "thread", lambda fn, *a, **k: fn(*a, **k))
+    T.PRESENCA.clear()
+    r = t.get("/api/tickets/presenca?inicio=1").json()
+    assert r["status"] == "online" and [p["id"] for p in r["pausas"]] == ["pausa", "almoco", "banheiro", "reuniao"]
+    assert T.disponivel("atendente")
+    assert t.post("/api/tickets/presenca", json={"status": "almoco"}).json()["status"] == "almoco"
+    assert not T.disponivel("atendente") and gravados[-1][1] == "almoco" and gravados[-1][3] is not None   # fechou o online, abriu o almoço
+    assert t.post("/api/tickets/presenca", json={"status": "dormindo"}).status_code == 400
+    assert t.get("/api/tickets/presenca").json()["status"] == "almoco"                                  # o sinal não muda a pausa
+    T.PRESENCA["atendente"]["ping"] -= T.SEM_SINAL_SEG + 10                                            # fechou o navegador
+    assert T.presenca("atendente")["status"] == "offline"
+    assert t.get("/api/tickets/presenca?inicio=1").json()["status"] == "online"                         # abriu o hub de novo
+    eq = t.get("/api/tickets/equipe").json()["pessoas"]
+    assert next(x for x in eq if x["usuario"] == "atendente")["status"] == "online"
+
+
+def test_limites_e_pausas_salvam_em_ajustes(t):
+    r = t.put("/api/tickets/config", json={"limites": {"atendente": 3, "outro": 0, "vazio": ""}, "pausas": [{"rotulo": "Treinamento", "emoji": "🎓"}, {"rotulo": ""}]})
+    assert r.status_code == 200
+    T.BASE.t_cfg = time.time() + 3600
+    assert T.limite_de("atendente") == 3 and T.limite_de("outro") == 0 and T.limite_de("vazio") is None
+    assert T.pausas() == [{"id": "treinamento", "rotulo": "Treinamento", "emoji": "🎓"}]
+    assert t.put("/api/tickets/config", json={"limites": {"x": "abc"}}).status_code == 400
+
+
+def test_presenca_grava_trechos_do_dia(t):
+    t0 = time.time() - 3600
+    T._registrar("carla", "online", t0, None)
+    T._registrar("carla", "almoco", t0 + 1800, t0 + 1800)
+    dia = T.datetime.fromtimestamp(t0, T.BRT).strftime("%Y-%m-%d")
+    segs = T._seg_doc("carla", dia).get().to_dict()["segs"] if T.datetime.fromtimestamp(t0 + 1800, T.BRT).strftime("%Y-%m-%d") == dia else None
+    if segs is not None:
+        assert [s["s"] for s in segs] == ["online", "almoco"] and segs[0]["f"] and segs[1]["f"] is None
