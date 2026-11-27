@@ -410,6 +410,48 @@ def _seg_doc(usuario: str, dia: str):
     return banco.db().collection("cx_presenca").document(f"{usuario}_{dia}")
 
 
+_SEGS = banco.por_empresa(dict)   # (usuario, dia) → doc do dia (dias passados não mudam: lê uma vez só)
+
+
+def segmentos(usuario: str, dia: str) -> list[dict]:
+    k = (usuario, dia)
+    if k not in _SEGS:
+        try:
+            snap = _seg_doc(usuario, dia).get(timeout=banco.TIMEOUT)
+            _SEGS[k] = (snap.to_dict() if snap.exists else None) or {"segs": []}
+        except Exception:  # noqa: BLE001
+            return []
+        if len(_SEGS) > 20000:
+            _SEGS.clear()
+    return _SEGS[k].get("segs") or []
+
+
+def tempos(usuario: str, de: str, ate: str, por_hora: bool = False) -> dict:
+    """Minutos em cada status no período [de, ate] (AAAA-MM-DD). Trecho aberto conta até agora (ou até o último sinal).
+    por_hora=True: também os minutos ONLINE de cada hora (0-23), para a curva do dia."""
+    total, horas = {}, [0.0] * 24
+    agora_dt = datetime.now(BRT)
+    p = PRESENCA.get(usuario) or {}
+    vivo_ate = datetime.fromtimestamp(min(time.time(), (p.get("ping") or 0) + SEM_SINAL_SEG), BRT) if p.get("status") not in (None, "offline") else None
+    d = datetime.fromisoformat(de).date()
+    fim_d = datetime.fromisoformat(ate).date()
+    while d <= fim_d:
+        for sg in segmentos(usuario, d.isoformat()):
+            ini = _dt(sg.get("i"))
+            fim = _dt(sg.get("f")) if sg.get("f") else (vivo_ate if d == agora_dt.date() else None)
+            if not ini or not fim or fim <= ini:
+                continue
+            total[sg.get("s")] = total.get(sg.get("s"), 0) + (fim - ini).total_seconds() / 60
+            if por_hora and sg.get("s") == "online":
+                c = ini
+                while c < fim:
+                    prox = min(fim, c.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1))
+                    horas[c.hour] += (prox - c).total_seconds() / 60
+                    c = prox
+        d += timedelta(days=1)
+    return {"min": {k: round(v) for k, v in total.items()}, "horas": [round(x) for x in horas]}
+
+
 def _registrar(usuario: str, status: str, ini: float, fim_anterior: float | None):
     """Fecha o trecho aberto (em fim_anterior) e abre um novo com `status` — no dia de cada um."""
     def hh(t):
@@ -423,6 +465,7 @@ def _registrar(usuario: str, status: str, ini: float, fim_anterior: float | None
             if d["segs"] and not d["segs"][-1].get("f"):
                 d["segs"][-1]["f"] = hh(fim_anterior)
                 ref.set(d, timeout=banco.TIMEOUT)
+            _SEGS[(usuario, dia)] = d
         if status != "offline":
             dia = hh(ini)[:10]
             ref = _seg_doc(usuario, dia)
@@ -430,6 +473,7 @@ def _registrar(usuario: str, status: str, ini: float, fim_anterior: float | None
             d = (snap.to_dict() if snap.exists else None) or {"usuario": usuario, "dia": dia, "segs": []}
             d["segs"] = (d["segs"] + [{"s": status, "i": hh(ini), "f": None}])[-400:]
             ref.set(d, timeout=banco.TIMEOUT)
+            _SEGS[(usuario, dia)] = d
     except Exception as ex:  # noqa: BLE001
         print(f"[presença] não gravou {usuario}: {ex}")
 
@@ -1947,13 +1991,18 @@ def pegar_proximo(request: Request):
 
 
 @router.get("/equipe")
-def equipe(request: Request, dias: int = 1, setor: str = ""):
+def equipe(request: Request, dias: int = 1, setor: str = "", de: str = "", ate: str = ""):
     """Painel da equipe: quem está online e a produtividade no período (hoje / 7 / 30 dias).
     Atendente vê só a própria linha; supervisor, o setor dele; gestor, todos (ou um setor)."""
     u, p, me = _contexto(request)
     pf = me["perfil"]
     dias = max(1, min(int(dias or 1), 90))
     corte = (datetime.now(BRT) - timedelta(days=dias - 1)).strftime("%Y-%m-%d")
+    hoje = datetime.now(BRT).strftime("%Y-%m-%d")
+    if re.match(r"^\d{4}-\d{2}-\d{2}$", de or ""):   # período personalizado (Gestão)
+        corte, fim_p = de, ate if re.match(r"^\d{4}-\d{2}-\d{2}$", ate or "") and ate >= de else hoje
+    else:
+        fim_p = hoje
     alvo_setor = setor if pf == "gestor" else me.get("depto", "")
     usu = usuarios()
     if pf == "atendente":
@@ -1976,14 +2025,82 @@ def equipe(request: Request, dias: int = 1, setor: str = ""):
                     else:
                         L["tickets_pendentes"] += 1
                         L["vencidos"] += sla_info(t, agora_dt).get("estado") == "venc"
-        elif str(t.get("resolvido_em") or "")[:10] >= corte and t.get("resolvido_por") in linhas:
+        elif corte <= str(t.get("resolvido_em") or "")[:10] <= fim_p and t.get("resolvido_por") in linhas:
             linhas[t["resolvido_por"]]["chats_atendidos" if chat else "tickets_concluidos"] += 1
         for c in t.get("comentarios") or []:   # o que o cliente viu: resposta no chat + registro de contato
-            if c.get("usuario") in linhas and c.get("tipo") in ("resposta", "contato") and str(c.get("data") or "")[:10] >= corte:
+            if c.get("usuario") in linhas and c.get("tipo") in ("resposta", "contato") and corte <= str(c.get("data") or "")[:10] <= fim_p:
                 linhas[c["usuario"]]["respostas"] += 1
+    for k, L in linhas.items():   # tempo logado (Online) e em pausa no período — do botão de status
+        tm = tempos(k, corte, fim_p)["min"]
+        L["min_online"] = tm.get("online", 0)
+        L["min_pausa"] = sum(v for s2, v in tm.items() if s2 not in ("online", "offline"))
+        L["pausas"] = {s2: v for s2, v in tm.items() if s2 not in ("online", "offline")}
+        L["desde"] = (PRESENCA.get(k) or {}).get("desde")
     pessoas = sorted(linhas.values(), key=lambda x: (not x["online"], -(x["chats_atendidos"] + x["tickets_concluidos"]), norm(x["nome"])))
-    return {"perfil": pf, "dias": dias, "setor": alvo_setor, "pessoas": pessoas, "fila": fila_sem_dono(me, alvo_setor if alvo_setor or pf == "gestor" else None),
+    return {"perfil": pf, "dias": dias, "de": corte, "ate": fim_p, "setor": alvo_setor, "pessoas": pessoas, "pausas": pausas(), "fila": fila_sem_dono(me, alvo_setor if alvo_setor or pf == "gestor" else None),
             "departamentos": departamentos() if pf == "gestor" else []}
+
+
+@router.get("/equipe/curva")
+def curva(request: Request, usuarios_: str = "", de: str = "", ate: str = ""):
+    """Curva de produtividade (Gestão): um atendente, vários, ou todos (visão geral da operação).
+    Um dia → por HORA; mais de um → por DIA. Chats atendidos, tickets concluídos, respostas e minutos Online."""
+    u, p, me = _contexto(request)
+    pf = me["perfil"]
+    hoje = datetime.now(BRT).strftime("%Y-%m-%d")
+    de = de if re.match(r"^\d{4}-\d{2}-\d{2}$", de or "") else hoje
+    ate = ate if re.match(r"^\d{4}-\d{2}-\d{2}$", ate or "") and ate >= de else hoje
+    if (datetime.fromisoformat(ate) - datetime.fromisoformat(de)).days > 92:
+        raise HTTPException(400, "Escolha um período de até 3 meses.")
+    usu = usuarios()
+    pedidos = [x for x in str(usuarios_ or request.query_params.get("usuarios") or "").split(",") if x]
+    if pf == "atendente":
+        quem = {me["usuario"]}
+    else:
+        visiveis = {k for k, v in usu.items() if pf == "gestor" or norm(v.get("depto")) == norm(me.get("depto"))}
+        quem = (set(pedidos) & visiveis) if pedidos else visiveis
+    um_dia = de == ate
+    rot = [f"{h:02d}h" for h in range(24)] if um_dia else []
+    if not um_dia:
+        d = datetime.fromisoformat(de).date()
+        while d <= datetime.fromisoformat(ate).date():
+            rot.append(d.isoformat())
+            d += timedelta(days=1)
+    idx = {r: i for i, r in enumerate(rot)}
+    ser = {k: [0] * len(rot) for k in ("chats", "tickets", "respostas", "online")}
+
+    def pos(data: str):
+        data = str(data or "")
+        if not (de <= data[:10] <= ate):
+            return None
+        return int(data[11:13]) if um_dia and len(data) >= 13 else idx.get(data[:10])
+
+    for t in BASE.tickets():
+        if t.get("resolvido_por") in quem and t.get("status") not in ABERTOS:
+            i = pos(t.get("resolvido_em"))
+            if i is not None:
+                ser["chats" if eh_chat(t) else "tickets"][i] += 1
+        for c in t.get("comentarios") or []:
+            if c.get("usuario") in quem and c.get("tipo") in ("resposta", "contato"):
+                i = pos(c.get("data"))
+                if i is not None:
+                    ser["respostas"][i] += 1
+    status_min = {}
+    for k in quem:
+        if um_dia:
+            tm = tempos(k, de, ate, por_hora=True)
+            ser["online"] = [a + b for a, b in zip(ser["online"], tm["horas"])]
+        else:
+            tm = {"min": {}}
+            for r in rot:
+                m1 = tempos(k, r, r)["min"]
+                ser["online"][idx[r]] += m1.get("online", 0)
+                for s2, v in m1.items():
+                    tm["min"][s2] = tm["min"].get(s2, 0) + v
+        for s2, v in tm["min"].items():
+            status_min[s2] = status_min.get(s2, 0) + v
+    return {"de": de, "ate": ate, "por": "hora" if um_dia else "dia", "rotulos": rot, "series": ser, "usuarios": sorted(quem),
+            "totais": {k: sum(v) for k, v in ser.items()}, "status_min": status_min, "pausas": pausas()}
 
 
 @router.post("/ticket/{tid:path}/concluir-chat")

@@ -742,3 +742,29 @@ def test_distribuicao_automatica_respeita_status_limite_e_setor(t, monkeypatch):
     T.PRESENCA["beto.cx"]["status"] = "online"                     # voltou: recebe na próxima rodada
     T.distribuir(forcar=True)
     assert central(t, sid)["atribuido_para"] == "beto.cx"
+
+
+def test_gestao_tempo_logado_e_curva(t, monkeypatch):
+    monkeypatch.setattr(banco, "thread", lambda fn, *a, **k: fn(*a, **k))
+    T._SEGS.clear()
+    hoje = T.datetime.now(T.BRT).strftime("%Y-%m-%d")
+    T._SEGS[("atendente", hoje)] = {"segs": [{"s": "online", "i": f"{hoje} 08:00:00", "f": f"{hoje} 10:00:00"},
+                                             {"s": "almoco", "i": f"{hoje} 10:00:00", "f": f"{hoje} 11:00:00"},
+                                             {"s": "online", "i": f"{hoje} 11:00:00", "f": f"{hoje} 11:30:00"}]}
+    tm = T.tempos("atendente", hoje, hoje, por_hora=True)
+    assert tm["min"] == {"online": 150, "almoco": 60} and tm["horas"][8] == 60 and tm["horas"][11] == 30
+    entrar(t)
+    sid = t.post("/api/cliente/chat", json={"texto": "Oi", "opcao": "outro"}).json()["id"]
+    tid = central(t, sid)["id"]
+    t.post(url_tk(tid) + "/alterar", json={"atribuir": "atendente"})
+    t.post(url_tk(tid) + "/comentar", json={"texto": "Olá!", "tipo": "resposta"})
+    t.post(url_tk(tid) + "/alterar", json={"status": "resolvido"})
+    eq = next(x for x in t.get(f"/api/tickets/equipe?de={hoje}&ate={hoje}").json()["pessoas"] if x["usuario"] == "atendente")
+    assert eq["min_online"] == 150 and eq["min_pausa"] == 60 and eq["pausas"] == {"almoco": 60} and eq["chats_atendidos"] == 1
+    c = t.get(f"/api/tickets/equipe/curva?de={hoje}&ate={hoje}&usuarios=atendente").json()
+    assert c["por"] == "hora" and len(c["rotulos"]) == 24 and c["totais"]["chats"] == 1 and c["totais"]["respostas"] == 1
+    assert c["totais"]["online"] == 150 and c["status_min"]["almoco"] == 60
+    ontem = (T.datetime.now(T.BRT) - T.timedelta(days=6)).strftime("%Y-%m-%d")
+    c7 = t.get(f"/api/tickets/equipe/curva?de={ontem}&ate={hoje}").json()
+    assert c7["por"] == "dia" and len(c7["rotulos"]) == 7 and c7["series"]["online"][-1] == 150
+    assert t.get("/api/tickets/equipe/curva?de=2026-01-01&ate=2026-12-31").status_code == 400
