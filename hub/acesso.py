@@ -207,7 +207,7 @@ EMPRESAS = _Empresas()
 
 
 # Primeiros pedaços de endereço que o hub já usa (o main.py completa com as rotas): empresa não pode ter esses nomes
-RESERVADOS = {"api", "m", "static", "login", "configuracoes", "cliente", "atendimento", "motorista", "relatorios", "entrega", "web",
+RESERVADOS = {"api", "m", "static", "login", "configuracoes", "cliente", "atendimento", "pesquisa", "motorista", "relatorios", "entrega", "web",
               "healthz", "principal", "app", "admin", "super", "e"}
 
 

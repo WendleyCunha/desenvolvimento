@@ -88,6 +88,7 @@ import relatorios_publico
 import relatorios_lembretes
 import governanca
 import cliente_app
+import regua
 import promocoes
 import agente
 import weduca
@@ -383,8 +384,8 @@ def _api_desligada(caminho: str) -> bool:
 
 # LINKS PÚBLICOS POR EMPRESA: /<empresa>/relatorios/, /<empresa>/motorista/, /<empresa>/cliente/, /<empresa>/atendimento/, /<empresa>/entrega/<código>
 # (a principal continua sem prefixo). O app chama /<empresa>/api/… e aqui o endereço volta ao normal, já na empresa certa.
-APPS_PUBLICOS = {"cliente": ["tickets"], "atendimento": ["tickets"], "motorista": ["wrouter"], "entrega": ["wrouter"], "relatorios": ["secretaria"]}
-APIS_PUBLICAS = {"cliente": ["tickets"], "wrouter": ["wrouter"], "entrega": ["wrouter"], "relatorios-publico": ["secretaria"]}
+APPS_PUBLICOS = {"cliente": ["tickets"], "atendimento": ["tickets"], "pesquisa": ["tickets"], "motorista": ["wrouter"], "entrega": ["wrouter"], "relatorios": ["secretaria"]}
+APIS_PUBLICAS = {"cliente": ["tickets"], "pesquisa": ["tickets"], "wrouter": ["wrouter"], "entrega": ["wrouter"], "relatorios-publico": ["secretaria"]}
 _LINK_FECHADO = """<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Link indisponível</title>
 <body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#05060a;color:#eef0f5;font:15px Inter,system-ui,sans-serif">
 <div style="text-align:center;max-width:380px;padding:24px"><div style="font-size:2.4rem">🔗</div><h2 style="font-weight:600;margin:10px 0 6px">Link indisponível</h2>
@@ -483,6 +484,7 @@ app.include_router(relatorios_publico.router)
 app.include_router(relatorios_lembretes.router)
 app.include_router(wrouter.router)   # WROUTER — /motorista/ (app), /entrega/<código> (cliente) e /api/wrouter/*
 app.include_router(cliente_app.router)   # App do cliente — /cliente/ e /api/cliente/* (públicos, sessão própria)
+app.include_router(regua.router)   # Pesquisas CSAT/NPS — /pesquisa/<token> e /api/pesquisa/* (públicos, link assinado)
 app.include_router(weduca.router)   # WEDUCA — feed/aprendizagem; o conteúdo vira base da IA do topo
 agente.FONTES_EXTRAS.append(weduca.base_conhecimento)
 agente.ORIGENS["weduca"] = {"nao_resolveu": weduca.nao_resolveu, "ajustar": weduca.ajustar}

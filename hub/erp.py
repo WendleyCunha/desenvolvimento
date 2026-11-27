@@ -210,6 +210,8 @@ class Tx:
             return
         # o que aconteceu de novo em cada pedido (vai para os tickets abertos depois de gravar)
         eventos = []
+        regua_mud = [(i, _copia(ST.dados["pedidos"].get(i)) if ST.dados["pedidos"].get(i) else None, d)
+                     for (col, i), d in self.mud.items() if col == "pedidos" and d]   # régua do cliente (aviso por etapa)
         for (col, i), d in self.mud.items():
             if col == "pedidos" and d:
                 antes = len((ST.dados["pedidos"].get(i) or {}).get("historico") or [])
@@ -244,6 +246,12 @@ class Tx:
             ST.config = self.cfg
         if eventos:
             _avisar_tickets(eventos, self.u)
+        if regua_mud:
+            try:
+                import regua
+                banco.thread(regua.processar_pedidos, regua_mud)
+            except Exception as ex:  # noqa: BLE001
+                print(f"[erp] régua: {ex}")
 
 
 def _avisar_tickets(eventos: list, u: dict):
