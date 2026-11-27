@@ -1045,3 +1045,18 @@ def test_regras_auto_erp_compat_e_motivo(monkeypatch):
     assert T.abre_ticket_da_baixa(cfg, "ausente", "endereco nao localizado")
     assert not T.abre_ticket_da_baixa(cfg, "ausente", "Cliente ausente")
     assert not T.abre_ticket_da_baixa({"auto_erp_regras": []}, "avaria", "x")
+
+
+def test_app_usa_motivos_do_setor_cx_e_limite_configuravel(t):
+    """Motivos cadastrados só no setor CX (árvore geral só com interno) → o app mostra os do CX e o ticket cai no CX."""
+    T.BASE.cfg_cache["motivos_central"] = {"ticket": {"Novo": {"Ajuda": {"sla": 1, "ativo": True, "exige_codigo": False}}},
+                                           "por_setor": {"CX": {"Assistência": {"Abertura": {"sla": 3, "ativo": True}}}}}
+    entrar(t)
+    eu = t.get("/api/cliente/eu").json()
+    assert eu["motivos"] == {"Assistência": ["Abertura"]}
+    r = t.post("/api/cliente/chamados", json={"motivo_pai": "Assistência", "motivo_filho": "Abertura", "texto": "Peça quebrada"}).json()
+    tk = central(t, r["id"])
+    assert tk["departamento"] == "CX" and tk["motivo_filho"] == "Abertura"
+    t.put("/api/tickets/config", json={"app_cliente": {"max_chamados_dia": 1}})
+    T.BASE.t_cfg = time.time() + 3600
+    assert C.cfg_app()["max_chamados_dia"] == 1
