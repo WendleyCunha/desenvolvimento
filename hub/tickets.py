@@ -43,6 +43,7 @@ cada 30 min. Toda escrita é transação no container (igual ao Streamlit).
 from __future__ import annotations
 
 import copy
+import json
 import os
 import re
 import threading
@@ -646,7 +647,8 @@ def estado(request: Request, dias_concluidos: int = 30):
             "usuarios": [{"usuario": k, "nome": v["nome"], "depto": v["depto"]} for k, v in sorted(usu.items(), key=lambda kv: norm(kv[1]["nome"]))],
             "config": {k: v for k, v in hub_cfg().items() if k != "mapa_usuarios"} | ({"mapa_usuarios": hub_cfg().get("mapa_usuarios")} if p["acoes"].get("configurar") else {}),
             "sync": {"leituras": BASE.leituras, "completa": BASE.t_completa}, "erp": _erp_ligado(),
-            "banco": "bancowendley" if banco_proprio() else "hub", "app_cliente": _app_cliente(), "wwhat": _wwhat(), "pausas": pausas(), "regua": _regua()}
+            "banco": "bancowendley" if banco_proprio() else "hub", "app_cliente": _app_cliente(), "wwhat": _wwhat(), "pausas": pausas(), "regua": _regua(),
+            "auto_erp_regras": regras_auto_erp(hub_cfg()), "motivos_baixa": motivos_da_baixa()}
 
 
 def _regua() -> dict:
@@ -1247,6 +1249,22 @@ async def salvar_config(request: Request):
         novo["mapa_usuarios"] = {str(k): str(v) for k, v in (c["mapa_usuarios"] or {}).items() if k and v}
     if "auto_erp" in c:
         novo["auto_erp"] = {k: bool((c["auto_erp"] or {}).get(k)) for k in ("avaria", "recusado", "ausente")}
+    if "auto_erp_regras" in c:   # lista de regras (resultado ou motivo do motorista) — pode adicionar e tirar
+        regras, vistos = [], set()
+        for x in (c["auto_erp_regras"] or [])[:60]:
+            x = x or {}
+            if x.get("tipo") in ROTULO_RES:
+                item = {"tipo": x["tipo"]}
+            elif str(x.get("motivo") or "").strip():
+                item = {"motivo": str(x["motivo"]).strip()[:80]}
+            else:
+                continue
+            k = json.dumps(item, sort_keys=True)
+            if k not in vistos:
+                vistos.add(k)
+                regras.append(item)
+        novo["auto_erp_regras"] = regras
+        novo["auto_erp"] = {k: any(r.get("tipo") == k for r in regras) for k in ("avaria", "recusado", "ausente")}   # compatível com o antigo
     for k in ("depto_erp", "motivo_pai_erp"):
         if k in c:
             novo[k] = str(c[k] or "")
@@ -1674,6 +1692,29 @@ def eventos_do_erp(eventos: list, usuario_hub: dict):
 
 
 ROTULO_RES = {"avaria": "Avaria na entrega", "recusado": "Entrega recusada", "ausente": "Cliente ausente na entrega"}
+TIPO_WR = {"ausente": "ausente", "avaria": "avaria", "recusa": "recusado"}   # tipo do motivo no WROUTER → resultado da baixa no ERP
+
+
+def regras_auto_erp(cfg: dict) -> list[dict]:
+    """Ajustes › Ligação com o ERP: quais baixas abrem ticket sozinho. Cada regra é o RESULTADO (qualquer avaria,
+    recusa ou ausente) ou um MOTIVO do motorista (WROUTER › Motivos). Sem lista salva: vem dos 3 interruptores antigos."""
+    r = cfg.get("auto_erp_regras")
+    if isinstance(r, list):
+        return r
+    return [{"tipo": k} for k, v in (cfg.get("auto_erp") or {}).items() if v and k in ROTULO_RES]
+
+
+def abre_ticket_da_baixa(cfg: dict, resultado: str, motivo: str) -> bool:
+    return any(x.get("tipo") == resultado or (x.get("motivo") and norm(x["motivo"]) == norm(motivo)) for x in regras_auto_erp(cfg))
+
+
+def motivos_da_baixa() -> list[dict]:
+    """Os motivos que o motorista escolhe na baixa (WROUTER › Motoristas e app › Motivos), com o resultado no ERP."""
+    try:
+        import wrouter
+        return [{"motivo": m["motivo"], "resultado": TIPO_WR.get(m.get("tipo"), "ausente")} for m in wrouter.cfg()["motivos"]]
+    except Exception:  # noqa: BLE001
+        return []
 
 
 def auto_de_baixa(pid: str, resultado: str, motivo: str, usuario_hub: dict):
@@ -1682,7 +1723,7 @@ def auto_de_baixa(pid: str, resultado: str, motivo: str, usuario_hub: dict):
         if not configurado() or resultado not in ROTULO_RES:
             return
         cfg = hub_cfg()
-        if not (cfg.get("auto_erp") or {}).get(resultado):
+        if not abre_ticket_da_baixa(cfg, resultado, motivo):
             return
         e = _erp()
         ped = e.ST.dados["pedidos"].get(pid)
