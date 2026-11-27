@@ -555,3 +555,33 @@ def test_cpf_nao_achado_segue_sem_identificacao(t):
     t.post(url_tk(tk["id"]) + "/comentar", json={"texto": "Olá Maria! Me passa o número do pedido?", "tipo": "resposta"})
     assert [m["de"] for m in t.get("/api/cliente/atendimento/chat").json()["mensagens"]] == ["cliente", "central"]
     assert t.get("/api/cliente/eu").status_code == 401                                                  # nada do app
+
+
+def _validar(t):
+    conv = t.post("/api/cliente/atendimento/cpf", json={"cpf": CPF_ANA}).json()["conversa"]
+    t.post("/api/cliente/atendimento/resposta", json={"conversa": conv, "resposta": _certa(conv)})
+    return t.post("/api/cliente/atendimento/resposta", json={"conversa": conv, "resposta": _certa(conv)}).json()
+
+
+def test_varias_entradas_pelo_link_caem_na_mesma_conversa(t):
+    _preparar_link()
+    r1 = _validar(t)
+    assert r1["continua"] is None and r1["tk"]
+    sid = t.post("/api/cliente/atendimento/mensagem", json={"texto": "Oi, é a Ana", "req": "a1"}).json()["id"]
+    tid = central(t, sid)["id"]
+    t.post(url_tk(tid) + "/alterar", json={"atribuir": "atendente"})
+    # outro aparelho / outra pessoa da casa: valida de novo e cai na MESMA conversa
+    t.cookies.clear()
+    r2 = _validar(t)
+    assert r2["continua"]["id"] == sid and r2["continua"]["atendente"] == "Carla"
+    assert t.post("/api/cliente/atendimento/mensagem", json={"texto": "Sou o marido dela", "req": "m1"}).json()["id"] == sid
+    ts = [x for x in t.get("/api/tickets/estado").json()["tickets"] if x.get("app_tipo") == "chat"]
+    assert len(ts) == 1
+    ch = t.get("/api/cliente/atendimento/chat").json()
+    assert [m["texto"] for m in ch["mensagens"]] == ["Oi, é a Ana", "Sou o marido dela"]          # a nota da central não aparece para o cliente
+    assert "Entrou de novo pelo link" in str(t.get(url_tk(tid)).json())                            # mas a central vê
+    # navegador que apagou o cookie: o token guardado no aparelho continua a conversa
+    t.cookies.clear()
+    assert t.get("/api/cliente/atendimento/info").json()["validado"] is False
+    i = t.get("/api/cliente/atendimento/info", headers={"X-Atend-Token": r2["tk"]}).json()
+    assert i["validado"] and i["continua"]["id"] == sid

@@ -928,7 +928,8 @@ def codigo_visitante() -> str:
 
 
 def _cliente_do_link(request: Request) -> tuple[str, dict]:
-    tk = request.cookies.get(_ck_at()) or ""
+    # cookie (normal) ou o mesmo token guardado no aparelho (alguns navegadores de app apagam o cookie ao fechar a aba)
+    tk = request.cookies.get(_ck_at()) or request.headers.get("x-atend-token") or ""
     if "." not in tk:
         raise HTTPException(401, "Confirme seus dados para falar com a gente.")
     corpo, ass = tk.rsplit(".", 1)
@@ -1036,6 +1037,24 @@ def resposta_confere(q: dict, resposta: str) -> bool:
     return False
 
 
+def em_atendimento(cid: str, cli: dict) -> dict | None:
+    """Chat já aberto com a central (do link OU do app): quem validar de novo — no mesmo aparelho ou em outro —
+    continua NESSA conversa. Um chat por cliente."""
+    ativo = chat_ativo(tickets_do_cliente(cid, cli))
+    if not ativo:
+        return None
+    dono = ativo.get("atribuido_para") or (ativo.get("atendentes") or [""])[0]
+    nome = ((T.usuarios().get(dono) or {}).get("nome") or "") if dono else ""
+    return {"id": ativo["id"].split("#")[-1], "atendente": _primeiro_nome(nome), "_tid": ativo["id"]}
+
+
+def _avisar_entrada(info: dict, cli: dict):
+    """Nota só para a central: alguém validou de novo e entrou na conversa que já estava aberta."""
+    me = {"usuario": "bot-link", "nome": "Assistente do link"}
+    T._mutar_sol(info["_tid"], lambda s: T._coment(s, me, "🔗 Entrou de novo pelo link de atendimento (CPF validado — pode ser outro aparelho "
+                                                        "ou outra pessoa da casa). A conversa continua aqui.", interno=True, tipo="sistema"), me)
+
+
 def _publica(q: dict) -> dict:
     return {"texto": q["texto"], **({"opcoes": q["opcoes"]} if q.get("modo") == "opcao" else {})}
 
@@ -1059,16 +1078,18 @@ def pagina_atendimento():
 @router.get("/api/cliente/atendimento/info")
 def at_info(request: Request):
     w, c = cfg_wwhat(), cfg_app()
-    nome, visitante = "", False
+    nome, visitante, cont = "", False, None
     try:
-        cli = _cliente_do_link(request)[1]
+        cid, cli = _cliente_do_link(request)
         visitante = cli.get("tipo") == "visitante"
         nome = _primeiro_nome(cli["_primeiro"] if visitante else cli.get("nome")) or "Visitante"
+        cont = em_atendimento(cid, cli)
     except HTTPException:
         pass
     emp = c.get("empresa") or "Central do Cliente"
     return {"ativo": w["ativo"] and bool(c.get("ativo")), "empresa": emp, "saudacao": _tpl(w["saudacao"], empresa=emp, nome=""),
             "pedir_cpf": w["pedir_cpf"], "validado": bool(nome), "nome": nome, "visitante": visitante,
+            "continua": {k: v for k, v in cont.items() if not k.startswith("_")} if cont else None,
             "direcionando": _tpl(w["direcionando"], nome=nome, empresa=emp) if nome else ""}
 
 
@@ -1124,10 +1145,14 @@ async def at_resposta(request: Request):
                     tx.commit()
                 cli = e.ST.dados["parceiros"][cv["cid"]]
             nome = _primeiro_nome(cli.get("nome"))
-            resp = JSONResponse({"ok": True, "validado": True, "nome": nome,
+            cont = em_atendimento(cv["cid"], cli)
+            if cont:
+                _avisar_entrada(cont, cli)
+            tk = token_atendimento(cv["cid"], cli)
+            resp = JSONResponse({"ok": True, "validado": True, "nome": nome, "tk": tk,
+                                 "continua": {k: v for k, v in cont.items() if not k.startswith("_")} if cont else None,
                                  "direcionando": _tpl(cfg_wwhat()["direcionando"], nome=nome, empresa=cfg_app().get("empresa"))})
-            resp.set_cookie(_ck_at(), token_atendimento(cv["cid"], cli), httponly=True, samesite="lax", secure=_https(request),
-                            max_age=HORAS_AT * 3600, path="/")
+            resp.set_cookie(_ck_at(), tk, httponly=True, samesite="lax", secure=_https(request), max_age=HORAS_AT * 3600, path="/")
             return resp
         if not cv["fila"]:
             _conversas.pop(str(d.get("conversa")), None)
@@ -1158,10 +1183,10 @@ async def at_visitante(request: Request):
         raise HTTPException(422, "Me diga seu nome para eu te apresentar ao atendente.")
     _freio_msg("visitante:" + _ip(request), maximo=5, janela=3600)
     nome = " ".join(x.capitalize() for x in nome.split())
-    resp = JSONResponse({"ok": True, "nome": nome.split(" ")[0],
+    tk = token_visitante(codigo_visitante(), nome)
+    resp = JSONResponse({"ok": True, "nome": nome.split(" ")[0], "tk": tk,
                          "direcionando": f"Prazer, {nome.split(' ')[0]}! 😊 Estou te direcionando ao atendimento — escreva sua mensagem que um atendente já te responde."})
-    resp.set_cookie(_ck_at(), token_visitante(codigo_visitante(), nome), httponly=True, samesite="lax", secure=_https(request),
-                    max_age=HORAS_AT * 3600, path="/")
+    resp.set_cookie(_ck_at(), tk, httponly=True, samesite="lax", secure=_https(request), max_age=HORAS_AT * 3600, path="/")
     return resp
 
 
