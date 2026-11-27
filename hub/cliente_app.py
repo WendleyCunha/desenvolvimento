@@ -160,7 +160,12 @@ def _cliente_da_sessao(request: Request) -> tuple[str, dict]:
     e = _erp()
     e.ST.carregar()
     cli = e.ST.dados["parceiros"].get(d.get("c") or "")
-    if not cli or cli.get("tipo") != "cliente" or cli.get("ativo") is False or _impressao(cli) != d.get("i"):
+    if not cli or cli.get("tipo") != "cliente" or cli.get("ativo") is False:
+        raise HTTPException(401, "Sua sessão expirou. Entre de novo.")
+    if d.get("d"):   # aparelho conectado pelo link + senha (cliente_acesso.py)
+        import cliente_acesso
+        cliente_acesso.checar_aparelho(d, d["c"], cli)
+    elif _impressao(cli) != d.get("i"):   # login antigo (CPF + e-mail)
         raise HTTPException(401, "Sua sessão expirou. Entre de novo.")
     return d["c"], cli
 
@@ -507,11 +512,19 @@ def eu(request: Request):
     todos = sorted(tickets_do_cliente(cid, cli), key=lambda t: str(t.get("atualizado_em") or ""), reverse=True)
     ts = [x for x in todos if x.get("status") in T.ABERTOS] + [x for x in todos if x.get("status") not in T.ABERTOS][:20]
     ativo = chat_ativo(todos)
-    return {"nome": _primeiro_nome(cli.get("nome")), "nome_completo": cli.get("nome"), "codigo": cli.get("codigo"),
+    import cliente_acesso
+    pedidos = pedidos_do_cliente(cid)
+    protegida = cliente_acesso.palavra_protegida(request, cid)
+    if protegida:   # com senha criada: a palavra-chave da entrega só aparece depois de digitar a senha
+        for p in pedidos:
+            p["palavra_protegida"] = bool(p.get("palavra_chave"))
+            p["palavra_chave"] = ""
+    return {"palavra_protegida": protegida, "tem_senha": cliente_acesso.tem_senha(cid),
+            "nome": _primeiro_nome(cli.get("nome")), "nome_completo": cli.get("nome"), "codigo": cli.get("codigo"),
             "empresa": c.get("empresa"), "saudacao": c.get("saudacao"),
             "ura": [{k: u.get(k) for k in ("id", "rotulo", "descricao")} for u in c["ura"]],
             "motivos": motivos_para_cliente(),
-            "pedidos": pedidos_do_cliente(cid), "chamados": [resumo_cliente(t) for t in ts],
+            "pedidos": pedidos, "chamados": [resumo_cliente(t) for t in ts],
             "chamado": chamado_unico(cli, todos),
             "chat": _completo(ativo) if ativo else None, "versao": T.BASE.ver}
 
@@ -524,6 +537,9 @@ def pdf_pedido_cliente(pid: str, request: Request):
     ped = e.ST.dados["pedidos"].get(pid)
     if not ped or ped.get("cliente_id") != cid or ped.get("status") in (None, "rascunho"):
         raise HTTPException(404, "Pedido não encontrado.")
+    import cliente_acesso
+    if cliente_acesso.palavra_protegida(request, cid):   # o PDF traz a palavra-chave da entrega
+        raise HTTPException(403, "Digite sua senha no app para baixar o PDF do pedido.")
     pdf = e.pdf_do_pedido(ped, palavra=(ped.get("palavra_chave") or "") if ped.get("status") not in ("cancelado", "recusado", "entregue") else "")
     return Response(pdf, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="pedido_{ped.get("numero")}.pdf"'})
 
@@ -1231,6 +1247,10 @@ async def at_cpf(request: Request):
         _falhou(ip, "doc:" + doc)
         raise HTTPException(404, "Não encontrei um cadastro com esse CPF. Confira os números ou fale com a loja onde você comprou.")
     cid, cli = achado
+    import cliente_acesso
+    if cliente_acesso.validacao_travada(cid):
+        raise HTTPException(429, "Por segurança, a validação deste CPF está travada por 24 horas (3 tentativas erradas). "
+                                 "Se precisar antes, fale com a loja onde você comprou.")
     fila = perguntas_do_cliente(cid, cli, evitar=_ultimas.get(doc) or ())
     if len(fila) < 2:
         raise HTTPException(409, "Não consigo confirmar seus dados por aqui — o cadastro está incompleto. Fale com a loja onde você comprou.")
@@ -1268,6 +1288,8 @@ async def at_resposta(request: Request):
                     tx.commit()
                 cli = e.ST.dados["parceiros"][cv["cid"]]
             nome = _primeiro_nome(cli.get("nome"))
+            import cliente_acesso
+            cliente_acesso.validou(cv["cid"], cli)
             cont = em_atendimento(cv["cid"], cli)
             if cont:
                 _avisar_entrada(cont, cli)
@@ -1286,6 +1308,8 @@ async def at_resposta(request: Request):
     _falhou(ip, "doc:" + cv["doc"])
     if cv["erros"] >= ERROS_AT or not cv["fila"]:
         _conversas.pop(str(d.get("conversa")), None)
+        import cliente_acesso
+        cliente_acesso.falhou_validacao(cv["cid"])
         return {"ok": False, "fim": True, "msg": "Não consegui confirmar seus dados. Por segurança, encerrei a validação. "
                                                  "Tente de novo mais tarde ou fale com a loja onde você comprou."}
     cv["atual"] = cv["fila"].pop(0)
@@ -1345,3 +1369,6 @@ def at_sair():
     resp = JSONResponse({"ok": True})
     resp.delete_cookie(_ck_at(), path="/")
     return resp
+
+
+import cliente_acesso  # noqa: E402,F401  — registra as rotas do acesso seguro (senha, aparelhos) neste router

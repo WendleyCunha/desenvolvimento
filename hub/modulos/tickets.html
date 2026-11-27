@@ -1176,7 +1176,7 @@ async function telaCliente(m, cid) {
       const min = l.id === "conversa" && !S.convAberta;
       el.className = "wg vidro painel-cli" + (min ? " min" : ""); el.dataset.wg = l.id; el.style.setProperty("--c", d.cor);
       el.innerHTML = `<header class="wg-cab" title="Arraste para mover">${A.orbe(d.icone, d.cor, "p")}<h3>${titulo(l.id)}</h3>
-        <span class="acs">${l.id === "conversa" && !D.interno ? `<button type="button" class="btn-ic p" id="chamarCli" title="Chamar o cliente — mensagem no chat e aviso no celular (app ou link)">${svg("sino")}</button>` : ""}${l.id === "conversa" ? `<button type="button" class="btn-ic p" id="minConv" title="${min ? "Mostrar a conversa" : "Minimizar"}">${svg(min ? "maximizar" : "minimizar")}</button>` : ""}<button type="button" class="btn-ic p" data-wmax="${l.id}" title="Expandir">${svg("maximizar")}</button></span></header>
+        <span class="acs">${l.id === "cli" && !D.interno ? `<button type="button" class="btn-ic p" id="acessoApp" title="Acesso do cliente ao app — senha, aparelhos conectados e bloqueios">${svg("escudo")}</button>` : ""}${l.id === "conversa" && !D.interno ? `<button type="button" class="btn-ic p" id="chamarCli" title="Chamar o cliente — mensagem no chat e aviso no celular (app ou link)">${svg("sino")}</button>` : ""}${l.id === "conversa" ? `<button type="button" class="btn-ic p" id="minConv" title="${min ? "Mostrar a conversa" : "Minimizar"}">${svg(min ? "maximizar" : "minimizar")}</button>` : ""}<button type="button" class="btn-ic p" data-wmax="${l.id}" title="Expandir">${svg("maximizar")}</button></span></header>
         <div class="wg-corpo">${corpo[l.id]}</div><span class="wg-redim" title="Arraste para redimensionar"></span>`;
       if (l.id === "conversa" && !min && l.h > 2) S.convH = l.h;
       grade.adicionar({ id: l.id, x: l.x, y: l.y, w: l.w, h: min ? 1 : (l.id === "conversa" ? Math.max(l.h, 4) : l.h), minW: d.minW, minH: min ? 1 : (d.minH === 1 ? 3 : d.minH), el });
@@ -1188,6 +1188,7 @@ async function telaCliente(m, cid) {
     m.querySelectorAll("[data-wmax]").forEach((b) => (b.onclick = () => grade.max(b.dataset.wmax)));
     $("#minConv").onclick = () => alternarConversa();
     const bc = $("#chamarCli"); if (bc) bc.onclick = () => chamarCliente(D);
+    const ba = $("#acessoApp"); if (ba) ba.onclick = () => acessoApp(D);
     const conv = $("#conversa"); if (conv) conv.scrollTop = conv.scrollHeight;
     const reg = m.querySelector(".registro"); if (reg) reg.scrollTop = reg.scrollHeight;
   }
@@ -1214,6 +1215,26 @@ function chamarCliente(D) {
       try { const r = await chamar(`/cliente/${encodeURIComponent(D.cid)}/chamar`, { method: "POST", body: { texto } }, "chamando…");
         ok(r.aparelhos ? `Cliente chamado — aviso enviado para ${r.aparelhos} celular(es).` : "Mensagem no chat do cliente. Ele não ativou avisos no celular — vai ver quando abrir o app ou o link.");
         await recarregarCliente(); } catch (er) { falha(er); return false; } } }] });
+}
+/* 🛡 Acesso do cliente ao app: senha criada, aparelhos conectados, bloqueios — a central desconecta e destrava */
+async function acessoApp(D) {
+  const url = `/cliente/${encodeURIComponent(D.cid)}/app-acesso`;
+  let r; try { r = await chamar(url, {}, "carregando…"); } catch (e) { falha(e); return; }
+  const md = A.modal({ titulo: `Acesso ao app · ${D.cliente.nome || ""}`, icone: "escudo", cor: "var(--ouro)", largura: 560, html: `<div id="aaCorpo"></div>`, botoes: [{ rotulo: "Fechar", principal: true }] });
+  const desenhar = () => {
+    const trav = r.validacao_travada ? `Validação travada até ${new Date(r.travado_ate * 1000).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })} (3 tentativas erradas).` : "";
+    md.el.querySelector("#aaCorpo").innerHTML = `<div class="kpis" style="grid-template-columns:repeat(3,1fr)"><div class="kpi" style="--c:${r.tem_senha ? "var(--verde)" : "var(--txt3)"}"><small>Senha</small><b style="font-size:1rem">${r.tem_senha ? "criada" : "não criou"}</b><span>${r.tem_senha ? "entra com CPF + senha" : "entra pelo link ou e-mail"}</span></div>
+        <div class="kpi" style="--c:${r.bloqueada ? "var(--rosa)" : "var(--verde)"}"><small>Senha bloqueada</small><b style="font-size:1rem">${r.bloqueada ? "sim" : "não"}</b><span>${r.bloqueada ? "errou 3 vezes" : ""}</span></div>
+        <div class="kpi" style="--c:${r.validacao_travada ? "var(--rosa)" : "var(--verde)"}"><small>Validação do link</small><b style="font-size:1rem">${r.validacao_travada ? "travada" : "liberada"}</b><span>${r.validacao_travada ? "24 h" : ""}</span></div></div>
+      ${trav ? `<div class="aviso ouro" style="margin-top:10px">${esc(trav)}</div>` : ""}
+      ${r.bloqueada || r.validacao_travada ? `<button type="button" class="btn p" id="aaDestravar" style="margin-top:10px">Destravar (o cliente pode validar e entrar de novo)</button>` : ""}
+      <div class="sec">Aparelhos conectados</div>
+      ${r.aparelhos.map((a) => `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--vidro-borda);border-radius:12px;margin-bottom:6px"><span style="flex:1"><b>📱 ${esc(a.nome)}</b><small class="dica" style="display:block">conectado ${esc(dh(a.criado))} · último uso ${esc(dh(a.ultimo))}</small></span><button type="button" class="btn v p" data-aadesc="${esc(a.id)}">Desconectar</button></div>`).join("") || `<p class="dica">Nenhum aparelho conectado.</p>`}
+      ${r.aparelhos.length > 1 ? `<button type="button" class="btn v p" data-aadesc="todos">Desconectar todos</button>` : ""}`;
+    md.el.querySelectorAll("[data-aadesc]").forEach((b) => (b.onclick = async () => { try { r = await chamar(url, { method: "POST", body: { acao: "desconectar", aparelho: b.dataset.aadesc } }); ok("Aparelho desconectado."); desenhar(); } catch (e) { falha(e); } }));
+    const dt = md.el.querySelector("#aaDestravar"); if (dt) dt.onclick = async () => { try { r = await chamar(url, { method: "POST", body: { acao: "destravar" } }); ok("Acesso destravado."); desenhar(); } catch (e) { falha(e); } };
+  };
+  desenhar();
 }
 /* minimizar/mostrar a conversa SEM remontar a tela */
 function alternarConversa() {
@@ -1847,7 +1868,7 @@ function telaAjustes(m) {
         <p class="dica">No cadastro de cliente do ERP há o campo <b>Código do cliente</b> — é ele que liga o atendimento aos pedidos (também casa por telefone ou nome).</p>
         <button type="button" class="btn p" id="salvarErp">Salvar</button></div>
       <div class="cartao" ${vis("app")}><h3>${svg("mensagem")} App do cliente</h3>
-        <p class="dica">Link geral para enviar aos clientes. Eles entram com <b>CPF + e-mail do cadastro do ERP</b>, veem os pedidos e prazos, abrem chamados pela URA e conversam com a central — tudo cai aqui na Caixa (fila “App do cliente”).</p>
+        <p class="dica">Link geral para enviar aos clientes. <b>Primeiro acesso</b>: valida pelo link de atendimento (CPF + 2 perguntas) e cria uma <b>senha</b> — o celular fica conectado (pede a senha a cada 30 dias; 3 erros = valida de novo). Em outro aparelho: <b>CPF + senha</b>. Mudou o endereço de entrega → valida de novo. A palavra-chave da entrega só aparece com a senha. O login antigo (CPF + e-mail) continua junto por enquanto. Veem pedidos e prazos, abrem chamados e conversam com a central — tudo cai aqui na Caixa.</p>
         <div class="link-app"><code id="linkApp">${esc(location.origin + "/cliente/")}</code><button type="button" class="btn v p" id="copiarLink">Copiar</button><a class="btn v p" id="abrirLinkApp" href="/cliente/" target="_blank" rel="noopener">Abrir ↗</a></div>
         <label class="chk"><input type="checkbox" id="appAtivo"${ap.ativo === false ? "" : " checked"}> Atendimento pelo app ligado</label>
         <div class="aviso ouro" style="display:flex;flex-direction:column;gap:6px"><label class="chk"><input type="checkbox" id="appPalavra"${ap.exigir_palavra ? " checked" : ""}> <b>Exigir palavra-chave no login</b> (CPF + e-mail + palavra-chave do pedido)</label>

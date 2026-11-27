@@ -310,42 +310,100 @@ async function enviar(url, body, resumo) {
   }
 }
 
-/* ═══════════ ENTRAR ═══════════ */
-async function telaEntrar(erro = "") {
-  let info = ls.get("cli.info", null);
+/* ═══════════ ENTRAR ═══════════
+   Novo (seguro): o primeiro acesso é pelo LINK de atendimento (CPF + 2 perguntas) → cria a senha → aparelho
+   conectado. Outro aparelho: CPF + senha. Depois de 30 dias o aparelho pede a senha; 3 erros = começa do zero.
+   O login antigo (CPF + e-mail) fica em "Entrar com e-mail" até ser desligado. */
+const linkValidar = () => (window.HUB_BASE || "") + "/atendimento/";
+const mascaraCpf = (el) => { el.oninput = () => { const d = el.value.replace(/\D/g, "").slice(0, 14);
+  el.value = d.length <= 11 ? d.replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d{1,2})$/, "$1-$2")
+    : d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{0,2}).*/, "$1.$2.$3/$4-$5"); }; el.oninput(); };
+async function telaEntrar(erro = "", modo = "") {
+  let info = ls.get("cli.info", null), ses = { estado: "nada" };
   try { info = await api("/api/cliente/info"); ls.set("cli.info", info); } catch (_) {}
+  if (!modo) { try { ses = await api("/api/cliente/sessao"); } catch (_) {} modo = ses.estado === "senha" ? "senha" : ses.estado === "revalidar" ? "revalidar" : "cpf"; }
   const pend = fila.itens().length;
+  const validar = `<a class="btn v grande" href="${esc(linkValidar())}" style="text-align:center;text-decoration:none">${ICO.escudo} Validar pelo atendimento</a>`;
+  const corpo = modo === "senha" ? `<div class="aviso">Olá${ses.nome ? ", " + esc(ses.nome) : ""}! Por segurança, a cada 30 dias pedimos a sua senha neste aparelho.</div>
+      <label class="campo">Sua senha<input id="senha" type="password" inputmode="numeric" autocomplete="current-password" maxlength="20" required></label>
+      <button class="btn grande" type="submit" id="btEntrar">Entrar</button>
+      <p class="dica" style="text-align:center">Esqueceu? <a href="${esc(linkValidar())}" style="color:var(--ouro2)">Valide pelo atendimento</a> e crie outra.</p>`
+    : modo === "revalidar" ? `<div class="aviso">${esc(ses.motivo || erro || "Por segurança, precisamos confirmar seus dados de novo.")} Valide pelo atendimento — é rápido (CPF e 2 perguntas) — e crie a sua senha.</div>${validar}`
+    : modo === "email" ? `<label class="campo">CPF<input id="cpf" inputmode="numeric" autocomplete="off" placeholder="000.000.000-00" maxlength="18" required></label>
+      <label class="campo">E-mail usado na compra<input id="email" type="email" inputmode="email" autocomplete="email" placeholder="voce@email.com" required></label>
+      ${info?.exigir_palavra ? `<label class="campo">Palavra-chave do pedido<input id="palavra" autocomplete="off" autocapitalize="characters" placeholder="Ex.: SOL42" maxlength="20" required style="text-transform:uppercase;letter-spacing:1px"></label>
+        <p class="dica">A palavra-chave é informada pela nossa central quando o seu pedido é feito.</p>` : ""}
+      <button class="btn grande" type="submit" id="btEntrar">Entrar</button>
+      <p class="dica" style="text-align:center"><a href="#" id="modoCpf" style="color:var(--ouro2)">Voltar para CPF e senha</a></p>`
+    : `<label class="campo">CPF<input id="cpf" inputmode="numeric" autocomplete="username" placeholder="000.000.000-00" maxlength="18" required></label>
+      <label class="campo">Senha<input id="senha" type="password" inputmode="numeric" autocomplete="current-password" maxlength="20" required></label>
+      <button class="btn grande" type="submit" id="btEntrar">Entrar</button>
+      <div class="sec" style="margin:4px 0">Primeiro acesso ou esqueceu a senha?</div>${validar}
+      <p class="dica" style="text-align:center;margin-top:4px"><a href="#" id="modoEmail" style="color:var(--txt3)">Entrar com CPF e e-mail (forma antiga)</a></p>`;
   app.innerHTML = `<form class="entrar" id="fEntrar" novalidate>
     <div class="marca">${A.atomo(88)}<h1>${esc(info?.empresa || "Central do Cliente")}</h1>
       <p class="sub">Acompanhe seus pedidos, prazos de entrega e fale com a nossa equipe.</p></div>
     <div class="cartao vidro vidro-borda-viva">
       ${pend ? `<div class="aviso">${ICO.relogio} Você tem <b>${pend}</b> mensagem(ns) escrita(s) sem internet. Entre para enviar — vão sozinhas.</div>` : ""}
-      ${erro ? `<div class="erro">${esc(erro)}</div>` : ""}
+      ${erro && modo !== "revalidar" ? `<div class="erro">${esc(erro)}</div>` : ""}
       ${info && !info.ativo ? `<div class="erro">O atendimento pelo app está pausado no momento.</div>` : ""}
-      <label class="campo">CPF<input id="cpf" inputmode="numeric" autocomplete="off" placeholder="000.000.000-00" maxlength="18" required></label>
-      <label class="campo">E-mail usado na compra<input id="email" type="email" inputmode="email" autocomplete="email" placeholder="voce@email.com" required></label>
-      ${info?.exigir_palavra ? `<label class="campo">Palavra-chave do pedido<input id="palavra" autocomplete="off" autocapitalize="characters" placeholder="Ex.: SOL42" maxlength="20" required style="text-transform:uppercase;letter-spacing:1px"></label>
-        <p class="dica">A palavra-chave é informada pela nossa central quando o seu pedido é feito.</p>` : ""}
-      <button class="btn grande" type="submit" id="btEntrar">Entrar</button>
+      ${corpo}
     </div>
-    <p class="nota">${ICO.escudo} Conferimos seus dados com o cadastro da loja.</p>
+    <p class="nota">${ICO.escudo} Seus dados ficam protegidos por senha neste aparelho.</p>
   </form>`;
-  const cpf = $("#cpf");
-  cpf.value = ls.get("cli.cpf", "");
-  $("#email").value = ls.get("cli.email", "");
-  cpf.oninput = () => { const d = cpf.value.replace(/\D/g, "").slice(0, 14);
-    cpf.value = d.length <= 11 ? d.replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d{1,2})$/, "$1-$2")
-      : d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{0,2}).*/, "$1.$2.$3/$4-$5"); };
-  cpf.oninput();
+  const cpf = $("#cpf"); if (cpf) { cpf.value = ls.get("cli.cpf", ""); mascaraCpf(cpf); }
+  if ($("#email")) $("#email").value = ls.get("cli.email", "");
+  const me = $("#modoEmail"); if (me) me.onclick = (ev) => { ev.preventDefault(); telaEntrar("", "email"); };
+  const mc = $("#modoCpf"); if (mc) mc.onclick = (ev) => { ev.preventDefault(); telaEntrar("", "cpf"); };
+  ($("#senha") || cpf)?.focus();
   $("#fEntrar").onsubmit = async (ev) => {
     ev.preventDefault();
-    const b = $("#btEntrar"); b.disabled = true; b.textContent = "Conferindo…";
+    const b = $("#btEntrar"); if (!b) return; b.disabled = true; b.textContent = "Conferindo…";
     try {
-      await api("/api/cliente/entrar", { method: "POST", body: { cpf: cpf.value, email: $("#email").value, palavra: $("#palavra")?.value || "" } });
-      ls.set("cli.cpf", cpf.value); ls.set("cli.email", $("#email").value.trim());
+      if (modo === "senha") await api("/api/cliente/reentrar", { method: "POST", body: { senha: $("#senha").value } });
+      else if (modo === "email") { await api("/api/cliente/entrar", { method: "POST", body: { cpf: cpf.value, email: $("#email").value, palavra: $("#palavra")?.value || "" } }); ls.set("cli.email", $("#email").value.trim()); }
+      else await api("/api/cliente/entrar-senha", { method: "POST", body: { cpf: cpf.value, senha: $("#senha").value } });
+      if (cpf) ls.set("cli.cpf", cpf.value);
       await carregar();
-    } catch (e) { telaEntrar(e.codigo === SEM_REDE ? "Sem internet. Para entrar pela primeira vez, conecte-se." : e.message); }
+    } catch (e) {
+      if (e.status === 423 || e.status === 409) { telaEntrar(e.message, "revalidar"); return; }
+      telaEntrar(e.codigo === SEM_REDE ? "Sem internet. Para entrar, conecte-se." : e.message, modo);
+    }
   };
+}
+
+/* ═══════════ SENHA (palavra-chave, PDF e aparelhos) ═══════════ */
+function pedirSenha(motivo) {
+  return new Promise((ok) => {
+    A.modal({ titulo: "Digite sua senha", icone: "escudo", cor: "var(--ouro)", largura: 420,
+      html: `<p class="dica" style="margin:0 0 10px">${esc(motivo)}</p><input class="entrada" id="sDesb" type="password" inputmode="numeric" autocomplete="current-password" maxlength="20" style="width:100%;font-size:1.1rem;letter-spacing:4px;text-align:center">`,
+      aoAbrir: (cx) => setTimeout(() => cx.querySelector("#sDesb")?.focus(), 60),
+      aoFechar: () => ok(false),
+      botoes: [{ rotulo: "Cancelar" }, { rotulo: "Confirmar", classe: "btn", principal: true, acao: async (cx) => {
+        try { await api("/api/cliente/desbloquear", { method: "POST", body: { senha: cx.querySelector("#sDesb").value } }); ok(true); }
+        catch (e) { toast(e.message); if (e.status === 423) { setTimeout(() => telaEntrar(e.message, "revalidar"), 300); ok(false); return true; } return false; } } }] });
+  });
+}
+async function mostrarPalavra() {
+  if (!(await pedirSenha("A palavra-chave confirma a entrega com o nosso motorista. Ela fica visível por 10 minutos neste aparelho."))) return;
+  await atualizar();
+}
+async function baixarPdf(p) {
+  if (S.eu.palavra_protegida && !(await pedirSenha("O PDF do pedido traz a palavra-chave da entrega."))) return;
+  open(`${window.HUB_BASE}/api/cliente/pedido/${encodeURIComponent(p.id)}/pdf`, "_blank", "noopener");
+}
+async function telaAparelhos() {
+  let r; try { r = await api("/api/cliente/aparelhos"); } catch (e) { toast(e.message); return; }
+  const md = A.modal({ titulo: "Aparelhos conectados", icone: "escudo", cor: "var(--ouro)", largura: 480,
+    html: `<p class="dica" style="margin:0 0 10px">${r.tem_senha ? "Estes aparelhos entram direto na sua conta. Não reconhece algum? Desconecte." : "Você ainda entra com e-mail. Para mais segurança, valide pelo atendimento e crie uma senha."}</p>
+      <div style="display:flex;flex-direction:column;gap:8px">${r.aparelhos.map((a) => `<div class="chave"><span><b>📱 ${esc(a.nome)}${a.este ? ` <span class="etq ok">este</span>` : ""}</b><small>conectado em ${esc(dataBR(a.criado))} · último uso ${esc(dataBR(a.ultimo))} ${esc(String(a.ultimo || "").slice(11, 16))}</small></span>
+        <button type="button" class="btn v" data-desc="${esc(a.id)}" data-este="${a.este ? 1 : ""}">Desconectar</button></div>`).join("") || `<p class="dica">Nenhum aparelho conectado com senha.</p>`}</div>`,
+    botoes: [{ rotulo: "Fechar", principal: true }] });
+  md.el.querySelectorAll("[data-desc]").forEach((b) => (b.onclick = async () => {
+    if (!(await A.confirmar(b.dataset.este ? "Desconectar <b>este</b> aparelho? Para entrar de novo, use CPF e senha." : "Desconectar este aparelho da sua conta?", { perigo: true, rotulo: "Desconectar" }))) return;
+    try { await api(`/api/cliente/aparelhos/${encodeURIComponent(b.dataset.desc)}/desconectar`, { method: "POST" }); md.fechar();
+      if (b.dataset.este) { cache.limpar(); S.eu = null; telaEntrar(); } else { toast("Aparelho desconectado.", "var(--verde)"); telaAparelhos(); } } catch (e) { toast(e.message); }
+  }));
 }
 
 /* ═══════════ CARREGAR ═══════════ */
@@ -406,7 +464,7 @@ function render() {
       ${sub ? `<button class="btn-ic" id="voltar" aria-label="Voltar">${ICO.voltar}</button>` : A.atomo(38, { mini: true })}
       <span class="tx"><b>${esc(titulo)}</b><small>${esc(linha)}</small></span>
       ${!sub && !estaInstalado() ? `<button class="btn-ic inst" data-instalar title="Instalar o app" aria-label="Instalar o app">📲</button>` : ""}
-      ${!sub ? `<button class="btn-ic" id="sair" title="Sair" aria-label="Sair">${ICO.sair}</button>` : ""}
+      ${!sub ? `<button class="btn-ic" id="aparelhos" title="Aparelhos conectados e segurança" aria-label="Aparelhos conectados">${ICO.escudo}</button><button class="btn-ic" id="sair" title="Sair" aria-label="Sair">${ICO.sair}</button>` : ""}
     </header>
     ${S.offline || pend ? `<div class="faixa">${ICO.onda}<span>${S.offline ? "Sem internet — mostrando o que já foi carregado." : ""}${pend ? ` ${pend} envio(s) na fila: vão sozinhos quando a conexão voltar.` : ""}</span></div>` : ""}
     <main id="main"></main>
@@ -419,6 +477,7 @@ function render() {
   app.querySelectorAll("[data-aba]").forEach((b) => (b.onclick = () => ir(b.dataset.aba)));
   const v = $("#voltar"); if (v) v.onclick = () => (sub?.tela === "rastreio" ? ir("pedidos", { tela: "pedido", id: sub.id }) : ir(S.aba));
   const s = $("#sair"); if (s) s.onclick = sair;
+  const ap = $("#aparelhos"); if (ap) ap.onclick = telaAparelhos;
   ligarInstalar(app.querySelector(".topo"));
   const m = $("#main");
   if (S.aba === "pedidos") sub?.tela === "rastreio" ? telaRastreio(m, sub.id) : sub?.tela === "pedido" ? telaPedido(m, sub.id) : telaPedidos(m);
@@ -598,7 +657,7 @@ function telaPedidos(m) {
   const btR = (p, txt) => `<span role="button" tabindex="0" class="btn v grande pisca bt-rastreio" data-rastreio="${esc(p.id)}">📍 ${txt}</span>`;
   const cartao = (p) => `<button class="cartao vidro" data-p="${esc(p.id)}">${naRua.length > 1 && naRua.includes(p) ? btR(p, "RASTREIO DA ENTREGA") : ""}<div class="l1"><b>${p.tipo === "troca" ? "Troca" : "Pedido"} #${p.numero}</b><span class="etq ${ST_COR[p.status] || ""} dir">${esc(p.rotulo)}</span></div>
     <p>${esc(p.itens.map((i) => `${i.qtd}× ${i.nome}`).join(", "))}</p>
-    ${p.palavra_chave ? `<p class="min">🔑 Palavra-chave: <b style="color:var(--ouro2);letter-spacing:1px">${esc(p.palavra_chave)}</b></p>` : ""}
+    ${p.palavra_chave ? `<p class="min">🔑 Palavra-chave: <b style="color:var(--ouro2);letter-spacing:1px">${esc(p.palavra_chave)}</b></p>` : p.palavra_protegida ? `<p class="min">🔒 Palavra-chave protegida — abra o pedido e toque em “Mostrar”</p>` : ""}
     ${rotaKm(p)}
     ${p.entrega && !["entregue", "cancelado"].includes(p.status) ? `<div class="entrega">${ICO.cal}<span><b>${esc(dataLonga(p.entrega.data))}</b><small>${p.entrega.janela ? "Período: " + esc(p.entrega.janela) : "Entrega agendada"}</small></span></div>` : p.texto && p.status !== "entregue" ? `<p>${esc(p.texto)}</p>` : ""}</button>`;
   m.innerHTML = `${naRua.length === 1 ? btR(naRua[0], `RASTREIO DA ENTREGA<small>pedido #${esc(naRua[0].numero)}</small>`) : ""}${ab.length ? `<h2 class="tit">Em andamento</h2>${ab.map(cartao).join("")}` : ""}${fe.length ? `<div class="sec">Concluídos</div>${fe.map(cartao).join("")}` : ""}`;
@@ -636,11 +695,14 @@ function telaPedido(m, id) {
       <p style="margin:8px 0 0">Não reconhece esta entrega? Fale com a central pelo chat.</p>
       <a class="btn v" href="${window.HUB_BASE}/api/cliente/pedido/${encodeURIComponent(p.id)}/comprovante" target="_blank" rel="noopener" style="margin-top:10px;display:inline-block;text-decoration:none">⬇ Comprovante (PDF)</a></div>` : ""}
     ${p.palavra_chave ? `<div class="sec">Palavra-chave do pedido</div><div class="cartao vidro palavra"><b>${esc(p.palavra_chave)}</b><p class="min">Use para entrar no app e para confirmar a entrega com o nosso motorista. Não compartilhe com outras pessoas.</p></div>` : ""}
+    ${!p.palavra_chave && p.palavra_protegida ? `<div class="sec">Palavra-chave do pedido</div><div class="cartao vidro palavra"><button type="button" class="btn v grande" id="verPalavra">🔒 Mostrar a palavra-chave</button><p class="min">Protegida pela sua senha. Ela confirma a entrega com o nosso motorista — não compartilhe.</p></div>` : ""}
     <p class="nota">Pedido feito em ${dataBR(p.criado_em)}/${String(p.criado_em).slice(0, 4)}</p>
     <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
       <button class="btn grande" id="falar">${ICO.chat} Falar sobre este pedido</button>
       <button class="btn v grande" id="chamado">${ICO.lista} Abrir chamado deste pedido</button>
-      <a class="btn v grande" href="${window.HUB_BASE}/api/cliente/pedido/${encodeURIComponent(p.id)}/pdf" target="_blank" rel="noopener" style="text-align:center;text-decoration:none">⬇ Baixar o PDF do pedido</a></div>`;
+      <button type="button" class="btn v grande" id="baixarPdf">⬇ Baixar o PDF do pedido</button></div>`;
+  $("#baixarPdf").onclick = () => baixarPdf(p);
+  const vp = $("#verPalavra"); if (vp) vp.onclick = mostrarPalavra;
   $("#falar").onclick = () => { S.rascunho = `Sobre o pedido #${p.numero}: `; if (!S.eu.chat && !S.assunto) S.assunto = (S.eu.ura.find((u) => u.id === "entrega") || S.eu.ura[0]).id; ir("atendimento"); setTimeout(() => $("#txt")?.focus(), 80); };
   $("#chamado").onclick = () => ir("chamados", { tela: "novo", pedido: p.id });
   const rs = $("#btRastreio"); if (rs) rs.onclick = () => ir("pedidos", { tela: "rastreio", id: p.id });
