@@ -136,6 +136,12 @@ th,td{padding:10px 12px;border-bottom:1px solid var(--vidro-borda);text-align:ce
 th{position:sticky;top:0;background:rgba(14,16,22,.95);font-weight:600;color:var(--txt2);font-size:.74rem}
 th:first-child,td:first-child{text-align:left;position:sticky;left:0;background:rgba(14,16,22,.95);z-index:1}
 tr:hover td{background:rgba(255,255,255,.025)}
+/* tema claro (Águas claras, Eduking claro…): cabeçalho e coluna fixa da matriz ficam claros, com o texto escuro do tema */
+html[data-claro] th,html[data-claro] th:first-child,html[data-claro] td:first-child{background:rgba(250,250,252,.97);color:var(--txt)}
+html[data-claro] th{color:var(--txt2)}
+html[data-claro] .tabela{background:rgba(255,255,255,.55)}
+html[data-claro] tr:hover td{background:rgba(0,0,0,.025)}
+html[data-claro] tr:hover td:first-child{background:rgba(244,245,248,.98)}
 .nv{min-width:62px;padding:5px 9px;border-radius:9px;font-weight:700;font-size:.7rem;--c:#34d399;color:var(--c);background:color-mix(in srgb,var(--c) 12%,transparent);border:1px solid color-mix(in srgb,var(--c) 32%,transparent);transition:.2s}
 .nv:hover{box-shadow:0 0 14px -4px var(--c)}
 .nv.ver{--c:#60a5fa}.nv.oculto{--c:#fb7185}.nv.excluir{--c:#f59e0b}
