@@ -99,7 +99,7 @@ ABAS: dict[str, dict] = {
         "abas": {
             "painel": {"rotulo": "Painel", "campos": {}, "rotas": []},
             "pedidos": {"rotulo": "Pedidos", "campos": {"preco": "Preços e valores de venda"}, "rotas": [
-                _r("GET", "/api/erp/pedidos/*/pdf", "ver"), _r("GET", "/api/erp/pedidos/*/etiqueta", "ver"), _r("GET", "/api/erp/pedidos/*/comprovante", "ver"), _r("POST", "/api/erp/pedidos/*/acao", "editar"),
+                _r("GET", "/api/erp/pedidos/*/pdf", "ver"), _r("GET", "/api/erp/pedidos/*/etiqueta", "ver"), _r("GET", "/api/erp/pedidos/*/comprovante", "ver"), _r("POST", "/api/erp/pedidos/*/acao", "editar"), _r("POST", "/api/erp/pedidos/*/chamar-cliente", "ver"),
                 _r("POST", "/api/erp/pedidos", "incluir"), _r("PUT", "/api/erp/pedidos/*", "editar")]},
             "agenda": {"rotulo": "Agenda", "campos": {}, "rotas": []},
             "cargas": {"rotulo": "Cargas", "campos": {}, "rotas": [

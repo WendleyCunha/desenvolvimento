@@ -467,7 +467,7 @@ def resumo(t: dict, me: dict, agora_dt: datetime) -> dict:
     return {"cid": decompor(t.get("id", ""))[0], "chat": eh_chat(t), "cor": cor_de(t)} | {k: t.get(k) for k in ("id", "status", "prioridade", "assunto", "departamento", "motivo_pai", "motivo_filho", "etapa_atual",
                                    "cliente_codigo", "cliente_nome", "cliente_telefone", "atribuido_para", "aberto_por", "solicitante_nome",
                                    "criado_em", "atualizado_em", "origem", "erp_pedido_id", "erp_pedido_numero", "etapa_travada",
-                                   "app_opcao", "app_pendente_desde", "app_tipo")} | {"interno": bool(t.get("interno"))} | {"app_pendente": bool(t.get("app_pendente")),
+                                   "app_opcao", "app_pendente_desde", "app_tipo", "chamei_em", "chamei_por")} | {"interno": bool(t.get("interno"))} | {"app_pendente": bool(t.get("app_pendente")),
         "atendentes": t.get("atendentes") or [], "sla": sla, "pendencias": [s.get("setor_destino") for s in pend],
         "n_comentarios": len(t.get("comentarios") or []), "nao_visto": nao_visto(t, me), "meu": atribuido(t, me),
         "sem_dono": not (t.get("atendentes") or t.get("atribuido_para")),
@@ -1655,6 +1655,20 @@ def chamado_do_cliente(cid: str, request: Request):
                                     "telefone": next((t.get("cliente_telefone") for t in sols if t.get("cliente_telefone")), "")},
             "dono": dono_do_chamado(c), "solicitacoes": saida, "interno": all(t.get("interno") for t in sols),
             "erp": erp_do_ticket(junto, u) if _erp_ligado() and not all(t.get("interno") for t in sols) else None}
+
+
+@router.post("/cliente/{cid}/chamar")
+async def chamar_cliente(cid: str, request: Request):
+    """Botão "Chamar cliente" (Conversa do cliente): manda a mensagem no chat dele (ou abre um) e avisa o celular
+    — app e/ou link de atendimento. O chat fica na fila "Chamei" até o cliente responder."""
+    u, p, me = _contexto(request)
+    _exigir(p, "atender", "atender clientes")
+    c = BASE.cont.get(cid)
+    if not c or not c.get("cliente_codigo"):
+        raise HTTPException(404, "Cliente não encontrado.")
+    d = await request.json()
+    import cliente_app
+    return cliente_app.chamar_por_codigo(c["cliente_codigo"], d.get("texto"), {"login": me["usuario"], "nome": me["nome"]})
 
 
 @router.post("/cliente/{cid}/dono")
