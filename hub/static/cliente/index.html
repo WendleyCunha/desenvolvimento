@@ -250,9 +250,18 @@ const TK_COR = { aberto: "", em_andamento: "azul", aguardando: "alerta", resolvi
 
 /* ── rede ── */
 const SEM_REDE = "sem_rede";
+/* "Valide de novo" (endereço mudou, aparelho desconectado, senha bloqueada): vai SOZINHO para o bot do atendimento */
+let indoValidar = false;
+function irValidar(msg) {
+  if (indoValidar) return; indoValidar = true;
+  app.innerHTML = `<div class="vazio" style="padding-top:28vh">${A.orbe("escudo", "var(--ouro)")}<b>Vamos confirmar seus dados</b>${esc(msg || "Por segurança, precisamos validar de novo.")}<br>Abrindo o atendimento…</div>`;
+  setTimeout(() => { location.href = (window.HUB_BASE || "") + "/atendimento/"; }, 1600);
+}
+const pedeValidar = (e) => (e.status === 401 || e.status === 409 || e.status === 423) && /valide de novo|valide pelo atendimento|desconectado/i.test(e.message || "");
 async function api(url, op = {}) {
   try { return await A.api(url, op); }
   catch (e) {
+    if (pedeValidar(e)) { irValidar(e.message); e.validando = true; }
     if (!e.status) { const x = new Error("Sem internet agora."); x.status = 0; x.codigo = SEM_REDE; throw x; }
     if (/^HTTP \d/.test(e.message)) e.message = "Não foi possível agora. Tente de novo.";
     throw e;
@@ -321,7 +330,9 @@ const mascaraCpf = (el) => { el.oninput = () => { const d = el.value.replace(/\D
 async function telaEntrar(erro = "", modo = "") {
   let info = ls.get("cli.info", null), ses = { estado: "nada" };
   try { info = await api("/api/cliente/info"); ls.set("cli.info", info); } catch (_) {}
+  if (indoValidar) return;
   if (!modo) { try { ses = await api("/api/cliente/sessao"); } catch (_) {} modo = ses.estado === "senha" ? "senha" : ses.estado === "revalidar" ? "revalidar" : "cpf"; }
+  if (modo === "revalidar") { irValidar(ses.motivo || erro); return; }
   const pend = fila.itens().length;
   const validar = `<a class="btn v grande" href="${esc(linkValidar())}" style="text-align:center;text-decoration:none">${ICO.escudo} Validar pelo atendimento</a>`;
   const corpo = modo === "senha" ? `<div class="aviso">Olá${ses.nome ? ", " + esc(ses.nome) : ""}! Por segurança, a cada 30 dias pedimos a sua senha neste aparelho.</div>
