@@ -1947,8 +1947,10 @@ function telaAjustes(m) {
         <label class="campo">Setores (para abrir chamado e pedir ajuda) — separados por vírgula<input id="deps" value="${esc(deps.join(", "))}"></label>
         <button type="button" class="btn p" id="salvarArv">Salvar ${arvSetor ? "motivos de " + esc(arvSetor) + " e setores" : "motivos e setores"}</button></div>
       <div class="cartao" ${vis("erp")}><h3>${svg("caixa")} Ligação com o ERP</h3>
-        <p class="dica">Quando a baixa da entrega no ERP for…</p>
-        ${[["avaria", "Avaria"], ["recusado", "Recusa"], ["ausente", "Cliente ausente"]].map(([k2, r]) => `<label class="chk"><input type="checkbox" data-auto="${k2}"${cfg.auto_erp?.[k2] ? " checked" : ""}> ${r} → abrir ticket sozinho</label>`).join("")}
+        <div style="display:flex;align-items:center;gap:8px"><p class="dica" style="margin:0;flex:1">Quando a baixa da entrega for… → <b>abrir ticket sozinho</b>. Cada linha é um resultado (qualquer avaria, recusa ou ausente) ou um <b>motivo do motorista</b>, que vem do WROUTER.</p>
+          <button type="button" class="btn-ic p" id="irMotivosWr" title="Abrir os motivos do motorista no WROUTER (Motoristas e app › Motivos → o que a baixa faz no ERP)">${svg("mapa")}</button></div>
+        <div id="regrasErp" style="display:flex;flex-direction:column;gap:5px"></div>
+        <div><button type="button" class="btn v p" id="regraAdd">+ regra</button></div>
         <div class="g2"><label class="campo">Setor do ticket<select id="dErp"><option value="">—</option>${deps.map((d) => `<option${d === cfg.depto_erp ? " selected" : ""}>${esc(d)}</option>`).join("")}</select></label>
           <label class="campo">Motivo<select id="mErp"><option value="">—</option>${Object.keys(arv).map((p) => `<option${p === cfg.motivo_pai_erp ? " selected" : ""}>${esc(p)}</option>`).join("")}</select></label></div>
         <label class="campo">SLA (dias)<input type="number" min="0" step="0.5" id="sErp" value="${cfg.sla_erp_dias ?? 2}"></label>
@@ -2062,8 +2064,22 @@ function telaAjustes(m) {
   $("#salvarArv").onclick = async () => { lerArv(); try { await chamar("/config/motivos", { method: "PUT", body: { motivos: arv, setor: arvSetor, departamentos: $("#deps").value.split(",").map((x) => x.trim()).filter(Boolean) } }); ok(arvSetor ? `Motivos de ${arvSetor} salvos.` : "Motivos e setores salvos."); await carregar(); } catch (er) { falha(er); } };
   $("#arvSetor").onchange = (ev) => { S.arvSetor = ev.target.value; render(); };
   const cg = $("#copiarGeral"); if (cg) cg.onclick = (ev) => { ev.preventDefault(); arv = JSON.parse(JSON.stringify(e.motivos)); redesenhar(); };
-  $("#salvarErp").onclick = async () => { const auto = {}; m.querySelectorAll("[data-auto]").forEach((c) => (auto[c.dataset.auto] = c.checked));
-    try { await chamar("/config", { method: "PUT", body: { auto_erp: auto, depto_erp: $("#dErp").value, motivo_pai_erp: $("#mErp").value, sla_erp_dias: +$("#sErp").value || 0 } }); ok("Salvo."); await carregar(); } catch (er) { falha(er); } };
+  /* regras de ticket automático da baixa: adicionar / tirar (resultado ou motivo do motorista do WROUTER) */
+  const RES_ERP = [["avaria", "Qualquer avaria"], ["recusado", "Qualquer recusa"], ["ausente", "Qualquer cliente ausente"]];
+  const ROT_RES = { avaria: "avaria", recusado: "recusa", ausente: "ausente" };
+  const regras = JSON.parse(JSON.stringify(e.auto_erp_regras || []));
+  const opcoesRegra = (x) => `<optgroup label="Resultado da baixa">${RES_ERP.map(([k2, r]) => `<option value="t:${k2}"${x.tipo === k2 ? " selected" : ""}>${r}</option>`).join("")}</optgroup>
+    <optgroup label="Motivo do motorista (WROUTER)">${(e.motivos_baixa || []).map((mb) => `<option value="m:${esc(mb.motivo)}"${x.motivo && norm(x.motivo) === norm(mb.motivo) ? " selected" : ""}>${esc(mb.motivo)} (${ROT_RES[mb.resultado] || mb.resultado})</option>`).join("")}
+    ${x.motivo && !(e.motivos_baixa || []).some((mb) => norm(mb.motivo) === norm(x.motivo)) ? `<option value="m:${esc(x.motivo)}" selected>${esc(x.motivo)} (não está mais no WROUTER)</option>` : ""}</optgroup>`;
+  const desenhaRegras = () => { $("#regrasErp").innerHTML = regras.map((x, i) => `<div style="display:grid;grid-template-columns:minmax(0,1fr) auto 34px;gap:6px;align-items:center"><select class="entrada" data-regra="${i}">${opcoesRegra(x)}</select><span class="dica">→ abrir ticket sozinho</span><button type="button" class="btn-ic p" data-regradel="${i}" title="Tirar esta regra">${svg("lixo")}</button></div>`).join("") || `<p class="dica">Nenhuma baixa abre ticket sozinho.</p>`;
+    m.querySelectorAll("[data-regra]").forEach((sel) => (sel.onchange = () => { const v = sel.value; regras[+sel.dataset.regra] = v.startsWith("t:") ? { tipo: v.slice(2) } : { motivo: v.slice(2) }; }));
+    m.querySelectorAll("[data-regradel]").forEach((b) => (b.onclick = () => { regras.splice(+b.dataset.regradel, 1); desenhaRegras(); })); };
+  desenhaRegras();
+  $("#regraAdd").onclick = () => { const usados = new Set(regras.map((x) => x.tipo || "")); const livre = RES_ERP.find(([k2]) => !usados.has(k2));
+    regras.push(livre ? { tipo: livre[0] } : { motivo: (e.motivos_baixa || [])[0]?.motivo || "" }); desenhaRegras(); };
+  $("#irMotivosWr").onclick = () => { try { window.parent.postMessage({ hub: "abrir", id: "wrouter", hash: "motivos" }, location.origin); } catch (_) {} };
+  $("#salvarErp").onclick = async () => {
+    try { await chamar("/config", { method: "PUT", body: { auto_erp_regras: regras, depto_erp: $("#dErp").value, motivo_pai_erp: $("#mErp").value, sla_erp_dias: +$("#sErp").value || 0 } }); ok("Salvo."); await carregar(); } catch (er) { falha(er); } };
   const filtraSet = () => m.querySelectorAll("[data-setlinha]").forEach((l) => l.classList.toggle("oculto", !!S.setTab && l.dataset.setlinha !== S.setTab));
   filtraSet();
   m.querySelectorAll("[data-settab]").forEach((b) => (b.onclick = () => { S.setTab = b.dataset.settab; m.querySelectorAll("[data-settab]").forEach((x) => x.classList.toggle("on", x === b)); filtraSet(); }));

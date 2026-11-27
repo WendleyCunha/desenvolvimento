@@ -745,7 +745,7 @@ function editarCad(x) {
     } }],
   });
 }
-const linhaMot = (m) => `<div class="linha"><input class="entrada" value="${esc(m.motivo)}" placeholder="ex.: Cliente ausente" style="flex:1;min-width:200px"><select class="entrada" style="width:auto">${[["ausente", "Ausente → reagendar (volta reservado)"], ["avaria", "Avaria → reposição (triagem)"], ["recusa", "Recusa → recusado (triagem)"]].map(([k, r]) => `<option value="${k}"${m.tipo === k ? " selected" : ""}>${r}</option>`).join("")}</select></div>`;
+const linhaMot = (m) => `<div class="linha"><input class="entrada" value="${esc(m.motivo)}" placeholder="ex.: Cliente ausente" style="flex:1;min-width:200px"><select class="entrada" style="width:auto">${[["ausente", "Ausente → reagendar (volta reservado)"], ["avaria", "Avaria → reposição (triagem)"], ["recusa", "Recusa → recusado (triagem)"]].map(([k, r]) => `<option value="${k}"${m.tipo === k ? " selected" : ""}>${r}</option>`).join("")}</select><button type="button" class="btn v p ic" data-motdel title="Tirar este motivo (vale ao salvar)" onclick="this.closest('.linha').remove()">${svg("lixo")}</button></div>`;
 
 $("#btAtualizar").innerHTML = svg("repetir");
 $("#btAtualizar").onclick = () => render();
@@ -753,7 +753,17 @@ $("#btAtualizar").onclick = () => render();
   try { const eu = await api("/eu"); S.perm = eu.perm; S.base = eu.base || ""; } catch (e) { $("#main").innerHTML = `<section class="painel vidro"><div class="vazio">${esc(e.message)}</div></section>`; return; }
   if (!["aovivo", "historico", "motoristas"].some(pode)) { $("#main").innerHTML = `<section class="painel vidro"><div class="vazio">Sem permissão nas abas do WROUTER. Peça ao administrador (Configurações → Usuários → WROUTER).</div></section>`; return; }
   render();
+  irHash();
 })();
+/* link de outro módulo (CX › Ajustes › Ligação com o ERP): #motivos abre Motoristas e app nos motivos da baixa */
+function irHash() {
+  if (location.hash !== "#motivos" || !pode("motoristas")) return;
+  history.replaceState(null, "", location.pathname + location.search);
+  irPara("motoristas");
+  const ir = (n) => { const el = $("#mots"); if (el) el.scrollIntoView({ behavior: "smooth", block: "center" }); else if (n) setTimeout(() => ir(n - 1), 300); };
+  setTimeout(() => ir(10), 300);
+}
+addEventListener("hashchange", irHash);
 setInterval(() => { if (document.visibilityState !== "visible" || A.modalAberto()) return; if (V.aba === "aovivo") rAoVivo(true).catch(() => {}); }, 20000);
 })();
 </script>

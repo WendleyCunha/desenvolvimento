@@ -1028,3 +1028,18 @@ def test_bot_do_app_e_app_do_cliente_salvam_separados(t):
     T.BASE.t_cfg = time.time() + 3600
     c = C.cfg_app()
     assert c["empresa"] == "KingStar" and c["saudacao"] == "Oi! Sobre o que quer falar?" and [u["rotulo"] for u in c["ura"]] == ["Garantia"]
+
+
+def test_regras_auto_erp_compat_e_motivo(monkeypatch):
+    import tickets as T
+    # sem lista salva: vale o formato antigo (interruptores)
+    cfg = {"auto_erp": {"avaria": True, "recusado": False, "ausente": True}}
+    assert T.regras_auto_erp(cfg) == [{"tipo": "avaria"}, {"tipo": "ausente"}]
+    assert T.abre_ticket_da_baixa(cfg, "avaria", "qualquer")
+    assert not T.abre_ticket_da_baixa(cfg, "recusado", "Cliente recusou")
+    # lista nova: resultado + motivo do motorista (sem acento/caixa)
+    cfg = {"auto_erp_regras": [{"tipo": "recusado"}, {"motivo": "Endereço não localizado"}]}
+    assert T.abre_ticket_da_baixa(cfg, "recusado", "x")
+    assert T.abre_ticket_da_baixa(cfg, "ausente", "endereco nao localizado")
+    assert not T.abre_ticket_da_baixa(cfg, "ausente", "Cliente ausente")
+    assert not T.abre_ticket_da_baixa({"auto_erp_regras": []}, "avaria", "x")
