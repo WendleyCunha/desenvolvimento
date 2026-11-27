@@ -667,9 +667,10 @@ def _chat_do_cliente(cid: str, cli: dict, d: dict, via: str = "") -> dict:
         T._mutar_sol(ativo["id"], lambda s: _msg_cliente(s, me, texto, req, off), me)
         return {"ok": True, "id": ativo["id"].split("#")[-1], "existente": True}
     c = cfg_app()
-    if via == "link":   # link de atendimento (Ajustes › Wwhat): sem URA, cai no setor escolhido lá
+    if via in ("link", "link_sem_id"):   # link de atendimento (Ajustes › Wwhat): sem URA, cai no setor escolhido lá
         w = cfg_wwhat()
-        op = {"id": "link", "rotulo": "Atendimento pelo link", "motivo_pai": w.get("motivo_pai") or "", "departamento": w.get("departamento") or "CX"}
+        op = {"id": via, "rotulo": "Atendimento pelo link" if via == "link" else "Atendimento pelo link · sem identificação",
+              "motivo_pai": w.get("motivo_pai") or "", "departamento": w.get("departamento") or "CX"}
     else:
         op = next((u for u in c["ura"] if u.get("id") == d.get("opcao")), None) or next((u for u in c["ura"] if u.get("id") == "outro"), c["ura"][-1])
     _limite_dia(cid, cli, c)
@@ -908,6 +909,24 @@ def token_atendimento(cliente_id: str, cli: dict) -> str:
     return corpo + "." + _assinar_at(corpo)
 
 
+def token_visitante(codigo: str, nome: str) -> str:
+    """Sem identificação (CPF não achado): só conversa, num chamado próprio com código de visitante (V…)."""
+    corpo = _b64(json.dumps({"v": codigo, "n": nome, "e": int(time.time() + HORAS_AT * 3600)}).encode())
+    return corpo + "." + _assinar_at(corpo)
+
+
+LETRAS_V = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+
+def codigo_visitante() -> str:
+    import secrets
+    T.BASE.atualizar()
+    while True:
+        cod = "V" + "".join(secrets.choice(LETRAS_V) for _ in range(5))
+        if T._id_doc(cod) not in T.BASE.cont:
+            return cod
+
+
 def _cliente_do_link(request: Request) -> tuple[str, dict]:
     tk = request.cookies.get(_ck_at()) or ""
     if "." not in tk:
@@ -919,6 +938,8 @@ def _cliente_do_link(request: Request) -> tuple[str, dict]:
         d = {}
     if not d or d.get("e", 0) < time.time():
         raise HTTPException(401, "Seu atendimento expirou. Confirme seus dados de novo.")
+    if d.get("v"):   # visitante (sem identificação)
+        return "", {"tipo": "visitante", "codigo": d["v"], "nome": f"{d.get('n') or 'Visitante'} · sem cadastro", "_primeiro": d.get("n") or ""}
     e = _erp()
     e.ST.carregar()
     cli = e.ST.dados["parceiros"].get(d.get("c") or "")
@@ -1038,14 +1059,16 @@ def pagina_atendimento():
 @router.get("/api/cliente/atendimento/info")
 def at_info(request: Request):
     w, c = cfg_wwhat(), cfg_app()
-    nome = ""
+    nome, visitante = "", False
     try:
-        nome = _primeiro_nome(_cliente_do_link(request)[1].get("nome"))
+        cli = _cliente_do_link(request)[1]
+        visitante = cli.get("tipo") == "visitante"
+        nome = _primeiro_nome(cli["_primeiro"] if visitante else cli.get("nome")) or "Visitante"
     except HTTPException:
         pass
     emp = c.get("empresa") or "Central do Cliente"
     return {"ativo": w["ativo"] and bool(c.get("ativo")), "empresa": emp, "saudacao": _tpl(w["saudacao"], empresa=emp, nome=""),
-            "pedir_cpf": w["pedir_cpf"], "validado": bool(nome), "nome": nome,
+            "pedir_cpf": w["pedir_cpf"], "validado": bool(nome), "nome": nome, "visitante": visitante,
             "direcionando": _tpl(w["direcionando"], nome=nome, empresa=emp) if nome else ""}
 
 
@@ -1122,12 +1145,32 @@ async def at_resposta(request: Request):
             "passo": cv["acertos"] + 1, "total": 2}
 
 
+@router.post("/api/cliente/atendimento/visitante")
+async def at_visitante(request: Request):
+    """CPF não achado depois das tentativas: segue para o atendimento SEM identificação (só pede o nome).
+    Não vê nada do ERP — é só uma conversa com a central, num chamado de visitante."""
+    w, c = cfg_wwhat(), cfg_app()
+    if not (w["ativo"] and c.get("ativo")):
+        raise HTTPException(503, "O atendimento por aqui está pausado. Tente mais tarde.")
+    d = await request.json()
+    nome = re.sub(r"[^\wÀ-ÿ' .-]", "", str(d.get("nome") or "")).strip()[:40]
+    if len(nome) < 2:
+        raise HTTPException(422, "Me diga seu nome para eu te apresentar ao atendente.")
+    _freio_msg("visitante:" + _ip(request), maximo=5, janela=3600)
+    nome = " ".join(x.capitalize() for x in nome.split())
+    resp = JSONResponse({"ok": True, "nome": nome.split(" ")[0],
+                         "direcionando": f"Prazer, {nome.split(' ')[0]}! 😊 Estou te direcionando ao atendimento — escreva sua mensagem que um atendente já te responde."})
+    resp.set_cookie(_ck_at(), token_visitante(codigo_visitante(), nome), httponly=True, samesite="lax", secure=_https(request),
+                    max_age=HORAS_AT * 3600, path="/")
+    return resp
+
+
 @router.get("/api/cliente/atendimento/chat")
 def at_chat(request: Request):
     cid, cli = _cliente_do_link(request)
     T.BASE.atualizar()
     ativo = chat_ativo(tickets_do_cliente(cid, cli))
-    return {"nome": _primeiro_nome(cli.get("nome")), "ativo": bool(ativo), "id": ativo["id"].split("#")[-1] if ativo else "",
+    return {"nome": _primeiro_nome(cli.get("_primeiro") or cli.get("nome")), "ativo": bool(ativo), "id": ativo["id"].split("#")[-1] if ativo else "",
             "mensagens": mensagens_publicas(ativo)[-80:] if ativo else [], "versao": T.BASE.ver}
 
 
@@ -1136,7 +1179,7 @@ async def at_mensagem(request: Request):
     cid, cli = _cliente_do_link(request)
     if not (cfg_wwhat()["ativo"] and cfg_app().get("ativo")):
         raise HTTPException(503, "O atendimento por aqui está pausado. Tente mais tarde.")
-    return _chat_do_cliente(cid, cli, await request.json(), via="link")
+    return _chat_do_cliente(cid, cli, await request.json(), via="link_sem_id" if cli.get("tipo") == "visitante" else "link")
 
 
 @router.get("/api/cliente/atendimento/anexo/{aid}")
