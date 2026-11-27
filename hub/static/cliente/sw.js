@@ -3,7 +3,7 @@
    Os dados do cliente NÃO passam por aqui: o próprio app guarda o último
    carregamento e a fila de envios no aparelho (localStorage) e reenvia
    sozinho quando a internet volta. Escopo: só /cliente/. */
-const CACHE = "wd-cli-v7";
+const CACHE = "wd-cli-v8";
 const CASCA = ["/cliente/", "/static/aurora.css?v=6", "/static/claro.css?v=1", "/static/retro.css?v=1", "/static/eduking.css?v=1", "/static/aurora.js?v=6",
   "/static/app/icone-192.png", "/static/app/icone-512.png", "/static/app/icone-180.png"];
 
@@ -33,8 +33,13 @@ self.addEventListener("fetch", (e) => {
 /* Notificação no celular (cupons, brindes, avisos): mostra e, ao tocar, abre o app no lugar certo */
 self.addEventListener("push", (e) => {
   let d = {}; try { d = e.data ? e.data.json() : {}; } catch (_) { d = { titulo: "King Star", texto: e.data ? e.data.text() : "" }; }
-  e.waitUntil(self.registration.showNotification(d.titulo || "King Star", {
-    body: d.texto || "", tag: d.tag || undefined, renotify: !!d.tag, vibrate: [180, 80, 180], icon: "/static/app/icone-192.png", badge: "/static/app/icone-192.png", data: { url: d.url || "/cliente/" } }));
+  /* chamada da central: limpa o aviso anterior da central e mostra o novo (caminho livre, toca de novo) */
+  const limpar = String(d.tag || "").startsWith("central-")
+    ? self.registration.getNotifications().then((ns) => ns.filter((n) => String(n.tag || "").startsWith("central-")).forEach((n) => n.close())).catch(() => {})
+    : Promise.resolve();
+  e.waitUntil(limpar.then(() => self.registration.showNotification(d.titulo || "King Star", {
+    body: d.texto || "", tag: d.tag || undefined, renotify: !!d.tag, requireInteraction: String(d.tag || "").startsWith("central-"), vibrate: [180, 80, 180],
+    icon: "/static/app/icone-192.png", badge: "/static/app/icone-192.png", data: { url: d.url || "/cliente/" } })));
 });
 self.addEventListener("notificationclick", (e) => {
   e.notification.close();

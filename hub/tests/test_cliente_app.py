@@ -659,7 +659,7 @@ def test_chamar_visitante_do_link_e_avisar_no_link(t, monkeypatch):
     guardadas, enviados = {}, []
     monkeypatch.setattr(promocoes, "inscricoes", lambda: guardadas)
     monkeypatch.setattr(promocoes, "_gravar_insc", lambda cod, d: guardadas.__setitem__(cod, d) if d else guardadas.pop(cod, None))
-    monkeypatch.setattr(promocoes, "enviar_push", lambda sub, dados: enviados.append((sub, dados)) or "ok")
+    monkeypatch.setattr(promocoes, "enviar_push", lambda sub, dados, *a: enviados.append((sub, dados)) or "ok")
     monkeypatch.setattr(banco, "thread", lambda fn, *a, **k: fn(*a, **k))
     t.post("/api/cliente/atendimento/visitante", json={"nome": "Maria"})
     sid = t.post("/api/cliente/atendimento/mensagem", json={"texto": "Oi", "req": "x1"}).json()["id"]

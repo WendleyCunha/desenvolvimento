@@ -138,8 +138,10 @@ def vapid() -> dict:
         return d
 
 
-def enviar_push(sub: dict, dados: dict) -> str:
-    """'ok' · 'expirou' (o celular saiu: apagar a inscrição) · 'falhou'."""
+def enviar_push(sub: dict, dados: dict, urgente: bool = False) -> str:
+    """'ok' · 'expirou' (o celular saiu: apagar a inscrição) · 'falhou'.
+    urgente=True: Urgency high — o Android entrega na hora mesmo com a tela apagada (economia de bateria).
+    Sem isso, com o celular parado alguns minutos, o aviso fica retido até o celular "acordar"."""
     try:
         from py_vapid import Vapid01
         from pywebpush import WebPushException, webpush
@@ -148,7 +150,8 @@ def enviar_push(sub: dict, dados: dict) -> str:
     try:
         webpush(subscription_info=sub, data=json.dumps(dados, ensure_ascii=False),
                 vapid_private_key=Vapid01.from_pem(vapid()["privada_pem"].encode()),
-                vapid_claims={"sub": "mailto:atendimento@kingstarcolchoes.com.br"}, ttl=86400 * 3, timeout=10)
+                vapid_claims={"sub": "mailto:atendimento@kingstarcolchoes.com.br"}, ttl=3600 if urgente else 86400 * 3, timeout=10,
+                headers={"Urgency": "high" if urgente else "normal"})
         return "ok"
     except WebPushException as e:
         st = getattr(getattr(e, "response", None), "status_code", 0)
@@ -157,7 +160,7 @@ def enviar_push(sub: dict, dados: dict) -> str:
         return "falhou"
 
 
-def avisar_cliente_detalhe(cod: str, titulo: str, texto: str, url: str = "", tag: str = "") -> dict:
+def avisar_cliente_detalhe(cod: str, titulo: str, texto: str, url: str = "", tag: str = "", urgente: bool = True) -> dict:
     """Notificação avulsa no celular do cliente (app e/ou link de atendimento). Devolve quantos celulares
     receberam — a central mostra isso ao chamar. Nunca derruba quem chamou."""
     r = {"total": 0, "enviados": 0, "expirados": 0, "falhas": 0}
@@ -170,7 +173,7 @@ def avisar_cliente_detalhe(cod: str, titulo: str, texto: str, url: str = "", tag
         dados = {"titulo": titulo, "texto": texto, "tag": tag or titulo, "url": url or f"{banco.prefixo_publico()}/cliente/"}
         vivas = []
         for sub in subs:   # celular inscrito pelo link de atendimento abre o link; pelo app, o app
-            res = enviar_push({k: v for k, v in sub.items() if k != "url"}, {**dados, "url": sub["url"]} if sub.get("url") else dados)
+            res = enviar_push({k: v for k, v in sub.items() if k != "url"}, {**dados, "url": sub["url"]} if sub.get("url") else dados, urgente)
             r["enviados" if res == "ok" else "expirados" if res == "expirou" else "falhas"] += 1
             if res != "expirou":
                 vivas.append(sub)
