@@ -1566,7 +1566,8 @@ function telaAbrir(m) {
   m.innerHTML = `<section class="painel vidro" style="max-width:820px;margin:0 auto">
     <button type="button" class="btn v p" id="trocaSetor">${svg("voltar")} Setores</button>
     <h2 style="margin:10px 0 12px;font:700 1.3rem var(--titulo)">Novo chamado · ${esc(S.setorAbrir)}</h2>
-    <div class="g2"><label class="campo">Motivo<select id="nPai"><option value="">—</option>${Object.keys(arv).map((p) => `<option>${esc(p)}</option>`).join("")}</select></label><label class="campo">Submotivo<select id="nFilho"><option value="">—</option></select></label></div>
+    <div class="g2"><label class="campo">Motivo *<select id="nPai"><option value="">—</option>${Object.keys(arv).map((p) => `<option>${esc(p)}</option>`).join("")}</select></label><label class="campo">Submotivo *<select id="nFilho"><option value="">—</option></select></label></div>
+    <p class="dica" id="nEscolha" style="margin-top:8px">Escolha o motivo e o submotivo — depois aparecem os dados do cliente (quando o submotivo exige código).</p>
     <div id="nInterno" class="aviso" style="display:none;margin-top:8px;border-color:rgba(139,92,246,.4);background:rgba(139,92,246,.07)">🔧 <b>Solicitação interna</b> — não precisa de cliente. Vai direto para <b>Pedidos de ajuda</b> do setor ${esc(S.setorAbrir)}, sem passar pela Caixa.</div>
     <div id="nCliBloco" style="margin-top:8px">
     <div class="g2"><label class="campo">Código do cliente *<input id="nCod" placeholder="digite o código ou o nome" autocomplete="off"></label><label class="campo">Nome do cliente *<input id="nNome" autocomplete="off"></label></div>
@@ -1580,9 +1581,14 @@ function telaAbrir(m) {
   </section>`;
   $("#trocaSetor").onclick = () => { S.setorAbrir = ""; render(); };
   const ehInterno = () => ((arv[$("#nPai").value] || {})[$("#nFilho").value] || {}).exige_codigo === false;
-  const modo = () => { const i = ehInterno(); $("#nInterno").style.display = i ? "" : "none"; $("#nCliBloco").style.display = i ? "none" : ""; $("#nHist").style.display = i ? "none" : ""; };
+  /* ordem: 1º motivo e submotivo; só então os dados do cliente — e só se o submotivo exige código (Ajustes) */
+  const escolheu = () => !!($("#nPai").value && $("#nFilho").value);
+  const modo = () => { const ok2 = escolheu(), i = ok2 && ehInterno();
+    $("#nEscolha").style.display = ok2 ? "none" : ""; $("#nInterno").style.display = i ? "" : "none";
+    $("#nCliBloco").style.display = ok2 && !i ? "" : "none"; $("#nHist").style.display = ok2 && !i ? "" : "none"; };
   $("#nPai").onchange = () => { $("#nFilho").innerHTML = `<option value="">—</option>` + Object.entries(arv[$("#nPai").value] || {}).filter(([, i]) => i.ativo !== false).map(([f, i]) => `<option value="${esc(f)}">${esc(f)}${i.sla != null ? ` · SLA ${i.sla}d` : ""}${i.exige_codigo === false ? " · interno" : ""}</option>`).join(""); modo(); };
   $("#nFilho").onchange = modo;
+  modo();
   /* digitar o nome ou o código → busca o cliente no ERP; escolhendo, preenche código, nome e telefone e liga o ticket ao cliente */
   let tmB = null, nCli = "";
   const buscarErp = (q) => { clearTimeout(tmB); if (String(q || "").trim().length < 2) { $("#nBusca").innerHTML = ""; return; }
@@ -1608,6 +1614,7 @@ function telaAbrir(m) {
     if (nCli) body.erp_cliente_id = nCli;
     const interno = ehInterno();
     if (interno) { body.cliente_codigo = ""; body.cliente_nome = ""; body.cliente_telefone = ""; delete body.erp_cliente_id; }
+    if (!body.motivo_pai || !body.motivo_filho) { A.toast("Escolha o motivo e o submotivo."); return; }
     if (!body.assunto || !body.descricao || (!interno && (!body.cliente_codigo || !body.cliente_nome))) { A.toast(interno ? "Preencha assunto e descrição." : "Preencha código e nome do cliente, assunto e descrição."); return; }
     if (interno) { try { await chamar("/tickets", { method: "POST", body }); ok(`Solicitação interna aberta para ${S.setorAbrir}.`); S.setorAbrir = ""; S.ajFiltro = "minhas"; await carregar(); ir("internos"); } catch (e) { falha(e); } return; }
     try { const r = await chamar("/tickets", { method: "POST", body }); ok(r.agrupado ? `Agrupado ao chamado nº ${r.chamado} do cliente — virou mais uma solicitação.` : `Chamado nº ${r.chamado} aberto.`); S.setorAbrir = ""; await carregar(); S.sec = "caixa"; abrirTicket(r.id); } catch (e) { falha(e); }
