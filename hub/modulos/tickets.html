@@ -296,12 +296,15 @@ button.kpi:hover{border-color:color-mix(in srgb,var(--c) 50%,transparent)}
 .rg-it.on .rg-tx{border-color:rgba(52,211,153,.35);background:rgba(52,211,153,.04)}
 .rg-cab{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.rg-cab b{font:700 .9rem var(--titulo)}
 .rg-tx .entrada{padding:6px 9px;font-size:.84rem}
-.chave-rg{margin-left:auto;position:relative;width:42px;height:24px;flex:none;cursor:pointer}
+.chave-rg{margin-left:auto;position:relative;display:inline-flex;align-items:center;gap:8px;height:26px;padding:0 4px 0 10px;flex:none;cursor:pointer;border-radius:13px;border:1px solid var(--vidro-borda-forte);font:700 .74rem var(--titulo);color:var(--txt3);user-select:none}
+.chave-rg::before{content:"Desligado"}.chave-rg:has(input:checked){color:var(--verde);border-color:var(--verde)}.chave-rg:has(input:checked)::before{content:"Ligado"}
+.chave-rg span{position:relative;display:block;width:36px;height:20px}
+.rg-todas{display:flex;gap:6px;flex-wrap:wrap;align-items:center}.rg-todas .dica{margin-right:auto}
 .rg-cab label.dica + .chave-rg{margin-left:8px}
 .chave-rg input{position:absolute;opacity:0;width:0;height:0}
-.chave-rg span{position:absolute;inset:0;border-radius:12px;background:rgba(255,255,255,.14);transition:.2s}
-.chave-rg span::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:.2s}
-.chave-rg input:checked + span{background:var(--verde)}.chave-rg input:checked + span::after{left:21px}
+.chave-rg span{border-radius:10px;background:var(--vidro-borda-forte);transition:.2s}
+.chave-rg span::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.35);transition:.2s}
+.chave-rg input:checked + span{background:var(--verde)}.chave-rg input:checked + span::after{left:18px}
 /* Gestão › CSAT/NPS */
 .nps-bar{display:grid;grid-template-columns:repeat(11,1fr);gap:4px;align-items:end;height:120px}
 .nps-bar div{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:3px;height:100%;font-size:.66rem;color:var(--txt3)}
@@ -2013,9 +2016,11 @@ function telaAjustes(m) {
           <button type="button" class="btn p" id="salvarHr">Salvar horário e feriados</button></div>
         <div data-wwp="regua" style="display:flex;flex-direction:column;gap:10px">
           <p class="dica">A <b>linha do pedido</b>: em cada etapa o cliente recebe um aviso no celular (app e/ou link de atendimento, onde ativou os avisos). Tudo começa <b>desligado</b> — ligue as etapas que quiser e ajuste o texto. Variáveis: <code>{nome}</code> <code>{pedido}</code> <code>{data}</code> <code>{janela}</code> <code>{km}</code> <code>{empresa}</code>.</p>
+          <div class="rg-todas"><span class="dica" id="rgCont"></span><button type="button" class="btn v p" data-rgtodas="etapas|1">Ligar todas</button><button type="button" class="btn v p" data-rgtodas="etapas|0">Desligar todas</button></div>
           <div id="reguaLinha" class="rg-linha"></div>
           <div class="sec" style="margin:6px 0 0">Pesquisas de satisfação (CSAT 1 a 5 + NPS 0 a 10)</div>
           <p class="dica" style="margin:0">O aviso abre uma página curta com as duas notas e um comentário. As respostas aparecem em Gestão › CSAT/NPS.</p>
+          <div class="rg-todas"><span class="dica" id="rgContP"></span><button type="button" class="btn v p" data-rgtodas="pesquisas|1">Ligar todas</button><button type="button" class="btn v p" data-rgtodas="pesquisas|0">Desligar todas</button></div>
           <div id="reguaPesq" class="rg-linha"></div>
           <button type="button" class="btn p" id="salvarRegua">Salvar régua e pesquisas</button></div>
       </div>
@@ -2026,13 +2031,17 @@ function telaAjustes(m) {
   const ICR = { pedido_criado: "🛒", troca_gerada: "🔄", pedido_bloqueado: "⏳", pedido_liberado: "✅", agendado: "📅", data_alterada: "📅", reagendar: "🗓", endereco_alterado: "🏠", em_carga: "📦", em_rota: "🚚", motorista_perto: "📍", motorista_chegou: "🔔", entregue: "🎉", entrega_avaria: "⚠️", ausente: "🚪", recusado: "↩️", cancelado: "✖️", compra: "⭐", atendimento: "⭐", entrega: "⭐" };
   const itemRg = (x, grupo, i) => `<div class="rg-it${x.ativo ? " on" : ""}"><span class="rg-ic">${ICR[x.id] || "•"}</span>
       <div class="rg-tx"><div class="rg-cab"><b>${esc(x.rotulo)}</b><small class="dica">${esc(x.quando)}</small>${x.id === "motorista_perto" ? `<label class="dica" style="display:flex;gap:4px;align-items:center;margin-left:auto">a <input class="entrada" type="number" min="0.5" max="50" step="0.5" id="rgKm" value="${rg.km}" style="width:70px;padding:4px 6px"> km</label>` : ""}
-        <label class="chave-rg" title="${x.ativo ? "Ligado — o cliente recebe" : "Desligado — não envia"}"><input type="checkbox" data-rg="${grupo}|${i}|ativo"${x.ativo ? " checked" : ""}><span></span></label></div>
+        <label class="chave-rg" title="Ligar ou desligar o aviso desta etapa"><input type="checkbox" data-rg="${grupo}|${i}|ativo"${x.ativo ? " checked" : ""}><span></span></label></div>
         <input class="entrada" data-rg="${grupo}|${i}|titulo" value="${esc(x.titulo || "")}" placeholder="Título do aviso">
         <textarea class="entrada" data-rg="${grupo}|${i}|texto" rows="2" placeholder="Texto do aviso">${esc(x.texto || "")}</textarea></div></div>`;
   $("#reguaLinha").innerHTML = rg.etapas.map((x, i) => itemRg(x, "etapas", i)).join("");
   $("#reguaPesq").innerHTML = rg.pesquisas.map((x, i) => itemRg(x, "pesquisas", i)).join("");
   m.querySelectorAll("[data-rg]").forEach((x) => (x.oninput = x.onchange = () => { const [g, i, k2] = x.dataset.rg.split("|"); rg[g][+i][k2] = x.type === "checkbox" ? x.checked : x.value;
-    if (x.type === "checkbox") x.closest(".rg-it").classList.toggle("on", x.checked); }));
+    if (x.type === "checkbox") { x.closest(".rg-it").classList.toggle("on", x.checked); contaRg(); } }));
+  const contaRg = () => { const c = (g) => `${rg[g].filter((x) => x.ativo).length} de ${rg[g].length} ligadas`; $("#rgCont").textContent = "Etapas: " + c("etapas"); $("#rgContP").textContent = "Pesquisas: " + c("pesquisas"); };
+  contaRg();
+  m.querySelectorAll("[data-rgtodas]").forEach((b) => (b.onclick = () => { const [g, v] = b.dataset.rgtodas.split("|");
+    m.querySelectorAll(`[data-rg^="${g}|"][data-rg$="|ativo"]`).forEach((x) => { x.checked = v === "1"; x.dispatchEvent(new Event("change")); }); }));
   $("#salvarRegua").onclick = async () => { const body = { etapas: {}, pesquisas: {}, km: +($("#rgKm")?.value || rg.km || 5) };
     rg.etapas.forEach((x) => (body.etapas[x.id] = { ativo: x.ativo, titulo: x.titulo, texto: x.texto }));
     rg.pesquisas.forEach((x) => (body.pesquisas[x.id] = { ativo: x.ativo, titulo: x.titulo, texto: x.texto }));
