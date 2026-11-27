@@ -650,6 +650,11 @@ async def chat(request: Request):
     se já houver, a mensagem entra nele (só o atendente encerra)."""
     cid, cli = _cliente_da_sessao(request)
     d = await request.json()
+    return _chat_do_cliente(cid, cli, d)
+
+
+def _chat_do_cliente(cid: str, cli: dict, d: dict, via: str = "") -> dict:
+    """Escreve no chat ativo do cliente ou abre um novo (URA do app, ou o link de atendimento quando via="link")."""
     texto, req, off = _texto(d), _req(d), _offline_em(d)
     ts = tickets_do_cliente(cid, cli)
     feito = _ja_recebido(ts, req)
@@ -662,16 +667,23 @@ async def chat(request: Request):
         T._mutar_sol(ativo["id"], lambda s: _msg_cliente(s, me, texto, req, off), me)
         return {"ok": True, "id": ativo["id"].split("#")[-1], "existente": True}
     c = cfg_app()
-    op = next((u for u in c["ura"] if u.get("id") == d.get("opcao")), None) or next((u for u in c["ura"] if u.get("id") == "outro"), c["ura"][-1])
+    if via == "link":   # link de atendimento (Ajustes › Wwhat): sem URA, cai no setor escolhido lá
+        w = cfg_wwhat()
+        op = {"id": "link", "rotulo": "Atendimento pelo link", "motivo_pai": w.get("motivo_pai") or "", "departamento": w.get("departamento") or "CX"}
+    else:
+        op = next((u for u in c["ura"] if u.get("id") == d.get("opcao")), None) or next((u for u in c["ura"] if u.get("id") == "outro"), c["ura"][-1])
     _limite_dia(cid, cli, c)
     _freio_msg("cli:" + cid)
     pai = op.get("motivo_pai") if op.get("motivo_pai") in T.motivos() else ""
     depto = _depto_do_motivo(pai, op.get("departamento") or "")
-    sid = _criar(cid, cli, me, {
+    dados = {
         "assunto": op["rotulo"], "descricao": texto + (f"\n\n(escrito sem internet em {off[8:10]}/{off[5:7]} {off[11:16]})" if off else ""),
         "departamento": depto, "categoria": depto, "motivo_pai": pai, "motivo_pai_id": pai, "motivo_filho": "",
         "sla1_prazo_dias": T._sla_motivo(pai, "") if pai else (T.hub_cfg().get("sla_erp_dias") or 1),
-        "app_tipo": "chat", "app_opcao": op["id"], "app_req": req})
+        "app_tipo": "chat", "app_opcao": op["id"], "app_req": req}
+    if via:
+        dados["app_via"] = via
+    sid = _criar(cid, cli, me, dados)
     return {"ok": True, "id": sid, "existente": False}
 
 
@@ -846,3 +858,299 @@ async def mensagem(sid: str, request: Request):
     me = _me(cli)
     T._mutar_sol(t["id"], lambda s: _msg_cliente(s, me, texto, req, off), me)
     return {"ok": True}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# LINK DE ATENDIMENTO (/atendimento/) — bot de boas-vindas que valida o cliente
+# ──────────────────────────────────────────────────────────────────────────────
+#  O bot pede o CPF e faz DUAS perguntas com o que está no ERP (número da casa,
+#  4 últimos do telefone, sobrenome, começo do CEP e uma de múltipla escolha
+#  — produto comprado ou bairro). Acertou as duas → sessão SÓ de atendimento
+#  (cookie próprio "cli_atend", outra etiqueta na assinatura): conversa com a
+#  central e nada mais — não vê pedidos, não abre chamado. O app (/cliente/)
+#  continua com tudo. Textos do bot: Ajustes do Atendimento › Wwhat.
+#  As respostas certas ficam só no servidor (nunca vão para a página).
+# ══════════════════════════════════════════════════════════════════════════════
+WWHAT_PADRAO = {
+    "ativo": True,
+    "saudacao": "Olá! 👋 Sou o assistente virtual da {empresa}. Para te atender com segurança, vou confirmar alguns dados do seu cadastro.",
+    "pedir_cpf": "Digite o seu CPF (só os números).",
+    "direcionando": "Pronto, {nome}! ✅ Dados confirmados. Estou te direcionando ao atendimento — escreva sua mensagem que um atendente já te responde.",
+    "departamento": "CX", "motivo_pai": "",
+}
+COOKIE_AT = "cli_atend"
+ETIQUETA_AT = "cliente-atend:"
+HORAS_AT = 12
+ERROS_AT = 2                    # erros na mesma conversa → o bot encerra (e o freio de CPF/IP continua contando)
+_conversas = banco.por_empresa(dict)
+
+
+def cfg_wwhat() -> dict:
+    try:
+        bruto = T.hub_cfg().get("wwhat") or {}
+    except Exception:  # noqa: BLE001
+        bruto = {}
+    c = {**WWHAT_PADRAO, **{k: v for k, v in bruto.items() if v not in (None, "")}}
+    c["ativo"] = bool(c.get("ativo"))
+    return c
+
+
+def _ck_at() -> str:
+    return COOKIE_AT if banco.empresa_atual() == banco.PRINCIPAL else f"{COOKIE_AT}_{banco.empresa_atual()}"
+
+
+def _assinar_at(corpo: str) -> str:
+    return hmac.new(acesso.SEGREDO.encode(), (ETIQUETA_AT + corpo).encode(), hashlib.sha256).hexdigest()
+
+
+def token_atendimento(cliente_id: str, cli: dict) -> str:
+    corpo = _b64(json.dumps({"c": cliente_id, "i": _impressao(cli), "e": int(time.time() + HORAS_AT * 3600)}).encode())
+    return corpo + "." + _assinar_at(corpo)
+
+
+def _cliente_do_link(request: Request) -> tuple[str, dict]:
+    tk = request.cookies.get(_ck_at()) or ""
+    if "." not in tk:
+        raise HTTPException(401, "Confirme seus dados para falar com a gente.")
+    corpo, ass = tk.rsplit(".", 1)
+    try:
+        d = json.loads(_unb64(corpo)) if hmac.compare_digest(_assinar_at(corpo), ass) else {}
+    except Exception:  # noqa: BLE001
+        d = {}
+    if not d or d.get("e", 0) < time.time():
+        raise HTTPException(401, "Seu atendimento expirou. Confirme seus dados de novo.")
+    e = _erp()
+    e.ST.carregar()
+    cli = e.ST.dados["parceiros"].get(d.get("c") or "")
+    if not cli or cli.get("tipo") != "cliente" or cli.get("ativo") is False or _impressao(cli) != d.get("i"):
+        raise HTTPException(401, "Seu atendimento expirou. Confirme seus dados de novo.")
+    return d["c"], cli
+
+
+def _tpl(txt: str, **kw) -> str:
+    for k, v in kw.items():
+        txt = txt.replace("{" + k + "}", str(v or ""))
+    return txt
+
+
+def achar_por_cpf(doc: str) -> tuple[str, dict] | None:
+    e = _erp()
+    e.ST.carregar()
+    for pid, c in e.ST.dados["parceiros"].items():
+        if c.get("tipo") == "cliente" and c.get("ativo") is not False and T.digitos(c.get("doc")) == doc:
+            return pid, c
+    return None
+
+
+_LIGACAO = {"de", "da", "do", "das", "dos", "e"}
+
+
+def _endereco(cid: str, cli: dict) -> dict:
+    end = cli.get("endereco") or {}
+    if T.digitos(end.get("numero")) or end.get("bairro") or end.get("cep"):
+        return end
+    peds = sorted((p for p in _erp().ST.dados["pedidos"].values() if p.get("cliente_id") == cid and p.get("endereco")),
+                  key=lambda p: str(p.get("criado_em") or ""), reverse=True)
+    return (peds[0].get("endereco") if peds else {}) or {}
+
+
+def perguntas_do_cliente(cid: str, cli: dict, sorteio=None) -> list[dict]:
+    """Perguntas possíveis com o que o ERP tem do cliente. 1ª: resposta digitada · 2ª: múltipla escolha (se der)."""
+    import random
+    rnd = sorteio or random.SystemRandom()
+    e = _erp()
+    livres = []
+    end = _endereco(cid, cli)
+    if T.digitos(end.get("numero")):
+        livres.append({"id": "numero", "texto": "Qual é o número da sua casa no endereço de entrega? (só o número)",
+                       "certo": T.digitos(end.get("numero")).lstrip("0"), "modo": "digitos"})
+    tel = T.digitos(cli.get("telefone"))
+    if len(tel) >= 8:
+        livres.append({"id": "telefone", "texto": "Quais são os 4 últimos números do seu telefone cadastrado?", "certo": tel[-4:], "modo": "digitos"})
+    nomes = [x for x in T.norm(cli.get("nome")).split()[1:] if len(x) >= 3 and x not in _LIGACAO]
+    if nomes:
+        livres.append({"id": "sobrenome", "texto": "Qual é o seu sobrenome?", "certo": nomes, "modo": "sobrenome"})
+    cep = T.digitos(end.get("cep"))
+    if len(cep) == 8:
+        livres.append({"id": "cep", "texto": "Quais são os 5 primeiros números do CEP de entrega?", "certo": cep[:5], "modo": "digitos"})
+    rnd.shuffle(livres)
+    escolhas = []
+    prods = e.ST.dados.get("produtos") or {}
+    comprados = {str((prods.get(i.get("produto_id")) or {}).get("nome") or "").strip()
+                 for p in e.ST.dados["pedidos"].values() if p.get("cliente_id") == cid and p.get("status") not in (None, "rascunho", "cancelado")
+                 for i in (p.get("itens") or [])} - {""}
+    outros = sorted({str(v.get("nome") or "").strip() for v in prods.values()} - comprados - {""})
+    if comprados and len(outros) >= 3:
+        escolhas.append({"id": "produto", "texto": "Qual destes produtos você comprou com a gente?",
+                         "certo_txt": rnd.choice(sorted(comprados)), "outros": rnd.sample(outros, 3)})
+    bairro = str(end.get("bairro") or "").strip()
+    if bairro:
+        vizinhos = sorted({str((c.get("endereco") or {}).get("bairro") or "").strip() for c in e.ST.dados["parceiros"].values()}
+                          | {str((p.get("endereco") or {}).get("bairro") or "").strip() for p in e.ST.dados["pedidos"].values()})
+        vizinhos = [b for b in vizinhos if b and T.norm(b) != T.norm(bairro)]
+        if len(vizinhos) >= 3:
+            escolhas.append({"id": "bairro", "texto": "Em qual destes bairros é o seu endereço de entrega?", "certo_txt": bairro, "outros": rnd.sample(vizinhos, 3)})
+    for q in escolhas:
+        ops = q.pop("outros") + [q["certo_txt"]]
+        rnd.shuffle(ops)
+        q.update(opcoes=ops, certo=str(ops.index(q.pop("certo_txt")) + 1), modo="opcao")
+    if escolhas and livres:
+        return [livres[0], escolhas[0]] + livres[1:] + escolhas[1:]
+    return livres + escolhas
+
+
+def resposta_confere(q: dict, resposta: str) -> bool:
+    r = str(resposta or "").strip()
+    if q["modo"] == "digitos":
+        d = T.digitos(r).lstrip("0") if q["id"] == "numero" else T.digitos(r)
+        return bool(d) and hmac.compare_digest(d, q["certo"])
+    if q["modo"] == "sobrenome":
+        partes = [x for x in T.norm(r).split() if x not in _LIGACAO]
+        return bool(partes) and all(x in q["certo"] for x in partes)
+    if q["modo"] == "opcao":
+        n = T.digitos(r)
+        if not n:   # tocou/escreveu o nome da opção
+            n = next((str(i + 1) for i, o in enumerate(q["opcoes"]) if T.norm(o) == T.norm(r)), "")
+        return n == q["certo"]
+    return False
+
+
+def _publica(q: dict) -> dict:
+    return {"texto": q["texto"], **({"opcoes": q["opcoes"]} if q.get("modo") == "opcao" else {})}
+
+
+def _limpar_conversas():
+    agora = time.time()
+    for k in [k for k, v in _conversas.items() if v["exp"] < agora]:
+        _conversas.pop(k, None)
+
+
+@router.get("/atendimento", include_in_schema=False)
+def _at_sem_barra():
+    return RedirectResponse(banco.prefixo_publico() + "/atendimento/", status_code=307)
+
+
+@router.get("/atendimento/", include_in_schema=False)
+def pagina_atendimento():
+    return FileResponse(Path(__file__).parent / "static" / "atendimento" / "index.html", media_type="text/html; charset=utf-8", headers=SEM_CACHE)
+
+
+@router.get("/api/cliente/atendimento/info")
+def at_info(request: Request):
+    w, c = cfg_wwhat(), cfg_app()
+    nome = ""
+    try:
+        nome = _primeiro_nome(_cliente_do_link(request)[1].get("nome"))
+    except HTTPException:
+        pass
+    emp = c.get("empresa") or "Central do Cliente"
+    return {"ativo": w["ativo"] and bool(c.get("ativo")), "empresa": emp, "saudacao": _tpl(w["saudacao"], empresa=emp, nome=""),
+            "pedir_cpf": w["pedir_cpf"], "validado": bool(nome), "nome": nome,
+            "direcionando": _tpl(w["direcionando"], nome=nome, empresa=emp) if nome else ""}
+
+
+@router.post("/api/cliente/atendimento/cpf")
+async def at_cpf(request: Request):
+    w, c = cfg_wwhat(), cfg_app()
+    if not (w["ativo"] and c.get("ativo")):
+        raise HTTPException(503, "O atendimento por aqui está pausado. Tente mais tarde.")
+    if not T.configurado():
+        raise HTTPException(503, "Sistema em manutenção. Tente mais tarde.")
+    d = await request.json()
+    doc = T.digitos(d.get("cpf"))
+    ip = "ip:" + _ip(request)
+    if _bloqueado(ip, LIMITE_IP) or (doc and _bloqueado("doc:" + doc, LIMITE_DOC)):
+        raise HTTPException(429, "Muitas tentativas. Aguarde 15 minutos e tente de novo.")
+    if not doc_valido(doc):
+        raise HTTPException(422, "Esse CPF parece incompleto ou errado. Confira e digite de novo (só os números).")
+    achado = achar_por_cpf(doc)
+    if not achado:
+        _falhou(ip, "doc:" + doc)
+        raise HTTPException(404, "Não encontrei um cadastro com esse CPF. Confira os números ou fale com a loja onde você comprou.")
+    cid, cli = achado
+    fila = perguntas_do_cliente(cid, cli)
+    if len(fila) < 2:
+        raise HTTPException(409, "Não consigo confirmar seus dados por aqui — o cadastro está incompleto. Fale com a loja onde você comprou.")
+    _limpar_conversas()
+    conv = hashlib.sha256(f"{time.time_ns()}|{doc}|{acesso.SEGREDO}".encode()).hexdigest()[:32]
+    _conversas[conv] = {"cid": cid, "doc": doc, "fila": fila[1:], "atual": fila[0], "acertos": 0, "erros": 0, "exp": time.time() + 900}
+    return {"conversa": conv, "pergunta": _publica(fila[0]), "passo": 1, "total": 2}
+
+
+@router.post("/api/cliente/atendimento/resposta")
+async def at_resposta(request: Request):
+    d = await request.json()
+    _limpar_conversas()
+    cv = _conversas.get(str(d.get("conversa") or ""))
+    if not cv:
+        raise HTTPException(410, "Essa conversa expirou. Vamos começar de novo — digite o seu CPF.")
+    ip = "ip:" + _ip(request)
+    if _bloqueado(ip, LIMITE_IP) or _bloqueado("doc:" + cv["doc"], LIMITE_DOC):
+        _conversas.pop(str(d.get("conversa")), None)
+        raise HTTPException(429, "Muitas tentativas. Aguarde 15 minutos e tente de novo.")
+    if resposta_confere(cv["atual"], d.get("resposta")):
+        cv["acertos"] += 1
+        if cv["acertos"] >= 2:
+            _conversas.pop(str(d.get("conversa")), None)
+            e = _erp()
+            cli = e.ST.dados["parceiros"].get(cv["cid"]) or {}
+            if not str(cli.get("codigo") or "").strip():   # o código do cliente liga o chat aos Tickets
+                with e.ST.trava:
+                    tx = e.Tx({"login": "atendimento-link"})
+                    e.garantir_codigo(tx, cv["cid"])
+                    tx.commit()
+                cli = e.ST.dados["parceiros"][cv["cid"]]
+            nome = _primeiro_nome(cli.get("nome"))
+            resp = JSONResponse({"ok": True, "validado": True, "nome": nome,
+                                 "direcionando": _tpl(cfg_wwhat()["direcionando"], nome=nome, empresa=cfg_app().get("empresa"))})
+            resp.set_cookie(_ck_at(), token_atendimento(cv["cid"], cli), httponly=True, samesite="lax", secure=_https(request),
+                            max_age=HORAS_AT * 3600, path="/")
+            return resp
+        if not cv["fila"]:
+            _conversas.pop(str(d.get("conversa")), None)
+            return {"ok": False, "fim": True, "msg": "Não consegui confirmar seus dados por aqui. Fale com a loja onde você comprou."}
+        cv["atual"] = cv["fila"].pop(0)
+        return {"ok": True, "pergunta": _publica(cv["atual"]), "passo": 2, "total": 2}
+    cv["erros"] += 1
+    _falhou(ip, "doc:" + cv["doc"])
+    if cv["erros"] >= ERROS_AT or not cv["fila"]:
+        _conversas.pop(str(d.get("conversa")), None)
+        return {"ok": False, "fim": True, "msg": "Não consegui confirmar seus dados. Por segurança, encerrei a validação. "
+                                                 "Tente de novo mais tarde ou fale com a loja onde você comprou."}
+    cv["atual"] = cv["fila"].pop(0)
+    return {"ok": False, "msg": "Hmm, essa resposta não confere com o cadastro. Vamos tentar outra:", "pergunta": _publica(cv["atual"]),
+            "passo": cv["acertos"] + 1, "total": 2}
+
+
+@router.get("/api/cliente/atendimento/chat")
+def at_chat(request: Request):
+    cid, cli = _cliente_do_link(request)
+    T.BASE.atualizar()
+    ativo = chat_ativo(tickets_do_cliente(cid, cli))
+    return {"nome": _primeiro_nome(cli.get("nome")), "ativo": bool(ativo), "id": ativo["id"].split("#")[-1] if ativo else "",
+            "mensagens": mensagens_publicas(ativo)[-80:] if ativo else [], "versao": T.BASE.ver}
+
+
+@router.post("/api/cliente/atendimento/mensagem")
+async def at_mensagem(request: Request):
+    cid, cli = _cliente_do_link(request)
+    if not (cfg_wwhat()["ativo"] and cfg_app().get("ativo")):
+        raise HTTPException(503, "O atendimento por aqui está pausado. Tente mais tarde.")
+    return _chat_do_cliente(cid, cli, await request.json(), via="link")
+
+
+@router.get("/api/cliente/atendimento/anexo/{aid}")
+def at_anexo(aid: str, request: Request):
+    cid, cli = _cliente_do_link(request)
+    import anexos as A
+    doc = A.ler(aid)
+    if not cli.get("codigo") or doc.get("cont") != T._id_doc(cli["codigo"]):
+        raise HTTPException(404, "Anexo não encontrado.")
+    return A.resposta(doc)
+
+
+@router.post("/api/cliente/atendimento/sair")
+def at_sair():
+    resp = JSONResponse({"ok": True})
+    resp.delete_cookie(_ck_at(), path="/")
+    return resp

@@ -460,3 +460,82 @@ def test_anexo_no_chat_do_cliente(t, monkeypatch):
             assert False, "devia recusar"
         except Exception as ex:  # noqa: BLE001
             assert getattr(ex, "status_code", 0) == cod
+
+
+# ── LINK DE ATENDIMENTO (/atendimento/): bot valida com o que está no ERP → só chat ──
+def _preparar_link():
+    E.ST.dados["parceiros"]["c_ana"]["endereco"] = {"logradouro": "Rua A", "numero": "742", "bairro": "Centro", "cep": "01310-100", "cidade": "SP"}
+    E.ST.dados["parceiros"]["c_bia"]["endereco"] = {"bairro": "Vila Nova"}
+    for i, n in enumerate(["Travesseiro", "Box Solteiro", "Colchão Queen", "Protetor"]):
+        E.ST.dados["produtos"][f"x{i}"] = {"nome": n}
+
+
+def _certa(conv):
+    q = C._conversas[conv]["atual"]
+    return q["certo"][0] if q["modo"] == "sobrenome" else q["certo"]
+
+
+def _errada(conv):
+    q = C._conversas[conv]["atual"]
+    return {"digitos": "0000", "sobrenome": "xyzw", "opcao": str(int(q.get("certo") or 1) % 4 + 1)}[q["modo"]]
+
+
+def test_link_valida_cpf_e_duas_perguntas_e_so_abre_o_chat(t):
+    _preparar_link()
+    assert t.get("/api/cliente/atendimento/info").json()["validado"] is False
+    assert t.post("/api/cliente/atendimento/cpf", json={"cpf": "123.456.789-00"}).status_code == 422
+    assert t.post("/api/cliente/atendimento/cpf", json={"cpf": "390.533.447-05"}).status_code == 404   # CPF válido sem cadastro
+    r = t.post("/api/cliente/atendimento/cpf", json={"cpf": CPF_ANA}).json()
+    conv, q1 = r["conversa"], C._conversas[r["conversa"]]["atual"]
+    assert q1["modo"] != "opcao" and "742" not in str(r) and "0001" not in str(r) and "souza" not in str(r).lower()   # a resposta não vai para a página
+    r = t.post("/api/cliente/atendimento/resposta", json={"conversa": conv, "resposta": _certa(conv)}).json()
+    assert r["ok"] and r["passo"] == 2 and len(r["pergunta"]["opcoes"]) == 4                          # 2ª: múltipla escolha
+    assert t.get("/api/cliente/atendimento/chat").status_code == 401                                   # ainda não validou
+    r = t.post("/api/cliente/atendimento/resposta", json={"conversa": conv, "resposta": _certa(conv)})
+    assert r.json()["validado"] and "Ana" in r.json()["direcionando"]
+    assert t.get("/api/cliente/atendimento/info").json()["validado"] is True
+    sid = t.post("/api/cliente/atendimento/mensagem", json={"texto": "Quero saber da entrega", "req": "abc"}).json()["id"]
+    tk = central(t, sid)
+    assert tk["assunto"] == "Atendimento pelo link" and tk["app_tipo"] == "chat" and tk["departamento"] == "CX"
+    tid = tk["id"]
+    t.post(url_tk(tid) + "/comentar", json={"texto": "Chega amanhã!", "tipo": "resposta"})
+    ch = t.get("/api/cliente/atendimento/chat").json()
+    assert ch["ativo"] and [m["texto"] for m in ch["mensagens"]] == ["Quero saber da entrega", "Chega amanhã!"]
+    # só atendimento: o cookie do link não vale no app (pedidos/chamados)
+    assert t.get("/api/cliente/eu").status_code == 401
+    assert t.post("/api/cliente/chamados", json={"motivo_pai": "Pedido", "motivo_filho": "Cancelamento", "texto": "x"}).status_code == 401
+
+
+def test_link_erra_duas_vezes_e_encerra(t):
+    _preparar_link()
+    conv = t.post("/api/cliente/atendimento/cpf", json={"cpf": CPF_ANA}).json()["conversa"]
+    r = t.post("/api/cliente/atendimento/resposta", json={"conversa": conv, "resposta": _errada(conv)}).json()
+    assert r["ok"] is False and not r.get("fim") and r["pergunta"]                                     # outra pergunta
+    r = t.post("/api/cliente/atendimento/resposta", json={"conversa": conv, "resposta": _errada(conv)}).json()
+    assert r["fim"] and conv not in C._conversas
+    assert t.post("/api/cliente/atendimento/resposta", json={"conversa": conv, "resposta": "1"}).status_code == 410
+    assert t.get("/api/cliente/atendimento/chat").status_code == 401
+
+
+def test_link_cadastro_incompleto_nao_valida(t):
+    # Bia não tem endereço, telefone nem pedido com produto → não há 2 perguntas
+    assert t.post("/api/cliente/atendimento/cpf", json={"cpf": CPF_BIA}).status_code == 409
+
+
+def test_respostas_aceitam_jeitos_de_escrever():
+    q = {"id": "sobrenome", "modo": "sobrenome", "certo": ["souza", "lima"]}
+    assert C.resposta_confere(q, "Souza") and C.resposta_confere(q, "de Souza Lima") and not C.resposta_confere(q, "Silva")
+    q = {"id": "numero", "modo": "digitos", "certo": "42"}
+    assert C.resposta_confere(q, "nº 042") and not C.resposta_confere(q, "")
+    q = {"id": "produto", "modo": "opcao", "certo": "3", "opcoes": ["A", "B", "Colchão", "D"]}
+    assert C.resposta_confere(q, "3") and C.resposta_confere(q, "colchao") and not C.resposta_confere(q, "2")
+
+
+def test_wwhat_salva_pela_central_e_desliga_o_link(t):
+    assert t.put("/api/tickets/config", json={"wwhat": {"ativo": False, "saudacao": "Oi, aqui é a {empresa}!", "departamento": "Logística"}}).status_code == 200
+    T.BASE.t_cfg = time.time() + 3600      # usa o que a central acabou de gravar (sem reler o banco falso)
+    est = t.get("/api/tickets/estado").json()["wwhat"]
+    assert est["saudacao"] == "Oi, aqui é a {empresa}!" and est["departamento"] == "Logística" and est["ativo"] is False
+    i = t.get("/api/cliente/atendimento/info").json()
+    assert i["ativo"] is False and i["saudacao"] == "Oi, aqui é a Central do Cliente!"
+    assert t.post("/api/cliente/atendimento/cpf", json={"cpf": CPF_ANA}).status_code == 503

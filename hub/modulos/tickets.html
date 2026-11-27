@@ -1687,13 +1687,17 @@ function telaAjustes(m) {
   const kProp = Object.keys(proprias).find((x) => norm(x) === norm(arvSetor));
   let arv = JSON.parse(JSON.stringify(arvSetor ? (kProp ? proprias[kProp] : {}) : e.motivos));
   const ap = e.app_cliente || {}, ura = JSON.parse(JSON.stringify(ap.ura || []));
+  const ww = e.wwhat || {}, abaAj = S.ajAba || "motivos";
+  const AJ = [["motivos", "Motivos, submotivos, SLA (dias) e etapas"], ["erp", "Ligação com o ERP"], ["app", "App do cliente"], ["setor", "Setor e perfil de cada pessoa"], ["wwhat", "Wwhat"]];
+  const vis = (k) => `data-aj="${k}"`;
   const pais = () => Object.entries(arv).map(([p, fs]) => `<div class="pai"><b>${esc(p)}</b> <button type="button" class="btn-ic p" data-delpai="${esc(p)}" title="Tirar motivo">${svg("lixo")}</button>
     ${Object.entries(fs).map(([f, i]) => `<div class="filho"><input class="entrada" value="${esc(f)}" disabled><input class="entrada" type="number" min="0" step="0.5" data-sla="${esc(p)}|${esc(f)}" value="${i.sla ?? ""}" title="SLA em dias"><input class="entrada" data-et="${esc(p)}|${esc(f)}" value="${esc((i.etapas || []).join(", "))}" title="Etapas separadas por vírgula"><label class="chk-cod" title="Desmarcado = solicitação interna (sem cliente): não entra na Caixa, cai só em Pedidos de ajuda do setor"><input type="checkbox" data-cod="${esc(p)}|${esc(f)}"${i.exige_codigo === false ? "" : " checked"}> exige código</label><label class="chk" title="Ativo"><input type="checkbox" data-at="${esc(p)}|${esc(f)}"${i.ativo === false ? "" : " checked"}></label></div>`).join("")}
     <div class="filho"><input class="entrada" data-novofilho="${esc(p)}" placeholder="+ submotivo"><span></span><span></span><span></span><span></span></div></div>`).join("");
   m.innerHTML = `<section class="painel vidro"><h2 style="margin:0 0 12px;font:700 1.25rem var(--titulo)">Ajustes</h2>
     <p class="dica">Banco em uso: <b>${e.banco === "hub" ? "banco do hub" : "bancowendley (mesmos tickets do Streamlit)"}</b> · leituras desde que o servidor ligou: ${e.sync.leituras}</p>
-    <div class="cartoes" style="margin-top:12px">
-      <div class="cartao" style="grid-column:1/-1"><h3>${svg("lista")} Motivos, submotivos, SLA (dias) e etapas</h3>
+    <div class="seg-d" id="ajAbas" style="flex-wrap:wrap;margin-top:12px">${AJ.map(([k, r]) => `<button type="button" data-ajaba="${k}"${k === abaAj ? ' class="on"' : ""}>${esc(r)}</button>`).join("")}</div>
+    <div class="cartoes" style="grid-template-columns:minmax(0,1fr)">
+      <div class="cartao" ${vis("motivos")}><h3>${svg("lista")} Motivos, submotivos, SLA (dias) e etapas</h3>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><label class="campo" style="min-width:260px">Árvore de<select id="arvSetor"><option value="">Geral — app do cliente e setores sem árvore própria</option>${deps.map((d) => `<option value="${esc(d)}"${norm(d) === norm(arvSetor) ? " selected" : ""}>${esc(d)}${Object.keys(proprias).some((x) => norm(x) === norm(d)) ? " ✓ própria" : ""}</option>`).join("")}</select></label>
           ${arvSetor && !kProp ? `<span class="dica">${esc(arvSetor)} ainda usa a árvore geral. Monte a dele abaixo ou <a href="#" id="copiarGeral">comece copiando a geral</a>.</span>` : arvSetor ? `<span class="dica">Ao abrir chamado para <b>${esc(arvSetor)}</b>, só aparecem estes motivos. Apagar todos = volta a usar a geral.</span>` : ""}</div>
         <div class="filho leg"><span>Submotivo</span><span>SLA (dias)</span><span>Etapas (separadas por vírgula)</span><span>Código cliente</span><span>Ativo</span></div>
@@ -1702,7 +1706,7 @@ function telaAjustes(m) {
         <div style="display:flex;gap:6px"><input class="entrada" id="novoPai" placeholder="+ novo motivo (ex.: Pedido)"><button type="button" class="btn v p" id="addPai">Adicionar</button></div>
         <label class="campo">Setores (para abrir chamado e pedir ajuda) — separados por vírgula<input id="deps" value="${esc(deps.join(", "))}"></label>
         <button type="button" class="btn p" id="salvarArv">Salvar ${arvSetor ? "motivos de " + esc(arvSetor) + " e setores" : "motivos e setores"}</button></div>
-      <div class="cartao"><h3>${svg("caixa")} Ligação com o ERP</h3>
+      <div class="cartao" ${vis("erp")}><h3>${svg("caixa")} Ligação com o ERP</h3>
         <p class="dica">Quando a baixa da entrega no ERP for…</p>
         ${[["avaria", "Avaria"], ["recusado", "Recusa"], ["ausente", "Cliente ausente"]].map(([k2, r]) => `<label class="chk"><input type="checkbox" data-auto="${k2}"${cfg.auto_erp?.[k2] ? " checked" : ""}> ${r} → abrir ticket sozinho</label>`).join("")}
         <div class="g2"><label class="campo">Setor do ticket<select id="dErp"><option value="">—</option>${deps.map((d) => `<option${d === cfg.depto_erp ? " selected" : ""}>${esc(d)}</option>`).join("")}</select></label>
@@ -1710,7 +1714,7 @@ function telaAjustes(m) {
         <label class="campo">SLA (dias)<input type="number" min="0" step="0.5" id="sErp" value="${cfg.sla_erp_dias ?? 2}"></label>
         <p class="dica">No cadastro de cliente do ERP há o campo <b>Código do cliente</b> — é ele que liga o atendimento aos pedidos (também casa por telefone ou nome).</p>
         <button type="button" class="btn p" id="salvarErp">Salvar</button></div>
-      <div class="cartao" style="grid-column:1/-1"><h3>${svg("mensagem")} App do cliente</h3>
+      <div class="cartao" ${vis("app")}><h3>${svg("mensagem")} App do cliente</h3>
         <p class="dica">Link geral para enviar aos clientes. Eles entram com <b>CPF + e-mail do cadastro do ERP</b>, veem os pedidos e prazos, abrem chamados pela URA e conversam com a central — tudo cai aqui na Caixa (fila “App do cliente”).</p>
         <div class="link-app"><code id="linkApp">${esc(location.origin + "/cliente/")}</code><button type="button" class="btn v p" id="copiarLink">Copiar</button><a class="btn v p" id="abrirLinkApp" href="/cliente/" target="_blank" rel="noopener">Abrir ↗</a></div>
         <label class="chk"><input type="checkbox" id="appAtivo"${ap.ativo === false ? "" : " checked"}> Atendimento pelo app ligado</label>
@@ -1721,14 +1725,27 @@ function telaAjustes(m) {
         <p class="dica">Assuntos que a URA pergunta (uma vez só) antes de virar chat — cada um define motivo e setor. Na aba Chamados do app, o cliente abre pela árvore de motivos acima.</p>
         <div id="uraLista" style="display:flex;flex-direction:column;gap:5px"></div>
         <div style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="btn v p" id="uraAdd">+ opção</button><button type="button" class="btn p" id="salvarApp">Salvar app do cliente</button></div></div>
-      <div class="cartao"><h3>${svg("usuarios")} Setor e perfil de cada pessoa</h3>
+      <div class="cartao" ${vis("setor")}><h3>${svg("usuarios")} Setor e perfil de cada pessoa</h3>
         <p class="dica"><b>Atendente</b>: vê só os chats e tickets dele e pega o próximo da fila com um clique. <b>Supervisor</b>: vê tudo do setor + o painel da equipe no Meu dia. <b>Gestor</b>: todos os setores. <i>Padrão</i> = gestor para quem tem permissão de equipe, senão supervisor.${e.banco === "hub" ? "" : " (No bancowendley o setor vem do cadastro de usuários do Streamlit.)"}</p>
         <div style="max-height:360px;overflow:auto;display:flex;flex-direction:column;gap:5px">${e.usuarios.map((u) => `<div style="display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) minmax(0,1fr);gap:6px;align-items:center"><span style="font-size:.82rem;overflow:hidden;text-overflow:ellipsis">${esc(u.nome)} <small class="dica">@${esc(u.usuario)}</small></span>
           <select class="entrada" data-setoru="${esc(u.usuario)}" style="padding:6px 8px"${e.banco === "hub" ? "" : " disabled"}><option value="">—</option>${deps.map((d) => `<option${norm(d) === norm(u.depto) ? " selected" : ""}>${esc(d)}</option>`).join("")}</select>
           <select class="entrada" data-perfilu="${esc(u.usuario)}" style="padding:6px 8px"><option value="">Padrão</option>${Object.entries(ROT_PERFIL).map(([k2, r]) => `<option value="${k2}"${(cfg.perfis || {})[u.usuario] === k2 ? " selected" : ""}>${r}</option>`).join("")}</select></div>`).join("")}</div>
         <button type="button" class="btn p" id="salvarSetores">Salvar ${e.banco === "hub" ? "setores e perfis" : "perfis"}</button>
         <button type="button" class="btn v p" id="recarregar">${svg("repetir")} Recarregar tudo do banco</button></div>
+      <div class="cartao" ${vis("wwhat")}><h3>${svg("mensagem")} Wwhat — bot do link de atendimento</h3>
+        <p class="dica">Link para mandar ao cliente (WhatsApp, SMS, e-mail). Abre uma conversa no celular: o bot dá as boas-vindas, pede o <b>CPF</b> e faz <b>2 perguntas</b> com o que está no ERP (número da casa, 4 últimos do telefone, sobrenome, começo do CEP e uma de múltipla escolha 1-4: produto comprado ou bairro). Acertou as duas → cai aqui na Caixa (fila “App do cliente”) como <b>Atendimento pelo link</b>. Por esse link o cliente <b>só conversa</b>: não vê pedidos nem abre chamado — isso é no app.</p>
+        <div class="link-app"><code id="linkAt">${esc(location.origin + "/atendimento/")}</code><button type="button" class="btn v p" id="copiarAt">Copiar</button><a class="btn v p" id="abrirAt" href="/atendimento/" target="_blank" rel="noopener">Abrir ↗</a></div>
+        <label class="chk"><input type="checkbox" id="wwAtivo"${ww.ativo === false ? "" : " checked"}> Link de atendimento ligado</label>
+        <label class="campo">Saudação inicial <small class="dica">({empresa} = nome no topo do app)</small><textarea id="wwSaud" rows="2">${esc(ww.saudacao || "")}</textarea></label>
+        <label class="campo">Pedido do CPF<input id="wwCpf" value="${esc(ww.pedir_cpf || "")}"></label>
+        <label class="campo">Mensagem “estou direcionando ao atendimento” <small class="dica">({nome} = primeiro nome do cliente)</small><textarea id="wwDir" rows="2">${esc(ww.direcionando || "")}</textarea></label>
+        <div class="g2"><label class="campo">Cai no setor<select id="wwDep">${deps.map((d) => `<option${norm(d) === norm(ww.departamento || "CX") ? " selected" : ""}>${esc(d)}</option>`).join("")}</select></label>
+          <label class="campo">Motivo<select id="wwMot"><option value="">— sem motivo —</option>${Object.keys(e.motivos || {}).map((p2) => `<option${p2 === ww.motivo_pai ? " selected" : ""}>${esc(p2)}</option>`).join("")}</select></label></div>
+        <button type="button" class="btn p" id="salvarWw">Salvar Wwhat</button></div>
     </div></section>`;
+  m.querySelectorAll("[data-aj]").forEach((c) => c.classList.toggle("oculto", c.dataset.aj !== abaAj));
+  m.querySelectorAll("[data-ajaba]").forEach((b) => (b.onclick = () => { S.ajAba = b.dataset.ajaba;
+    m.querySelectorAll("[data-ajaba]").forEach((x) => x.classList.toggle("on", x === b)); m.querySelectorAll("[data-aj]").forEach((c) => c.classList.toggle("oculto", c.dataset.aj !== S.ajAba)); }));
   const lerArv = () => {
     m.querySelectorAll("[data-sla]").forEach((i) => { const [p, f] = i.dataset.sla.split("|"); arv[p][f].sla = i.value === "" ? null : +i.value; });
     m.querySelectorAll("[data-et]").forEach((i) => { const [p, f] = i.dataset.et.split("|"); arv[p][f].etapas = i.value.split(",").map((x) => x.trim()).filter(Boolean); });
@@ -1759,7 +1776,9 @@ function telaAjustes(m) {
   desenhaUra();
   $("#uraAdd").onclick = () => { ura.push({ id: "", rotulo: "", descricao: "", motivo_pai: "", departamento: "" }); desenhaUra(); };
   const gp = $("#gerarPalavras"); if (gp) gp.onclick = async () => { try { const r = await chamar("/app/palavras/gerar", { method: "POST" }, "gerando…"); ok(`${r.feitos} pedido(s) ganharam palavra-chave.`); await carregar(); } catch (er) { falha(er); } };
-  A.api("/api/eu").then((d) => { const b = (d.empresa && d.empresa.base) || ""; if (!b || !$("#linkApp")) return; $("#linkApp").textContent = location.origin + b + "/cliente/"; $("#abrirLinkApp").href = b + "/cliente/"; }).catch(() => {});   // link da empresa
+  A.api("/api/eu").then((d) => { const b = (d.empresa && d.empresa.base) || ""; if (!b || !$("#linkApp")) return; $("#linkApp").textContent = location.origin + b + "/cliente/"; $("#abrirLinkApp").href = b + "/cliente/"; $("#linkAt").textContent = location.origin + b + "/atendimento/"; $("#abrirAt").href = b + "/atendimento/"; }).catch(() => {});   // link da empresa
+  $("#copiarAt").onclick = async () => { try { await navigator.clipboard.writeText($("#linkAt").textContent); ok("Link copiado."); } catch (_) { A.toast("Selecione e copie o link."); } };
+  $("#salvarWw").onclick = async () => { try { await chamar("/config", { method: "PUT", body: { wwhat: { ativo: $("#wwAtivo").checked, saudacao: $("#wwSaud").value, pedir_cpf: $("#wwCpf").value, direcionando: $("#wwDir").value, departamento: $("#wwDep").value, motivo_pai: $("#wwMot").value } } }); ok("Wwhat salvo."); await carregar(); } catch (er) { falha(er); } };
   $("#copiarLink").onclick = async () => { try { await navigator.clipboard.writeText($("#linkApp").textContent); ok("Link copiado."); } catch (_) { A.toast("Selecione e copie o link."); } };
   $("#salvarApp").onclick = async () => {
     const lista = ura.filter((o) => String(o.rotulo || "").trim()).map((o) => ({ ...o, id: o.id || norm(o.rotulo).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30) }));
