@@ -338,7 +338,7 @@ def _filtrar(p: dict, col: str, d: dict) -> dict:
             d.pop("preco", None)
     elif col == "parceiros":
         if oculto("contato"):
-            for k in ("doc", "telefone", "email"):
+            for k in ("doc", "telefone", "email", "nascimento"):
                 d.pop(k, None)
     elif col == "pedidos":
         d.pop("palavra_chave", None)   # só os atendentes veem (módulo Atendimento)
@@ -383,7 +383,7 @@ def kardex(pid: str, request: Request):
 # CADASTROS
 # ══════════════════════════════════════════════════════════════════════════════
 CAMPOS_PRODUTO = ["sku", "nome", "categoria", "unidade", "custo", "preco", "fornecedor_id", "minimo", "volumes", "ean", "ativo", "obs", "cubagem", "peso"]   # cubagem m³ e peso kg por unidade (planejamento de cargas)
-CAMPOS_PARCEIRO = ["tipo", "nome", "codigo", "doc", "telefone", "email", "endereco", "capacidade", "placa", "ativo", "obs", "max_pontos", "max_m3", "max_kg"]   # codigo = código do cliente (liga com os Tickets)
+CAMPOS_PARCEIRO = ["tipo", "nome", "codigo", "doc", "telefone", "email", "nascimento", "endereco", "capacidade", "placa", "ativo", "obs", "max_pontos", "max_m3", "max_kg"]   # codigo = código do cliente (liga com os Tickets)
 TIPOS_PARCEIRO = ["cliente", "fornecedor", "motorista", "veiculo"]
 
 
@@ -476,10 +476,14 @@ def gravar_parceiro(u: dict, pid: str | None, c: dict, pode_contato: bool = True
     for k in CAMPOS_PARCEIRO:
         if k not in c:
             continue
-        if k in ("doc", "telefone", "email") and not pode_contato:
+        if k in ("doc", "telefone", "email", "nascimento") and not pode_contato:
             continue
         v = c[k]
-        if k == "endereco":
+        if k == "nascimento":   # data de nascimento (AAAA-MM-DD) — usada na validação do link de atendimento
+            v = str(v or "").strip()[:10]
+            if v and not re.match(r"^(19|20)\d\d-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$", v):
+                raise HTTPException(400, "Data de nascimento inválida.")
+        elif k == "endereco":
             v = {kk: str((v or {}).get(kk) or "").strip() for kk in ("logradouro", "numero", "complemento", "bairro", "cidade", "uf", "cep", "referencia")}
         elif k in ("capacidade", "max_pontos"):
             v = max(_int(v), 0)

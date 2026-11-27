@@ -487,9 +487,9 @@ def test_link_valida_cpf_e_duas_perguntas_e_so_abre_o_chat(t):
     assert t.post("/api/cliente/atendimento/cpf", json={"cpf": "390.533.447-05"}).status_code == 404   # CPF válido sem cadastro
     r = t.post("/api/cliente/atendimento/cpf", json={"cpf": CPF_ANA}).json()
     conv, q1 = r["conversa"], C._conversas[r["conversa"]]["atual"]
-    assert q1["modo"] != "opcao" and "742" not in str(r) and "0001" not in str(r) and "souza" not in str(r).lower()   # a resposta não vai para a página
+    assert "certo" not in str(r) and (q1["modo"] == "opcao" or q1["certo"] not in str(r))             # a resposta não vai para a página
     r = t.post("/api/cliente/atendimento/resposta", json={"conversa": conv, "resposta": _certa(conv)}).json()
-    assert r["ok"] and r["passo"] == 2 and len(r["pergunta"]["opcoes"]) == 4                          # 2ª: múltipla escolha
+    assert r["ok"] and r["passo"] == 2 and r["pergunta"]["texto"]
     assert t.get("/api/cliente/atendimento/chat").status_code == 401                                   # ainda não validou
     r = t.post("/api/cliente/atendimento/resposta", json={"conversa": conv, "resposta": _certa(conv)})
     assert r.json()["validado"] and "Ana" in r.json()["direcionando"]
@@ -518,14 +518,13 @@ def test_link_erra_duas_vezes_e_encerra(t):
 
 
 def test_link_cadastro_incompleto_nao_valida(t):
-    # Bia não tem endereço, telefone nem pedido com produto → não há 2 perguntas
-    assert t.post("/api/cliente/atendimento/cpf", json={"cpf": CPF_BIA}).status_code == 409
+    # só o primeiro nome e o CPF: não há 2 perguntas
+    E.ST.dados["parceiros"]["c_ze"] = {"tipo": "cliente", "nome": "Zé", "doc": "123.123.123-87", "ativo": True}
+    assert t.post("/api/cliente/atendimento/cpf", json={"cpf": "12312312387"}).status_code == 409
 
 
 def test_respostas_aceitam_jeitos_de_escrever():
-    q = {"id": "sobrenome", "modo": "sobrenome", "certo": ["souza", "lima"]}
-    assert C.resposta_confere(q, "Souza") and C.resposta_confere(q, "de Souza Lima") and not C.resposta_confere(q, "Silva")
-    q = {"id": "numero", "modo": "digitos", "certo": "42"}
+    q = {"id": "numero", "modo": "digitos", "certo": "42", "zeros": True}
     assert C.resposta_confere(q, "nº 042") and not C.resposta_confere(q, "")
     q = {"id": "produto", "modo": "opcao", "certo": "3", "opcoes": ["A", "B", "Colchão", "D"]}
     assert C.resposta_confere(q, "3") and C.resposta_confere(q, "colchao") and not C.resposta_confere(q, "2")
@@ -585,3 +584,46 @@ def test_varias_entradas_pelo_link_caem_na_mesma_conversa(t):
     assert t.get("/api/cliente/atendimento/info").json()["validado"] is False
     i = t.get("/api/cliente/atendimento/info", headers={"X-Atend-Token": r2["tk"]}).json()
     assert i["validado"] and i["continua"]["id"] == sid
+
+
+def test_banco_de_perguntas_so_com_numeros_e_sem_repetir_assunto(t):
+    _preparar_link()
+    E.ST.dados["parceiros"]["c_ana"]["nascimento"] = "1990-03-07"
+    cli = E.ST.dados["parceiros"]["c_ana"]
+    vistos = set()
+    for _ in range(60):
+        fila = C.perguntas_do_cliente("c_ana", cli)
+        assert len({q["grupo"] for q in fila}) == len(fila)                              # um assunto por pergunta
+        vistos |= {q["id"] for q in fila}
+        for q in fila:
+            assert q["certo"].isdigit()                                                  # tudo se responde com números
+            if q["modo"] == "opcao":
+                assert len(q["opcoes"]) == 4 and len({x.lower() for x in q["opcoes"]}) == 4
+    assert {"numero", "telefone", "cep", "produto", "bairro", "sobrenome", "email", "complemento"} <= vistos
+    assert vistos & {"nasc_dia", "nasc_mes", "nasc_ano", "nasc_data"}
+    for _ in range(40):   # sem complemento cadastrado → "Sem complemento" é a resposta certa
+        q = next((q for q in C.perguntas_do_cliente("c_ana", cli) if q["id"] == "complemento"), None)
+        if q:
+            assert q["opcoes"][int(q["certo"]) - 1] == "Sem complemento"
+            break
+    for _ in range(20):   # e-mail aparece mascarado e as respostas certas batem
+        q = next((q for q in C.perguntas_do_cliente("c_ana", cli) if q["id"] == "email"), None)
+        if q:
+            assert q["opcoes"][int(q["certo"]) - 1] == "an•••@ex•••.com"
+            break
+    # o que foi perguntado na última validação vai para o fim da fila
+    fila = C.perguntas_do_cliente("c_ana", cli, evitar=("numero", "telefone", "cep"))
+    assert fila[0]["id"] not in ("numero", "telefone", "cep") and fila[1]["id"] not in ("numero", "telefone", "cep")
+
+
+def test_erp_guarda_data_de_nascimento(t):
+    with E.ST.trava:
+        pid, d = E.gravar_parceiro({"login": "x"}, "c_ana", {"nascimento": "1990-03-07"})
+    assert d["nascimento"] == "1990-03-07"
+    with E.ST.trava:
+        try:
+            E.gravar_parceiro({"login": "x"}, "c_ana", {"nascimento": "07/03/1990"})
+            assert False
+        except Exception as ex:  # noqa: BLE001
+            assert getattr(ex, "status_code", 0) == 400
+    assert "nascimento" not in E._filtrar({"acoes": {}, "campos": {"contato": "oculto"}}, "parceiros", dict(d))

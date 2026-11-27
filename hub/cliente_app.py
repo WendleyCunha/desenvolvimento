@@ -976,64 +976,136 @@ def _endereco(cid: str, cli: dict) -> dict:
     return (peds[0].get("endereco") if peds else {}) or {}
 
 
-def perguntas_do_cliente(cid: str, cli: dict, sorteio=None) -> list[dict]:
-    """Perguntas possíveis com o que o ERP tem do cliente. 1ª: resposta digitada · 2ª: múltipla escolha (se der)."""
+SOBRENOMES = ["Silva", "Santos", "Oliveira", "Souza", "Pereira", "Costa", "Rodrigues", "Almeida", "Lima", "Gomes", "Ribeiro", "Carvalho",
+              "Ferreira", "Martins", "Araújo", "Barbosa", "Rocha", "Dias", "Moreira", "Cardoso"]
+BAIRROS = ["Centro", "Jardim América", "Vila Nova", "Boa Vista", "Santa Cruz", "Parque das Flores", "Jardim Paulista", "Vila Mariana",
+           "São José", "Bela Vista"]
+COMPLEMENTOS = ["Sem complemento", "Apto 12", "Casa 2", "Bloco B, apto 31", "Fundos", "Casa 1", "Apto 104", "Sala 3"]
+DOMINIOS = ["gmail.com", "hotmail.com", "outlook.com", "yahoo.com.br", "icloud.com", "uol.com.br"]
+_ultimas = banco.por_empresa(dict)   # CPF → perguntas da última validação (a próxima tenta outras)
+
+
+def _mascara_email(e: str) -> str:
+    u, _, d = str(e or "").strip().lower().partition("@")
+    if not u or "." not in d:
+        return ""
+    nome, _, fim = d.partition(".")
+    return f"{u[:2]}•••@{nome[:2]}•••.{fim}"
+
+
+def _escolhas(rnd, certo: str, candidatos, genericos, proibidos=()) -> list[str] | None:
+    """4 opções (1 certa + 3 de outros cadastros/lista padrão), nenhuma parecida com a certa."""
+    fora = {T.norm(certo)} | {T.norm(x) for x in proibidos}
+    vistos, outros = set(fora), []
+    for x in list(dict.fromkeys(c for c in candidatos if c)) + [g for g in genericos if g]:
+        if T.norm(x) not in vistos:
+            vistos.add(T.norm(x))
+            outros.append(x)
+    reais = [x for x in outros if x not in genericos]
+    pool = reais if len(reais) >= 3 else outros
+    if len(pool) < 3:
+        return None
+    ops = rnd.sample(pool, 3) + [certo]
+    rnd.shuffle(ops)
+    return ops
+
+
+def _datas_vizinhas(rnd, d: str) -> list[str]:
+    import datetime as dt
+    base = dt.date.fromisoformat(d)
+    ops = set()
+    while len(ops) < 3:
+        try:
+            x = base.replace(year=base.year + rnd.choice([-3, -2, -1, 0, 0, 1, 2, 3]), month=rnd.randint(1, 12), day=rnd.randint(1, 28))
+        except ValueError:
+            continue
+        if x != base:
+            ops.add(x.strftime("%d/%m/%Y"))
+    return list(ops)
+
+
+def perguntas_do_cliente(cid: str, cli: dict, sorteio=None, evitar=()) -> list[dict]:
+    """Banco de perguntas com o que o ERP tem do cliente — TODAS respondidas com números:
+    digitadas (nº da casa, 4 últimos do telefone, começo do CEP, dia/mês/ano de nascimento) e de múltipla escolha 1-4
+    (produto comprado, bairro, sobrenome, e-mail mascarado, data de nascimento, complemento).
+    Sorteia a ordem, uma pergunta por assunto (nunca duas de nascimento, por exemplo), e empurra para o fim as que o
+    mesmo CPF respondeu na última validação."""
     import random
     rnd = sorteio or random.SystemRandom()
     e = _erp()
-    livres = []
+    outros_cli = [c for k, c in e.ST.dados["parceiros"].items() if k != cid and c.get("tipo") == "cliente"]
     end = _endereco(cid, cli)
+    qs = []
+
+    def dig(id_, grupo, texto, certo, zeros=False):
+        qs.append({"id": id_, "grupo": grupo, "texto": texto, "modo": "digitos", "certo": certo.lstrip("0") if zeros else certo, "zeros": zeros})
+
+    def esc_(id_, grupo, texto, certo, candidatos, genericos=(), proibidos=()):
+        ops = _escolhas(rnd, certo, candidatos, list(genericos), proibidos)
+        if ops:
+            qs.append({"id": id_, "grupo": grupo, "texto": texto, "modo": "opcao", "opcoes": ops, "certo": str(ops.index(certo) + 1)})
+
     if T.digitos(end.get("numero")):
-        livres.append({"id": "numero", "texto": "Qual é o número da sua casa no endereço de entrega? (só o número)",
-                       "certo": T.digitos(end.get("numero")).lstrip("0"), "modo": "digitos"})
+        dig("numero", "numero", "Qual é o número da sua casa no endereço de entrega?", T.digitos(end.get("numero")), zeros=True)
     tel = T.digitos(cli.get("telefone"))
     if len(tel) >= 8:
-        livres.append({"id": "telefone", "texto": "Quais são os 4 últimos números do seu telefone cadastrado?", "certo": tel[-4:], "modo": "digitos"})
-    nomes = [x for x in T.norm(cli.get("nome")).split()[1:] if len(x) >= 3 and x not in _LIGACAO]
-    if nomes:
-        livres.append({"id": "sobrenome", "texto": "Qual é o seu sobrenome?", "certo": nomes, "modo": "sobrenome"})
+        dig("telefone", "telefone", "Quais são os 4 últimos números do seu telefone cadastrado?", tel[-4:])
     cep = T.digitos(end.get("cep"))
     if len(cep) == 8:
-        livres.append({"id": "cep", "texto": "Quais são os 5 primeiros números do CEP de entrega?", "certo": cep[:5], "modo": "digitos"})
-    rnd.shuffle(livres)
-    escolhas = []
-    prods = e.ST.dados.get("produtos") or {}
-    comprados = {str((prods.get(i.get("produto_id")) or {}).get("nome") or "").strip()
-                 for p in e.ST.dados["pedidos"].values() if p.get("cliente_id") == cid and p.get("status") not in (None, "rascunho", "cancelado")
-                 for i in (p.get("itens") or [])} - {""}
-    outros = sorted({str(v.get("nome") or "").strip() for v in prods.values()} - comprados - {""})
-    if comprados and len(outros) >= 3:
-        escolhas.append({"id": "produto", "texto": "Qual destes produtos você comprou com a gente?",
-                         "certo_txt": rnd.choice(sorted(comprados)), "outros": rnd.sample(outros, 3)})
-    bairro = str(end.get("bairro") or "").strip()
-    if bairro:
-        vizinhos = sorted({str((c.get("endereco") or {}).get("bairro") or "").strip() for c in e.ST.dados["parceiros"].values()}
-                          | {str((p.get("endereco") or {}).get("bairro") or "").strip() for p in e.ST.dados["pedidos"].values()})
-        vizinhos = [b for b in vizinhos if b and T.norm(b) != T.norm(bairro)]
-        if len(vizinhos) >= 3:
-            escolhas.append({"id": "bairro", "texto": "Em qual destes bairros é o seu endereço de entrega?", "certo_txt": bairro, "outros": rnd.sample(vizinhos, 3)})
-    for q in escolhas:
-        ops = q.pop("outros") + [q["certo_txt"]]
+        dig("cep", "cep", "Quais são os 5 primeiros números do CEP de entrega?", cep[:5])
+    nasc = str(cli.get("nascimento") or "")
+    if re.match(r"^\d{4}-\d{2}-\d{2}$", nasc):
+        a, m, d = nasc.split("-")
+        dig("nasc_dia", "nascimento", "Qual é o DIA do seu nascimento? (só o número)", d, zeros=True)
+        dig("nasc_mes", "nascimento", "Qual é o MÊS do seu nascimento? (número de 1 a 12)", m, zeros=True)
+        dig("nasc_ano", "nascimento", "Qual é o ANO do seu nascimento? (os 4 números)", a)
+        certo = f"{d}/{m}/{a}"
+        ops = _datas_vizinhas(rnd, nasc) + [certo]
         rnd.shuffle(ops)
-        q.update(opcoes=ops, certo=str(ops.index(q.pop("certo_txt")) + 1), modo="opcao")
-    if escolhas and livres:
-        return [livres[0], escolhas[0]] + livres[1:] + escolhas[1:]
-    return livres + escolhas
+        qs.append({"id": "nasc_data", "grupo": "nascimento", "texto": "Qual é a sua data de nascimento?", "modo": "opcao", "opcoes": ops,
+                   "certo": str(ops.index(certo) + 1)})
+    prods = e.ST.dados.get("produtos") or {}
+    comprados = sorted({str((prods.get(i.get("produto_id")) or {}).get("nome") or "").strip()
+                        for p in e.ST.dados["pedidos"].values() if p.get("cliente_id") == cid and p.get("status") not in (None, "rascunho", "cancelado")
+                        for i in (p.get("itens") or [])} - {""})
+    if comprados:
+        esc_("produto", "produto", "Dos itens abaixo, qual produto você comprou?", rnd.choice(comprados),
+             [str(v.get("nome") or "").strip() for v in prods.values()], proibidos=comprados)
+    if str(end.get("bairro") or "").strip():
+        esc_("bairro", "bairro", "Qual é o seu bairro?", str(end["bairro"]).strip(),
+             [str((c.get("endereco") or {}).get("bairro") or "").strip() for c in outros_cli], BAIRROS)
+    sobrenomes = [x for x in str(cli.get("nome") or "").split()[1:] if len(x) >= 3 and T.norm(x) not in _LIGACAO]
+    if sobrenomes:
+        esc_("sobrenome", "nome", "Qual é o seu sobrenome?", sobrenomes[-1].capitalize(),
+             [str(c.get("nome") or "").split()[-1].capitalize() for c in outros_cli if len(str(c.get("nome") or "").split()) > 1], SOBRENOMES,
+             proibidos=sobrenomes)
+    if _mascara_email(cli.get("email")):
+        # e-mails falsos inventados (nunca o e-mail de outro cliente), no mesmo formato da máscara
+        falsos = [_mascara_email("".join(rnd.choice("abcdefghijlmnoprstuv") for _ in range(6)) + "@" + rnd.choice(DOMINIOS)) for _ in range(8)]
+        esc_("email", "email", "Qual destes é o seu e-mail?", _mascara_email(cli.get("email")), [f for f in falsos if f])
+    compl = str(end.get("complemento") or "").strip() or "Sem complemento"
+    if T.digitos(end.get("numero")) or end.get("bairro"):   # com endereço, pergunta mesmo sem complemento ("Sem complemento" é a certa)
+        esc_("complemento", "complemento", "Qual é o complemento do seu endereço?", compl,
+             [str((c.get("endereco") or {}).get("complemento") or "").strip() for c in outros_cli], COMPLEMENTOS)
+    rnd.shuffle(qs)
+    qs.sort(key=lambda q: q["id"] in evitar)   # as da última vez ficam para o fim
+    fila, grupos = [], set()
+    for q in qs:
+        if q["grupo"] not in grupos:
+            grupos.add(q["grupo"])
+            fila.append(q)
+    return fila
 
 
 def resposta_confere(q: dict, resposta: str) -> bool:
-    r = str(resposta or "").strip()
+    r = T.digitos(resposta)
     if q["modo"] == "digitos":
-        d = T.digitos(r).lstrip("0") if q["id"] == "numero" else T.digitos(r)
-        return bool(d) and hmac.compare_digest(d, q["certo"])
-    if q["modo"] == "sobrenome":
-        partes = [x for x in T.norm(r).split() if x not in _LIGACAO]
-        return bool(partes) and all(x in q["certo"] for x in partes)
+        r = r.lstrip("0") if q.get("zeros") else r
+        return bool(r) and hmac.compare_digest(r, q["certo"])
     if q["modo"] == "opcao":
-        n = T.digitos(r)
-        if not n:   # tocou/escreveu o nome da opção
-            n = next((str(i + 1) for i, o in enumerate(q["opcoes"]) if T.norm(o) == T.norm(r)), "")
-        return n == q["certo"]
+        if not r:   # tocou/escreveu o texto da opção
+            r = next((str(i + 1) for i, o in enumerate(q["opcoes"]) if T.norm(o) == T.norm(resposta)), "")
+        return r == q["certo"]
     return False
 
 
@@ -1112,7 +1184,7 @@ async def at_cpf(request: Request):
         _falhou(ip, "doc:" + doc)
         raise HTTPException(404, "Não encontrei um cadastro com esse CPF. Confira os números ou fale com a loja onde você comprou.")
     cid, cli = achado
-    fila = perguntas_do_cliente(cid, cli)
+    fila = perguntas_do_cliente(cid, cli, evitar=_ultimas.get(doc) or ())
     if len(fila) < 2:
         raise HTTPException(409, "Não consigo confirmar seus dados por aqui — o cadastro está incompleto. Fale com a loja onde você comprou.")
     _limpar_conversas()
@@ -1132,6 +1204,10 @@ async def at_resposta(request: Request):
     if _bloqueado(ip, LIMITE_IP) or _bloqueado("doc:" + cv["doc"], LIMITE_DOC):
         _conversas.pop(str(d.get("conversa")), None)
         raise HTTPException(429, "Muitas tentativas. Aguarde 15 minutos e tente de novo.")
+    cv.setdefault("feitas", []).append(cv["atual"]["id"])
+    _ultimas[cv["doc"]] = cv["feitas"][-4:]
+    if len(_ultimas) > 20000:
+        _ultimas.clear()
     if resposta_confere(cv["atual"], d.get("resposta")):
         cv["acertos"] += 1
         if cv["acertos"] >= 2:
