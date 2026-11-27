@@ -278,6 +278,12 @@ button.kpi:hover{border-color:color-mix(in srgb,var(--c) 50%,transparent)}
 .periodo{display:inline-flex;gap:2px;padding:3px;border-radius:11px;border:1px solid var(--vidro-borda);background:rgba(255,255,255,.03)}
 .periodo button{padding:5px 11px;border-radius:8px;font:600 .72rem var(--sans,Inter),sans-serif;color:var(--txt2)}.periodo button.ativo{background:rgba(var(--ouro-rgb),.16);color:var(--ouro2)}
 .eq-cab{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:18px 2px 10px}.eq-cab .sec{margin:0;flex:1}
+/* Gestão › Equipe: números clicáveis (abrem a lista de casos), pessoa clicável (curva só dela), linha marcada entra na curva */
+.g-num{min-width:34px;padding:3px 10px;border-radius:9px;font:700 .86rem var(--titulo);color:var(--txt);background:rgba(255,255,255,.05);border:1px solid var(--vidro-borda);cursor:pointer;transition:.18s}
+.g-num:hover{border-color:var(--ciano);box-shadow:0 0 14px -4px var(--ciano)}.g-num.zero{color:var(--txt3);font-weight:500}
+.g-pess{display:flex;align-items:center;gap:9px;background:none;border:0;padding:0;color:inherit;cursor:pointer;text-align:left;font:inherit}
+.g-pess:hover b{color:var(--ouro2)}.g-pess small{display:block;font-size:.66rem;color:var(--txt3)}
+.eq tr.g-sel td{background:rgba(var(--ouro-rgb),.05)}
 .eq td.num{text-align:center;font-variant-numeric:tabular-nums}.eq td.num.zero{color:var(--txt3)}.eq th.num{text-align:center}
 .eq .pess{display:flex;align-items:center;gap:9px}.eq .av{position:relative;width:30px;height:30px;border-radius:10px;display:grid;place-items:center;font:700 .72rem var(--titulo);background:rgba(255,255,255,.06);flex:none}
 .eq .av i{position:absolute;right:-3px;bottom:-3px;width:10px;height:10px;border-radius:50%;background:#6b7183;border:2px solid var(--noite2)}.eq .av i.on{background:var(--verde);box-shadow:0 0 8px var(--verde)}
@@ -1684,15 +1690,126 @@ function telaGestao(m) {
   const k = (r, v, s2, cor) => `<div class="kpi" style="--c:${cor}"><small>${r}</small><b>${v}</b><span>${s2 || ""}</span></div>`;
   const barras = (l) => { const max = Math.max(1, ...l.map((x) => x[1])); return l.slice(0, 12).map(([n, v]) => `<div style="display:grid;grid-template-columns:160px 1fr 40px;gap:8px;align-items:center;font-size:.78rem;margin-bottom:5px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(n)}</span><span style="height:8px;border-radius:5px;background:rgba(255,255,255,.06)"><i style="display:block;height:100%;width:${v / max * 100}%;border-radius:5px;background:var(--ouro)"></i></span><b style="text-align:right">${v}</b></div>`).join(""); };
   const porAt = {}; cab.forEach((x) => { const a = x.atribuido_para || "_"; porAt[a] = porAt[a] || { n: 0, at: 0, sols: 0, venc: 0, hoje: 0 }; const v = porAt[a]; v.n++; if (x.estado === "atendimento") v.at++; v.sols += x.solsAb.length; if (x.sla?.estado === "venc") v.venc++; if (x.sla?.estado === "hoje") v.hoje++; });
-  m.innerHTML = `<section class="painel vidro"><h2 style="margin:0 0 4px;font:700 1.25rem var(--titulo)">Painel de gestão</h2>
+  m.innerHTML = `<section class="painel vidro"><h2 style="margin:0 0 12px;font:700 1.25rem var(--titulo)">Equipe — atendimento por pessoa</h2><div id="gEquipe"><p class="dica">carregando a equipe…</p></div></section>
+    <section class="painel vidro" style="margin-top:14px"><h2 style="margin:0 0 4px;font:700 1.25rem var(--titulo)">Painel de gestão</h2>
     <p class="dica" style="margin-bottom:12px">Cada cliente conta uma vez: está em <b>atendimento</b> (chat do app ativo) ou é um <b>ticket pendente</b>. As solicitações são os problemas dentro dos tickets.</p>
     <div class="kpis">${k("Atendimentos agora", c.atend, "chats do app ativos", "var(--ciano)")}${k("Tickets pendentes", c.tks, "clientes com solicitação aberta", "var(--azul)")}${k("Solicitações abertas", solsAb.length, `média ${c.tks ? (solsAb.length / Math.max(1, cab.filter((x) => x.solsAb.length).length)).toFixed(1) : 0} por cliente`, "var(--violeta)")}${k("Sem dono", c.novos, "clientes", "var(--ouro)")}${k("Vencidos", c.venc, "clientes", "var(--rosa)")}${k("Solicitações (7 dias)", abertas7, `${concl7} concluídas · ${chats7} chats`, "var(--verde)")}</div>
     <div class="cartoes" style="margin-top:14px">
       <div class="cartao"><h3>Solicitações abertas por motivo</h3>${barras(por((t) => t.motivo_pai || "— sem motivo —", solsAb))}</div>
       <div class="cartao"><h3>Solicitações abertas por setor</h3>${barras(por((t) => t.departamento || "—", solsAb))}</div>
-      <div class="cartao"><h3>Clientes por pessoa</h3><table class="tab"><thead><tr><th>Atendente</th><th>Clientes</th><th>Em atendimento</th><th>Solicitações</th><th>Vencem hoje</th><th>Vencidos</th></tr></thead><tbody>
+      <div class="cartao" style="overflow:auto"><h3>Clientes por pessoa</h3><table class="tab"><thead><tr><th>Atendente</th><th>Clientes</th><th>Em atendimento</th><th>Solicitações</th><th>Vencem hoje</th><th>Vencidos</th></tr></thead><tbody>
         ${Object.entries(porAt).sort((a, b) => b[1].n - a[1].n).map(([a, v]) => `<tr><td>${a === "_" ? "— sem dono —" : esc(nomeU(a))}</td><td>${v.n}</td><td>${v.at}</td><td>${v.sols}</td><td>${v.hoje}</td><td style="color:${v.venc ? "var(--rosa)" : ""}">${v.venc}</td></tr>`).join("")}</tbody></table></div>
     </div></section>`;
+  const box = $("#gEquipe");
+  if (S.gEq) desenharGestaoEq(box);
+  carregarGestaoEq();
+}
+
+/* ══════ GESTÃO › EQUIPE: atendimentos, tickets e tempo logado por pessoa; lista de casos (tela cheia) com
+   transferir em massa; curva de produtividade de uma pessoa, de várias ou de todas (visão geral) ══════ */
+const hojeISO = () => { const d = new Date(Date.now() - new Date().getTimezoneOffset() * 6e4); return d.toISOString().slice(0, 10); };
+const menosDias = (n) => { const d = new Date(Date.now() - n * 864e5 - new Date().getTimezoneOffset() * 6e4); return d.toISOString().slice(0, 10); };
+function periodoG() {
+  const g = S.gPer || (S.gPer = { modo: "hoje", de: hojeISO(), ate: hojeISO() });
+  if (g.modo === "hoje") return { de: hojeISO(), ate: hojeISO() };
+  if (g.modo === "7") return { de: menosDias(6), ate: hojeISO() };
+  if (g.modo === "30") return { de: menosDias(29), ate: hojeISO() };
+  return { de: g.de || hojeISO(), ate: g.ate || hojeISO() };
+}
+const hm = (min) => { min = Math.round(min || 0); return min < 60 ? `${min} min` : `${Math.floor(min / 60)}h${String(min % 60).padStart(2, "0")}`; };
+async function carregarGestaoEq() {
+  const { de, ate } = periodoG();
+  try {
+    S.gEq = await A.api(`${API}/equipe?de=${de}&ate=${ate}&setor=${encodeURIComponent(S.gSetor || "")}`);
+    if (!S.gSel) S.gSel = new Set(S.gEq.pessoas.map((x) => x.usuario));   // começa com todos = visão geral
+    S.gSel = new Set([...S.gSel].filter((u) => S.gEq.pessoas.some((x) => x.usuario === u)));
+    await carregarCurva(true);
+  } catch (e) { const b = $("#gEquipe"); if (b) b.innerHTML = `<p class="dica">${esc(e.message)}</p>`; }
+}
+async function carregarCurva(semDesenhar) {
+  const { de, ate } = periodoG(), us = [...(S.gSel || [])];
+  try { S.gCurva = us.length ? await A.api(`${API}/equipe/curva?de=${de}&ate=${ate}&usuarios=${encodeURIComponent(us.join(","))}`) : null; }
+  catch (e) { S.gCurva = { erro: e.message }; }
+  const b = $("#gEquipe"); if (b && S.sec === "gestao") desenharGestaoEq(b);
+}
+function rotStatus(st, pz) { if (st === "online") return ["Online", "#34d399"]; if (!st || st === "offline") return ["Offline", "#6b7183"]; const p = (pz || []).find((x) => x.id === st); return [(p ? (p.emoji || "") + " " + p.rotulo : "Pausa"), "#f59e0b"]; }
+function casosDe(usuario, tipo) {
+  return clientes().filter((c) => vivo(c) && (c.atribuido_para === usuario || (c.atendentes || []).includes(usuario) || c.todos.some((t) => ABERTOS.includes(t.status) && (t.atribuido_para === usuario || (t.atendentes || []).includes(usuario))))
+    && (tipo === "atend" ? c.estado === "atendimento" : c.solsAb.length > 0));
+}
+function desenharGestaoEq(box) {
+  const q = S.gEq; if (!q || !box) return;
+  const g = S.gPer, P = q.pessoas, sel = S.gSel || new Set(), todos = P.length && P.every((x) => sel.has(x.usuario));
+  const per = `<span class="periodo">${[["hoje", "Hoje"], ["7", "7 dias"], ["30", "30 dias"], ["custom", "Personalizado"]].map(([k2, r]) => `<button type="button" data-gper="${k2}" class="${g.modo === k2 ? "ativo" : ""}">${r}</button>`).join("")}</span>
+    ${g.modo === "custom" ? `<input type="date" class="entrada" id="gDe" value="${esc(g.de || hojeISO())}" style="width:auto;padding:5px 8px"> até <input type="date" class="entrada" id="gAte" value="${esc(g.ate || hojeISO())}" style="width:auto;padding:5px 8px">` : ""}`;
+  const on = P.filter((x) => x.status === "online").length, pausa = P.filter((x) => x.status && !["online", "offline"].includes(x.status)).length;
+  const k = (r, v, s2, c) => `<div class="kpi" style="--c:${c}"><small>${r}</small><b>${v}</b><span>${s2 || ""}</span></div>`;
+  const soma = (f) => P.reduce((a, x) => a + (x[f] || 0), 0);
+  const bt = (u, tipo, v) => `<td class="num"><button type="button" class="g-num${v ? "" : " zero"}" data-gcasos="${esc(u)}|${tipo}" title="Ver a lista de casos">${v}</button></td>`;
+  box.innerHTML = `<div class="eq-cab" style="flex-wrap:wrap;gap:8px">${q.departamentos.length ? `<select class="entrada" id="gSetor" style="width:auto;padding:5px 9px"><option value="">Todos os setores</option>${q.departamentos.map((d) => `<option${S.gSetor === d ? " selected" : ""}>${esc(d)}</option>`).join("")}</select>` : ""}${per}</div>
+    <div class="kpis">${k("Online agora", `${on}<small style="display:inline;font-size:.9rem;color:var(--txt3)"> / ${P.length}</small>`, `${pausa} em pausa`, "var(--verde)")}${k("Atendimentos agora", soma("chats_ativos"), `${soma("cliente_aguardando")} esperando resposta`, "var(--ciano)")}${k("Tickets com a equipe", soma("tickets_pendentes"), `${soma("vencidos")} vencido(s)`, soma("vencidos") ? "var(--rosa)" : "var(--violeta)")}${k("Chats atendidos", soma("chats_atendidos"), "no período", "var(--ciano)")}${k("Tickets concluídos", soma("tickets_concluidos"), "no período", "var(--verde)")}${k("Tempo logado", hm(soma("min_online")), `${hm(soma("min_pausa"))} em pausa`, "var(--azul)")}</div>
+    <div class="cartao" style="margin-top:10px;padding:8px 10px;overflow:auto"><table class="tab eq"><thead><tr><th style="width:28px"><input type="checkbox" id="gTodos" title="Marcar todos — visão geral da operação"${todos ? " checked" : ""}></th><th>Pessoa</th><th>Status</th><th class="num" title="Chats com a pessoa agora">Atendimentos</th><th class="num" title="Clientes com solicitação aberta com a pessoa">Tickets</th><th class="num">Chats atendidos</th><th class="num">Tickets concluídos</th><th class="num">Respostas</th><th class="num">Tempo logado</th><th class="num">Em pausa</th><th class="num" title="Atendimentos simultâneos (Ajustes)">Limite</th></tr></thead><tbody>
+      ${P.map((x) => { const [rs, cs] = rotStatus(x.status, q.pausas); const nA = casosDe(x.usuario, "atend").length, nT = casosDe(x.usuario, "ticket").length;
+        return `<tr class="${sel.has(x.usuario) ? "g-sel" : ""}"><td><input type="checkbox" data-gsel="${esc(x.usuario)}"${sel.has(x.usuario) ? " checked" : ""}></td>
+        <td><button type="button" class="g-pess" data-gso="${esc(x.usuario)}" title="Ver a curva só de ${esc(x.nome)}"><span class="av">${esc((x.nome || "?").split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase())}<i class="${x.status === "online" ? "on" : ""}"></i></span><span><b>${esc(x.nome)}</b><small>${esc(x.depto || "sem setor")}</small></span></button></td>
+        <td><span class="etq" style="--c:${cs}">${esc(rs)}</span>${x.status !== "online" && x.status !== "offline" && x.desde ? `<small class="dica"> ${hm((Date.now() / 1000 - x.desde) / 60)}</small>` : ""}</td>
+        ${bt(x.usuario, "atend", nA)}${bt(x.usuario, "ticket", nT)}<td class="num">${x.chats_atendidos}</td><td class="num">${x.tickets_concluidos}</td><td class="num">${x.respostas}</td><td class="num">${hm(x.min_online)}</td><td class="num" title="${esc(Object.entries(x.pausas || {}).map(([p2, v]) => rotStatus(p2, q.pausas)[0] + ": " + hm(v)).join(" · "))}">${hm(x.min_pausa)}</td><td class="num">${x.limite == null ? "—" : x.limite === 0 ? "só tickets" : x.limite}</td></tr>`; }).join("") || `<tr><td colspan="11" class="dica">Ninguém neste setor. Defina o setor de cada pessoa em Ajustes.</td></tr>`}</tbody></table></div>
+    <div class="cartao" style="margin-top:12px"><h3>${svg("grafico") || ""} Curva de produtividade · ${todos ? "visão geral da operação" : sel.size === 1 ? esc(P.find((x) => sel.has(x.usuario))?.nome || "") : sel.size + " pessoa(s)"}</h3>${curvaSvg(S.gCurva)}</div>`;
+  box.querySelectorAll("[data-gper]").forEach((b) => (b.onclick = () => { S.gPer.modo = b.dataset.gper; if (b.dataset.gper === "custom") { S.gPer.de = S.gPer.de || menosDias(6); S.gPer.ate = S.gPer.ate || hojeISO(); } carregarGestaoEq(); }));
+  const gd = box.querySelector("#gDe"), ga = box.querySelector("#gAte");
+  if (gd) gd.onchange = ga.onchange = () => { S.gPer.de = gd.value; S.gPer.ate = ga.value < gd.value ? gd.value : ga.value; carregarGestaoEq(); };
+  const gs = box.querySelector("#gSetor"); if (gs) gs.onchange = () => { S.gSetor = gs.value; S.gSel = null; carregarGestaoEq(); };
+  box.querySelector("#gTodos").onchange = (ev) => { S.gSel = new Set(ev.target.checked ? P.map((x) => x.usuario) : []); carregarCurva(); };
+  box.querySelectorAll("[data-gsel]").forEach((c) => (c.onchange = () => { c.checked ? S.gSel.add(c.dataset.gsel) : S.gSel.delete(c.dataset.gsel); carregarCurva(); }));
+  box.querySelectorAll("[data-gso]").forEach((b) => (b.onclick = () => { S.gSel = new Set([b.dataset.gso]); carregarCurva(); }));
+  box.querySelectorAll("[data-gcasos]").forEach((b) => (b.onclick = () => { const [u, tipo] = b.dataset.gcasos.split("|"); popupCasos(u, tipo); }));
+}
+function curvaSvg(c) {
+  if (!c) return `<p class="dica">Marque uma ou mais pessoas (ou todas) para ver a curva.</p>`;
+  if (c.erro) return `<p class="dica">${esc(c.erro)}</p>`;
+  const R = c.rotulos, S2 = c.series, n = R.length, W = 1000, H = 230, pl = 34, pr = 40, pt = 14, pb = 30, w = (W - pl - pr) / Math.max(1, n);
+  const maxB = Math.max(1, ...R.map((_, i) => S2.chats[i] + S2.tickets[i])), maxR = Math.max(1, ...S2.respostas), maxO = Math.max(1, ...S2.online);
+  const y = (v, mx) => pt + (H - pt - pb) * (1 - v / mx);
+  const lab = (r) => c.por === "hora" ? r : `${r.slice(8, 10)}/${r.slice(5, 7)}`;
+  const passo = Math.ceil(n / 16);
+  const barras = R.map((r, i) => { const x = pl + i * w + w * .18, bw = w * .64, h1 = (H - pt - pb) * S2.chats[i] / maxB, h2 = (H - pt - pb) * S2.tickets[i] / maxB, base = H - pb;
+    return `<g><title>${lab(r)} · ${S2.chats[i]} chat(s) · ${S2.tickets[i]} ticket(s) · ${S2.respostas[i]} resposta(s) · ${hm(S2.online[i])} online</title>
+      <rect x="${x}" y="${base - h1}" width="${bw}" height="${h1}" rx="3" fill="#22d3ee" opacity=".85"/><rect x="${x}" y="${base - h1 - h2}" width="${bw}" height="${h2}" rx="3" fill="#34d399" opacity=".85"/>
+      <rect x="${pl + i * w}" y="${pt}" width="${w}" height="${H - pt - pb}" fill="transparent"/>${i % passo === 0 ? `<text x="${pl + i * w + w / 2}" y="${H - 10}" text-anchor="middle" font-size="11" fill="var(--txt3)">${lab(r)}</text>` : ""}</g>`; }).join("");
+  const linha = (vals, mx, cor, tr) => `<polyline fill="none" stroke="${cor}" stroke-width="2.2" ${tr ? 'stroke-dasharray="5 4"' : ""} points="${vals.map((v, i) => `${pl + i * w + w / 2},${y(v, mx)}`).join(" ")}"/>`;
+  const T2 = c.totais, sm = c.status_min || {};
+  return `<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:.76rem;color:var(--txt2);margin:4px 0 6px">
+      <span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#22d3ee"></i> Chats atendidos <b>${T2.chats}</b></span><span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#34d399"></i> Tickets concluídos <b>${T2.tickets}</b></span>
+      <span><i style="display:inline-block;width:14px;height:2px;background:#e8b33d;vertical-align:middle"></i> Respostas <b>${T2.respostas}</b></span><span><i style="display:inline-block;width:14px;height:0;border-top:2px dashed #a78bfa;vertical-align:middle"></i> Tempo online <b>${hm(T2.online)}</b></span>
+      ${Object.entries(sm).filter(([k2]) => !["online", "offline"].includes(k2)).map(([k2, v]) => `<span>${esc(rotStatus(k2, c.pausas)[0])} <b>${hm(v)}</b></span>`).join("")}</div>
+    <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block" role="img" aria-label="Curva de produtividade">
+      <line x1="${pl}" y1="${H - pb}" x2="${W - pr}" y2="${H - pb}" stroke="var(--vidro-borda)"/>${barras}${linha(S2.respostas, maxR, "#e8b33d")}${linha(S2.online, maxO, "#a78bfa", true)}
+      <text x="${pl - 6}" y="${pt + 8}" text-anchor="end" font-size="10" fill="var(--txt3)">${maxB}</text><text x="${W - pr + 4}" y="${pt + 8}" font-size="10" fill="#a78bfa">${hm(maxO)}</text></svg>
+    <p class="dica" style="margin:4px 0 0">${c.por === "hora" ? "Por hora do dia." : "Por dia."} Barras = chats (azul) e tickets (verde) concluídos · linha dourada = respostas ao cliente · tracejada = minutos Online (escala à direita). Passe o mouse para os números.</p>`;
+}
+/* lista de casos (tela cheia, no padrão dos popups grandes): marcar todos → transferir; clicar no cliente → abre o ticket */
+function popupCasos(usuario, tipo) {
+  const nome = nomeU(usuario), sel = new Set();
+  const md = A.modal({ titulo: `${tipo === "atend" ? "Atendimentos" : "Tickets"} com ${nome}`, icone: tipo === "atend" ? "mensagem" : "lista", cor: tipo === "atend" ? "var(--ciano)" : "var(--violeta)", largura: 1400,
+    html: `<div id="gcCorpo"></div>`, botoes: [{ rotulo: "Fechar" }] });
+  { const caixa = md.el.classList.contains("aur-modal") ? md.el : md.el.querySelector(".aur-modal") || md.el.closest(".aur-modal");
+    if (caixa) { caixa.classList.add("tela-cheia"); caixa.parentElement && caixa.parentElement.classList.add("tela-cheia-fundo"); } }
+  const corpo = md.el.querySelector("#gcCorpo");
+  const desenhar = () => {
+    const cs = casosDe(usuario, tipo);
+    [...sel].forEach((c) => { if (!cs.some((x) => x.cid === c)) sel.delete(c); });
+    corpo.innerHTML = `<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap"><span class="dica">${cs.length} cliente(s). Clique no cliente para abrir o ticket.</span>
+        ${pode("transferir") ? `<button type="button" class="ic-sol${sel.size ? " tem" : ""}" id="gcTransf" style="margin-left:auto" title="Passar os marcados para outra pessoa (online ou offline)">⇄ Transferir${sel.size ? `<b>${sel.size}</b>` : ""}</button>` : ""}</div>
+      <div class="tab-wrap" style="overflow:auto"><table class="tab"><thead><tr><th style="width:28px"><input type="checkbox" id="gcTodos" title="Marcar todos"${cs.length && cs.every((c) => sel.has(c.cid)) ? " checked" : ""}></th><th>Chamado</th><th>Cliente e solicitações</th><th>Desde</th><th>Situação</th></tr></thead><tbody>
+      ${cs.map((c) => `<tr class="cl" data-gcab="${esc(c.cid)}"><td><input type="checkbox" data-gcm="${esc(c.cid)}"${sel.has(c.cid) ? " checked" : ""}></td><td>${c.app_pendente ? `<span class="pisca" title="Cliente esperando resposta"></span>` : ""}<b>${c.estado === "atendimento" ? "📱" : "#"}${esc(c.cliente_codigo || c.cid)}</b></td>
+        <td><b>${esc(c.cliente_nome || "")}</b><div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:3px">${chipsSol(c)}</div></td><td>${esc(dh(c.criado_em))}</td><td>${c.sla ? `<span class="etq" style="--c:${c.sla.estado === "venc" ? "var(--rosa)" : c.sla.estado === "hoje" ? "var(--ouro)" : "var(--verde)"}">${esc(c.sla.estado === "venc" ? "vencido" : c.sla.estado === "hoje" ? "vence hoje" : "no prazo")}</span>` : ""}</td></tr>`).join("") || `<tr><td colspan="5" class="dica">Nada com ${esc(nome)} agora.</td></tr>`}</tbody></table></div>`;
+    corpo.querySelector("#gcTodos").onchange = (ev) => { cs.forEach((c) => (ev.target.checked ? sel.add(c.cid) : sel.delete(c.cid))); desenhar(); };
+    corpo.querySelectorAll("[data-gcm]").forEach((x) => { x.onclick = (ev) => ev.stopPropagation(); x.onchange = () => { x.checked ? sel.add(x.dataset.gcm) : sel.delete(x.dataset.gcm); desenhar(); }; });
+    corpo.querySelectorAll("[data-gcab]").forEach((r) => (r.onclick = (ev) => { if (ev.target.closest("input")) return; md.fechar(); abrirTicket(r.dataset.gcab); }));
+    const bt = corpo.querySelector("#gcTransf"); if (bt) bt.onclick = () => { if (!sel.size) { A.toast("Marque os clientes na lista (ou todos)."); return; }
+      popupTransferir([...sel], async () => { sel.clear(); await carregar(); await carregarGestaoEq(); desenhar(); }); };
+  };
+  desenhar();
 }
 
 /* ══════ AJUSTES ══════ */
