@@ -386,7 +386,7 @@ def test_central_chama_o_cliente_pelo_app(t, monkeypatch):
     """WROUTER › 💬 Falar com o cliente: abre o chat do app já com a mensagem da central (ou entra no chat ativo)."""
     import promocoes
     avisos = []
-    monkeypatch.setattr(promocoes, "avisar_cliente", lambda *a, **k: avisos.append(a))
+    monkeypatch.setattr(promocoes, "avisar_cliente_detalhe", lambda *a, **k: avisos.append(a) or {"total": 0, "enviados": 0})
     monkeypatch.setattr(banco, "thread", lambda fn, *a, **k: fn(*a, **k))
     me = {"login": "atendente", "nome": "Carla Atendente"}
     try:
@@ -636,13 +636,14 @@ def test_erp_guarda_data_de_nascimento(t):
 def test_chamar_cliente_pela_caixa_fica_em_chamei_ate_responder(t, monkeypatch):
     import promocoes
     avisos = []
-    monkeypatch.setattr(promocoes, "avisar_cliente", lambda *a, **k: avisos.append(a))
+    monkeypatch.setattr(promocoes, "avisar_cliente_detalhe", lambda *a, **k: avisos.append(a) or {"total": 1, "enviados": 1})
     monkeypatch.setattr(banco, "thread", lambda fn, *a, **k: fn(*a, **k))
     entrar(t)   # gera o código da Ana
     sid = t.post("/api/cliente/chamados", json={"motivo_pai": "Pedido", "motivo_filho": "Cancelamento", "texto": "Quero cancelar"}).json()["id"]
     cid = central(t, sid)["cid"]
     r = t.post(f"/api/tickets/cliente/{quote(cid, safe='')}/chamar", json={"texto": "Olá, Ana! Pode falar agora?"}).json()
-    assert r["ok"] and avisos and avisos[-1][1] == "💬 A central está te chamando"
+    assert r["ok"] and avisos and avisos[-1][1] == "💬 A central está te chamando" and r["avisados"] == 1
+    assert avisos[-1][4].startswith("central-")                                     # etiqueta nova a cada chamada (o celular toca de novo)
     chat = next(x for x in t.get("/api/tickets/estado").json()["tickets"] if x["app_tipo"] == "chat")
     assert chat["chamei_em"] and chat["status"] == "em_andamento"                                   # fila "Chamei"
     assert t.get("/api/cliente/eu").json()["chat"]["mensagens"][-1]["texto"] == "Olá, Ana! Pode falar agora?"
@@ -668,6 +669,7 @@ def test_chamar_visitante_do_link_e_avisar_no_link(t, monkeypatch):
     assert guardadas[cod]["subs"][0]["url"] == "/atendimento/"
     r = C.chamar_por_codigo(cod, "Maria, pode falar?", {"login": "atendente", "nome": "Carla"})
     assert r["aparelhos"] == 1 and enviados[-1][1]["url"] == "/atendimento/" and "url" not in enviados[-1][0]   # toque abre o link
+    assert r["avisados"] == 1
     assert t.get("/api/cliente/atendimento/chat").json()["mensagens"][-1]["texto"] == "Maria, pode falar?"
     assert all(x.get("url") for x in guardadas[cod]["subs"])                                       # celular só do link (fora dos disparos)
 

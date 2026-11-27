@@ -752,15 +752,20 @@ def central_chama(cid: str, texto: str, me: dict, pedido: dict | None = None, an
         dados["categoria"] = dados["departamento"]
         tid = _criar(cid, cli, eu, dados)
         T._mutar_sol(T.compor(T._id_doc(cli["codigo"]), tid), msg, eu)
-    aparelhos = 0
-    try:
+    aviso = {"total": 0, "enviados": 0}
+    try:   # manda o aviso e espera até 8 s pelo resultado (a central vê se chegou); demorou → segue em segundo plano
         import promocoes
-        aparelhos = len((promocoes.inscricoes().get(cli["codigo"]) or {}).get("subs") or [])
-        banco.thread(promocoes.avisar_cliente, cli["codigo"], "💬 A central está te chamando", texto[:140] or "📎 Anexo",
-                     f"{banco.prefixo_publico()}/cliente/", f"central-{cli['codigo']}")
+        cod = str(cli["codigo"]).upper()
+        box = {}
+        th = threading.Thread(target=lambda: box.update(promocoes.avisar_cliente_detalhe(
+            cod, "💬 A central está te chamando", texto[:140] or "📎 Anexo", f"{banco.prefixo_publico()}/cliente/", f"central-{cod}-{int(time.time())}")), daemon=True)
+        th.start()
+        th.join(8)
+        aviso = box or {"total": len((promocoes.inscricoes().get(cod) or {}).get("subs") or []), "enviados": None}
     except Exception as ex:  # noqa: BLE001
         print(f"[cliente] sem notificação: {ex}")
-    return {"ok": True, "id": tid, "existente": bool(ativo), "chamado": cli["codigo"], "aparelhos": aparelhos}
+    return {"ok": True, "id": tid, "existente": bool(ativo), "chamado": cli["codigo"], "aparelhos": aviso.get("total", 0),
+            "avisados": aviso.get("enviados"), "aviso": aviso}
 
 
 def chamar_por_codigo(codigo: str, texto: str, me: dict) -> dict:
