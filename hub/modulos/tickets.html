@@ -1213,7 +1213,11 @@ function chamarCliente(D) {
     botoes: [{ rotulo: "Cancelar" }, { rotulo: "Chamar", classe: "btn", icone: "sino", principal: true, acao: async (cx) => {
       const texto = cx.querySelector("#txtChamar").value.trim(); if (!texto) { A.toast("Escreva a mensagem."); return false; }
       try { const r = await chamar(`/cliente/${encodeURIComponent(D.cid)}/chamar`, { method: "POST", body: { texto } }, "chamando…");
-        ok(r.aparelhos ? `Cliente chamado — aviso enviado para ${r.aparelhos} celular(es).` : "Mensagem no chat do cliente. Ele não ativou avisos no celular — vai ver quando abrir o app ou o link.");
+        const av = r.avisados, ap = r.aparelhos || 0;
+        if (av > 0) ok(`Cliente chamado — o aviso chegou em ${av} celular(es).`);
+        else if (ap && av === 0) A.toast("Mensagem no chat do cliente, mas o aviso não chegou no celular (ele pode ter tirado a permissão ou desinstalado). Ele vê quando abrir o app ou o link.", [], { cor: "var(--laranja)", duracao: 9000 });
+        else if (ap) ok("Cliente chamado — aviso enviado ao celular.");
+        else ok("Mensagem no chat do cliente. Ele não ativou avisos no celular — vai ver quando abrir o app ou o link.");
         await recarregarCliente(); } catch (er) { falha(er); return false; } } }] });
 }
 /* 🛡 Acesso do cliente ao app: senha criada, aparelhos conectados, bloqueios — a central desconecta e destrava */

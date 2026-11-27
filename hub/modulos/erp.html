@@ -649,7 +649,11 @@ function chamarClienteDoPedido(p) {
     botoes: [{ rotulo: "Cancelar" }, { rotulo: "Chamar", classe: "btn", icone: "sino", principal: true, acao: async (cx) => {
       const texto = $("#txtChamar", cx).value.trim(); if (!texto) { A.toast("Escreva a mensagem."); return false; }
       try { const r = await api(`/pedidos/${encodeURIComponent(p.id)}/chamar-cliente`, { method: "POST", body: { texto } });
-        A.toast(r.aparelhos ? `Cliente chamado — aviso enviado para ${r.aparelhos} celular(es). A conversa está na Caixa do Atendimento.` : "Mensagem no chat do cliente (Caixa do Atendimento). Ele não ativou avisos no celular — vai ver quando abrir o app ou o link.", [], { cor: "var(--verde)", duracao: 6000 });
+        const av = r.avisados, ap = r.aparelhos || 0;
+        A.toast(av > 0 ? `Cliente chamado — o aviso chegou em ${av} celular(es). A conversa está na Caixa do Atendimento.`
+          : ap && av === 0 ? "Mensagem no chat do cliente (Caixa do Atendimento), mas o aviso não chegou no celular — ele pode ter tirado a permissão ou desinstalado."
+          : ap ? "Cliente chamado — aviso enviado ao celular. A conversa está na Caixa do Atendimento."
+          : "Mensagem no chat do cliente (Caixa do Atendimento). Ele não ativou avisos no celular — vai ver quando abrir o app ou o link.", [], { cor: av > 0 || !ap ? "var(--verde)" : "var(--laranja)", duracao: 7000 });
       } catch (e) { A.toast("⚠ " + esc(e.message), [], { cor: "var(--rosa)", duracao: 8000 }); return false; } } }] });
 }
 function abrirPedido(id) {

@@ -157,26 +157,33 @@ def enviar_push(sub: dict, dados: dict) -> str:
         return "falhou"
 
 
-def avisar_cliente(cod: str, titulo: str, texto: str, url: str = "", tag: str = "") -> bool:
-    """Notificação avulsa no app do cliente (ex.: comprovante de entrega). Nunca derruba quem chamou."""
+def avisar_cliente_detalhe(cod: str, titulo: str, texto: str, url: str = "", tag: str = "") -> dict:
+    """Notificação avulsa no celular do cliente (app e/ou link de atendimento). Devolve quantos celulares
+    receberam — a central mostra isso ao chamar. Nunca derruba quem chamou."""
+    r = {"total": 0, "enviados": 0, "expirados": 0, "falhas": 0}
     try:
         ins = inscricoes().get(cod) or {}
         subs = ins.get("subs") or []
+        r["total"] = len(subs)
         if not subs:
-            return False
+            return r
         dados = {"titulo": titulo, "texto": texto, "tag": tag or titulo, "url": url or f"{banco.prefixo_publico()}/cliente/"}
-        ok, vivas = False, []
+        vivas = []
         for sub in subs:   # celular inscrito pelo link de atendimento abre o link; pelo app, o app
-            r = enviar_push({k: v for k, v in sub.items() if k != "url"}, {**dados, "url": sub["url"]} if sub.get("url") else dados)
-            ok = ok or r == "ok"
-            if r != "expirou":
+            res = enviar_push({k: v for k, v in sub.items() if k != "url"}, {**dados, "url": sub["url"]} if sub.get("url") else dados)
+            r["enviados" if res == "ok" else "expirados" if res == "expirou" else "falhas"] += 1
+            if res != "expirou":
                 vivas.append(sub)
-        if len(vivas) != len(subs):
+        if len(vivas) != len(subs):   # o celular saiu (desinstalou / tirou a permissão): apaga a inscrição
             _gravar_insc(cod, {**ins, "subs": vivas} if vivas else None)
-        return ok
+        print(f"[promo] aviso {cod}: {r}")
     except Exception as ex:  # noqa: BLE001
         print(f"[promo] não avisou o cliente {cod}: {ex}")
-        return False
+    return r
+
+
+def avisar_cliente(cod: str, titulo: str, texto: str, url: str = "", tag: str = "") -> bool:
+    return avisar_cliente_detalhe(cod, titulo, texto, url, tag)["enviados"] > 0
 
 
 # ── carteira e vales ──────────────────────────────────────────────────────────
