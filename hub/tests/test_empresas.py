@@ -173,8 +173,12 @@ def test_links_publicos_por_empresa(hub, monkeypatch):
     # nome que é endereço do hub não pode virar empresa
     assert chefe.post("/api/super/empresas", json={"nome": "Cliente", "admin": {"login": "zz", "senha": "123456"}}).json()["empresa"]["id"] != "cliente"
     links = [e for e in chefe.get("/api/super/empresas").json()["empresas"] if e["id"] == eid][0]["links"]
-    assert links == {"relatorios": "/loja-exemplo/relatorios/", "motorista": "/loja-exemplo/motorista/", "cliente": "/loja-exemplo/cliente/"}
+    assert links == {"relatorios": "/loja-exemplo/relatorios/", "motorista": "/loja-exemplo/motorista/", "cliente": "/loja-exemplo/cliente/",
+                     "atendimento": "/loja-exemplo/atendimento/"}
     pub = hub()
+    r = pub.get(f"/{eid}/atendimento/")   # link de atendimento (bot): página simples, sem instalar
+    assert r.status_code == 200 and "HUB_BASE" in r.text
+    assert pub.get(f"/{eid}/atendimento", follow_redirects=False).headers["location"] == f"/{eid}/atendimento/"
     for app in ("relatorios", "motorista", "cliente"):
         r = pub.get(f"/{eid}/{app}/")
         assert r.status_code == 200 and "HUB_BASE" in r.text

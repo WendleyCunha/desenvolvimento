@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<title>Atendimento</title>
+<meta name="description" content="Fale com a nossa central.">
+<meta name="theme-color" content="#05060a">
+<meta name="robots" content="noindex">
+<script>/* EMPRESAS: aberto como /<empresa>/atendimento/ → as chamadas /api/… vão para /<empresa>/api/… */
+(function () { var m = location.pathname.match(/^\/([a-z0-9][a-z0-9-]{1,30})\/atendimento(\/|$)/); if (m && m[1] === "atendimento") m = null; window.HUB_BASE = m ? "/" + m[1] : "";
+  if (!m) return; var f = window.fetch; window.fetch = function (u, o) { return f.call(this, typeof u === "string" && u.indexOf("/api/") === 0 ? window.HUB_BASE + u : u, o); }; })();</script>
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/aurora.css?v=6">
+<!--
+═══════════════════════════════════════════════════════════════════════════════
+ static/atendimento/index.html — LINK DE ATENDIMENTO (servido em /atendimento/)
+ Bot de boas-vindas → CPF → 2 perguntas do cadastro do ERP → chat com a central.
+ Só atendimento: sem pedidos, sem chamados (isso é o app, /cliente/).
+ Textos do bot: Atendimento › Ajustes › Wwhat. API: /api/cliente/atendimento/*
+═══════════════════════════════════════════════════════════════════════════════
+-->
+<style>
+html,body{height:100%}
+body{margin:0;background:var(--noite);color:var(--txt);font-size:15px;-webkit-tap-highlight-color:transparent}
+.app{position:relative;z-index:1;max-width:560px;margin:0 auto;height:100dvh;display:flex;flex-direction:column}
+.topo{margin:max(10px,env(safe-area-inset-top)) 12px 0;padding:10px 12px;border-radius:20px;display:flex;align-items:center;gap:12px;flex:none}
+.topo.vidro{background:linear-gradient(135deg,rgba(14,17,26,.88),rgba(8,10,16,.82))}
+html[data-claro] .topo.vidro{background:rgba(255,255,255,.82)}
+.topo .tx{min-width:0;flex:1}
+.topo b{display:block;font:700 1rem/1.25 var(--titulo);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.topo small{display:flex;align-items:center;gap:6px;font-size:.7rem;color:var(--txt2)}
+.topo small i{width:8px;height:8px;border-radius:50%;background:var(--verde);box-shadow:0 0 8px var(--verde)}
+.topo .btn-ic{flex:none}
+.fio{flex:1;overflow-y:auto;padding:16px 14px 10px;display:flex;flex-direction:column;gap:10px;scroll-behavior:smooth}
+.bolha{max-width:86%;padding:10px 14px;border-radius:18px;white-space:pre-wrap;word-break:break-word;font-size:.94rem;line-height:1.5;animation:entra .22s var(--suave)}
+.bolha.bot,.bolha.central{align-self:flex-start;border-bottom-left-radius:6px;background:linear-gradient(160deg,rgba(255,255,255,.08),rgba(255,255,255,.025));border:1px solid var(--vidro-borda);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur)}
+html[data-claro] .bolha.bot,html[data-claro] .bolha.central{background:rgba(255,255,255,.85)}
+.bolha.cli{align-self:flex-end;border-bottom-right-radius:6px;background:var(--grad-ouro);color:#1a1206;font-weight:500;box-shadow:0 12px 28px -14px rgba(var(--ouro-rgb),.9),inset 0 1px 0 rgba(255,255,255,.35)}
+.bolha.pend{opacity:.7}
+.bolha small{display:block;font-size:.68rem;opacity:.65;margin-top:4px}
+.bolha .quem{display:block;font:600 .64rem var(--titulo);letter-spacing:.12em;text-transform:uppercase;color:var(--ouro2);margin-bottom:3px}
+.bolha.central .quem{color:var(--ciano)}
+.bolha.erro{border-color:rgba(251,113,133,.45)}
+.digitando{align-self:flex-start;display:flex;gap:4px;padding:12px 14px;border-radius:18px;border-bottom-left-radius:6px;border:1px solid var(--vidro-borda);background:rgba(255,255,255,.04)}
+.digitando i{width:7px;height:7px;border-radius:50%;background:var(--txt3);animation:pula 1s infinite}
+.digitando i:nth-child(2){animation-delay:.15s}.digitando i:nth-child(3){animation-delay:.3s}
+@keyframes pula{0%,60%,100%{transform:none;opacity:.5}30%{transform:translateY(-4px);opacity:1}}
+@keyframes entra{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.bolha,.opcoes,.digitando i{animation:none}}
+.opcoes{display:flex;flex-direction:column;gap:8px;align-self:stretch;animation:entra .22s var(--suave)}
+.op{display:flex;align-items:center;gap:12px;text-align:left;padding:11px 13px;border-radius:16px;background:linear-gradient(160deg,rgba(255,255,255,.06),rgba(255,255,255,.015));border:1px solid var(--vidro-borda);color:var(--txt);font:inherit;cursor:pointer;transition:.22s var(--suave)}
+html[data-claro] .op{background:rgba(255,255,255,.75)}
+.op:hover,.op:focus-visible{border-color:rgba(var(--ouro-rgb),.55);box-shadow:0 0 24px -8px rgba(var(--ouro-rgb),.6)}
+.op .n{width:30px;height:30px;border-radius:10px;display:grid;place-items:center;flex:none;font:700 .86rem var(--titulo);color:var(--ouro2);background:rgba(var(--ouro-rgb),.12);border:1px solid rgba(var(--ouro-rgb),.35)}
+.op[disabled]{opacity:.45;cursor:default;box-shadow:none}
+.passo{align-self:center;font-size:.66rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--txt3);border:1px solid var(--vidro-borda);border-radius:20px;padding:3px 10px;background:rgba(255,255,255,.03)}
+.app-conv{align-self:stretch;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:16px;border:1px dashed rgba(var(--ouro-rgb),.45);background:rgba(var(--ouro-rgb),.06);font-size:.82rem;color:var(--txt2);text-decoration:none}
+.app-conv b{color:var(--ouro2)}
+.compor{flex:none;padding:8px 12px calc(10px + env(safe-area-inset-bottom))}
+.compor .caixa{display:flex;gap:8px;align-items:flex-end;padding:6px 6px 6px 14px;border-radius:22px;background:linear-gradient(135deg,rgba(14,17,26,.94),rgba(8,10,16,.9))}
+html[data-claro] .compor .caixa{background:rgba(255,255,255,.92)}
+.compor textarea{flex:1;border:0;outline:none;background:transparent;resize:none;max-height:120px;min-height:24px;padding:8px 0;line-height:1.4;color:var(--txt);font:inherit}
+.compor textarea::placeholder{color:var(--txt3)}
+.compor .btn{width:42px;height:42px;padding:0;border-radius:50%;flex:none}
+.compor .btn[disabled]{opacity:.35;transform:none;box-shadow:none;cursor:default}
+.compor.oculto{display:none}
+.recomecar{align-self:center}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topo vidro"><span id="logo"></span><div class="tx"><b id="emp">Atendimento</b><small><i></i><span id="sub">Online</span></small></div>
+    <button type="button" class="btn-ic oculto" id="sair" title="Sair deste aparelho"></button></header>
+  <div class="fio" id="fio" aria-live="polite"></div>
+  <div class="compor" id="compor"><div class="caixa vidro"><textarea id="txt" rows="1" placeholder="Digite aqui…" autocomplete="off"></textarea><button type="button" class="btn p" id="env" disabled aria-label="Enviar"></button></div></div>
+</div>
+<script src="/static/aurora.js?v=6"></script>
+<script src="/static/chatfmt.js?v=1"></script>
+<script>
+(() => {
+"use strict";
+const A = Aurora, esc = A.esc, $ = (s) => document.querySelector(s);
+A.fundo();
+$("#logo").outerHTML = A.atomo(34);
+$("#env").innerHTML = A.svg("seta");
+$("#sair").innerHTML = A.svg("sair");
+const API = "/api/cliente/atendimento";
+const fio = $("#fio"), txt = $("#txt"), env = $("#env");
+const hora = (s) => String(s || "").slice(11, 16);
+const agora = () => { const d = new Date(), z = (n) => String(n).padStart(2, "0"); return `${z(d.getHours())}:${z(d.getMinutes())}`; };
+const novoReq = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)).replace(/-/g, "").slice(0, 32);
+const fmt = (t) => window.ChatFmt ? ChatFmt.fmt(t) : esc(t);
+const S = { fase: "cpf", conversa: "", pergunta: null, ocupado: false, chatAtivo: false, ultimas: "", pend: [], timer: 0 };
+
+/* ── desenho ── */
+const fim = () => requestAnimationFrame(() => { fio.scrollTop = fio.scrollHeight; });
+function bolha(classe, html) { const d = document.createElement("div"); d.className = "bolha " + classe; d.innerHTML = html; fio.appendChild(d); fim(); return d; }
+const bot = (t, extra = "") => bolha("bot " + extra, `<span class="quem">Assistente</span>${fmt(t)}<small>${agora()}</small>`);
+const eu = (t) => bolha("cli", `${esc(t)}<small>${agora()}</small>`);
+function digitando(ms = 650) { const d = document.createElement("div"); d.className = "digitando"; d.innerHTML = "<i></i><i></i><i></i>"; fio.appendChild(d); fim();
+  return new Promise((r) => setTimeout(() => { d.remove(); r(); }, ms)); }
+function marca(t) { const d = document.createElement("div"); d.className = "passo"; d.textContent = t; fio.appendChild(d); fim(); }
+function modo(placeholder, numerico) { txt.placeholder = placeholder; txt.inputMode = numerico ? "numeric" : "text"; txt.value = ""; env.disabled = true; $("#compor").classList.remove("oculto"); }
+function opcoes(lista) {
+  const box = document.createElement("div"); box.className = "opcoes";
+  box.innerHTML = lista.map((o, i) => `<button type="button" class="op" data-op="${i + 1}"><span class="n">${i + 1}</span><span>${esc(o)}</span></button>`).join("");
+  box.querySelectorAll("[data-op]").forEach((b) => (b.onclick = () => { if (S.ocupado) return; box.querySelectorAll("button").forEach((x) => (x.disabled = true)); responder(b.dataset.op, lista[+b.dataset.op - 1]); }));
+  fio.appendChild(box); fim();
+}
+function mascaraCpf(v) { const d = v.replace(/\D/g, ""); return d.length === 11 ? `***.***.${d.slice(6, 9)}-${d.slice(9)}` : v; }
+
+/* ── validação ── */
+async function perguntar(p, passo, total) {
+  S.pergunta = p;
+  await digitando();
+  if (passo) marca(`Confirmação ${passo} de ${total}`);
+  bot(p.texto);
+  if (p.opcoes) { opcoes(p.opcoes); modo("Toque numa opção ou digite o número", true); }
+  else modo("Sua resposta", /número|números|CEP/i.test(p.texto));
+  txt.focus();
+}
+async function enviarCpf(v) {
+  eu(mascaraCpf(v)); S.ocupado = true;
+  try { const r = await A.api(API + "/cpf", { method: "POST", body: { cpf: v } }); S.conversa = r.conversa; S.fase = "pergunta"; await perguntar(r.pergunta, r.passo, r.total); }
+  catch (e) { await digitando(400); bot(e.message || "Não consegui agora. Tente de novo.", "erro"); if (e.status === 429 || e.status === 503 || e.status === 409) acabou(); else modo("CPF (só números)", true); }
+  finally { S.ocupado = false; }
+}
+async function responder(v, rotulo) {
+  eu(rotulo || v); S.ocupado = true;
+  try {
+    const r = await A.api(API + "/resposta", { method: "POST", body: { conversa: S.conversa, resposta: v } });
+    if (r.validado) { await digitando(); bot(r.direcionando); entrarNoChat(r.nome, true); return; }
+    if (r.fim) { await digitando(); bot(r.msg, "erro"); acabou(); return; }
+    if (r.msg) { await digitando(400); bot(r.msg, "erro"); }
+    await perguntar(r.pergunta, r.passo, r.total);
+  } catch (e) { await digitando(400); bot(e.message || "Não consegui agora. Tente de novo.", "erro"); if (e.status === 410) recomecar(); else acabou(); }
+  finally { S.ocupado = false; }
+}
+function acabou() {
+  $("#compor").classList.add("oculto");
+  const b = document.createElement("button"); b.type = "button"; b.className = "btn v recomecar"; b.textContent = "Começar de novo";
+  b.onclick = () => { b.remove(); recomecar(); }; fio.appendChild(b); fim();
+}
+async function recomecar() { S.fase = "cpf"; S.conversa = ""; await digitando(); bot(S.info.pedir_cpf); modo("CPF (só números)", true); txt.focus(); }
+
+/* ── chat com a central ── */
+function entrarNoChat(nome, agoraMesmo) {
+  S.fase = "chat"; $("#sub").textContent = nome ? `Olá, ${nome}` : "Online";
+  $("#sair").classList.remove("oculto");
+  const a = document.createElement("a"); a.className = "app-conv"; a.href = (window.HUB_BASE || "") + "/cliente/"; a.target = "_blank"; a.rel = "noopener";
+  a.innerHTML = `<span style="font-size:1.3rem">📲</span><span>Quer acompanhar seus pedidos, entregas e cupons? <b>Abra o nosso app</b> — é só entrar com CPF e e-mail.</span>`;
+  if (agoraMesmo) fio.appendChild(a);
+  S.areaChat = document.createElement("div"); S.areaChat.style.cssText = "display:flex;flex-direction:column;gap:10px";
+  fio.appendChild(S.areaChat);
+  modo("Escreva sua mensagem…", false);
+  atualizar(); clearInterval(S.timer); S.timer = setInterval(() => document.visibilityState === "visible" && atualizar(), 5000);
+}
+async function atualizar() {
+  try {
+    const r = await A.api(API + "/chat");
+    S.pend = S.pend.filter((p) => !r.mensagens.some((m) => m.de === "cliente" && m.texto === p.texto));
+    const chave = JSON.stringify([r.id, r.mensagens.length, S.pend.length]);
+    if (S.chatAtivo && !r.ativo) { S.ultimas = ""; S.chatAtivo = false; S.areaChat = null; bot("Este atendimento foi encerrado pela central. Se precisar de mais alguma coisa, é só escrever aqui. 😉");
+      S.areaChat = document.createElement("div"); S.areaChat.style.cssText = "display:flex;flex-direction:column;gap:10px"; fio.appendChild(S.areaChat); return; }
+    S.chatAtivo = r.ativo;
+    if (chave === S.ultimas) return; S.ultimas = chave;
+    S.areaChat.innerHTML = r.mensagens.map((m) => `<div class="bolha ${m.de === "cliente" ? "cli" : "central"}">${m.de !== "cliente" ? `<span class="quem">${esc(m.autor ? m.autor + " · Central" : "Central")}</span>` : ""}${fmt(m.texto)}${window.ChatFmt ? ChatFmt.anexos(m.anexos, (id) => `${window.HUB_BASE || ""}${API}/anexo/${id}`) : ""}<small>${hora(m.data)}</small></div>`).join("")
+      + S.pend.map((p) => `<div class="bolha cli pend">${esc(p.texto)}<small>enviando…</small></div>`).join("");
+    fim();
+  } catch (e) { if (e.status === 401) { clearInterval(S.timer); bot(e.message, "erro"); S.fase = "cpf"; $("#sair").classList.add("oculto"); recomecar(); } }
+}
+async function enviarMsg(v) {
+  const p = { texto: v, req: novoReq() }; S.pend.push(p); S.ultimas = ""; await atualizar();
+  try { await A.api(API + "/mensagem", { method: "POST", body: p }); }
+  catch (e) { S.pend = S.pend.filter((x) => x !== p); bot(e.message || "Não consegui enviar. Tente de novo.", "erro"); if (e.status === 401) return; txt.value = v; env.disabled = false; }
+  S.ultimas = ""; atualizar();
+}
+
+/* ── caixa de digitar ── */
+txt.oninput = () => { env.disabled = !txt.value.trim() || S.ocupado; txt.style.height = "auto"; txt.style.height = Math.min(txt.scrollHeight, 120) + "px"; };
+txt.onkeydown = (ev) => { if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); enviar(); } };
+env.onclick = enviar;
+function enviar() {
+  const v = txt.value.trim(); if (!v || S.ocupado) return;
+  txt.value = ""; txt.style.height = "auto"; env.disabled = true;
+  if (S.fase === "cpf") enviarCpf(v);
+  else if (S.fase === "pergunta") { const op = S.pergunta && S.pergunta.opcoes; const n = parseInt(v, 10); if (op && op[n - 1]) { fio.querySelectorAll(".opcoes button").forEach((x) => (x.disabled = true)); responder(String(n), op[n - 1]); } else responder(v); }
+  else enviarMsg(v);
+}
+$("#sair").onclick = async () => { if (!confirm("Sair deste aparelho? Para falar de novo, o assistente vai confirmar seus dados.")) return; try { await A.api(API + "/sair", { method: "POST" }); } catch (_) {} location.reload(); };
+
+/* ── início ── */
+(async () => {
+  try {
+    const i = S.info = await A.api(API + "/info");
+    $("#emp").textContent = i.empresa || "Atendimento"; document.title = (i.empresa || "Atendimento") + " · Atendimento";
+    if (!i.ativo) { $("#compor").classList.add("oculto"); $("#sub").textContent = "Pausado"; bot("O atendimento por aqui está pausado no momento. Tente mais tarde. 🙏"); return; }
+    if (i.validado) { bot(`Oi de novo, ${i.nome}! 👋 Pode escrever — sua conversa com a central continua aqui.`); entrarNoChat(i.nome, false); return; }
+    await digitando(500); bot(i.saudacao);
+    await digitando(700); bot(i.pedir_cpf); modo("CPF (só números)", true); txt.focus();
+  } catch (e) { $("#compor").classList.add("oculto"); bot("Não conseguimos carregar o atendimento agora. Verifique sua internet e recarregue a página.", "erro"); }
+})();
+})();
+</script>
+</body>
+</html>

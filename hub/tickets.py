@@ -520,7 +520,16 @@ def estado(request: Request, dias_concluidos: int = 30):
             "usuarios": [{"usuario": k, "nome": v["nome"], "depto": v["depto"]} for k, v in sorted(usu.items(), key=lambda kv: norm(kv[1]["nome"]))],
             "config": {k: v for k, v in hub_cfg().items() if k != "mapa_usuarios"} | ({"mapa_usuarios": hub_cfg().get("mapa_usuarios")} if p["acoes"].get("configurar") else {}),
             "sync": {"leituras": BASE.leituras, "completa": BASE.t_completa}, "erp": _erp_ligado(),
-            "banco": "bancowendley" if banco_proprio() else "hub", "app_cliente": _app_cliente()}
+            "banco": "bancowendley" if banco_proprio() else "hub", "app_cliente": _app_cliente(), "wwhat": _wwhat()}
+
+
+def _wwhat() -> dict:
+    """Ajustes do bot do link de atendimento (/atendimento/) com os padrões preenchidos."""
+    try:
+        import cliente_app
+        return cliente_app.cfg_wwhat()
+    except Exception:  # noqa: BLE001
+        return {}
 
 
 def _app_cliente() -> dict:
@@ -1127,6 +1136,15 @@ async def salvar_config(request: Request):
                                 "motivo_pai": str(op.get("motivo_pai") or "").strip()[:80], "departamento": str(op.get("departamento") or "").strip()[:60]})
             atual["ura"] = ura
         novo["app_cliente"] = atual
+    if "wwhat" in c:   # bot do link de atendimento (/atendimento/) — liga/desliga, textos e para onde cai
+        a = c["wwhat"] or {}
+        atual = dict(novo.get("wwhat") or {})
+        if "ativo" in a:
+            atual["ativo"] = bool(a["ativo"])
+        for k, lim in (("saudacao", 400), ("pedir_cpf", 200), ("direcionando", 400), ("departamento", 60), ("motivo_pai", 80)):
+            if k in a:
+                atual[k] = str(a[k] or "").strip()[:lim]
+        novo["wwhat"] = atual
     doc_cfg("tickets_hub").set(novo, timeout=banco.TIMEOUT)
     BASE.cfg_cache["tickets_hub"] = novo
     BASE.t_cfg = 0

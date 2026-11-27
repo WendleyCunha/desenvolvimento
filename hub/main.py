@@ -381,9 +381,9 @@ def _api_desligada(caminho: str) -> bool:
     return bool(mods) and not any(acesso.modulo_liberado(m) for m in mods)
 
 
-# LINKS PÚBLICOS POR EMPRESA: /<empresa>/relatorios/, /<empresa>/motorista/, /<empresa>/cliente/, /<empresa>/entrega/<código>
+# LINKS PÚBLICOS POR EMPRESA: /<empresa>/relatorios/, /<empresa>/motorista/, /<empresa>/cliente/, /<empresa>/atendimento/, /<empresa>/entrega/<código>
 # (a principal continua sem prefixo). O app chama /<empresa>/api/… e aqui o endereço volta ao normal, já na empresa certa.
-APPS_PUBLICOS = {"cliente": ["tickets"], "motorista": ["wrouter"], "entrega": ["wrouter"], "relatorios": ["secretaria"]}
+APPS_PUBLICOS = {"cliente": ["tickets"], "atendimento": ["tickets"], "motorista": ["wrouter"], "entrega": ["wrouter"], "relatorios": ["secretaria"]}
 APIS_PUBLICAS = {"cliente": ["tickets"], "wrouter": ["wrouter"], "entrega": ["wrouter"], "relatorios-publico": ["secretaria"]}
 _LINK_FECHADO = """<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Link indisponível</title>
 <body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#05060a;color:#eef0f5;font:15px Inter,system-ui,sans-serif">

@@ -207,7 +207,7 @@ EMPRESAS = _Empresas()
 
 
 # Primeiros pedaços de endereço que o hub já usa (o main.py completa com as rotas): empresa não pode ter esses nomes
-RESERVADOS = {"api", "m", "static", "login", "configuracoes", "cliente", "motorista", "relatorios", "entrega", "web",
+RESERVADOS = {"api", "m", "static", "login", "configuracoes", "cliente", "atendimento", "motorista", "relatorios", "entrega", "web",
               "healthz", "principal", "app", "admin", "super", "e"}
 
 
@@ -618,7 +618,7 @@ def _empresa_publica(eid: str, e: dict) -> dict:
     us = [u for u in USUARIOS.todos().values() if empresa_de(u) == eid] if banco.configurado() else []
     pre = banco.prefixo_publico(eid)
     return {"id": eid, "nome": e.get("nome") or eid, "modulos": e.get("modulos"), "ativo": e.get("ativo", True),
-            "links": {"relatorios": f"{pre}/relatorios/", "motorista": f"{pre}/motorista/", "cliente": f"{pre}/cliente/"},
+            "links": {"relatorios": f"{pre}/relatorios/", "motorista": f"{pre}/motorista/", "cliente": f"{pre}/cliente/", "atendimento": f"{pre}/atendimento/"},
             "principal": eid == banco.PRINCIPAL, "usuarios": len(us), "admins": sum(1 for u in us if u.get("admin")),
             "criado_em": e.get("criado_em", ""), "criado_por": e.get("criado_por", "")}
 
