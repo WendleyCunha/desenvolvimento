@@ -28,7 +28,13 @@
 .pr-op .e{width:22px;text-align:center;font-size:15px}
 .pr-op.on{background:color-mix(in srgb,var(--pr-c) 16%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--pr-c) 45%,transparent)}
 .pr-op .ck{margin-left:auto;color:var(--pr-c);font-weight:800}
-.pr-sep{height:1px;background:var(--vidro-borda);margin:4px 6px}`;
+.pr-sep{height:1px;background:var(--vidro-borda);margin:4px 6px}
+.pr-n{position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--rosa,#fb7185);color:#fff;
+  font:700 10.5px var(--sans,Inter),sans-serif;display:flex;align-items:center;justify-content:center;box-shadow:0 0 10px var(--rosa,#fb7185)}
+.pr-btn.tem{animation:prPulso 1.4s ease-in-out infinite}
+@keyframes prPulso{0%,100%{box-shadow:0 0 0 0 rgba(251,113,133,.55)}50%{box-shadow:0 0 0 7px rgba(251,113,133,0)}}
+.pr-info{margin:2px 6px 4px;padding:8px 10px;border-radius:11px;font-size:12px;color:var(--txt2);background:rgba(255,255,255,.04);border:1px solid var(--vidro-borda)}
+.pr-info b{color:var(--txt)}`;
   const COR = { online: '#34d399', offline: '#6b7183' }, PAUSA = '#f59e0b';
   let BTN, POP, D = null, ativo = false;
   const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -58,10 +64,13 @@
   function desenhar() {
     if (!BTN || !D) return;
     BTN.style.setProperty('--pr-c', cor(D.status));
-    BTN.innerHTML = `<i></i>${esc(rotulo(D.status))}${D.status !== 'online' && D.desde ? ` <small>${desde()}</small>` : ''}`;
+    BTN.innerHTML = `<i></i>${esc(rotulo(D.status))}${D.status !== 'online' && D.desde ? ` <small>${desde()}</small>` : ''}${D.aguardando ? `<span class="pr-n">${D.aguardando}</span>` : ''}`;
+    BTN.classList.toggle('tem', !!D.aguardando);
     BTN.title = D.status === 'online' ? 'Online — recebendo atendimentos. Clique para pausar ou ficar offline.' : `${rotulo(D.status)} — não recebe atendimentos. Clique para mudar.`;
     const op = (id) => `<button type="button" class="pr-op${D.status === id ? ' on' : ''}" data-st="${esc(id)}" style="--pr-c:${cor(id)}"><span class="e">${emoji(id)}</span>${esc(rotulo(id))}${D.status === id ? '<span class="ck">✓</span>' : ''}</button>`;
-    POP.innerHTML = `<h5>Meu status</h5>${op('online')}<div class="pr-sep"></div>${(D.pausas || []).map((x) => op(x.id)).join('')}<div class="pr-sep"></div>${op('offline')}`;
+    const lim = D.limite == null ? 'sem limite' : D.limite === 0 ? 'só tickets' : `limite ${D.limite}`;
+    POP.innerHTML = `<div class="pr-info">💬 <b>${D.chats || 0}</b> atendimento(s) com você${D.aguardando ? ` · <b style="color:var(--rosa)">${D.aguardando} esperando resposta</b>` : ''} <span style="color:var(--txt3)">(${lim})</span></div>
+      <h5>Meu status</h5>${op('online')}<div class="pr-sep"></div>${(D.pausas || []).map((x) => op(x.id)).join('')}<div class="pr-sep"></div>${op('offline')}`;
     POP.querySelectorAll('[data-st]').forEach((b) => (b.onclick = () => mudar(b.dataset.st)));
   }
   function abrir() { const r = BTN.getBoundingClientRect(); POP.style.top = (r.bottom + 8) + 'px'; POP.style.right = Math.max(10, innerWidth - r.right) + 'px'; POP.classList.add('aberto'); }
@@ -81,7 +90,7 @@
   }
   let timer = 0;
   function pararTudo() { clearInterval(timer); if (BTN) BTN.remove(); if (POP) POP.remove(); BTN = POP = null; ativo = false; }
-  function iniciar() { sinal(true); timer = setInterval(() => sinal(false), 60000); setInterval(() => { if (D && D.status !== 'online') desenhar(); }, 30000); }
+  function iniciar() { sinal(true); timer = setInterval(() => sinal(false), 30000); setInterval(() => { if (D && D.status !== 'online') desenhar(); }, 30000); }
   window.PresencaHub = { atualizar: () => sinal(false) };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', iniciar); else iniciar();
 })();

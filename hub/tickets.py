@@ -579,6 +579,7 @@ def clientes_em_rastreio() -> tuple[set, set]:
 @router.get("/estado")
 def estado(request: Request, dias_concluidos: int = 30):
     u, p, me = _contexto(request)
+    distribuir()
     agora_dt = datetime.now(BRT)
     corte = (agora_dt - timedelta(days=max(1, min(dias_concluidos, 400)))).strftime("%Y-%m-%d")
     lista = []
@@ -1827,6 +1828,66 @@ def _candidatos(me: dict, setor: str | None = None) -> list[tuple]:
     return sorted(((v[0], cid, v[1]) for cid, v in por.items()), key=lambda x: x[0])
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# DISTRIBUIÇÃO AUTOMÁTICA dos atendimentos (chats do app/link)
+#   O chat sem dono vai para alguém do SETOR do chat que esteja ONLINE (botão de status) e abaixo do limite
+#   de atendimentos simultâneos (Ajustes › Setor e perfil; 0 = só tickets). Quem tem menos chats recebe
+#   primeiro; empate → quem recebeu há mais tempo. Tickets continuam no "Pegar o próximo".
+#   Roda quando o cliente abre um chat e a cada sinal/consulta do CX (no máximo a cada 5 s).
+# ══════════════════════════════════════════════════════════════════════════════
+_ult_dist = banco.por_empresa(lambda: {"t": 0.0})
+_ULT_RECEBEU = banco.por_empresa(dict)
+_trava_dist = threading.Lock()
+SISTEMA = {"usuario": "distribuicao", "nome": "Distribuição automática", "depto": "", "hub": ""}
+
+
+def chats_ativos_de(usuario: str) -> int:
+    return sum(1 for t in BASE.tickets() if eh_chat(t) and t.get("status") in ABERTOS
+               and (t.get("atribuido_para") == usuario or usuario in (t.get("atendentes") or [])))
+
+
+def pode_receber(usuario: str) -> bool:
+    lim = limite_de(usuario)
+    return disponivel(usuario) and lim != 0 and (lim is None or chats_ativos_de(usuario) < lim)
+
+
+def distribuir(forcar: bool = False) -> list[tuple[str, str]]:
+    """Entrega os chats sem dono. Devolve [(cid, usuario)] do que entregou."""
+    agora_s = time.time()
+    st = _ult_dist
+    if not forcar and agora_s - st["t"] < 5:
+        return []
+    if not _trava_dist.acquire(blocking=False):
+        return []
+    feitos = []
+    try:
+        st["t"] = agora_s
+        if not any(p.get("status") == "online" for p in PRESENCA.values()):
+            return []
+        usu = usuarios()
+        fila = {}
+        for t in BASE.tickets():
+            if not eh_chat(t) or t.get("status") not in ABERTOS or t.get("atendentes") or t.get("atribuido_para") or t.get("interno"):
+                continue
+            cid = decompor(t["id"])[0]
+            chave = (0 if t.get("app_pendente") else 1, str(t.get("app_pendente_desde") or t.get("criado_em") or ""))
+            if cid not in fila or chave < fila[cid][0]:
+                fila[cid] = (chave, t.get("departamento") or "")
+        for cid, (_, setor) in sorted(fila.items(), key=lambda kv: kv[1][0]):
+            aptos = [k for k, v in usu.items() if norm(v.get("depto")) == norm(setor) and pode_receber(k)] if setor else []
+            if not aptos:
+                continue
+            alvo = min(aptos, key=lambda k: (chats_ativos_de(k), _ULT_RECEBEU.get(k, 0)))
+            if _atribuir_cliente(cid, alvo, {**SISTEMA, "nome": f"Distribuição automática → {usu.get(alvo, {}).get('nome', alvo)}"}):
+                _ULT_RECEBEU[alvo] = time.time()
+                feitos.append((cid, alvo))
+    except Exception as ex:  # noqa: BLE001
+        print(f"[distribuição] falhou: {ex}")
+    finally:
+        _trava_dist.release()
+    return feitos
+
+
 def fila_sem_dono(me: dict, setor: str | None = None) -> dict:
     c = _candidatos(me, setor) if setor or me.get("depto") or me.get("perfil") == "gestor" else []
     return {"clientes": len(c), "chats": sum(1 for x in c if x[2]), "aguardando_app": sum(1 for x in c if x[0][0] == 0)}
@@ -1847,8 +1908,11 @@ def ver_presenca(request: Request, inicio: int = 0):
                 _mudar(usu, "online", agora_s)
             else:
                 atual["ping"] = agora_s
+    distribuir()
     st = presenca(usu)
-    return {"status": st["status"], "desde": st["desde"], "pausas": pausas(), "limite": limite_de(usu), "nome": me["nome"]}
+    meus = [t for t in BASE.tickets() if eh_chat(t) and t.get("status") in ABERTOS and atribuido(t, me)]
+    return {"status": st["status"], "desde": st["desde"], "pausas": pausas(), "limite": limite_de(usu), "nome": me["nome"],
+            "chats": len(meus), "aguardando": sum(1 for t in meus if t.get("app_pendente"))}
 
 
 @router.post("/presenca")
@@ -1860,6 +1924,8 @@ async def mudar_presenca(request: Request):
         raise HTTPException(400, "Status inválido.")
     with _trava_pres:
         _mudar(me["usuario"], st, time.time())
+    if st == "online":
+        distribuir(forcar=True)
     return {"ok": True, "status": st}
 
 
@@ -1870,7 +1936,11 @@ def pegar_proximo(request: Request):
     _exigir(p, "atender", "assumir atendimentos")
     if not me.get("depto") and me.get("perfil") != "gestor":
         raise HTTPException(400, "Seu usuário está sem setor — peça para definir em Ajustes.")
+    lim = limite_de(me["usuario"])
+    cheio = lim is not None and chats_ativos_de(me["usuario"]) >= lim   # no limite (ou 0 = só tickets): pega só ticket
     for _, cid, _chat in _candidatos(me):
+        if cheio and _chat:
+            continue
         if _atribuir_cliente(cid, me["usuario"], me):
             return {"ok": True, "cid": cid}
     raise HTTPException(404, "Ninguém esperando no seu setor agora. 🎉")

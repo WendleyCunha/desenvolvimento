@@ -118,6 +118,8 @@ def t(monkeypatch):
     T.BASE.t_cfg = time.time() + 3600
     C._falhas.clear()
     C._envios.clear()
+    T.PRESENCA.clear()
+    T._ULT_RECEBEU.clear()
     # login do hub (atendente) para o lado da central
     monkeypatch.setattr(acesso, "exigir_usuario", lambda request: {"login": "atendente", "nome": "Carla Atendente"})
     monkeypatch.setattr(acesso, "obter_esquema", lambda slug: {"acoes": {}, "campos": {}})
@@ -704,3 +706,39 @@ def test_presenca_grava_trechos_do_dia(t):
     segs = T._seg_doc("carla", dia).get().to_dict()["segs"] if T.datetime.fromtimestamp(t0 + 1800, T.BRT).strftime("%Y-%m-%d") == dia else None
     if segs is not None:
         assert [s["s"] for s in segs] == ["online", "almoco"] and segs[0]["f"] and segs[1]["f"] is None
+
+
+def test_distribuicao_automatica_respeita_status_limite_e_setor(t, monkeypatch):
+    monkeypatch.setattr(T, "_registrar", lambda *a: None)
+    monkeypatch.setattr(banco, "thread", lambda fn, *a, **k: fn(*a, **k))
+    T.BASE.cfg_cache["usuarios"] = {"ana.cx": {"nome": "Ana CX", "depto": "CX"}, "beto.cx": {"nome": "Beto CX", "depto": "CX"},
+                                    "carla.cx": {"nome": "Carla CX", "depto": "CX"}, "dani.cx": {"nome": "Dani CX", "depto": "CX"},
+                                    "edu.log": {"nome": "Edu Log", "depto": "Logística"}}
+    T.BASE.cfg_cache["tickets_hub"] = {"limites": {"ana.cx": 1, "dani.cx": 0}}
+    agora_s = time.time()
+    for u, st in (("ana.cx", "online"), ("beto.cx", "online"), ("carla.cx", "almoco"), ("dani.cx", "online"), ("edu.log", "online")):
+        T.PRESENCA[u] = {"status": st, "desde": agora_s, "ping": agora_s}
+    T._ULT_RECEBEU.update({"ana.cx": 1, "beto.cx": 2})          # empate → a Ana recebeu há mais tempo
+    # três clientes abrem chat pelo link/app (setor CX)
+    E.ST.dados["parceiros"]["c_bia"]["endereco"] = {}
+    dono = []
+    for cli in ("c_ana", "c_bia"):
+        with E.ST.trava:
+            tx = E.Tx({"login": "x"}); E.garantir_codigo(tx, cli); tx.commit()
+        c = E.ST.dados["parceiros"][cli]
+        sid = C._chat_do_cliente(cli, c, {"texto": "Oi", "opcao": "outro"})["id"]
+        dono.append(central(t, sid)["atribuido_para"])
+    assert dono == ["ana.cx", "beto.cx"]                         # Ana chegou no limite (1) → o segundo foi para o Beto
+    assert not T.pode_receber("carla.cx") and not T.pode_receber("dani.cx") and not T.pode_receber("ana.cx")
+    assert T.pode_receber("beto.cx")                              # sem limite
+    # ninguém online no setor: o chat espera na fila
+    for u in ("ana.cx", "beto.cx"):
+        T.PRESENCA[u]["status"] = "reuniao"
+    with E.ST.trava:
+        tx = E.Tx({"login": "x"}); E.garantir_codigo(tx, "c_ana"); tx.commit()
+    t.post(url_tk(central(t, C._chat_do_cliente("c_ana", E.ST.dados["parceiros"]["c_ana"], {"texto": "e aí?"})["id"])["id"]) + "/alterar", json={"status": "resolvido"})
+    sid = C._chat_do_cliente("c_ana", E.ST.dados["parceiros"]["c_ana"], {"texto": "Outra coisa", "opcao": "outro"})["id"]
+    assert central(t, sid)["sem_dono"]
+    T.PRESENCA["beto.cx"]["status"] = "online"                     # voltou: recebe na próxima rodada
+    T.distribuir(forcar=True)
+    assert central(t, sid)["atribuido_para"] == "beto.cx"

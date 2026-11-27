@@ -687,6 +687,10 @@ def _chat_do_cliente(cid: str, cli: dict, d: dict, via: str = "") -> dict:
     if via:
         dados["app_via"] = via
     sid = _criar(cid, cli, me, dados)
+    try:
+        T.distribuir(forcar=True)   # chat novo: já vai para um atendente online do setor
+    except Exception as ex:  # noqa: BLE001
+        print(f"[cliente] distribuição: {ex}")
     return {"ok": True, "id": sid, "existente": False}
 
 
