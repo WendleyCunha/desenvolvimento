@@ -1929,7 +1929,7 @@ function telaAjustes(m) {
   const ww = e.wwhat || {}, abaAj = S.ajAba || "motivos";
   const AJ = [["motivos", "Motivos, submotivos, SLA (dias) e etapas"], ["erp", "Ligação com o ERP"], ["app", "App do cliente"], ["setor", "Setor e perfil de cada pessoa"], ["wwhat", "Wwhat"]];
   const vis = (k) => `data-aj="${k}"`;
-  const WWT = [["bot", "Bot do link"], ["horario", "Horário e feriados"], ["regua", "Régua do cliente"]];
+  const WWT = [["bot", "Bot do link"], ["botapp", "Bot do app"], ["horario", "Horário e feriados"], ["regua", "Régua do cliente"]];
   const pais = () => Object.entries(arv).map(([p, fs]) => `<div class="pai"><b>${esc(p)}</b> <button type="button" class="btn-ic p" data-delpai="${esc(p)}" title="Tirar motivo">${svg("lixo")}</button>
     ${Object.entries(fs).map(([f, i]) => `<div class="filho"><input class="entrada" value="${esc(f)}" disabled><input class="entrada" type="number" min="0" step="0.5" data-sla="${esc(p)}|${esc(f)}" value="${i.sla ?? ""}" title="SLA em dias"><input class="entrada" data-et="${esc(p)}|${esc(f)}" value="${esc((i.etapas || []).join(", "))}" title="Etapas separadas por vírgula"><label class="chk-cod" title="Desmarcado = solicitação interna (sem cliente): não entra na Caixa, cai só em Pedidos de ajuda do setor"><input type="checkbox" data-cod="${esc(p)}|${esc(f)}"${i.exige_codigo === false ? "" : " checked"}> exige código</label><label class="chk" title="Ativo"><input type="checkbox" data-at="${esc(p)}|${esc(f)}"${i.ativo === false ? "" : " checked"}></label></div>`).join("")}
     <div class="filho"><input class="entrada" data-novofilho="${esc(p)}" placeholder="+ submotivo"><span></span><span></span><span></span><span></span></div></div>`).join("");
@@ -1961,10 +1961,9 @@ function telaAjustes(m) {
         <div class="aviso ouro" style="display:flex;flex-direction:column;gap:6px"><label class="chk"><input type="checkbox" id="appPalavra"${ap.exigir_palavra ? " checked" : ""}> <b>Exigir palavra-chave no login</b> (CPF + e-mail + palavra-chave do pedido)</label>
           <span>A palavra-chave nasce com o pedido no ERP e só aparece para quem tem a permissão “Ver a palavra-chave” (no atendimento, no pedido do cliente, e no botão 🔒 do topo).${ap.pedidos_sem_palavra ? ` <b>${ap.pedidos_sem_palavra}</b> pedido(s) antigos ainda estão sem palavra.` : ""}</span>
           ${ap.pedidos_sem_palavra ? `<button type="button" class="btn v p" id="gerarPalavras" style="align-self:flex-start">Gerar palavra-chave nos pedidos antigos</button>` : ""}</div>
-        <div class="g2"><label class="campo">Nome no topo do app<input id="appEmp" value="${esc(ap.empresa || "")}"></label><label class="campo">Saudação da URA<input id="appSaud" value="${esc(ap.saudacao || "")}"></label></div>
-        <p class="dica">Assuntos que a URA pergunta (uma vez só) antes de virar chat — cada um define motivo e setor. Na aba Chamados do app, o cliente abre pela árvore de motivos acima.</p>
-        <div id="uraLista" style="display:flex;flex-direction:column;gap:5px"></div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="btn v p" id="uraAdd">+ opção</button><button type="button" class="btn p" id="salvarApp">Salvar app do cliente</button></div></div>
+        <label class="campo">Nome no topo do app<input id="appEmp" value="${esc(ap.empresa || "")}"></label>
+        <p class="dica">A saudação e o menu de assuntos do app ficam em <b>Wwhat › Bot do app</b>, ao lado do bot do link.</p>
+        <div style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="btn p" id="salvarApp">Salvar app do cliente</button></div></div>
       <div class="cartao" ${vis("setor")}><h3>${svg("usuarios")} Setor e perfil de cada pessoa</h3>
         <p class="dica"><b>Atendente</b>: vê só os chats e tickets dele e pega o próximo da fila com um clique. <b>Supervisor</b>: vê tudo do setor + o painel da equipe no Meu dia. <b>Gestor</b>: todos os setores. <i>Padrão</i> = gestor para quem tem permissão de equipe, senão supervisor.${e.banco === "hub" ? "" : " (No bancowendley o setor vem do cadastro de usuários do Streamlit.)"}</p>
         <p class="dica"><b>Atendimentos simultâneos</b>: quantos chats a pessoa atende ao mesmo tempo. <b>0</b> = não recebe atendimento (só tickets). Vazio = sem limite. Quem está em pausa ou offline (botão de status na barra do hub) não recebe atendimento.</p>
@@ -1992,6 +1991,12 @@ function telaAjustes(m) {
         <div class="g2"><label class="campo">Cai no setor<select id="wwDep">${deps.map((d) => `<option${norm(d) === norm(ww.departamento || "CX") ? " selected" : ""}>${esc(d)}</option>`).join("")}</select></label>
           <label class="campo">Motivo<select id="wwMot"><option value="">— sem motivo —</option>${Object.keys(e.motivos || {}).map((p2) => `<option${p2 === ww.motivo_pai ? " selected" : ""}>${esc(p2)}</option>`).join("")}</select></label></div>
         <button type="button" class="btn p" id="salvarWw">Salvar bot</button></div>
+        <div data-wwp="botapp" style="display:flex;flex-direction:column;gap:10px">
+          <p class="dica">O bot do <b>app do cliente</b> (/cliente/, já validado): na aba Atendimento ele cumprimenta e pergunta o assunto <b>uma vez só</b> antes de virar chat com a central. Cada assunto define o motivo e o setor onde o chat cai. Na aba Chamados do app, o cliente abre pela árvore de motivos.</p>
+          <label class="campo">Saudação do app<input id="appSaud" value="${esc(ap.saudacao || "")}"></label>
+          <div class="sec" style="margin:4px 0 0">Assuntos do menu</div>
+          <div id="uraLista" style="display:flex;flex-direction:column;gap:5px"></div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="btn v p" id="uraAdd">+ assunto</button><button type="button" class="btn p" id="salvarBotApp">Salvar bot do app</button></div></div>
         <div data-wwp="horario" style="display:flex;flex-direction:column;gap:10px">
           <p class="dica">Vale para o <b>app</b> e o <b>link de atendimento</b>. Fora do horário (ou num feriado) o cliente vê o aviso abaixo e pode deixar a mensagem — ela entra na Caixa e é respondida quando abrir.</p>
           <label class="chk"><input type="checkbox" id="hrAtivo"${ww.horario_ativo ? " checked" : ""}> Usar horário de funcionamento</label>
@@ -2089,9 +2094,11 @@ function telaAjustes(m) {
   $("#salvarWw").onclick = async () => { try { await chamar("/config", { method: "PUT", body: { wwhat: { ativo: $("#wwAtivo").checked, saudacao: $("#wwSaud").value, pedir_cpf: $("#wwCpf").value, direcionando: $("#wwDir").value, departamento: $("#wwDep").value, motivo_pai: $("#wwMot").value } } }); ok("Wwhat salvo."); await carregar(); } catch (er) { falha(er); } };
   $("#copiarLink").onclick = async () => { try { await navigator.clipboard.writeText($("#linkApp").textContent); ok("Link copiado."); } catch (_) { A.toast("Selecione e copie o link."); } };
   $("#salvarApp").onclick = async () => {
+    try { await chamar("/config", { method: "PUT", body: { app_cliente: { ativo: $("#appAtivo").checked, exigir_palavra: $("#appPalavra").checked, empresa: $("#appEmp").value } } }); ok("App do cliente salvo."); await carregar(); } catch (er) { falha(er); } };
+  $("#salvarBotApp").onclick = async () => {   // Wwhat › Bot do app: saudação e assuntos do menu
     const lista = ura.filter((o) => String(o.rotulo || "").trim()).map((o) => ({ ...o, id: o.id || norm(o.rotulo).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30) }));
-    if (!lista.length) { A.toast("Deixe ao menos uma opção no menu."); return; }
-    try { await chamar("/config", { method: "PUT", body: { app_cliente: { ativo: $("#appAtivo").checked, exigir_palavra: $("#appPalavra").checked, empresa: $("#appEmp").value, saudacao: $("#appSaud").value, ura: lista } } }); ok("App do cliente salvo."); await carregar(); } catch (er) { falha(er); } };
+    if (!lista.length) { A.toast("Deixe ao menos um assunto no menu."); return; }
+    try { await chamar("/config", { method: "PUT", body: { app_cliente: { saudacao: $("#appSaud").value, ura: lista } } }); ok("Bot do app salvo."); await carregar(); } catch (er) { falha(er); } };
   $("#recarregar").onclick = async () => { try { await chamar("/recarregar", { method: "POST" }, "relendo…"); await carregar(); ok("Relido."); } catch (er) { falha(er); } };
 }
 

@@ -1019,3 +1019,12 @@ def test_chat_concluido_manda_pesquisa_de_atendimento(t, monkeypatch):
     t.post(url_tk(tid) + "/alterar", json={"atribuir": "atendente"})
     t.post(url_tk(tid) + "/alterar", json={"status": "resolvido"})
     assert feitos and feitos[0][1] == "atendente" and feitos[0][0] == E.ST.dados["parceiros"]["c_ana"]["codigo"]
+
+
+def test_bot_do_app_e_app_do_cliente_salvam_separados(t):
+    t.put("/api/tickets/config", json={"app_cliente": {"saudacao": "Oi! Sobre o que quer falar?", "ura": [{"rotulo": "Garantia", "motivo_pai": "Pedido", "departamento": "CX"}]}})
+    T.BASE.t_cfg = time.time() + 3600
+    t.put("/api/tickets/config", json={"app_cliente": {"ativo": True, "exigir_palavra": False, "empresa": "KingStar"}})   # aba App do cliente
+    T.BASE.t_cfg = time.time() + 3600
+    c = C.cfg_app()
+    assert c["empresa"] == "KingStar" and c["saudacao"] == "Oi! Sobre o que quer falar?" and [u["rotulo"] for u in c["ura"]] == ["Garantia"]
