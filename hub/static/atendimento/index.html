@@ -69,6 +69,7 @@ html[data-claro] .compor .caixa{background:rgba(255,255,255,.92)}
 .compor .btn[disabled]{opacity:.35;transform:none;box-shadow:none;cursor:default}
 .compor.oculto{display:none}
 .recomecar{align-self:center}
+.oculto{display:none!important}
 </style>
 </head>
 <body>
@@ -94,7 +95,7 @@ const hora = (s) => String(s || "").slice(11, 16);
 const agora = () => { const d = new Date(), z = (n) => String(n).padStart(2, "0"); return `${z(d.getHours())}:${z(d.getMinutes())}`; };
 const novoReq = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)).replace(/-/g, "").slice(0, 32);
 const fmt = (t) => window.ChatFmt ? ChatFmt.fmt(t) : esc(t);
-const S = { fase: "cpf", conversa: "", pergunta: null, ocupado: false, chatAtivo: false, ultimas: "", pend: [], timer: 0 };
+const S = { fase: "cpf", conversa: "", errosCpf: 0, pergunta: null, ocupado: false, chatAtivo: false, ultimas: "", pend: [], timer: 0 };
 
 /* ── desenho ── */
 const fim = () => requestAnimationFrame(() => { fio.scrollTop = fio.scrollHeight; });
@@ -126,7 +127,28 @@ async function perguntar(p, passo, total) {
 async function enviarCpf(v) {
   eu(mascaraCpf(v)); S.ocupado = true;
   try { const r = await A.api(API + "/cpf", { method: "POST", body: { cpf: v } }); S.conversa = r.conversa; S.fase = "pergunta"; await perguntar(r.pergunta, r.passo, r.total); }
-  catch (e) { await digitando(400); bot(e.message || "Não consegui agora. Tente de novo.", "erro"); if (e.status === 429 || e.status === 503 || e.status === 409) acabou(); else modo("CPF (só números)", true); }
+  catch (e) {
+    await digitando(500);
+    if (e.status === 404 || e.status === 422) {   // CPF não achado (ou digitado errado): mais 3 chances, com calma
+      S.errosCpf++;
+      const fala = ["Dessa vez eu não achei 🤔 Vamos tentar pela segunda vez?", "Humm, ainda não achei. Vamos tentar mais uma vez?",
+        "Uau! Algo digitado não está correto ou esse CPF não tem cadastro. Vamos tentar a última vez?"][S.errosCpf - 1];
+      if (fala) { bot(fala); modo("CPF (só números)", true); txt.focus(); return; }
+      return semIdentificacao("Tudo bem, acontece! 😊 Vou te passar para o atendimento mesmo assim.");
+    }
+    if (e.status === 409) return semIdentificacao("Não consigo confirmar seus dados por aqui, mas tudo bem — vou te passar para o atendimento. 😊");
+    bot(e.message || "Não consegui agora. Tente de novo.", "erro"); if (e.status === 429 || e.status === 503) acabou(); else modo("CPF (só números)", true);
+  }
+  finally { S.ocupado = false; }
+}
+async function semIdentificacao(fala) {
+  bot(fala); S.fase = "nome";
+  await digitando(600); bot("Como posso te chamar?"); modo("Seu nome", false); txt.focus();
+}
+async function enviarNome(v) {
+  eu(v); S.ocupado = true;
+  try { const r = await A.api(API + "/visitante", { method: "POST", body: { nome: v } }); await digitando(); bot(r.direcionando); S.visitante = true; entrarNoChat(r.nome, false); }
+  catch (e) { await digitando(400); bot(e.message || "Não consegui agora. Tente de novo.", "erro"); if (e.status === 429 || e.status === 503) acabou(); else modo("Seu nome", false); }
   finally { S.ocupado = false; }
 }
 async function responder(v, rotulo) {
@@ -145,7 +167,7 @@ function acabou() {
   const b = document.createElement("button"); b.type = "button"; b.className = "btn v recomecar"; b.textContent = "Começar de novo";
   b.onclick = () => { b.remove(); recomecar(); }; fio.appendChild(b); fim();
 }
-async function recomecar() { S.fase = "cpf"; S.conversa = ""; await digitando(); bot(S.info.pedir_cpf); modo("CPF (só números)", true); txt.focus(); }
+async function recomecar() { S.fase = "cpf"; S.conversa = ""; S.errosCpf = 0; await digitando(); bot(S.info.pedir_cpf); modo("CPF (só números)", true); txt.focus(); }
 
 /* ── chat com a central ── */
 function entrarNoChat(nome, agoraMesmo) {
@@ -188,6 +210,7 @@ function enviar() {
   const v = txt.value.trim(); if (!v || S.ocupado) return;
   txt.value = ""; txt.style.height = "auto"; env.disabled = true;
   if (S.fase === "cpf") enviarCpf(v);
+  else if (S.fase === "nome") enviarNome(v);
   else if (S.fase === "pergunta") { const op = S.pergunta && S.pergunta.opcoes; const n = parseInt(v, 10); if (op && op[n - 1]) { fio.querySelectorAll(".opcoes button").forEach((x) => (x.disabled = true)); responder(String(n), op[n - 1]); } else responder(v); }
   else enviarMsg(v);
 }

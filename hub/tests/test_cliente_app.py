@@ -539,3 +539,19 @@ def test_wwhat_salva_pela_central_e_desliga_o_link(t):
     i = t.get("/api/cliente/atendimento/info").json()
     assert i["ativo"] is False and i["saudacao"] == "Oi, aqui é a Central do Cliente!"
     assert t.post("/api/cliente/atendimento/cpf", json={"cpf": CPF_ANA}).status_code == 503
+
+
+def test_cpf_nao_achado_segue_sem_identificacao(t):
+    for _ in range(4):   # a página dá 3 chances a mais com calma; depois segue sem identificação
+        assert t.post("/api/cliente/atendimento/cpf", json={"cpf": "390.533.447-05"}).status_code == 404
+    assert t.post("/api/cliente/atendimento/visitante", json={"nome": "a"}).status_code == 422
+    r = t.post("/api/cliente/atendimento/visitante", json={"nome": "maria   da silva"}).json()
+    assert r["nome"] == "Maria" and "Maria" in r["direcionando"]
+    i = t.get("/api/cliente/atendimento/info").json()
+    assert i["validado"] and i["visitante"] and i["nome"] == "Maria"
+    sid = t.post("/api/cliente/atendimento/mensagem", json={"texto": "Comprei na loja e não tenho cadastro", "req": "v1"}).json()["id"]
+    tk = central(t, sid)
+    assert tk["assunto"] == "Atendimento pelo link · sem identificação" and tk["cliente_codigo"].startswith("V") and not tk.get("erp_cliente_id")
+    t.post(url_tk(tk["id"]) + "/comentar", json={"texto": "Olá Maria! Me passa o número do pedido?", "tipo": "resposta"})
+    assert [m["de"] for m in t.get("/api/cliente/atendimento/chat").json()["mensagens"]] == ["cliente", "central"]
+    assert t.get("/api/cliente/eu").status_code == 401                                                  # nada do app
