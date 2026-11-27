@@ -478,11 +478,14 @@ def _registrar(usuario: str, status: str, ini: float, fim_anterior: float | None
         print(f"[presença] não gravou {usuario}: {ex}")
 
 
-def _mudar(usuario: str, status: str, agora_s: float, fim_anterior: float | None = None):
+def _mudar(usuario: str, status: str, agora_s: float, fim_anterior: float | None = None, auto: bool = False):
+    """auto=True: o SISTEMA deixou offline (ociosa ou sem sinal) — volta sozinho para Online quando a pessoa mexer.
+    Offline escolhido no botão (auto=False) só muda no botão."""
     atual = PRESENCA.get(usuario)
     if atual and atual["status"] == status:
+        atual["auto"] = auto if status == "offline" else False
         return
-    PRESENCA[usuario] = {"status": status, "desde": agora_s, "ping": agora_s}
+    PRESENCA[usuario] = {"status": status, "desde": agora_s, "ping": agora_s, "auto": auto and status == "offline"}
     if atual and atual["status"] != "offline":
         fim = fim_anterior if fim_anterior is not None else agora_s
     else:
@@ -495,7 +498,7 @@ def presenca(usuario: str) -> dict:
     with _trava_pres:
         p = PRESENCA.get(usuario)
         if p and p["status"] != "offline" and time.time() - p["ping"] > SEM_SINAL_SEG:
-            _mudar(usuario, "offline", p["ping"] + 60, fim_anterior=p["ping"] + 60)
+            _mudar(usuario, "offline", p["ping"] + 60, fim_anterior=p["ping"] + 60, auto=True)
             p = PRESENCA[usuario]
         return dict(p) if p else {"status": "offline", "desde": None, "ping": 0}
 
@@ -1969,24 +1972,32 @@ def fila_sem_dono(me: dict, setor: str | None = None) -> dict:
 
 
 @router.get("/presenca")
-def ver_presenca(request: Request, inicio: int = 0):
-    """O botão de status da barra do hub chama a cada minuto (é o "sinal"). inicio=1: abriu o hub → entra Online."""
+def ver_presenca(request: Request, inicio: int = 0, ativo: int = 0, ocioso: int = 0):
+    """O botão de status da barra do hub chama a cada 30 s (é o "sinal").
+    inicio=1: abriu o hub · ativo=1: a pessoa mexeu (clique, tecla, trocou de aba) · ocioso=1: 5 min sem mexer.
+    Ociosa ou sem sinal → Offline AUTOMÁTICO; mexeu de novo → volta Online. Offline escolhido no botão só sai no botão
+    (ou no primeiro acesso de outro dia)."""
     u, p, me = _contexto(request)
     usu, agora_s = me["usuario"], time.time()
+    hoje = datetime.now(BRT).strftime("%Y-%m-%d")
     with _trava_pres:
         atual = PRESENCA.get(usu)
-        if inicio and (not atual or atual["status"] == "offline" or agora_s - atual["ping"] > SEM_SINAL_SEG):
-            _mudar(usu, "online", agora_s, fim_anterior=atual["ping"] + 60 if atual and atual["status"] != "offline" else None)
+        if atual and atual["status"] != "offline" and agora_s - atual["ping"] > SEM_SINAL_SEG:   # ficou sem sinal: fecha o trecho
+            _mudar(usu, "offline", atual["ping"] + 60, fim_anterior=atual["ping"] + 60, auto=True)
+            atual = PRESENCA[usu]
+        manual_velho = bool(atual and atual["status"] == "offline" and not atual.get("auto")
+                            and datetime.fromtimestamp(atual["desde"], BRT).strftime("%Y-%m-%d") != hoje)
+        volta = not atual or (atual["status"] == "offline" and (atual.get("auto") or (inicio and manual_velho)))
+        if (inicio or ativo) and volta:
+            _mudar(usu, "online", agora_s)
+        elif ocioso and atual and atual["status"] == "online":
+            _mudar(usu, "offline", agora_s, auto=True)
         elif atual and atual["status"] != "offline":
-            if agora_s - atual["ping"] > SEM_SINAL_SEG:   # voltou depois de ficar sem sinal: fecha o trecho e reabre
-                _mudar(usu, "offline", atual["ping"] + 60, fim_anterior=atual["ping"] + 60)
-                _mudar(usu, "online", agora_s)
-            else:
-                atual["ping"] = agora_s
+            atual["ping"] = agora_s
     distribuir()
     st = presenca(usu)
     meus = [t for t in BASE.tickets() if eh_chat(t) and t.get("status") in ABERTOS and atribuido(t, me)]
-    return {"status": st["status"], "desde": st["desde"], "pausas": pausas(), "limite": limite_de(usu), "nome": me["nome"],
+    return {"status": st["status"], "desde": st["desde"], "auto": bool(st.get("auto")), "pausas": pausas(), "limite": limite_de(usu), "nome": me["nome"],
             "chats": len(meus), "aguardando": sum(1 for t in meus if t.get("app_pendente"))}
 
 

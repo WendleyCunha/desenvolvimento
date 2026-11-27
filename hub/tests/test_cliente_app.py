@@ -884,3 +884,28 @@ def test_tres_validacoes_erradas_travam_24h(t, monkeypatch):
     assert r.status_code == 429 and "24 horas" in r.json()["detail"]
     CA.acao_central("c_ana", "destravar")
     assert t.post("/api/cliente/atendimento/cpf", json={"cpf": CPF_ANA}).status_code == 200
+
+
+def test_ociosa_volta_online_ao_mexer_mas_offline_manual_fica(t, monkeypatch):
+    monkeypatch.setattr(T, "_registrar", lambda *a: None)
+    monkeypatch.setattr(banco, "thread", lambda fn, *a, **k: fn(*a, **k))
+    assert t.get("/api/tickets/presenca?inicio=1").json()["status"] == "online"
+    r = t.get("/api/tickets/presenca?ocioso=1").json()
+    assert r["status"] == "offline" and r["auto"]                                    # 5 min parada → offline automático
+    assert t.get("/api/tickets/presenca").json()["status"] == "offline"             # sinal sem movimento não volta
+    assert t.get("/api/tickets/presenca?ativo=1").json()["status"] == "online"      # mexeu → online
+    T.PRESENCA["atendente"]["ping"] -= T.SEM_SINAL_SEG + 10                         # sem sinal (notebook dormiu)
+    r = t.get("/api/tickets/presenca").json()
+    assert r["status"] == "offline" and r["auto"]
+    assert t.get("/api/tickets/presenca?ativo=1").json()["status"] == "online"
+    t.post("/api/tickets/presenca", json={"status": "offline"})                      # escolheu offline no botão
+    for q in ("ativo=1", "inicio=1", "ocioso=1"):
+        r = t.get("/api/tickets/presenca?" + q).json()
+        assert r["status"] == "offline" and not r["auto"]                            # só sai no botão
+    T.PRESENCA["atendente"]["desde"] -= 86400 * 2                                    # outro dia: ao abrir o hub entra online
+    assert t.get("/api/tickets/presenca?inicio=1").json()["status"] == "online"
+
+
+def test_pedidos_de_ajuda_so_tem_interno():
+    s = open(Path(__file__).resolve().parents[1] / "modulos" / "tickets.html", encoding="utf-8").read()
+    assert "function filaSetor(setor) { return setor ? S.e.tickets.filter((t) => t.interno && " in s

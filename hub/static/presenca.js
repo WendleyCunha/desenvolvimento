@@ -43,8 +43,9 @@
   const emoji = (st) => st === 'online' ? '🟢' : st === 'offline' ? '⚫' : ((D.pausas || []).find((x) => x.id === st) || {}).emoji || '⏸';
   const desde = () => { if (!D.desde) return ''; const m = Math.max(0, Math.floor((Date.now() / 1000 - D.desde) / 60)); return m < 60 ? `${m} min` : `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}`; };
 
-  async function api(metodo, corpo, inicio) {
-    const r = await fetch('/api/tickets/presenca' + (inicio ? '?inicio=1' : ''), { method: metodo, credentials: 'same-origin', cache: 'no-store',
+  async function api(metodo, corpo, inicio, extra) {
+    const q = [inicio ? 'inicio=1' : '', extra || ''].filter(Boolean).join('&');
+    const r = await fetch('/api/tickets/presenca' + (q ? '?' + q : ''), { method: metodo, credentials: 'same-origin', cache: 'no-store',
       headers: corpo ? { 'Content-Type': 'application/json' } : {}, body: corpo ? JSON.stringify(corpo) : undefined });
     if (!r.ok) { const e = new Error('HTTP ' + r.status); e.status = r.status; throw e; }
     return r.json();
@@ -66,7 +67,8 @@
     BTN.style.setProperty('--pr-c', cor(D.status));
     BTN.innerHTML = `<i></i>${esc(rotulo(D.status))}${D.status !== 'online' && D.desde ? ` <small>${desde()}</small>` : ''}${D.aguardando ? `<span class="pr-n">${D.aguardando}</span>` : ''}`;
     BTN.classList.toggle('tem', !!D.aguardando);
-    BTN.title = D.status === 'online' ? 'Online — recebendo atendimentos. Clique para pausar ou ficar offline.' : `${rotulo(D.status)} — não recebe atendimentos. Clique para mudar.`;
+    BTN.title = D.status === 'online' ? 'Online — recebendo atendimentos. Clique para pausar ou ficar offline.'
+      : D.status === 'offline' && D.auto ? 'Offline por inatividade (5 min parado) — volta para Online sozinho quando você mexer.' : `${rotulo(D.status)} — não recebe atendimentos. Clique para mudar.`;
     const op = (id) => `<button type="button" class="pr-op${D.status === id ? ' on' : ''}" data-st="${esc(id)}" style="--pr-c:${cor(id)}"><span class="e">${emoji(id)}</span>${esc(rotulo(id))}${D.status === id ? '<span class="ck">✓</span>' : ''}</button>`;
     const lim = D.limite == null ? 'sem limite' : D.limite === 0 ? 'só tickets' : `limite ${D.limite}`;
     POP.innerHTML = `<div class="pr-info">💬 <b>${D.chats || 0}</b> atendimento(s) com você${D.aguardando ? ` · <b style="color:var(--rosa)">${D.aguardando} esperando resposta</b>` : ''} <span style="color:var(--txt3)">(${lim})</span></div>
@@ -77,11 +79,26 @@
   function fechar() { if (POP) POP.classList.remove('aberto'); }
   async function mudar(st) {
     fechar();
-    try { await api('POST', { status: st }); D.status = st; D.desde = Date.now() / 1000; desenhar(); } catch (_) { /* tenta no próximo sinal */ }
+    try { await api('POST', { status: st }); D.status = st; D.desde = Date.now() / 1000; D.auto = false; ultAtiv = Date.now(); desenhar(); } catch (_) { /* tenta no próximo sinal */ }
   }
+  /* MOVIMENTO: clique, tecla, rolagem, toque ou voltar para a aba (também dentro dos módulos, que são iframes).
+     5 min sem mexer → Offline automático; mexeu de novo → Online. Offline escolhido no botão não muda sozinho. */
+  let ultAtiv = Date.now(), avisou = 0;
+  function atividade() {
+    ultAtiv = Date.now();
+    if (D && D.status === 'offline' && D.auto && Date.now() - avisou > 8000) { avisou = Date.now(); sinal(false); }
+  }
+  const EVENTOS = ['pointerdown', 'keydown', 'wheel', 'touchstart', 'mousemove'];
+  let ultMov = 0;
+  const ouvir = (alvo) => EVENTOS.forEach((ev) => alvo.addEventListener(ev, () => { if (ev === 'mousemove') { if (Date.now() - ultMov < 15000) return; ultMov = Date.now(); } atividade(); }, { passive: true, capture: true }));
+  ouvir(document);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') atividade(); });
+  addEventListener('focus', atividade);
+  setInterval(() => document.querySelectorAll('iframe').forEach((f) => { try { const d = f.contentDocument; if (d && !d.__prOuve) { d.__prOuve = 1; ouvir(d); d.addEventListener('visibilitychange', () => { if (d.visibilityState === 'visible') atividade(); }); } } catch (_) {} }), 4000);
   async function sinal(inicio) {
     try {
-      D = await api('GET', null, inicio);
+      const parado = Date.now() - ultAtiv;
+      D = await api('GET', null, inicio, parado > 300000 ? 'ocioso=1' : parado < 45000 ? 'ativo=1' : '');
       if (!ativo) { ativo = true; montar(); }
       desenhar();
     } catch (e) {

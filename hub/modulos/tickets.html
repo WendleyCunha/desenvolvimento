@@ -1649,7 +1649,8 @@ function chatAjuda(v, buscar) {   // buscar(pid) → visão atualizada (pendênc
   }
 }
 /* fila do meu setor: chats e solicitações ABERTOS com departamento = setor */
-function filaSetor(setor) { return setor ? S.e.tickets.filter((t) => ABERTOS.includes(t.status) && norm(t.departamento) === norm(setor)) : []; }
+/* Pedidos de ajuda = só o que é INTERNO (entre setores, sem cliente). Chat e ticket de cliente ficam na Caixa. */
+function filaSetor(setor) { return setor ? S.e.tickets.filter((t) => t.interno && ABERTOS.includes(t.status) && norm(t.departamento) === norm(setor)) : []; }
 const assuntoAbertura = (t) => t.chat ? "📱 " + (t.assunto || "Chat do app") : (t.interno ? "🔧 " : "") + (t.motivo_pai || "— sem motivo —");
 function telaAjuda(m) {
   if (!S.aj) { m.innerHTML = `<div class="vazio"><b>Carregando…</b></div>`; carregarAjuda(true); return; }
@@ -1679,18 +1680,18 @@ function telaAjuda(m) {
   m.innerHTML = `<div class="caixa">
     <aside class="filas vidro">
       ${aj.departamentos.length ? `<select class="entrada" id="ajSetor" style="width:100%;padding:6px 9px;margin-bottom:6px"><option value="">Meu setor${aj.eu.depto ? " (" + esc(aj.eu.depto) + ")" : ""}</option>${aj.departamentos.map((d) => `<option${S.ajSetor === d ? " selected" : ""}>${esc(d)}</option>`).join("")}</select>` : ""}
-      <h4>Aberto no setor${setor ? " · " + esc(setor) : ""}</h4>
-      ${bt("setor", "", "Tudo aberto no setor", fila.length, "var(--ouro)")}
+      <h4>Solicitações internas do setor${setor ? " · " + esc(setor) : ""}</h4>
+      ${bt("setor", "", "Todas abertas para o setor", fila.length, "var(--ouro)")}
       ${assuntos.length ? `<h4>Por assunto de abertura</h4>${assuntos.map(([a, ts]) => bt("setor", a, a, ts.length, cor(a))).join("")}` : ""}
       ${minhas.length || f === "minhas" ? `<h4>Solicitações internas</h4>${bt("minhas", "", "Que eu abri", minhas.length, "var(--violeta)")}` : ""}
       <h4>Pedidos de ajuda</h4>
       ${Object.keys(grupos).map((k2) => bt(k2, "", nomes[k2], grupos[k2].length, k2 === "recebidos" ? "var(--violeta)" : k2 === "enviados" ? "var(--azul)" : "var(--verde)")).join("")}
-      <p class="dica" style="padding:10px 6px 2px">Chats e tickets abertos para o seu setor, agrupados pelo assunto com que foram abertos. Os pedidos de ajuda também chegam num balão de chat no topo do hub.</p>
+      <p class="dica" style="padding:10px 6px 2px">Só o que é interno: solicitações entre setores (sem cliente) e pedidos de ajuda. Chats e tickets de cliente ficam na Caixa. Os pedidos de ajuda também chegam num balão de chat no topo do hub.</p>
     </aside>
     <section class="painel vidro">
       ${!setor ? `<div class="aviso ouro">Seu usuário está sem setor — defina em Ajustes › Setor de cada pessoa para ver os chats, tickets e pedidos de ajuda do seu setor.</div>` : ""}
       ${f === "minhas" ? `<h3 style="margin:0 0 10px">Solicitações internas que eu abri</h3>${minhas.length ? `<table class="tab"><thead><tr><th>Chamado</th><th>Quem / assunto</th><th class="so-largo">Desde</th><th>Dono</th><th>SLA / situação</th></tr></thead><tbody>${minhas.map(linha).join("")}</tbody></table>` : `<div class="vazio">${A.orbe("check", "var(--verde)")}<b>Nenhuma aberta</b></div>`}`
-      : f === "setor" ? `<div class="resumo-real"><span><b style="color:var(--ciano)">${fila.filter((t) => t.chat).length}</b> chat(s)</span><span><b>${fila.filter((t) => !t.chat && !t.interno).length}</b> ticket(s)</span>${fila.some((t) => t.interno) ? `<span><b style="color:var(--violeta)">${fila.filter((t) => t.interno).length}</b> interna(s)</span>` : ""}<span><b style="color:var(--ouro)">${fila.filter((t) => t.sem_dono).length}</b> sem dono</span>${ass ? `<span>assunto: <b>${esc(ass)}</b></span>` : ""}</div>
+      : f === "setor" ? `<div class="resumo-real"><span><b style="color:var(--violeta)">${fila.length}</b> solicitação(ões) interna(s)</span><span><b style="color:var(--ouro)">${fila.filter((t) => t.sem_dono).length}</b> sem dono</span>${ass ? `<span>assunto: <b>${esc(ass)}</b></span>` : ""}</div>
         ${fila.length ? `<table class="tab" style="margin-top:8px"><thead><tr><th>Chamado</th><th>Cliente</th><th class="so-largo">Desde</th><th>Dono</th><th>SLA / situação</th></tr></thead><tbody>${blocos}</tbody></table>` : `<div class="vazio">${A.orbe("check", "var(--verde)")}<b>Nada aberto no setor</b></div>`}`
       : `<h3 style="margin:0 0 10px">${nomes[f]}</h3><div style="display:flex;flex-direction:column;gap:8px">${grupos[f].map(card).join("") || `<div class="vazio">${A.orbe("check", "var(--verde)")}<b>Nada aqui</b></div>`}</div>`}
     </section></div>`;
@@ -1826,7 +1827,7 @@ function popupCasos(usuario, tipo) {
         <td><b>${esc(c.cliente_nome || "")}</b><div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:3px">${chipsSol(c)}</div></td><td>${esc(dh(c.criado_em))}</td><td>${c.sla ? `<span class="etq" style="--c:${c.sla.estado === "venc" ? "var(--rosa)" : c.sla.estado === "hoje" ? "var(--ouro)" : "var(--verde)"}">${esc(c.sla.estado === "venc" ? "vencido" : c.sla.estado === "hoje" ? "vence hoje" : "no prazo")}</span>` : ""}</td></tr>`).join("") || `<tr><td colspan="5" class="dica">Nada com ${esc(nome)} agora.</td></tr>`}</tbody></table></div>`;
     corpo.querySelector("#gcTodos").onchange = (ev) => { cs.forEach((c) => (ev.target.checked ? sel.add(c.cid) : sel.delete(c.cid))); desenhar(); };
     corpo.querySelectorAll("[data-gcm]").forEach((x) => { x.onclick = (ev) => ev.stopPropagation(); x.onchange = () => { x.checked ? sel.add(x.dataset.gcm) : sel.delete(x.dataset.gcm); desenhar(); }; });
-    corpo.querySelectorAll("[data-gcab]").forEach((r) => (r.onclick = (ev) => { if (ev.target.closest("input")) return; md.fechar(); abrirTicket(r.dataset.gcab); }));
+    corpo.querySelectorAll("[data-gcab]").forEach((r) => (r.onclick = (ev) => { if (ev.target.closest("input")) return; md.fechar(); S.sec = "caixa"; ls.set("wd.tk.sec", "caixa"); abrirTicket(r.dataset.gcab); }));
     const bt = corpo.querySelector("#gcTransf"); if (bt) bt.onclick = () => { if (!sel.size) { A.toast("Marque os clientes na lista (ou todos)."); return; }
       popupTransferir([...sel], async () => { sel.clear(); await carregar(); await carregarGestaoEq(); desenhar(); }); };
   };
