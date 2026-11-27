@@ -24,7 +24,7 @@
 ═══════════════════════════════════════════════════════════════════════════════
 -->
 <style>
-html,body{height:100%}
+html,body{height:100%;overflow:hidden;overscroll-behavior:none}
 body{margin:0;background:var(--noite);color:var(--txt);font-size:15px;-webkit-tap-highlight-color:transparent}
 .app{position:relative;z-index:1;max-width:560px;margin:0 auto;height:100dvh;display:flex;flex-direction:column}
 .topo{margin:max(10px,env(safe-area-inset-top)) 12px 0;padding:10px 12px;border-radius:20px;display:flex;align-items:center;gap:12px;flex:none}
@@ -133,7 +133,7 @@ async function perguntar(p, passo, total) {
   if (passo) marca(`Confirmação ${passo} de ${total}`);
   bot(p.texto);
   if (p.opcoes) { opcoes(p.opcoes); modo("Toque numa opção ou digite o número", true); }
-  else modo("Sua resposta", /número|números|CEP/i.test(p.texto));
+  else modo("Digite só os números", true);   // toda confirmação se responde com números
   txt.focus();
 }
 async function enviarCpf(v) {
@@ -230,6 +230,13 @@ function enviar() {
   else enviarMsg(v);
 }
 $("#sair").onclick = async () => { if (!confirm("Sair deste aparelho? Para falar de novo, o assistente vai confirmar seus dados.")) return; try { await api(API + "/sair", { method: "POST" }); } catch (_) {} tkSet(""); location.reload(); };
+
+/* ── teclado do celular: a conversa encolhe para caber acima dele e a última mensagem fica visível ── */
+const vv = window.visualViewport, appEl = document.querySelector(".app");
+function encaixar() { if (!vv) return; appEl.style.height = Math.round(vv.height) + "px"; window.scrollTo(0, 0); fim(); }
+if (vv) { vv.addEventListener("resize", encaixar); vv.addEventListener("scroll", () => { if (window.scrollY) window.scrollTo(0, 0); }); }
+txt.addEventListener("focus", () => { setTimeout(encaixar, 120); setTimeout(encaixar, 450); });
+new MutationObserver(fim).observe(fio, { childList: true, subtree: true });   // bolha nova (do bot ou da central) → rola até ela
 
 /* ── início ── */
 (async () => {
