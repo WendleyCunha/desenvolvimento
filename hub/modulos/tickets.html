@@ -363,6 +363,16 @@ html[data-claro] .setor,html[data-claro] .aj-ic{background:linear-gradient(160de
 .bt-rastreio::before{content:"";position:absolute;inset:-1px;border-radius:inherit;padding:1px;z-index:-1;
   background:conic-gradient(from var(--ang,0deg),transparent 0 60%,var(--c) 78%,#fff 84%,transparent 92%);
   -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;animation:aurGiraAng 3.6s linear infinite}
+.bt-encerrar{--c:var(--verde);position:relative;isolation:isolate;display:inline-flex;align-items:center;gap:5px;height:30px;padding:0 12px;border-radius:999px;cursor:pointer;
+  font:700 .74rem var(--sans);color:var(--c);border:1px solid color-mix(in srgb,var(--c) 45%,transparent);transition:transform .2s;
+  background:radial-gradient(circle at 30% 20%,color-mix(in srgb,var(--c) 24%,transparent),color-mix(in srgb,var(--c) 7%,rgba(10,12,18,.55)) 75%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.14),0 6px 18px -8px var(--c)}
+.bt-encerrar svg{width:14px;height:14px}
+.bt-encerrar::before{content:"";position:absolute;inset:-1px;border-radius:inherit;padding:1px;z-index:-1;
+  background:conic-gradient(from var(--ang,0deg),transparent 0 60%,var(--c) 78%,#fff 84%,transparent 92%);
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;animation:aurGiraAng 3.6s linear infinite}
+.bt-encerrar:hover{transform:translateY(-1px) scale(1.04)}
+html[data-claro] .bt-encerrar{background:radial-gradient(circle at 30% 20%,color-mix(in srgb,var(--c) 22%,#fff),color-mix(in srgb,var(--c) 8%,#fff) 75%)}
 .bt-rastreio:hover{transform:translateY(-1px) scale(1.04)}
 .bt-rastreio .pt{width:7px;height:7px;border-radius:50%;background:var(--c);box-shadow:0 0 8px var(--c)}
 html[data-claro] .bt-rastreio{--c:#15803d;background:radial-gradient(circle at 30% 20%,color-mix(in srgb,var(--c) 22%,#fff),color-mix(in srgb,var(--c) 8%,#fff) 75%)!important}
@@ -1224,7 +1234,7 @@ async function telaCliente(m, cid) {
       const min = l.id === "conversa" && !S.convAberta;
       el.className = "wg vidro painel-cli" + (min ? " min" : ""); el.dataset.wg = l.id; el.style.setProperty("--c", d.cor);
       el.innerHTML = `<header class="wg-cab" title="Arraste para mover">${A.orbe(d.icone, d.cor, "p")}<h3>${titulo(l.id)}</h3>
-        <span class="acs">${l.id === "cli" && !D.interno ? `<button type="button" class="btn-ic p" id="acessoApp" title="Acesso do cliente ao app — senha, aparelhos conectados e bloqueios">${svg("escudo")}</button>` : ""}${l.id === "conversa" && !D.interno ? `<button type="button" class="btn-ic p" id="chamarCli" title="Chamar o cliente — mensagem no chat e aviso no celular (app ou link)">${svg("sino")}</button>` : ""}${l.id === "conversa" ? `<button type="button" class="btn-ic p" id="minConv" title="${min ? "Mostrar a conversa" : "Minimizar"}">${svg(min ? "maximizar" : "minimizar")}</button>` : ""}<button type="button" class="btn-ic p" data-wmax="${l.id}" title="Expandir">${svg("maximizar")}</button></span></header>
+        <span class="acs">${l.id === "conversa" && chat && pode("encerrar") ? `<button type="button" class="bt-encerrar" id="encerrarAt" title="Finalizar o atendimento com o cliente — o chamado e as solicitações continuam abertos">${svg("check")} Encerrar</button>` : ""}${l.id === "cli" && !D.interno ? `<button type="button" class="btn-ic p" id="acessoApp" title="Acesso do cliente ao app — senha, aparelhos conectados e bloqueios">${svg("escudo")}</button>` : ""}${l.id === "conversa" && !D.interno ? `<button type="button" class="btn-ic p" id="chamarCli" title="Chamar o cliente — mensagem no chat e aviso no celular (app ou link)">${svg("sino")}</button>` : ""}${l.id === "conversa" ? `<button type="button" class="btn-ic p" id="minConv" title="${min ? "Mostrar a conversa" : "Minimizar"}">${svg(min ? "maximizar" : "minimizar")}</button>` : ""}<button type="button" class="btn-ic p" data-wmax="${l.id}" title="Expandir">${svg("maximizar")}</button></span></header>
         <div class="wg-corpo">${corpo[l.id]}</div><span class="wg-redim" title="Arraste para redimensionar"></span>`;
       if (l.id === "conversa" && !min && l.h > 2) S.convH = l.h;
       grade.adicionar({ id: l.id, x: l.x, y: l.y, w: l.w, h: min ? 1 : (l.id === "conversa" ? Math.max(l.h, 4) : l.h), minW: d.minW, minH: min ? 1 : (d.minH === 1 ? 3 : d.minH), el });
@@ -1427,20 +1437,29 @@ function ligarCliente(m, D, sel, chat, abertas) {
     ra.onclick = () => vai("resposta"); $("#notaChat").onclick = () => vai("nota");
     $("#txtChat").onkeydown = (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) vai("resposta"); }; }
   // concluir o chat: anexar ao chamado OU virar solicitação
-  const cc = $("#concluirChat"); if (cc) cc.onclick = () => {
-    const md = A.modal({ titulo: "Concluir o chat do app", icone: "check", largura: 560,
-      html: `<p class="dica" style="margin-bottom:10px">Só a central encerra. O cliente vê o chat encerrado e passa a acompanhar tudo pelo chamado nº <b>${esc(D.cliente.codigo || cid)}</b>.</p>
+  const concluir = () => {
+    A.modal({ titulo: "Deseja finalizar o atendimento?", icone: "check", cor: "var(--verde)", largura: 580,
+      html: `<div style="display:flex;flex-direction:column;gap:10px"><p class="dica" style="margin:0">O chat com o cliente é encerrado. O chamado nº <b>${esc(D.cliente.codigo || cid)}</b> e as solicitações abertas <b>continuam</b> em Solicitações — o cliente acompanha por lá.</p>
+        <label class="campo"><span>Mensagem de despedida <small class="dica" style="font-weight:400">· opcional, o cliente vê no app</small></span><textarea id="ccTchau" rows="2" placeholder="Ex.: Obrigado pelo contato! Qualquer dúvida, é só chamar."></textarea></label>
+        <label class="chk" style="padding:10px 12px;border-radius:12px;border:1px solid color-mix(in srgb,var(--verde) 40%,transparent);background:color-mix(in srgb,var(--verde) 7%,transparent)"><input type="checkbox" id="ccPesq" checked> <b>Enviar a pesquisa de satisfação</b> (CSAT 1 a 5 + NPS 0 a 10) — chega no celular do cliente</label>
+        <div class="sec" style="margin:4px 0 0">O que fazer com a conversa</div>
         <label class="chk"><input type="radio" name="modo" value="anexar" checked> <b>Anexar a conversa ao chamado</b> — fica no histórico, sem abrir solicitação</label>
         <label class="chk" style="margin-top:6px"><input type="radio" name="modo" value="solicitacao"> <b>Transformar em solicitação</b> — vira mais um problema do chamado, com motivo e SLA</label>
-        <div id="ccSol" class="oculto" style="margin-top:10px">${camposMotivo("cc", D, "", chat.departamento)}</div>`,
-      botoes: [{ rotulo: "Voltar" }, { rotulo: "Concluir chat", classe: "btn", principal: true, acao: async () => {
-        const modo = document.querySelector('input[name="modo"]:checked').value, body = { modo };
+        <div id="ccSol" class="oculto" style="margin-top:10px">${camposMotivo("cc", D, "", chat.departamento)}</div></div>`,
+      botoes: [{ rotulo: "Voltar" }, { rotulo: "Finalizar atendimento", classe: "btn", principal: true, acao: async () => {
+        const modo = document.querySelector('input[name="modo"]:checked').value, body = { modo, pesquisa: $("#ccPesq").checked }, tchau = $("#ccTchau").value.trim();
         if (modo === "solicitacao") { body.departamento = chat.departamento || ""; body.motivo_pai = $("#ccPai").value; body.motivo_filho = $("#ccFilho").value; body.pedido_id = $("#ccPed")?.value || ""; if (!body.motivo_pai || !body.motivo_filho) { A.toast("Escolha motivo e submotivo."); return false; } }
-        try { await chamar(tidUrl(chat.id) + "/concluir-chat", { method: "POST", body }); ok(modo === "anexar" ? "Chat concluído e anexado ao chamado." : "Chat virou solicitação do chamado."); S.solSel = modo === "solicitacao" ? chat.id : null; await recarregarDet(); }
+        try {
+          if (tchau) await chamar(tidUrl(chat.id) + "/comentar", { method: "POST", body: { texto: tchau, tipo: "resposta" } });
+          const r = await chamar(tidUrl(chat.id) + "/concluir-chat", { method: "POST", body });
+          ok((modo === "anexar" ? "Atendimento finalizado e anexado ao chamado." : "Atendimento finalizado — virou solicitação do chamado.") + (body.pesquisa ? (r.pesquisa_enviada ? " Pesquisa enviada." : " (pesquisa não enviada: cliente sem avisos ativos)") : ""));
+          S.solSel = modo === "solicitacao" ? chat.id : null; await recarregarDet(); }
         catch (e) { falha(e); return false; } } }] });
     document.querySelectorAll('input[name="modo"]').forEach((r) => (r.onchange = () => $("#ccSol").classList.toggle("oculto", document.querySelector('input[name="modo"]:checked').value !== "solicitacao")));
     ligarMotivo("cc", () => chat.departamento);
   };
+  const cc = $("#concluirChat"); if (cc) cc.onclick = concluir;
+  const ea = $("#encerrarAt"); if (ea) ea.onclick = concluir;
   // nova solicitação no MESMO chamado
   const ns = $("#novaSol"); if (ns) ns.onclick = () => {
     A.modal({ titulo: `Nova solicitação · chamado nº ${D.cliente.codigo || cid}`, icone: "mais", largura: 600,

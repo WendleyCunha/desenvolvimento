@@ -181,9 +181,10 @@ def enviar(etapa: str, ped: dict, pid: str, km=None, chave: str = "") -> dict | 
                                            f"{banco.prefixo_publico()}/cliente/", f"regua-{etapa}-{pid}", urgente=etapa in URGENTES)
 
 
-def pesquisa(tipo: str, cod_cliente: str, nome: str, ref: str, ped: dict | None = None, atendente: str = "") -> dict | None:
+def pesquisa(tipo: str, cod_cliente: str, nome: str, ref: str, ped: dict | None = None, atendente: str = "", forcar: bool = False) -> dict | None:
+    """forcar=True: o atendente marcou "enviar pesquisa" ao encerrar — vai mesmo com a etapa desligada na régua."""
     c = cfg()["pesquisas"].get(tipo)
-    if not c or not c["ativo"] or not cod_cliente:
+    if not c or not (c["ativo"] or forcar) or not cod_cliente:
         return None
     if _ja(ref, "pesquisa-" + tipo, 30 * 86400):
         return None

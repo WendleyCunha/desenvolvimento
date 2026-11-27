@@ -724,7 +724,7 @@ def _mutar_sol(tid: str, fn, me: dict, interacao=True):
         s = dict(sols[i])
         aberto_antes = s.get("status") in ABERTOS
         res = fn(s)
-        if aberto_antes and eh_chat(s) and s.get("status") in ("resolvido", "finalizado"):   # chat concluído → pesquisa (régua)
+        if aberto_antes and eh_chat(s) and s.get("status") in ("resolvido", "finalizado") and not s.get("pesquisa_manual"):   # chat concluído → pesquisa (régua)
             try:
                 import regua
                 regua.chat_concluido({**s, "id": tid}, cont.get("cliente_codigo") or s.get("cliente_codigo") or "",
@@ -2252,6 +2252,7 @@ async def concluir_chat(tid: str, request: Request):
         raise HTTPException(409, "Este chat já foi concluído.")
     c = await request.json()
     modo = c.get("modo")
+    escolheu = isinstance(c.get("pesquisa"), bool)   # o atendente marcou/desmarcou "enviar pesquisa" no encerrar
     if modo == "solicitacao":
         pai, filho = str(c.get("motivo_pai") or ""), str(c.get("motivo_filho") or "")
         setor_chat = str(c.get("departamento") or t.get("departamento") or "")
@@ -2288,5 +2289,21 @@ async def concluir_chat(tid: str, request: Request):
             _coment(s, me, "💬 Chat concluído — a conversa fica no histórico do chamado do cliente.", tipo="sistema")
     else:
         raise HTTPException(400, "Escolha: anexar ao chamado ou virar solicitação.")
+    if escolheu:
+        base_fn = fn
+
+        def fn(s):   # noqa: F811 — a pesquisa sai aqui (escolha do atendente), não pela régua automática
+            base_fn(s)
+            s["pesquisa_manual"] = True
     _mutar_sol(tid, fn, me)
-    return {"ok": True}
+    enviou = False
+    if escolheu and c["pesquisa"]:
+        try:
+            import regua
+            cont = (BASE.cont or {}).get(decompor(tid)[0]) or {}
+            r = regua.pesquisa("atendimento", cont.get("cliente_codigo") or t.get("cliente_codigo") or "", cont.get("cliente_nome") or t.get("cliente_nome") or "",
+                               tid, None, t.get("atribuido_para") or me["usuario"], forcar=True)
+            enviou = bool(r and r.get("enviados"))
+        except Exception as ex:  # noqa: BLE001
+            print(f"[régua] pesquisa ao encerrar: {ex}")
+    return {"ok": True, "pesquisa_enviada": enviou}
