@@ -573,7 +573,7 @@ function renderAbas() {
   const aba = (cid) => { const c = info(cid), sn = sinal(c), nome = String(c.cliente_nome || cid).split(" ")[0];
     if (ehApp(cid)) return `<button type="button" class="aba-tk app curta${S.aberto === cid ? " ativo" : ""}${sn ? " pend" : ""}" data-aba-tk="${esc(cid)}" data-sinal="${sn}" title="${esc((c.cliente_nome || "") + " · chamado " + (c.cliente_codigo || cid))}"><span class="nm">${esc(nome.charAt(0).toUpperCase() + nome.slice(1).toLowerCase())}</span><span class="x" data-fechar="${esc(cid)}" title="Fechar aba">×</span></button>`;
     return `<button type="button" class="aba-tk${ehApp(cid) ? " app" : ""}${S.aberto === cid ? " ativo" : ""}${sn ? " pend" : ""}" data-aba-tk="${esc(cid)}" data-sinal="${sn}" title="${esc((c.cliente_nome || "") + " · chamado " + (c.cliente_codigo || cid))}">
-      ${sn ? `<span class="pisca"></span>` : ""}<span class="nm"><small>${ehApp(cid) ? "📱" : "#"}${esc(String(c.cliente_codigo || cid).slice(0, 8))}</small>${esc(nome)}${(c.solsAb || []).length > 1 ? ` <small>· ${c.solsAb.length}</small>` : ""}</span><span class="x" data-fechar="${esc(cid)}" title="Fechar aba">×</span></button>`; };
+      ${sn ? `<span class="pisca"></span>` : ""}<span class="nm">${esc(nome.charAt(0).toUpperCase() + nome.slice(1).toLowerCase())}${(c.solsAb || []).length > 1 ? ` <small>· ${c.solsAb.length}</small>` : ""}</span><span class="x" data-fechar="${esc(cid)}" title="Fechar aba">×</span></button>`; };
   const app = S.abas.filter(ehApp).sort((a, b) => (sinal(info(b)) ? 1 : 0) - (sinal(info(a)) ? 1 : 0));   // quem respondeu vem primeiro
   const tks = S.abas.filter((cid) => !ehApp(cid));
   el.innerHTML = `<button type="button" class="aba-caixa${!S.aberto ? " ativo" : ""}" id="abaCaixa">${svg("voltar")} Caixa</button>
@@ -1180,11 +1180,10 @@ async function telaCliente(m, cid) {
         <div class="registro">${registro.map((x) => `<div class="msg ${CLS_TIPO[x.tipo] || x.tipo}" style="--sol:${corSol(sel.cor)}"><span class="q">${ROT_TIPO[x.tipo] ? `<b>${ROT_TIPO[x.tipo]}</b> · ` : ""}${esc(x.autor || "")} · ${dh(x.data)}</span>${esc(x.texto || "")}</div>`).join("")}</div>
         ${atende ? `<div class="resp">
           <textarea class="entrada" id="txt" placeholder="Escreva o andamento… (Ctrl+Enter = Registrar)" style="min-height:70px"></textarea>
-          <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center">
+          <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center;justify-content:center">
             <button type="button" class="bt-luz" id="regCli" style="--c:var(--azul)" title="O cliente vê no app e a situação passa a Em andamento">👁 Registrar</button>
             <button type="button" class="bt-luz" id="regNota" style="--c:var(--violeta)" title="Só a equipe vê — o cliente nunca vê">🔒 Nota interna</button>
-            ${podeConcluir(sel) ? `<button type="button" class="bt-luz" id="concluirSol" style="--c:var(--verde);margin-left:auto">${svg("check")} Concluir</button>` : ""}</div>
-          <p class="dica" style="margin-top:4px">Registrar: o cliente vê no app · Nota interna: o cliente nunca vê · Concluir: finaliza a solicitação.</p>
+            ${podeConcluir(sel) ? `<button type="button" class="bt-luz" id="concluirSol" style="--c:var(--verde)">${svg("check")} Concluir</button>` : ""}</div>
         </div>` : ""}`}
       </div>` : ""}
       ${fechadas.length ? `<details id="solConcl" style="margin-top:6px"${S.concAberta ? " open" : ""}><summary class="dica" style="cursor:pointer">Concluídas (${fechadas.length})</summary><div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">${fechadas.slice().sort((a, b) => fimDe(b).localeCompare(fimDe(a))).map(cartao).join("")}</div></details>` : ""}`,
@@ -1465,22 +1464,23 @@ function ligarCliente(m, D, sel, chat, abertas) {
   const ea = $("#encerrarAt"); if (ea) ea.onclick = concluir;
   // nova solicitação no MESMO chamado
   const ns = $("#novaSol"); if (ns) ns.onclick = () => {
+    // o chamado do cliente é da Caixa: o setor vem travado (para acionar outro setor, use 🤝 Ajuda — cai em Pedidos de ajuda)
+    const setorCx = S.e.departamentos.find((d) => norm(d) === norm((S.e.wwhat && S.e.wwhat.departamento) || "CX")) || (S.e.wwhat && S.e.wwhat.departamento) || "CX";
+    const arvCli = Object.fromEntries(Object.entries(arvDe(setorCx)).map(([p2, fs]) => [p2, Object.fromEntries(Object.entries(fs || {}).filter(([, i]) => i.exige_codigo !== false))]).filter(([, fs]) => Object.keys(fs).length));
     A.modal({ titulo: `Nova solicitação · chamado nº ${D.cliente.codigo || cid}`, icone: "mais", largura: 600,
-      html: `<p class="dica" style="margin-bottom:10px">Entra no chamado do cliente (não abre outro). Mesmo motivo + mesmo pedido já aberto não é permitido.</p>
-        <label class="campo">Setor<select id="nsDep">${S.e.departamentos.map((d) => `<option>${esc(d)}</option>`).join("")}</select></label>
-        <div style="margin-top:8px" id="nsMot">${camposMotivo("ns", D, "", S.e.departamentos[0])}</div>
+      html: `<p class="dica" style="margin-bottom:10px">Entra no chamado do cliente, no setor <b>${esc(setorCx)}</b> (não abre outro). Mesmo motivo + mesmo pedido já aberto não é permitido. Precisa de outro setor (ex.: Manutenção)? Use <b>🤝 Ajuda</b> na solicitação — vai para Pedidos de ajuda.</p>
+        <div id="nsMot">${camposMotivo("ns", D, "", setorCx)}</div>
         <label class="campo" style="margin-top:8px">Descrição<textarea id="nsDesc" rows="4"></textarea></label>`,
       botoes: [{ rotulo: "Cancelar" }, { rotulo: "Adicionar ao chamado", classe: "btn", principal: true, acao: async () => {
         const pai = $("#nsPai").value, filho = $("#nsFilho").value, desc = $("#nsDesc").value.trim(), pedSel = $("#nsPed");
         if (!pai || !filho || !desc) { A.toast("Escolha motivo, submotivo e descreva."); return false; }
-        const body = { cliente_codigo: D.cliente.codigo, cliente_nome: D.cliente.nome, cliente_telefone: D.cliente.telefone, departamento: $("#nsDep").value,
+        const body = { cliente_codigo: D.cliente.codigo, cliente_nome: D.cliente.nome, cliente_telefone: D.cliente.telefone, departamento: setorCx,
           motivo_pai: pai, motivo_filho: filho, assunto: filho, descricao: desc, erp_cliente_id: D.erp?.clientes?.[0]?.id || "" };
         if (pedSel && pedSel.value) { body.erp_pedido_id = pedSel.value; body.erp_pedido_numero = +pedSel.selectedOptions[0].dataset.num || pedSel.selectedOptions[0].dataset.num; body.assunto += " · pedido #" + body.erp_pedido_numero; }
         try { const r = await chamar("/tickets", { method: "POST", body }); ok("Solicitação adicionada ao chamado nº " + (r.chamado || D.cliente.codigo) + "."); S.solSel = r.id; await recarregarDet(); }
         catch (e) { falha(e); return false; } } }] });
-    const nsSetor = () => $("#nsDep").value;
-    ligarMotivo("ns", nsSetor);
-    $("#nsDep").onchange = () => { $("#nsPai").innerHTML = opcoesPai(arvDe(nsSetor()), ""); $("#nsFilho").innerHTML = `<option value="">Escolha o motivo</option>`; };
+    $("#nsPai").innerHTML = opcoesPai(arvCli, "");
+    $("#nsPai").onchange = () => { $("#nsFilho").innerHTML = opcoesFilho(arvCli, $("#nsPai").value, ""); };
   };
   // ERP (ações registradas na solicitação selecionada — ou na primeira aberta)
   const tidErp = (!sel.chat && ABERTOS.includes(sel.status) ? sel : abertas[0] || sel).id;
