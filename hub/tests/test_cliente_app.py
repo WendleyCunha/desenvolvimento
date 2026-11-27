@@ -1087,3 +1087,22 @@ def test_ja_tem_app_link_abre_o_app_e_conecta_com_a_senha_existente(t, monkeypat
     r = t.post("/api/cliente/atendimento/conectar", json={"senha": "482916"})
     assert r.status_code == 200 and r.json()["url"] == "/cliente/"
     assert t.get("/api/cliente/sessao").json()["estado"] == "ok"
+
+
+def test_encerrar_atendimento_com_ou_sem_pesquisa(t, monkeypatch):
+    import regua
+    feitas = []
+    monkeypatch.setattr(regua, "pesquisa", lambda tipo, cod, nome, ref, ped=None, atend="", forcar=False: feitas.append((tipo, ref, forcar)) or {"enviados": 1})
+    monkeypatch.setattr(regua, "chat_concluido", lambda *a, **k: feitas.append(("auto",)))
+    entrar(t)
+    c1 = t.post("/api/cliente/chat", json={"opcao": "outro", "texto": "Oi"}).json()["id"]
+    tid = central(t, c1)["id"]
+    r = t.post(url_tk(tid) + "/concluir-chat", json={"modo": "anexar", "pesquisa": True}).json()
+    assert r["pesquisa_enviada"] and feitas == [("atendimento", tid, True)]          # manual: forçada, sem a automática junto
+    c2 = t.post("/api/cliente/chat", json={"opcao": "outro", "texto": "De novo"}).json()["id"]
+    feitas.clear()
+    r = t.post(url_tk(central(t, c2)["id"]) + "/concluir-chat", json={"modo": "anexar", "pesquisa": False}).json()
+    assert r["pesquisa_enviada"] is False and feitas == []                          # desmarcou: nada sai
+    c3 = t.post("/api/cliente/chat", json={"opcao": "outro", "texto": "Mais uma"}).json()["id"]
+    t.post(url_tk(central(t, c3)["id"]) + "/concluir-chat", json={"modo": "anexar"})
+    assert feitas == [("auto",)]                                                     # sem escolha: segue a régua

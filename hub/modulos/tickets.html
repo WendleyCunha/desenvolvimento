@@ -1149,7 +1149,7 @@ async function telaCliente(m, cid) {
       <div class="conversa" id="conversa">${tl.map(balao).join("")}</div>
       ${chat && pode("atender") ? `<div class="resp">
         <textarea class="entrada" id="txtChat" placeholder="Responder ao cliente no chat… (Ctrl+Enter = Responder no app)" style="min-height:64px"></textarea>
-        <div style="display:flex;gap:6px;margin-top:6px;align-items:center;flex-wrap:wrap"><button type="button" class="btn p" id="respApp" title="O cliente vê na aba Atendimento do app">📱 Responder no app</button><button type="button" class="btn v p" id="notaChat" title="Só a equipe vê — o cliente nunca vê">🔒 Nota interna</button></div>
+        <div style="display:flex;gap:6px;margin-top:6px;align-items:center;flex-wrap:wrap"><button type="button" class="btn p" id="respApp" title="O cliente vê na aba Atendimento do app">📱 Responder no app</button><button type="button" class="btn v p" id="notaChat" title="Só a equipe vê — o cliente nunca vê">🔒 Nota interna</button>${pode("encerrar") ? `<span style="flex:1"></span><button type="button" class="btn p" id="encerrarAt" style="--c:var(--verde)" title="Finalizar o atendimento com o cliente — o chamado e as solicitações continuam abertos">${svg("check")} Encerrar atendimento</button>` : ""}</div>
       </div>` : `<p class="dica">${chat ? "" : "Sem chat ativo. Aqui fica o histórico da conversa com o cliente — o atendimento do ticket é feito em Solicitações."}</p>`}`,
     sols: `${ehSol && atende ? `<div class="barra-sol">
         <span class="qual" title="Os ícones agem na solicitação selecionada">${esc(rot(ativa))}</span><span class="esp"></span>
@@ -1427,20 +1427,28 @@ function ligarCliente(m, D, sel, chat, abertas) {
     ra.onclick = () => vai("resposta"); $("#notaChat").onclick = () => vai("nota");
     $("#txtChat").onkeydown = (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) vai("resposta"); }; }
   // concluir o chat: anexar ao chamado OU virar solicitação
-  const cc = $("#concluirChat"); if (cc) cc.onclick = () => {
-    const md = A.modal({ titulo: "Concluir o chat do app", icone: "check", largura: 560,
-      html: `<p class="dica" style="margin-bottom:10px">Só a central encerra. O cliente vê o chat encerrado e passa a acompanhar tudo pelo chamado nº <b>${esc(D.cliente.codigo || cid)}</b>.</p>
+  const concluir = () => {
+    A.modal({ titulo: "Deseja finalizar o atendimento?", icone: "check", cor: "var(--verde)", largura: 580,
+      html: `<p class="dica" style="margin-bottom:10px">O chat com o cliente é encerrado. O chamado nº <b>${esc(D.cliente.codigo || cid)}</b> e as solicitações abertas <b>continuam</b> em Solicitações — o cliente acompanha por lá.</p>
+        <label class="campo">Mensagem de despedida <small class="dica">(opcional — o cliente vê no app)</small><textarea id="ccTchau" rows="2" placeholder="Ex.: Obrigado pelo contato! Qualquer dúvida, é só chamar."></textarea></label>
+        <label class="chk" style="margin:8px 0 10px"><input type="checkbox" id="ccPesq" checked> <b>Enviar a pesquisa de satisfação</b> (CSAT 1 a 5 + NPS 0 a 10) — chega no celular do cliente</label>
         <label class="chk"><input type="radio" name="modo" value="anexar" checked> <b>Anexar a conversa ao chamado</b> — fica no histórico, sem abrir solicitação</label>
         <label class="chk" style="margin-top:6px"><input type="radio" name="modo" value="solicitacao"> <b>Transformar em solicitação</b> — vira mais um problema do chamado, com motivo e SLA</label>
         <div id="ccSol" class="oculto" style="margin-top:10px">${camposMotivo("cc", D, "", chat.departamento)}</div>`,
-      botoes: [{ rotulo: "Voltar" }, { rotulo: "Concluir chat", classe: "btn", principal: true, acao: async () => {
-        const modo = document.querySelector('input[name="modo"]:checked').value, body = { modo };
+      botoes: [{ rotulo: "Voltar" }, { rotulo: "Finalizar atendimento", classe: "btn", principal: true, acao: async () => {
+        const modo = document.querySelector('input[name="modo"]:checked').value, body = { modo, pesquisa: $("#ccPesq").checked }, tchau = $("#ccTchau").value.trim();
         if (modo === "solicitacao") { body.departamento = chat.departamento || ""; body.motivo_pai = $("#ccPai").value; body.motivo_filho = $("#ccFilho").value; body.pedido_id = $("#ccPed")?.value || ""; if (!body.motivo_pai || !body.motivo_filho) { A.toast("Escolha motivo e submotivo."); return false; } }
-        try { await chamar(tidUrl(chat.id) + "/concluir-chat", { method: "POST", body }); ok(modo === "anexar" ? "Chat concluído e anexado ao chamado." : "Chat virou solicitação do chamado."); S.solSel = modo === "solicitacao" ? chat.id : null; await recarregarDet(); }
+        try {
+          if (tchau) await chamar(tidUrl(chat.id) + "/comentar", { method: "POST", body: { texto: tchau, tipo: "resposta" } });
+          const r = await chamar(tidUrl(chat.id) + "/concluir-chat", { method: "POST", body });
+          ok((modo === "anexar" ? "Atendimento finalizado e anexado ao chamado." : "Atendimento finalizado — virou solicitação do chamado.") + (body.pesquisa ? (r.pesquisa_enviada ? " Pesquisa enviada." : " (pesquisa não enviada: cliente sem avisos ativos)") : ""));
+          S.solSel = modo === "solicitacao" ? chat.id : null; await recarregarDet(); }
         catch (e) { falha(e); return false; } } }] });
     document.querySelectorAll('input[name="modo"]').forEach((r) => (r.onchange = () => $("#ccSol").classList.toggle("oculto", document.querySelector('input[name="modo"]:checked').value !== "solicitacao")));
     ligarMotivo("cc", () => chat.departamento);
   };
+  const cc = $("#concluirChat"); if (cc) cc.onclick = concluir;
+  const ea = $("#encerrarAt"); if (ea) ea.onclick = concluir;
   // nova solicitação no MESMO chamado
   const ns = $("#novaSol"); if (ns) ns.onclick = () => {
     A.modal({ titulo: `Nova solicitação · chamado nº ${D.cliente.codigo || cid}`, icone: "mais", largura: 600,
