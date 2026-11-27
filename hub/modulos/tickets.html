@@ -284,6 +284,15 @@ button.kpi:hover{border-color:color-mix(in srgb,var(--c) 50%,transparent)}
 .g-pess{display:flex;align-items:center;gap:9px;background:none;border:0;padding:0;color:inherit;cursor:pointer;text-align:left;font:inherit}
 .g-pess:hover b{color:var(--ouro2)}.g-pess small{display:block;font-size:.66rem;color:var(--txt3)}
 .eq tr.g-sel td{background:rgba(var(--ouro-rgb),.05)}
+/* Pedidos de ajuda › Que eu abri: ícones de setor + ordenação */
+.aj-ics{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 10px}
+.aj-ic{position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;min-width:62px;padding:6px 6px 5px;border-radius:14px;border:1px solid var(--vidro-borda);background:transparent;color:var(--txt2);cursor:pointer;font:inherit}
+.aj-ic span{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font:800 .8rem var(--titulo);color:#fff;background:var(--c);box-shadow:0 0 10px -3px var(--c)}
+.aj-ic em{position:absolute;top:1px;right:6px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--rosa);color:#fff;font:700 .66rem/18px var(--titulo);font-style:normal}
+.aj-ic small{font-size:.66rem;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.aj-ic.on{border-color:var(--c);background:rgba(var(--ouro-rgb),.06);color:var(--txt)}
+.aj-ord{background:none;border:0;padding:0;font:inherit;color:inherit;cursor:pointer;white-space:nowrap}.aj-ord.on{color:var(--ouro2)}
+.aj-tag{display:inline-block;padding:2px 8px;border-radius:9px;border:1px solid var(--c);color:var(--c);font-size:.74rem;font-weight:700;white-space:nowrap}
 /* régua do cliente: linha do pedido com uma etapa embaixo da outra */
 .rg-linha{position:relative;display:flex;flex-direction:column;gap:8px;padding-left:18px;flex:none}
 [data-wwp] > *{flex-shrink:0}
@@ -1707,10 +1716,22 @@ function telaAjuda(m) {
       <td class="so-largo">${dh(t.criado_em)}</td>
       <td>${t.sem_dono ? `<span class="dica">— sem dono —</span>` : esc(nomeU(t.atribuido_para).split(" ")[0])}</td>
       <td>${slaTxt(t.sla)}<br>${etqSt(t.status)}</td></tr>`;
+  /* "Que eu abri": setor pendente, filtro por setor (ícones) e ordem A-Z / Z-A em cada coluna */
+  const porSetorM = {}; minhas.forEach((t) => { const d = t.departamento || "—"; porSetorM[d] = (porSetorM[d] || 0) + 1; });
+  const setorM = S.ajSetorM && porSetorM[S.ajSetorM] ? S.ajSetorM : "";
+  const ordM = S.ajOrdM || { c: "desde", d: -1 };
+  const chaveM = { chamado: (t) => String(t.cliente_codigo || t.id || ""), quem: (t) => norm(t.interno ? (nomeU(t.aberto_por) || t.assunto || "") : t.cliente_nome || ""),
+    setor: (t) => norm(t.departamento || ""), desde: (t) => String(t.criado_em || ""), dono: (t) => norm(t.sem_dono ? "" : nomeU(t.atribuido_para)), sla: (t) => t.sla?.min ?? 1e12 };
+  const listaM = minhas.filter((t) => !setorM || (t.departamento || "—") === setorM).sort((a, b) => { const x = chaveM[ordM.c](a), y = chaveM[ordM.c](b); return (x < y ? -1 : x > y ? 1 : 0) * ordM.d; });
+  const iniciais = (d) => String(d).split(/\s+/).map((w) => w[0] || "").join("").slice(0, 2).toUpperCase() || "?";
+  const icSetor = (d, n, rot) => `<button type="button" class="aj-ic${setorM === d ? " on" : ""}" data-ajsm="${esc(d)}" title="${esc(rot || d)} · ${n} aberta(s)" style="--c:${d ? cor(d) : "var(--ouro)"}"><span>${d ? esc(iniciais(d)) : "★"}</span><em>${n}</em><small>${esc(rot || d)}</small></button>`;
+  const thM = (c, r, cls) => `<th${cls ? ` class="${cls}"` : ""}><button type="button" class="aj-ord${ordM.c === c ? " on" : ""}" data-ajord="${c}" title="Ordenar A-Z / Z-A">${r} ${ordM.c === c ? (ordM.d > 0 ? "▲" : "▼") : "↕"}</button></th>`;
+  const linhaM = (t) => linha(t).replace(/(<td class="so-largo">)/, `<td><span class="aj-tag" style="--c:${cor(t.departamento || "—")}">${esc(t.departamento || "—")}</span></td>$1`);
   const blocos = (ass ? [[ass, porAss[ass]]] : assuntos).map(([a, ts]) => `<tr><td colspan="5" style="padding:12px 8px 6px;border-bottom:1px solid var(--vidro-borda)"><b style="color:${cor(a)}">${esc(a)}</b> <span class="dica">${ts.length}</span></td></tr>${ts.slice().sort(ordSla).map(linha).join("")}`).join("");
   const card = (v) => { const ult = v.conversa[v.conversa.length - 1];
     return `<button type="button" class="sol-card" data-aj="${esc(v.id)}" style="--c:${v.status === "aberto" ? (v.papel === "recebido" ? "var(--violeta)" : "var(--azul)") : "var(--verde)"};width:100%;text-align:left">
       <span class="t1"><b>${esc(v.setor_origem)} → ${esc(v.setor_destino)}</b>${etq(v.status === "aberto" ? (v.papel === "recebido" ? "aguardando meu setor" : "aguardando " + v.setor_destino) : "encerrado", v.status === "aberto" ? "#8b5cf6" : "#34d399")}<span class="dica" style="margin-left:auto">${dh(v.ultima_em)}</span></span>
+      <small>Aberto por <b>${esc(v.solicitado_por_nome || nomeU(v.solicitado_por) || "—")}</b> (${esc(v.setor_origem || "—")})</small>
       <small><b>${esc(v.cliente_nome || "")}</b> · ${esc(v.cliente_codigo || "")} · ${esc(v.assunto || "")} · ${v.conversa.length} mensagem(ns)</small>
       <small style="display:block;margin-top:3px">💬 ${esc(ult.nome || "")}: ${esc(String(ult.texto || "").slice(0, 160))}</small></button>`; };
   m.innerHTML = `<div class="caixa">
@@ -1726,12 +1747,23 @@ function telaAjuda(m) {
     </aside>
     <section class="painel vidro">
       ${!setor ? `<div class="aviso ouro">Seu usuário está sem setor — defina em Ajustes › Setor de cada pessoa para ver os chats, tickets e pedidos de ajuda do seu setor.</div>` : ""}
-      ${f === "minhas" ? `<h3 style="margin:0 0 10px">Solicitações internas que eu abri</h3>${minhas.length ? `<table class="tab"><thead><tr><th>Chamado</th><th>Quem / assunto</th><th class="so-largo">Desde</th><th>Dono</th><th>SLA / situação</th></tr></thead><tbody>${minhas.map(linha).join("")}</tbody></table>` : `<div class="vazio">${A.orbe("check", "var(--verde)")}<b>Nenhuma aberta</b></div>`}`
+      ${f === "minhas" ? `<h3 style="margin:0 0 10px">Solicitações internas que eu abri</h3>${minhas.length ? `<div class="aj-ics">${icSetor("", minhas.length, "Todos")}${Object.entries(porSetorM).sort((a, b) => a[0].localeCompare(b[0])).map(([d, n]) => icSetor(d, n)).join("")}</div>
+        <table class="tab"><thead><tr>${thM("chamado", "Chamado")}${thM("quem", "Quem / assunto")}${thM("setor", "Setor pendente")}${thM("desde", "Desde", "so-largo")}${thM("dono", "Dono")}${thM("sla", "SLA / situação")}</tr></thead><tbody>${listaM.map(linhaM).join("")}</tbody></table>` : `<div class="vazio">${A.orbe("check", "var(--verde)")}<b>Nenhuma aberta</b></div>`}`
       : f === "setor" ? `<div class="resumo-real"><span><b style="color:var(--violeta)">${fila.length}</b> solicitação(ões) interna(s)</span><span><b style="color:var(--ouro)">${fila.filter((t) => t.sem_dono).length}</b> sem dono</span>${ass ? `<span>assunto: <b>${esc(ass)}</b></span>` : ""}</div>
         ${fila.length ? `<table class="tab" style="margin-top:8px"><thead><tr><th>Chamado</th><th>Cliente</th><th class="so-largo">Desde</th><th>Dono</th><th>SLA / situação</th></tr></thead><tbody>${blocos}</tbody></table>` : `<div class="vazio">${A.orbe("check", "var(--verde)")}<b>Nada aberto no setor</b></div>`}`
-      : `<h3 style="margin:0 0 10px">${nomes[f]}</h3><div style="display:flex;flex-direction:column;gap:8px">${grupos[f].map(card).join("") || `<div class="vazio">${A.orbe("check", "var(--verde)")}<b>Nada aqui</b></div>`}</div>`}
+      : `<h3 style="margin:0 0 10px">${nomes[f]}</h3>${(() => {   // ícones do outro setor: quem pediu (recebidos) / para quem pedi (enviados)
+          const lado = (v) => (f === "recebidos" || (f === "resolvidos" && v.papel === "recebido") ? v.setor_origem : v.setor_destino) || "—";
+          const cont = {}; grupos[f].forEach((v) => (cont[lado(v)] = (cont[lado(v)] || 0) + 1));
+          const sel = S.ajSetorP && cont[S.ajSetorP] ? S.ajSetorP : "";
+          S._ajLista = grupos[f].filter((v) => !sel || lado(v) === sel);
+          return grupos[f].length ? `<div class="aj-ics">${[["", grupos[f].length, "Todos"], ...Object.entries(cont).sort((a, b) => a[0].localeCompare(b[0]))].map(([d, n, r]) =>
+            `<button type="button" class="aj-ic${sel === d ? " on" : ""}" data-ajsp="${esc(d)}" title="${esc(r || d)} · ${n}" style="--c:${d ? cor(d) : "var(--ouro)"}"><span>${d ? esc(iniciais(d)) : "★"}</span><em>${n}</em><small>${esc(r || d)}</small></button>`).join("")}</div>` : ""; })()}
+        <div style="display:flex;flex-direction:column;gap:8px">${(S._ajLista || grupos[f]).map(card).join("") || `<div class="vazio">${A.orbe("check", "var(--verde)")}<b>Nada aqui</b></div>`}</div>`}
     </section></div>`;
   m.querySelectorAll("[data-ajf]").forEach((b) => (b.onclick = () => { S.ajFiltro = b.dataset.ajf; S.ajAss = b.dataset.ajass || ""; render(); }));
+  m.querySelectorAll("[data-ajsp]").forEach((b) => (b.onclick = () => { S.ajSetorP = b.dataset.ajsp; render(); }));
+  m.querySelectorAll("[data-ajsm]").forEach((b) => (b.onclick = () => { S.ajSetorM = b.dataset.ajsm; render(); }));
+  m.querySelectorAll("[data-ajord]").forEach((b) => (b.onclick = (ev) => { ev.stopPropagation(); const c = b.dataset.ajord; S.ajOrdM = { c, d: ordM.c === c ? -ordM.d : 1 }; render(); }));
   m.querySelectorAll("[data-aj]").forEach((b) => (b.onclick = () => chatAjuda(l.find((x) => x.id === b.dataset.aj))));
   m.querySelectorAll("[data-tk]").forEach((r) => (r.onclick = () => { S.sec = "caixa"; abrirTicket(r.dataset.tk); }));
   const ss = $("#ajSetor"); if (ss) ss.onchange = () => { S.ajSetor = ss.value; S.ajAss = ""; S.aj = null; render(); };
