@@ -930,3 +930,92 @@ def test_horario_de_funcionamento_e_feriados(t):
     ruim = {**hr, "0": {"aberto": True, "ini": "18:00", "fim": "08:00"}}
     assert t.put("/api/tickets/config", json={"wwhat": {"horario": ruim}}).status_code == 400
     assert "funcionamento" in t.get("/api/cliente/atendimento/info").json()
+
+
+# ── RÉGUA DO CLIENTE + CSAT/NPS ──────────────────────────────────────────────
+def test_regua_etapas_da_mudanca():
+    import regua as R
+    base = {"numero": 7, "status": "confirmado", "reservado": True, "pendentes": [], "endereco": {"logradouro": "Rua A", "numero": "1"}}
+    assert R.etapas_da_mudanca({"status": "rascunho"}, base) == ["pedido_criado"]
+    assert R.etapas_da_mudanca(None, {**base, "tipo": "troca"}) == ["troca_gerada"]
+    bloq = {**base, "reservado": False, "pendentes": [{"produto_id": "p1", "qtd": 1}]}
+    assert R.etapas_da_mudanca(base, bloq) == ["pedido_bloqueado"] and R.etapas_da_mudanca(bloq, base) == ["pedido_liberado"]
+    ag = {**base, "status": "agendado", "agendamento": {"data": "2026-12-01", "janela": "Manhã"}}
+    assert R.etapas_da_mudanca(base, ag) == ["agendado"]
+    assert R.etapas_da_mudanca(ag, {**ag, "agendamento": {"data": "2026-12-03"}}) == ["data_alterada"]
+    assert R.etapas_da_mudanca(ag, {**ag, "endereco": {"logradouro": "Rua B", "numero": "9"}}) == ["endereco_alterado"]
+    assert R.etapas_da_mudanca(ag, {**ag, "status": "em_carga"}) == ["em_carga"]
+    assert R.etapas_da_mudanca({**ag, "status": "em_carga"}, {**ag, "status": "em_rota"}) == ["em_rota"]
+    rota = {**ag, "status": "em_rota"}
+    assert R.etapas_da_mudanca(rota, {**rota, "status": "entregue", "tentativas": [{"resultado": "entregue"}]}) == ["entregue"]
+    assert R.etapas_da_mudanca(rota, {**rota, "status": "entregue", "tentativas": [{"resultado": "avaria"}]}) == ["entrega_avaria"]
+    assert R.etapas_da_mudanca(rota, {**rota, "status": "reagendar", "pendencia": "ausente"}) == ["ausente"]
+    assert R.etapas_da_mudanca(rota, {**rota, "status": "recusado"}) == ["recusado"]
+    assert R.etapas_da_mudanca(base, {**base, "status": "cancelado"}) == ["cancelado"]
+
+
+def test_regua_envia_so_etapa_ligada_e_texto_com_variaveis(t, monkeypatch):
+    import regua as R
+    import promocoes
+    enviados = []
+    monkeypatch.setattr(promocoes, "avisar_cliente_detalhe", lambda *a, **k: enviados.append((a, k)) or {"enviados": 1})
+    R._enviados.clear()
+    E.ST.dados["parceiros"]["c_ana"]["codigo"] = "ANA123"
+    ped = dict(E.ST.dados["pedidos"]["ped1"], status="agendado", agendamento={"data": "2026-12-01", "janela": "Manhã"})
+    R.processar_pedidos([("ped1", dict(ped, status="confirmado"), ped)])
+    assert not enviados                                                                 # tudo nasce desligado
+    assert t.put("/api/tickets/config", json={"regua": {"etapas": {"agendado": {"ativo": True, "titulo": "📅 Agendado", "texto": "Oi {nome}, pedido #{pedido} em {data}{janela}"}},
+                                                        "km": 3}}).status_code == 200
+    T.BASE.t_cfg = time.time() + 3600
+    R.processar_pedidos([("ped1", dict(ped, status="confirmado"), ped)])
+    (cod, titulo, texto, url, tag), kw = enviados[-1]
+    assert cod == "ANA123" and titulo == "📅 Agendado" and texto == "Oi Ana, pedido #101 em terça, 01/12 (Manhã)" and tag == "regua-agendado-ped1"
+    R.processar_pedidos([("ped1", dict(ped, status="confirmado"), ped)])
+    assert len(enviados) == 1                                                           # não repete o mesmo aviso
+    pub = t.get("/api/tickets/estado").json()["regua"]
+    assert pub["km"] == 3 and next(x for x in pub["etapas"] if x["id"] == "motorista_perto")["quando"].endswith("3 km ou menos")
+
+
+def test_erp_salva_pedido_e_chama_a_regua(t, monkeypatch):
+    import regua as R
+    vistos = []
+    monkeypatch.setattr(R, "processar_pedidos", lambda m: vistos.extend(m))
+    monkeypatch.setattr(banco, "thread", lambda fn, *a, **k: fn(*a, **k))
+    with E.ST.trava:
+        tx = E.Tx({"login": "x"})
+        p = tx.get("pedidos", "ped3")
+        p["status"] = "agendado"
+        tx.put("pedidos", "ped3", p)
+        tx.commit()
+    assert vistos and vistos[0][0] == "ped3" and vistos[0][1]["status"] == "confirmado" and vistos[0][2]["status"] == "agendado"
+
+
+def test_pesquisa_csat_nps_responde_e_entra_na_gestao(t, monkeypatch):
+    import regua as R
+    t.app.include_router(R.router)
+    R._resp["ok"], R._resp["itens"] = True, {}
+    tk = R.token_pesquisa("atendimento", "ANA123", "tk#1", "atendente", 101)
+    assert t.get("/api/pesquisa/" + tk + "x").status_code == 404
+    r = t.get("/api/pesquisa/" + tk).json()
+    assert r["tipo"] == "atendimento" and not r["respondida"]
+    assert t.post("/api/pesquisa/" + tk, json={"csat": 9, "nps": 5}).status_code == 422
+    assert t.post("/api/pesquisa/" + tk, json={"csat": 5, "nps": 10, "comentario": "Carla foi ótima"}).status_code == 200
+    assert t.get("/api/pesquisa/" + tk).json()["respondida"]
+    tk2 = R.token_pesquisa("entrega", "BIA234", "ped3", "", 103)
+    t.post("/api/pesquisa/" + tk2, json={"csat": 2, "nps": 3})
+    g = t.get("/api/tickets/pesquisas").json()
+    assert g["geral"]["n"] == 2 and g["geral"]["nps"] == 0 and g["geral"]["csat"] == 3.5                # 1 promotor, 1 detrator
+    assert g["por_tipo"]["atendimento"]["nps"] == 100 and g["por_atendente"][0]["usuario"] == "atendente"
+    assert g["comentarios"][0]["comentario"] == "Carla foi ótima" and g["distribuicao_nps"][10] == 1
+
+
+def test_chat_concluido_manda_pesquisa_de_atendimento(t, monkeypatch):
+    import regua as R
+    feitos = []
+    monkeypatch.setattr(R, "chat_concluido", lambda tk, cod, nome, at: feitos.append((cod, at)))
+    entrar(t)
+    sid = t.post("/api/cliente/chat", json={"texto": "Oi", "opcao": "outro"}).json()["id"]
+    tid = central(t, sid)["id"]
+    t.post(url_tk(tid) + "/alterar", json={"atribuir": "atendente"})
+    t.post(url_tk(tid) + "/alterar", json={"status": "resolvido"})
+    assert feitos and feitos[0][1] == "atendente" and feitos[0][0] == E.ST.dados["parceiros"]["c_ana"]["codigo"]

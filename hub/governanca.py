@@ -167,7 +167,7 @@ ABAS: dict[str, dict] = {
                 _r("GET", "/api/tickets/app/palavras", "ver"), _r("POST", "/api/tickets/app/*", "editar")]},
             "abrir": {"rotulo": "Abrir chamado", "campos": {}, "rotas": [_r("POST", "/api/tickets/tickets", "incluir")]},
             "internos": {"rotulo": "Pedidos de ajuda", "campos": {}, "rotas": [_r("GET", "/api/tickets/ajuda", "ver"), _r("POST", "/api/tickets/ajuda/*", "incluir")]},
-            "gestao": {"rotulo": "Gestão", "campos": {}, "rotas": [_r("GET", "/api/tickets/equipe/curva", "ver")]},
+            "gestao": {"rotulo": "Gestão", "campos": {}, "rotas": [_r("GET", "/api/tickets/equipe/curva", "ver"), _r("GET", "/api/tickets/pesquisas", "ver")]},
             "promocoes": {"rotulo": "Disparos e vales (app do cliente)", "campos": {}, "rotas": [
                 _r("POST", "/api/promo/publico", "ver"), _r("GET", "/api/promo/*", "ver"), _r("POST", "/api/promo/disparos/*/cancelar", "excluir"),
                 _r("POST", "/api/promo/disparos/*/aprovar", "editar"), _r("POST", "/api/promo/disparos", "incluir"), _r("POST", "/api/promo/vale/*/usar", "editar")]},

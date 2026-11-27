@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sua opinião</title>
+<meta name="theme-color" content="#05060a">
+<meta name="robots" content="noindex">
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/aurora.css?v=6">
+<!--
+ static/pesquisa/index.html — PESQUISA CSAT (1 a 5) + NPS (0 a 10) + comentário
+ Link assinado que o cliente recebe no celular (régua do cliente): /pesquisa/<token> (ou /<empresa>/pesquisa/<token>).
+ API: /api/pesquisa/<token> (hub/regua.py).
+-->
+<style>
+body{margin:0;background:var(--noite);color:var(--txt);font-size:15px}
+.app{position:relative;z-index:1;max-width:520px;margin:0 auto;min-height:100dvh;padding:max(18px,env(safe-area-inset-top)) 16px 28px;display:flex;flex-direction:column;gap:14px}
+.marca{text-align:center;margin-top:8px}.marca h1{font:700 1.45rem/1.2 var(--titulo);margin:8px 0 2px}.marca p{color:var(--txt2);margin:0;font-size:.9rem}
+.cartao{border-radius:22px;padding:18px 16px}
+.cartao h2{font:700 1.02rem var(--titulo);margin:0 0 12px}
+.csat{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.csat button{display:flex;flex-direction:column;align-items:center;gap:4px;padding:12px 4px;border-radius:16px;border:1px solid var(--vidro-borda);background:rgba(255,255,255,.04);font-size:1.9rem;cursor:pointer;transition:.2s var(--suave);color:var(--txt)}
+.csat button small{font-size:.62rem;color:var(--txt3);font-weight:600}
+.csat button.on{border-color:var(--ouro);background:rgba(var(--ouro-rgb),.16);box-shadow:0 0 22px -6px rgba(var(--ouro-rgb),.9);transform:translateY(-2px)}
+.nps{display:grid;grid-template-columns:repeat(11,1fr);gap:4px}
+.nps button{padding:11px 0;border-radius:10px;border:1px solid var(--vidro-borda);background:rgba(255,255,255,.04);font:700 .9rem var(--titulo);color:var(--txt);cursor:pointer}
+.nps button.on{color:#111;border-color:transparent}
+.nps-leg{display:flex;justify-content:space-between;font-size:.7rem;color:var(--txt3);margin-top:6px}
+textarea{width:100%;box-sizing:border-box;min-height:84px;border-radius:14px;padding:11px 12px;border:1px solid var(--vidro-borda);background:rgba(255,255,255,.04);color:var(--txt);font:inherit;resize:vertical}
+.btn.grande{width:100%;padding:14px;font-size:1rem;border-radius:14px}
+.ok{text-align:center;padding:40px 10px}.ok b{display:block;font:700 1.3rem var(--titulo);margin:10px 0 6px}.ok p{color:var(--txt2)}
+.erro{color:#fecdd3;background:rgba(251,113,133,.1);border:1px solid rgba(251,113,133,.35);border-radius:14px;padding:11px 13px;font-size:.86rem}
+</style>
+</head>
+<body>
+<div class="app" id="app"></div>
+<script src="/static/aurora.js?v=6"></script>
+<script>
+(() => {
+"use strict";
+const A = Aurora, esc = A.esc;
+A.fundo();
+const m = location.pathname.match(/^\/([a-z0-9][a-z0-9-]{1,30})\/pesquisa\//), base = m && m[1] !== "pesquisa" ? "/" + m[1] : "";
+const tk = decodeURIComponent(location.pathname.split("/").filter(Boolean).pop() || "");
+const API = base + "/api/pesquisa/" + encodeURIComponent(tk);
+const app = document.getElementById("app");
+const S = { csat: 0, nps: -1 };
+const CSAT = [["😡", "Péssimo"], ["😕", "Ruim"], ["😐", "Regular"], ["🙂", "Bom"], ["😍", "Ótimo"]];
+const corNps = (n) => n <= 6 ? "#fb7185" : n <= 8 ? "#f59e0b" : "#34d399";
+function agradecer(texto) { app.innerHTML = `<div class="ok">${A.atomo(80)}<b>Obrigado! 💛</b><p>${esc(texto || "Sua opinião foi registrada e ajuda a gente a melhorar.")}</p></div>`; }
+async function iniciar() {
+  let d;
+  try { d = await A.api(API); }
+  catch (e) { app.innerHTML = `<div class="ok">${A.atomo(80)}<b>Pesquisa indisponível</b><p>${esc(e.message)}</p></div>`; return; }
+  if (d.respondida) { agradecer("Você já respondeu esta pesquisa. Muito obrigado!"); return; }
+  app.innerHTML = `<div class="marca">${A.atomo(70)}<h1>${esc(d.titulo)}</h1><p>${esc(d.empresa)}${d.pedido ? " · pedido #" + esc(d.pedido) : ""}</p></div>
+    <div class="cartao vidro vidro-borda-viva"><h2>Que nota você dá?</h2><div class="csat">${CSAT.map(([e, r], i) => `<button type="button" data-csat="${i + 1}">${e}<small>${r}</small></button>`).join("")}</div></div>
+    <div class="cartao vidro"><h2>De 0 a 10, quanto você recomendaria a ${esc(d.empresa)} a um amigo?</h2>
+      <div class="nps">${Array.from({ length: 11 }, (_, i) => `<button type="button" data-nps="${i}">${i}</button>`).join("")}</div>
+      <div class="nps-leg"><span>Nada provável</span><span>Muito provável</span></div></div>
+    <div class="cartao vidro"><h2>Quer contar mais? <small style="font-weight:400;color:var(--txt3)">(opcional)</small></h2><textarea id="com" maxlength="600" placeholder="O que foi bom ou o que podemos melhorar?"></textarea></div>
+    <div id="msg"></div>
+    <button type="button" class="btn grande" id="env">Enviar</button>`;
+  const marca = () => {
+    app.querySelectorAll("[data-csat]").forEach((b) => b.classList.toggle("on", +b.dataset.csat === S.csat));
+    app.querySelectorAll("[data-nps]").forEach((b) => { const on = +b.dataset.nps === S.nps; b.classList.toggle("on", on); b.style.background = on ? corNps(+b.dataset.nps) : ""; });
+  };
+  app.querySelectorAll("[data-csat]").forEach((b) => (b.onclick = () => { S.csat = +b.dataset.csat; marca(); }));
+  app.querySelectorAll("[data-nps]").forEach((b) => (b.onclick = () => { S.nps = +b.dataset.nps; marca(); }));
+  document.getElementById("env").onclick = async () => {
+    const msg = document.getElementById("msg");
+    if (!S.csat || S.nps < 0) { msg.innerHTML = `<div class="erro">Escolha a nota (carinhas) e o número de 0 a 10.</div>`; return; }
+    const b = document.getElementById("env"); b.disabled = true; b.textContent = "Enviando…";
+    try { await A.api(API, { method: "POST", body: { csat: S.csat, nps: S.nps, comentario: document.getElementById("com").value } }); agradecer(); }
+    catch (e) { msg.innerHTML = `<div class="erro">${esc(e.message)}</div>`; b.disabled = false; b.textContent = "Enviar"; }
+  };
+}
+iniciar();
+})();
+</script>
+</body>
+</html>

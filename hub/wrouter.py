@@ -942,6 +942,11 @@ async def app_chegou(cid: str, pid: str, request: Request):
             raise HTTPException(409, "Ainda longe do endereço.")
         ev["chegou"] = {"em": agora(), "lat": round(lat, 6), "lng": round(lng, 6), "prec": round(c.get("prec") or 0), "dist_m": dist,
                         "conferido": conferido, "sem_endereco": dest is None, "auto": bool(c.get("auto")), "mid": q["mid"], "nome": q["nome"]}
+        try:
+            import regua
+            regua.motorista_chegou(pid, cid)
+        except Exception as ex:  # noqa: BLE001
+            print(f"[wrouter] régua: {ex}")
         _hist(car, q, "chegou no cliente", f"pedido #{(tx.get('pedidos', pid) or {}).get('numero')} · "
               + (f"no endereço ({dist} m)" if conferido else f"LONGE do endereço ({dist} m)" if dist is not None else "endereço sem coordenada"))
         _gravar(tx, cid, car)
@@ -998,6 +1003,12 @@ async def app_gps(request: Request):
         for cid, car in cargas_da_placa(s["placa"]):
             if not na_rua(car):
                 continue
+            try:   # régua do cliente: "o motorista está a X km"
+                import regua
+                for pid in car.get("pedidos") or []:
+                    regua.motorista_perto(pid, cid, dist_pedido(car, pid, pos).get("km"))
+            except Exception as ex:  # noqa: BLE001
+                print(f"[wrouter] régua: {ex}")
             r = car.get("rota") or {}
             ult = (r.get("trilha") or [None])[-1]
             if not ult or time.time() - float(ult[3] if len(ult) > 3 else 0) >= TRILHA_SEG:

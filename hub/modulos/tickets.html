@@ -284,6 +284,28 @@ button.kpi:hover{border-color:color-mix(in srgb,var(--c) 50%,transparent)}
 .g-pess{display:flex;align-items:center;gap:9px;background:none;border:0;padding:0;color:inherit;cursor:pointer;text-align:left;font:inherit}
 .g-pess:hover b{color:var(--ouro2)}.g-pess small{display:block;font-size:.66rem;color:var(--txt3)}
 .eq tr.g-sel td{background:rgba(var(--ouro-rgb),.05)}
+/* régua do cliente: linha do pedido com uma etapa embaixo da outra */
+.rg-linha{position:relative;display:flex;flex-direction:column;gap:8px;padding-left:18px;flex:none}
+[data-wwp] > *{flex-shrink:0}
+.rg-linha::before{content:"";position:absolute;left:30px;top:10px;bottom:10px;width:2px;background:linear-gradient(var(--vidro-borda),var(--vidro-borda-forte),var(--vidro-borda))}
+.rg-it{position:relative;display:flex;gap:10px;align-items:flex-start;padding:10px 12px 10px 0;opacity:.62;transition:.2s}
+.rg-it.on{opacity:1}
+.rg-ic{position:relative;z-index:1;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;flex:none;font-size:.85rem;background:var(--noite2);border:2px solid var(--vidro-borda-forte)}
+.rg-it.on .rg-ic{border-color:var(--verde);box-shadow:0 0 12px -2px var(--verde)}
+.rg-tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;padding:10px 12px;border-radius:14px;border:1px solid var(--vidro-borda);background:rgba(255,255,255,.02)}
+.rg-it.on .rg-tx{border-color:rgba(52,211,153,.35);background:rgba(52,211,153,.04)}
+.rg-cab{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.rg-cab b{font:700 .9rem var(--titulo)}
+.rg-tx .entrada{padding:6px 9px;font-size:.84rem}
+.chave-rg{margin-left:auto;position:relative;width:42px;height:24px;flex:none;cursor:pointer}
+.rg-cab label.dica + .chave-rg{margin-left:8px}
+.chave-rg input{position:absolute;opacity:0;width:0;height:0}
+.chave-rg span{position:absolute;inset:0;border-radius:12px;background:rgba(255,255,255,.14);transition:.2s}
+.chave-rg span::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:.2s}
+.chave-rg input:checked + span{background:var(--verde)}.chave-rg input:checked + span::after{left:21px}
+/* Gestão › CSAT/NPS */
+.nps-bar{display:grid;grid-template-columns:repeat(11,1fr);gap:4px;align-items:end;height:120px}
+.nps-bar div{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:3px;height:100%;font-size:.66rem;color:var(--txt3)}
+.nps-bar i{display:block;width:100%;border-radius:6px 6px 2px 2px;min-height:2px}
 .eq td.num{text-align:center;font-variant-numeric:tabular-nums}.eq td.num.zero{color:var(--txt3)}.eq th.num{text-align:center}
 .eq .pess{display:flex;align-items:center;gap:9px}.eq .av{position:relative;width:30px;height:30px;border-radius:10px;display:grid;place-items:center;font:700 .72rem var(--titulo);background:rgba(255,255,255,.06);flex:none}
 .eq .av i{position:absolute;right:-3px;bottom:-3px;width:10px;height:10px;border-radius:50%;background:#6b7183;border:2px solid var(--noite2)}.eq .av i.on{background:var(--verde);box-shadow:0 0 8px var(--verde)}
@@ -1723,8 +1745,11 @@ function telaGestao(m) {
   const k = (r, v, s2, cor) => `<div class="kpi" style="--c:${cor}"><small>${r}</small><b>${v}</b><span>${s2 || ""}</span></div>`;
   const barras = (l) => { const max = Math.max(1, ...l.map((x) => x[1])); return l.slice(0, 12).map(([n, v]) => `<div style="display:grid;grid-template-columns:160px 1fr 40px;gap:8px;align-items:center;font-size:.78rem;margin-bottom:5px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(n)}</span><span style="height:8px;border-radius:5px;background:rgba(255,255,255,.06)"><i style="display:block;height:100%;width:${v / max * 100}%;border-radius:5px;background:var(--ouro)"></i></span><b style="text-align:right">${v}</b></div>`).join(""); };
   const porAt = {}; cab.forEach((x) => { const a = x.atribuido_para || "_"; porAt[a] = porAt[a] || { n: 0, at: 0, sols: 0, venc: 0, hoje: 0 }; const v = porAt[a]; v.n++; if (x.estado === "atendimento") v.at++; v.sols += x.solsAb.length; if (x.sla?.estado === "venc") v.venc++; if (x.sla?.estado === "hoje") v.hoje++; });
-  m.innerHTML = `<section class="painel vidro"><h2 style="margin:0 0 12px;font:700 1.25rem var(--titulo)">Equipe — atendimento por pessoa</h2><div id="gEquipe"><p class="dica">carregando a equipe…</p></div></section>
-    <section class="painel vidro" style="margin-top:14px"><h2 style="margin:0 0 4px;font:700 1.25rem var(--titulo)">Painel de gestão</h2>
+  const gt = S.gTab || "equipe";
+  m.innerHTML = `<div class="seg-d" id="gTabs" style="margin-bottom:12px">${[["equipe", "Equipe — atendimento por pessoa"], ["csat", "CSAT / NPS"], ["painel", "Painel de gestão"]].map(([k2, r]) => `<button type="button" data-gtab="${k2}"${gt === k2 ? ' class="on"' : ""}>${r}</button>`).join("")}</div>
+    <section class="painel vidro" data-gt="equipe"><h2 style="margin:0 0 12px;font:700 1.25rem var(--titulo)">Equipe — atendimento por pessoa</h2><div id="gEquipe"><p class="dica">carregando a equipe…</p></div></section>
+    <section class="painel vidro" data-gt="csat"><h2 style="margin:0 0 12px;font:700 1.25rem var(--titulo)">CSAT / NPS — satisfação dos clientes</h2><div id="gCsat"><p class="dica">carregando as pesquisas…</p></div></section>
+    <section class="painel vidro" data-gt="painel"><h2 style="margin:0 0 4px;font:700 1.25rem var(--titulo)">Painel de gestão</h2>
     <p class="dica" style="margin-bottom:12px">Cada cliente conta uma vez: está em <b>atendimento</b> (chat do app ativo) ou é um <b>ticket pendente</b>. As solicitações são os problemas dentro dos tickets.</p>
     <div class="kpis">${k("Atendimentos agora", c.atend, "chats do app ativos", "var(--ciano)")}${k("Tickets pendentes", c.tks, "clientes com solicitação aberta", "var(--azul)")}${k("Solicitações abertas", solsAb.length, `média ${c.tks ? (solsAb.length / Math.max(1, cab.filter((x) => x.solsAb.length).length)).toFixed(1) : 0} por cliente`, "var(--violeta)")}${k("Sem dono", c.novos, "clientes", "var(--ouro)")}${k("Vencidos", c.venc, "clientes", "var(--rosa)")}${k("Solicitações (7 dias)", abertas7, `${concl7} concluídas · ${chats7} chats`, "var(--verde)")}</div>
     <div class="cartoes" style="margin-top:14px">
@@ -1733,9 +1758,58 @@ function telaGestao(m) {
       <div class="cartao" style="overflow:auto"><h3>Clientes por pessoa</h3><table class="tab"><thead><tr><th>Atendente</th><th>Clientes</th><th>Em atendimento</th><th>Solicitações</th><th>Vencem hoje</th><th>Vencidos</th></tr></thead><tbody>
         ${Object.entries(porAt).sort((a, b) => b[1].n - a[1].n).map(([a, v]) => `<tr><td>${a === "_" ? "— sem dono —" : esc(nomeU(a))}</td><td>${v.n}</td><td>${v.at}</td><td>${v.sols}</td><td>${v.hoje}</td><td style="color:${v.venc ? "var(--rosa)" : ""}">${v.venc}</td></tr>`).join("")}</tbody></table></div>
     </div></section>`;
-  const box = $("#gEquipe");
-  if (S.gEq) desenharGestaoEq(box);
-  carregarGestaoEq();
+  m.querySelectorAll("[data-gt]").forEach((x) => (x.style.display = x.dataset.gt === gt ? "" : "none"));
+  m.querySelectorAll("[data-gtab]").forEach((b) => (b.onclick = () => { S.gTab = b.dataset.gtab; render(); }));
+  if (gt === "equipe") { const box = $("#gEquipe"); if (S.gEq) desenharGestaoEq(box); carregarGestaoEq(); }
+  if (gt === "csat") { if (S.gNps) desenharNps($("#gCsat")); carregarNps(); }
+}
+
+/* ══════ GESTÃO › CSAT / NPS (pesquisas da régua do cliente: compra, atendimento, entrega) ══════ */
+function periodoN() {
+  const g = S.nPer || (S.nPer = { modo: "30" });
+  if (g.modo === "hoje") return { de: hojeISO(), ate: hojeISO() };
+  if (g.modo === "7") return { de: menosDias(6), ate: hojeISO() };
+  if (g.modo === "30") return { de: menosDias(29), ate: hojeISO() };
+  if (g.modo === "90") return { de: menosDias(89), ate: hojeISO() };
+  return { de: g.de || menosDias(29), ate: g.ate || hojeISO() };
+}
+async function carregarNps() {
+  const { de, ate } = periodoN();
+  try { S.gNps = await A.api(`${API}/pesquisas?de=${de}&ate=${ate}`); } catch (e) { S.gNps = { erro: e.message }; }
+  const b = $("#gCsat"); if (b && S.sec === "gestao" && (S.gTab || "equipe") === "csat") desenharNps(b);
+}
+function desenharNps(box) {
+  const q = S.gNps; if (!q || !box) return;
+  if (q.erro) { box.innerHTML = `<p class="dica">${esc(q.erro)}</p>`; return; }
+  const g = S.nPer, G = q.geral;
+  const per = `<span class="periodo">${[["hoje", "Hoje"], ["7", "7 dias"], ["30", "30 dias"], ["90", "90 dias"], ["custom", "Personalizado"]].map(([k2, r]) => `<button type="button" data-nper="${k2}" class="${g.modo === k2 ? "ativo" : ""}">${r}</button>`).join("")}</span>
+    ${g.modo === "custom" ? `<input type="date" class="entrada" id="nDe" value="${esc(g.de || menosDias(29))}" style="width:auto;padding:5px 8px"> até <input type="date" class="entrada" id="nAte" value="${esc(g.ate || hojeISO())}" style="width:auto;padding:5px 8px">` : ""}`;
+  const corN = (v) => v == null ? "var(--txt3)" : v >= 50 ? "var(--verde)" : v >= 0 ? "var(--ouro)" : "var(--rosa)";
+  const corC = (v) => v == null ? "var(--txt3)" : v >= 4 ? "var(--verde)" : v >= 3 ? "var(--ouro)" : "var(--rosa)";
+  const k = (r, v, s2, c) => `<div class="kpi" style="--c:${c}"><small>${r}</small><b>${v}</b><span>${s2 || ""}</span></div>`;
+  const NOME = { compra: "🛒 Na compra", atendimento: "💬 Após o atendimento", entrega: "🚚 Após a entrega" };
+  const maxN = Math.max(1, ...q.distribuicao_nps);
+  const est = (v) => v == null ? "—" : "★".repeat(Math.round(v)) + "☆".repeat(5 - Math.round(v));
+  box.innerHTML = `<div class="eq-cab" style="flex-wrap:wrap;gap:8px">${per}</div>
+    ${!G.n ? `<div class="aviso ouro">Nenhuma resposta no período. As pesquisas são ligadas em Ajustes › Wwhat › Régua do cliente (na compra, após o atendimento e após a entrega).</div>` : ""}
+    <div class="kpis">${k("NPS", G.nps == null ? "—" : G.nps, `${G.promotores} promotores · ${G.neutros} neutros · ${G.detratores} detratores`, corN(G.nps))}${k("CSAT médio", G.csat == null ? "—" : String(G.csat).replace(".", ","), est(G.csat), corC(G.csat))}${k("Satisfeitos", G.satisfeitos == null ? "—" : G.satisfeitos + "%", "notas 4 e 5", corC(G.csat))}${k("Respostas", G.n, `de ${dh(q.de)} a ${dh(q.ate)}`, "var(--azul)")}</div>
+    <div class="cartoes" style="margin-top:12px">${Object.entries(q.por_tipo).map(([t, v]) => `<div class="cartao"><h3>${NOME[t] || t}</h3>
+        <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:baseline"><span><small class="dica">NPS</small><b style="display:block;font:700 1.6rem var(--titulo);color:${corN(v.nps)}">${v.nps == null ? "—" : v.nps}</b></span>
+        <span><small class="dica">CSAT</small><b style="display:block;font:700 1.6rem var(--titulo);color:${corC(v.csat)}">${v.csat == null ? "—" : String(v.csat).replace(".", ",")}</b></span>
+        <span><small class="dica">Respostas</small><b style="display:block;font:700 1.6rem var(--titulo)">${v.n}</b></span></div>
+        ${v.n ? `<p class="dica" style="margin:0">${v.satisfeitos}% satisfeitos · ${v.promotores} promotores · ${v.detratores} detratores</p>` : ""}</div>`).join("")}</div>
+    <div class="cartoes" style="margin-top:12px">
+      <div class="cartao"><h3>Notas de 0 a 10 (NPS)</h3><div class="nps-bar">${q.distribuicao_nps.map((n, i) => `<div title="${n} resposta(s) com nota ${i}"><span>${n || ""}</span><i style="height:${n / maxN * 92}%;background:${i <= 6 ? "#fb7185" : i <= 8 ? "#f59e0b" : "#34d399"}"></i><b>${i}</b></div>`).join("")}</div>
+        <p class="dica" style="margin:6px 0 0">0 a 6 detratores · 7 e 8 neutros · 9 e 10 promotores · NPS = % promotores − % detratores.</p></div>
+      <div class="cartao"><h3>Notas de 1 a 5 (CSAT)</h3>${q.distribuicao_csat.map((n, i) => { const mx = Math.max(1, ...q.distribuicao_csat); return `<div style="display:grid;grid-template-columns:70px 1fr 34px;gap:8px;align-items:center;font-size:.8rem;margin-bottom:6px"><span>${["😡 1", "😕 2", "😐 3", "🙂 4", "😍 5"][i]}</span><span style="height:9px;border-radius:5px;background:rgba(255,255,255,.06)"><i style="display:block;height:100%;width:${n / mx * 100}%;border-radius:5px;background:${i < 2 ? "#fb7185" : i < 3 ? "#f59e0b" : "#34d399"}"></i></span><b style="text-align:right">${n}</b></div>`; }).join("")}</div>
+    </div>
+    <div class="cartao" style="margin-top:12px;overflow:auto"><h3>Atendimento por atendente</h3>${q.por_atendente.length ? `<table class="tab"><thead><tr><th>Atendente</th><th class="num">Respostas</th><th class="num">CSAT</th><th class="num">Satisfeitos</th><th class="num">NPS</th></tr></thead><tbody>
+      ${q.por_atendente.map((a) => `<tr><td>${esc(a.nome)}</td><td class="num">${a.n}</td><td class="num" style="color:${corC(a.csat)};font-weight:700">${String(a.csat).replace(".", ",")}</td><td class="num">${a.satisfeitos}%</td><td class="num" style="color:${corN(a.nps)};font-weight:700">${a.nps}</td></tr>`).join("")}</tbody></table>` : `<p class="dica">Sem respostas da pesquisa após o atendimento no período.</p>`}</div>
+    <div class="cartao" style="margin-top:12px"><h3>Comentários dos clientes</h3>${q.comentarios.length ? q.comentarios.map((c) => `<div style="padding:9px 10px;border-radius:12px;border:1px solid var(--vidro-borda);margin-bottom:6px;border-left:4px solid ${c.nps <= 6 ? "#fb7185" : c.nps <= 8 ? "#f59e0b" : "#34d399"}">
+        <small class="dica">${esc(dh(c.em))} · ${esc(NOME[c.tipo] || c.tipo)}${c.pedido ? " · pedido #" + esc(c.pedido) : ""}${c.atendente ? " · " + esc(nomeU(c.atendente)) : ""} · CSAT ${c.csat} · NPS ${c.nps}</small><div style="margin-top:3px;white-space:pre-wrap">${esc(c.comentario)}</div></div>`).join("") : `<p class="dica">Nenhum comentário no período.</p>`}</div>`;
+  box.querySelectorAll("[data-nper]").forEach((b) => (b.onclick = () => { S.nPer.modo = b.dataset.nper; carregarNps(); }));
+  const nd = box.querySelector("#nDe"), na = box.querySelector("#nAte");
+  if (nd) nd.onchange = na.onchange = () => { S.nPer.de = nd.value; S.nPer.ate = na.value < nd.value ? nd.value : na.value; carregarNps(); };
 }
 
 /* ══════ GESTÃO › EQUIPE: atendimentos, tickets e tempo logado por pessoa; lista de casos (tela cheia) com
@@ -1855,7 +1929,7 @@ function telaAjustes(m) {
   const ww = e.wwhat || {}, abaAj = S.ajAba || "motivos";
   const AJ = [["motivos", "Motivos, submotivos, SLA (dias) e etapas"], ["erp", "Ligação com o ERP"], ["app", "App do cliente"], ["setor", "Setor e perfil de cada pessoa"], ["wwhat", "Wwhat"]];
   const vis = (k) => `data-aj="${k}"`;
-  const WWT = [["bot", "Bot do link"], ["horario", "Horário e feriados"]];
+  const WWT = [["bot", "Bot do link"], ["horario", "Horário e feriados"], ["regua", "Régua do cliente"]];
   const pais = () => Object.entries(arv).map(([p, fs]) => `<div class="pai"><b>${esc(p)}</b> <button type="button" class="btn-ic p" data-delpai="${esc(p)}" title="Tirar motivo">${svg("lixo")}</button>
     ${Object.entries(fs).map(([f, i]) => `<div class="filho"><input class="entrada" value="${esc(f)}" disabled><input class="entrada" type="number" min="0" step="0.5" data-sla="${esc(p)}|${esc(f)}" value="${i.sla ?? ""}" title="SLA em dias"><input class="entrada" data-et="${esc(p)}|${esc(f)}" value="${esc((i.etapas || []).join(", "))}" title="Etapas separadas por vírgula"><label class="chk-cod" title="Desmarcado = solicitação interna (sem cliente): não entra na Caixa, cai só em Pedidos de ajuda do setor"><input type="checkbox" data-cod="${esc(p)}|${esc(f)}"${i.exige_codigo === false ? "" : " checked"}> exige código</label><label class="chk" title="Ativo"><input type="checkbox" data-at="${esc(p)}|${esc(f)}"${i.ativo === false ? "" : " checked"}></label></div>`).join("")}
     <div class="filho"><input class="entrada" data-novofilho="${esc(p)}" placeholder="+ submotivo"><span></span><span></span><span></span><span></span></div></div>`).join("");
@@ -1930,10 +2004,32 @@ function telaAjustes(m) {
           <div style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="btn v p" id="ferAdd">+ feriado</button></div>
           <label class="campo">Aviso fora do horário <small class="dica">({horario} = o horário acima, por extenso)</small><textarea id="hrMsg" rows="2">${esc(ww.msg_fechado || "")}</textarea></label>
           <button type="button" class="btn p" id="salvarHr">Salvar horário e feriados</button></div>
+        <div data-wwp="regua" style="display:flex;flex-direction:column;gap:10px">
+          <p class="dica">A <b>linha do pedido</b>: em cada etapa o cliente recebe um aviso no celular (app e/ou link de atendimento, onde ativou os avisos). Tudo começa <b>desligado</b> — ligue as etapas que quiser e ajuste o texto. Variáveis: <code>{nome}</code> <code>{pedido}</code> <code>{data}</code> <code>{janela}</code> <code>{km}</code> <code>{empresa}</code>.</p>
+          <div id="reguaLinha" class="rg-linha"></div>
+          <div class="sec" style="margin:6px 0 0">Pesquisas de satisfação (CSAT 1 a 5 + NPS 0 a 10)</div>
+          <p class="dica" style="margin:0">O aviso abre uma página curta com as duas notas e um comentário. As respostas aparecem em Gestão › CSAT/NPS.</p>
+          <div id="reguaPesq" class="rg-linha"></div>
+          <button type="button" class="btn p" id="salvarRegua">Salvar régua e pesquisas</button></div>
       </div>
     </div></section>`;
   { const mostra = () => m.querySelectorAll("[data-wwp]").forEach((x) => (x.style.display = x.dataset.wwp === (S.wwTab || "bot") ? "flex" : "none"));
     mostra(); m.querySelectorAll("[data-wwt]").forEach((b) => (b.onclick = () => { S.wwTab = b.dataset.wwt; m.querySelectorAll("[data-wwt]").forEach((x) => x.classList.toggle("on", x === b)); mostra(); })); }
+  const rg = JSON.parse(JSON.stringify(e.regua || { etapas: [], pesquisas: [], km: 5 }));
+  const ICR = { pedido_criado: "🛒", troca_gerada: "🔄", pedido_bloqueado: "⏳", pedido_liberado: "✅", agendado: "📅", data_alterada: "📅", reagendar: "🗓", endereco_alterado: "🏠", em_carga: "📦", em_rota: "🚚", motorista_perto: "📍", motorista_chegou: "🔔", entregue: "🎉", entrega_avaria: "⚠️", ausente: "🚪", recusado: "↩️", cancelado: "✖️", compra: "⭐", atendimento: "⭐", entrega: "⭐" };
+  const itemRg = (x, grupo, i) => `<div class="rg-it${x.ativo ? " on" : ""}"><span class="rg-ic">${ICR[x.id] || "•"}</span>
+      <div class="rg-tx"><div class="rg-cab"><b>${esc(x.rotulo)}</b><small class="dica">${esc(x.quando)}</small>${x.id === "motorista_perto" ? `<label class="dica" style="display:flex;gap:4px;align-items:center;margin-left:auto">a <input class="entrada" type="number" min="0.5" max="50" step="0.5" id="rgKm" value="${rg.km}" style="width:70px;padding:4px 6px"> km</label>` : ""}
+        <label class="chave-rg" title="${x.ativo ? "Ligado — o cliente recebe" : "Desligado — não envia"}"><input type="checkbox" data-rg="${grupo}|${i}|ativo"${x.ativo ? " checked" : ""}><span></span></label></div>
+        <input class="entrada" data-rg="${grupo}|${i}|titulo" value="${esc(x.titulo || "")}" placeholder="Título do aviso">
+        <textarea class="entrada" data-rg="${grupo}|${i}|texto" rows="2" placeholder="Texto do aviso">${esc(x.texto || "")}</textarea></div></div>`;
+  $("#reguaLinha").innerHTML = rg.etapas.map((x, i) => itemRg(x, "etapas", i)).join("");
+  $("#reguaPesq").innerHTML = rg.pesquisas.map((x, i) => itemRg(x, "pesquisas", i)).join("");
+  m.querySelectorAll("[data-rg]").forEach((x) => (x.oninput = x.onchange = () => { const [g, i, k2] = x.dataset.rg.split("|"); rg[g][+i][k2] = x.type === "checkbox" ? x.checked : x.value;
+    if (x.type === "checkbox") x.closest(".rg-it").classList.toggle("on", x.checked); }));
+  $("#salvarRegua").onclick = async () => { const body = { etapas: {}, pesquisas: {}, km: +($("#rgKm")?.value || rg.km || 5) };
+    rg.etapas.forEach((x) => (body.etapas[x.id] = { ativo: x.ativo, titulo: x.titulo, texto: x.texto }));
+    rg.pesquisas.forEach((x) => (body.pesquisas[x.id] = { ativo: x.ativo, titulo: x.titulo, texto: x.texto }));
+    try { await chamar("/config", { method: "PUT", body: { regua: body } }); ok("Régua do cliente salva."); await carregar(); } catch (er) { falha(er); } };
   const fer = JSON.parse(JSON.stringify(ww.feriados || []));
   const desenhaFer = () => { $("#ferLista").innerHTML = fer.map((f, i) => `<div style="display:grid;grid-template-columns:160px minmax(0,1fr) 34px;gap:6px"><input class="entrada" type="date" data-fer="${i}|data" value="${esc(f.data || "")}"><input class="entrada" data-fer="${i}|nome" value="${esc(f.nome || "")}" placeholder="Ex.: Natal"><button type="button" class="btn-ic p" data-ferdel="${i}" title="Tirar feriado">${svg("lixo")}</button></div>`).join("") || `<p class="dica">Nenhum feriado cadastrado.</p>`;
     m.querySelectorAll("[data-fer]").forEach((x) => (x.oninput = x.onchange = () => { const [i, k2] = x.dataset.fer.split("|"); fer[+i][k2] = x.value; }));

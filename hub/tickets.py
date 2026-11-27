@@ -646,7 +646,15 @@ def estado(request: Request, dias_concluidos: int = 30):
             "usuarios": [{"usuario": k, "nome": v["nome"], "depto": v["depto"]} for k, v in sorted(usu.items(), key=lambda kv: norm(kv[1]["nome"]))],
             "config": {k: v for k, v in hub_cfg().items() if k != "mapa_usuarios"} | ({"mapa_usuarios": hub_cfg().get("mapa_usuarios")} if p["acoes"].get("configurar") else {}),
             "sync": {"leituras": BASE.leituras, "completa": BASE.t_completa}, "erp": _erp_ligado(),
-            "banco": "bancowendley" if banco_proprio() else "hub", "app_cliente": _app_cliente(), "wwhat": _wwhat(), "pausas": pausas()}
+            "banco": "bancowendley" if banco_proprio() else "hub", "app_cliente": _app_cliente(), "wwhat": _wwhat(), "pausas": pausas(), "regua": _regua()}
+
+
+def _regua() -> dict:
+    try:
+        import regua
+        return regua.publico()
+    except Exception:  # noqa: BLE001
+        return {}
 
 
 def _wwhat() -> dict:
@@ -712,7 +720,15 @@ def _mutar_sol(tid: str, fn, me: dict, interacao=True):
         if i is None:
             raise HTTPException(404, "Ticket não encontrado (pode ter sido apagado no outro sistema).")
         s = dict(sols[i])
+        aberto_antes = s.get("status") in ABERTOS
         res = fn(s)
+        if aberto_antes and eh_chat(s) and s.get("status") in ("resolvido", "finalizado"):   # chat concluído → pesquisa (régua)
+            try:
+                import regua
+                regua.chat_concluido({**s, "id": tid}, cont.get("cliente_codigo") or s.get("cliente_codigo") or "",
+                                     cont.get("cliente_nome") or s.get("cliente_nome") or "", s.get("atribuido_para") or s.get("resolvido_por") or "")
+            except Exception as ex:  # noqa: BLE001
+                print(f"[régua] pesquisa do chat: {ex}")
         ag = agora()
         s["atualizado_em"] = ag
         if interacao:
@@ -1250,6 +1266,9 @@ async def salvar_config(request: Request):
                 except (TypeError, ValueError):
                     raise HTTPException(400, "Limite de atendimentos inválido.") from None
         novo["limites"] = lim
+    if "regua" in c:   # régua do cliente (aviso por etapa do pedido) e pesquisas CSAT/NPS
+        import regua
+        novo["regua"] = regua.salvar(c["regua"])
     if "pausas" in c:   # motivos de pausa do botão de status (Online e Offline são fixos)
         lst = []
         for x in (c["pausas"] or [])[:12]:
@@ -2101,6 +2120,17 @@ def equipe(request: Request, dias: int = 1, setor: str = "", de: str = "", ate: 
     pessoas = sorted(linhas.values(), key=lambda x: (not x["online"], -(x["chats_atendidos"] + x["tickets_concluidos"]), norm(x["nome"])))
     return {"perfil": pf, "dias": dias, "de": corte, "ate": fim_p, "setor": alvo_setor, "pessoas": pessoas, "pausas": pausas(), "fila": fila_sem_dono(me, alvo_setor if alvo_setor or pf == "gestor" else None),
             "departamentos": departamentos() if pf == "gestor" else []}
+
+
+@router.get("/pesquisas")
+def ver_pesquisas(request: Request, de: str = "", ate: str = ""):
+    """Gestão › CSAT/NPS: notas das pesquisas (compra, atendimento, entrega) no período."""
+    u, p, me = _contexto(request)
+    import regua
+    hoje = datetime.now(BRT).strftime("%Y-%m-%d")
+    de = de if re.match(r"^\d{4}-\d{2}-\d{2}$", de or "") else (datetime.now(BRT) - timedelta(days=29)).strftime("%Y-%m-%d")
+    ate = ate if re.match(r"^\d{4}-\d{2}-\d{2}$", ate or "") and ate >= de else hoje
+    return regua.resumo(de, ate, usuarios())
 
 
 @router.get("/equipe/curva")
