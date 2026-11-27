@@ -701,7 +701,7 @@ def _chat_do_cliente(cid: str, cli: dict, d: dict, via: str = "") -> dict:
         op = next((u for u in c["ura"] if u.get("id") == d.get("opcao")), None) or next((u for u in c["ura"] if u.get("id") == "outro"), c["ura"][-1])
     _limite_dia(cid, cli, c)
     _freio_msg("cli:" + cid)
-    pai = op.get("motivo_pai") if op.get("motivo_pai") in T.motivos() else ""
+    pai = op.get("motivo_pai") if op.get("motivo_pai") in T.motivos(op.get("departamento") or setor_do_app()) else ""   # árvore do setor da opção
     depto = _depto_do_motivo(pai, op.get("departamento") or "")
     dados = {
         "assunto": op["rotulo"], "descricao": texto + (f"\n\n(escrito sem internet em {off[8:10]}/{off[5:7]} {off[11:16]})" if off else ""),
@@ -1258,28 +1258,36 @@ def sw_atendimento():
 @router.post("/api/cliente/atendimento/push")
 async def at_push(request: Request):
     """O celular aceitou ser avisado: a central chamando (botão Chamar do CX/ERP) abre o link de atendimento."""
-    _cid, cli = _cliente_do_link(request)
+    cid, cli = _cliente_do_link(request)
     d = await request.json()
-    import promocoes
+    import promocoes, cliente_acesso
+    tem_app = cli.get("tipo") != "visitante" and bool(cid) and cliente_acesso.tem_senha(cid)   # já tem o app → o toque abre o app
     promocoes.guardar_inscricao(str(cli.get("codigo") or "").upper(), cli.get("_primeiro") or cli.get("nome") or "", d.get("inscricao") or {},
-                                url=banco.prefixo_publico() + "/atendimento/")
+                                url=banco.prefixo_publico() + ("/cliente/" if tem_app else "/atendimento/"))
     return {"ok": True}
 
 
 @router.get("/api/cliente/atendimento/info")
 def at_info(request: Request):
     w, c = cfg_wwhat(), cfg_app()
-    nome, visitante, cont = "", False, None
+    nome, visitante, cont, tem_senha = "", False, None, False
+    import cliente_acesso
     try:
         cid, cli = _cliente_do_link(request)
         visitante = cli.get("tipo") == "visitante"
         nome = _primeiro_nome(cli["_primeiro"] if visitante else cli.get("nome")) or "Visitante"
         cont = em_atendimento(cid, cli)
+        tem_senha = not visitante and bool(cid) and cliente_acesso.tem_senha(cid)
     except HTTPException:
         pass
+    try:   # este navegador já tem o app conectado (cookie do app) → o link abre o app, sem pedir CPF
+        app = cliente_acesso.sessao(request).get("estado")
+    except Exception:  # noqa: BLE001
+        app = "nada"
     emp = c.get("empresa") or "Central do Cliente"
     return {"ativo": w["ativo"] and bool(c.get("ativo")), "empresa": emp, "saudacao": _tpl(w["saudacao"], empresa=emp, nome=""),
-            "pedir_cpf": w["pedir_cpf"], "validado": bool(nome), "nome": nome, "visitante": visitante,
+            "pedir_cpf": w["pedir_cpf"], "validado": bool(nome), "nome": nome, "visitante": visitante, "tem_senha": tem_senha,
+            "app": app if app == "ok" else "",   # "senha" (30 dias) não redireciona: o "esqueci a senha" do app passa por aqui
             "continua": {k: v for k, v in cont.items() if not k.startswith("_")} if cont else None, "funcionamento": funcionamento(),
             "direcionando": _tpl(w["direcionando"], nome=nome, empresa=emp) if nome else ""}
 
@@ -1350,7 +1358,7 @@ async def at_resposta(request: Request):
             if cont:
                 _avisar_entrada(cont, cli)
             tk = token_atendimento(cv["cid"], cli)
-            resp = JSONResponse({"ok": True, "validado": True, "nome": nome, "tk": tk,
+            resp = JSONResponse({"ok": True, "validado": True, "nome": nome, "tk": tk, "tem_senha": cliente_acesso.tem_senha(cv["cid"]),
                                  "continua": {k: v for k, v in cont.items() if not k.startswith("_")} if cont else None,
                                  "direcionando": _tpl(cfg_wwhat()["direcionando"], nome=nome, empresa=cfg_app().get("empresa"))})
             resp.set_cookie(_ck_at(), tk, httponly=True, samesite="lax", secure=_https(request), max_age=HORAS_AT * 3600, path="/")
