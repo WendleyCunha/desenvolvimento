@@ -1855,6 +1855,7 @@ function telaAjustes(m) {
   const ww = e.wwhat || {}, abaAj = S.ajAba || "motivos";
   const AJ = [["motivos", "Motivos, submotivos, SLA (dias) e etapas"], ["erp", "Ligação com o ERP"], ["app", "App do cliente"], ["setor", "Setor e perfil de cada pessoa"], ["wwhat", "Wwhat"]];
   const vis = (k) => `data-aj="${k}"`;
+  const WWT = [["bot", "Bot do link"], ["horario", "Horário e feriados"]];
   const pais = () => Object.entries(arv).map(([p, fs]) => `<div class="pai"><b>${esc(p)}</b> <button type="button" class="btn-ic p" data-delpai="${esc(p)}" title="Tirar motivo">${svg("lixo")}</button>
     ${Object.entries(fs).map(([f, i]) => `<div class="filho"><input class="entrada" value="${esc(f)}" disabled><input class="entrada" type="number" min="0" step="0.5" data-sla="${esc(p)}|${esc(f)}" value="${i.sla ?? ""}" title="SLA em dias"><input class="entrada" data-et="${esc(p)}|${esc(f)}" value="${esc((i.etapas || []).join(", "))}" title="Etapas separadas por vírgula"><label class="chk-cod" title="Desmarcado = solicitação interna (sem cliente): não entra na Caixa, cai só em Pedidos de ajuda do setor"><input type="checkbox" data-cod="${esc(p)}|${esc(f)}"${i.exige_codigo === false ? "" : " checked"}> exige código</label><label class="chk" title="Ativo"><input type="checkbox" data-at="${esc(p)}|${esc(f)}"${i.ativo === false ? "" : " checked"}></label></div>`).join("")}
     <div class="filho"><input class="entrada" data-novofilho="${esc(p)}" placeholder="+ submotivo"><span></span><span></span><span></span><span></span></div></div>`).join("");
@@ -1905,7 +1906,9 @@ function telaAjustes(m) {
         <p class="dica">O botão de status fica na barra do hub (ao lado dos Pedidos de ajuda). Ao abrir o hub a pessoa entra <b>Online</b>; sem sinal do navegador por 5 minutos vira <b>Offline</b> sozinha. Online e Offline são fixos — cadastre aqui os motivos de pausa.</p>
         <div id="pausasLista" style="display:flex;flex-direction:column;gap:5px"></div>
         <div style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="btn v p" id="pausaAdd">+ motivo</button><button type="button" class="btn p" id="salvarPausas">Salvar motivos de pausa</button></div></div>
-      <div class="cartao" ${vis("wwhat")}><h3>${svg("mensagem")} Wwhat — bot do link de atendimento</h3>
+      <div class="cartao" ${vis("wwhat")}><h3>${svg("mensagem")} Wwhat — atendimento ao cliente (link e app)</h3>
+        <div class="seg-d" id="wwTabs" style="flex-wrap:wrap">${WWT.map(([k2, r]) => `<button type="button" data-wwt="${k2}"${(S.wwTab || "bot") === k2 ? ' class="on"' : ""}>${r}</button>`).join("")}</div>
+        <div data-wwp="bot" style="display:flex;flex-direction:column;gap:10px">
         <p class="dica">Link para mandar ao cliente (WhatsApp, SMS, e-mail). Abre uma conversa no celular: o bot dá as boas-vindas, pede o <b>CPF</b> e faz <b>2 perguntas sorteadas</b> com o que está no ERP, todas respondidas com números (nº da casa, telefone, CEP, nascimento; ou múltipla escolha 1-4: produto, bairro, sobrenome, e-mail, data de nascimento, complemento). Acertou as duas → cai aqui na Caixa (fila “App do cliente”) como <b>Atendimento pelo link</b>. Por esse link o cliente <b>só conversa</b>: não vê pedidos nem abre chamado — isso é no app.</p>
         <div class="link-app"><code id="linkAt">${esc(location.origin + "/atendimento/")}</code><button type="button" class="btn v p" id="copiarAt">Copiar</button><a class="btn v p" id="abrirAt" href="/atendimento/" target="_blank" rel="noopener">Abrir ↗</a></div>
         <label class="chk"><input type="checkbox" id="wwAtivo"${ww.ativo === false ? "" : " checked"}> Link de atendimento ligado</label>
@@ -1914,8 +1917,32 @@ function telaAjustes(m) {
         <label class="campo">Mensagem “estou direcionando ao atendimento” <small class="dica">({nome} = primeiro nome do cliente)</small><textarea id="wwDir" rows="2">${esc(ww.direcionando || "")}</textarea></label>
         <div class="g2"><label class="campo">Cai no setor<select id="wwDep">${deps.map((d) => `<option${norm(d) === norm(ww.departamento || "CX") ? " selected" : ""}>${esc(d)}</option>`).join("")}</select></label>
           <label class="campo">Motivo<select id="wwMot"><option value="">— sem motivo —</option>${Object.keys(e.motivos || {}).map((p2) => `<option${p2 === ww.motivo_pai ? " selected" : ""}>${esc(p2)}</option>`).join("")}</select></label></div>
-        <button type="button" class="btn p" id="salvarWw">Salvar Wwhat</button></div>
+        <button type="button" class="btn p" id="salvarWw">Salvar bot</button></div>
+        <div data-wwp="horario" style="display:flex;flex-direction:column;gap:10px">
+          <p class="dica">Vale para o <b>app</b> e o <b>link de atendimento</b>. Fora do horário (ou num feriado) o cliente vê o aviso abaixo e pode deixar a mensagem — ela entra na Caixa e é respondida quando abrir.</p>
+          <label class="chk"><input type="checkbox" id="hrAtivo"${ww.horario_ativo ? " checked" : ""}> Usar horário de funcionamento</label>
+          <div style="display:grid;grid-template-columns:110px 90px 150px 150px;gap:6px;align-items:center;font-size:.82rem">
+            <span class="dica">Dia</span><span class="dica">Atende</span><span class="dica">Abre</span><span class="dica">Fecha</span>
+            ${["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"].map((n, i) => { const d = (ww.horario || {})[String(i)] || { aberto: i < 6, ini: "08:00", fim: i < 5 ? "18:00" : "12:00" };
+              return `<b>${n}</b><label class="chk"><input type="checkbox" data-hrab="${i}"${d.aberto ? " checked" : ""}> sim</label><input class="entrada" type="time" data-hrini="${i}" value="${esc(d.ini)}"><input class="entrada" type="time" data-hrfim="${i}" value="${esc(d.fim)}">`; }).join("")}</div>
+          <div class="sec" style="margin:6px 0 0">Feriados (sem atendimento)</div>
+          <div id="ferLista" style="display:flex;flex-direction:column;gap:5px"></div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="btn v p" id="ferAdd">+ feriado</button></div>
+          <label class="campo">Aviso fora do horário <small class="dica">({horario} = o horário acima, por extenso)</small><textarea id="hrMsg" rows="2">${esc(ww.msg_fechado || "")}</textarea></label>
+          <button type="button" class="btn p" id="salvarHr">Salvar horário e feriados</button></div>
+      </div>
     </div></section>`;
+  { const mostra = () => m.querySelectorAll("[data-wwp]").forEach((x) => (x.style.display = x.dataset.wwp === (S.wwTab || "bot") ? "flex" : "none"));
+    mostra(); m.querySelectorAll("[data-wwt]").forEach((b) => (b.onclick = () => { S.wwTab = b.dataset.wwt; m.querySelectorAll("[data-wwt]").forEach((x) => x.classList.toggle("on", x === b)); mostra(); })); }
+  const fer = JSON.parse(JSON.stringify(ww.feriados || []));
+  const desenhaFer = () => { $("#ferLista").innerHTML = fer.map((f, i) => `<div style="display:grid;grid-template-columns:160px minmax(0,1fr) 34px;gap:6px"><input class="entrada" type="date" data-fer="${i}|data" value="${esc(f.data || "")}"><input class="entrada" data-fer="${i}|nome" value="${esc(f.nome || "")}" placeholder="Ex.: Natal"><button type="button" class="btn-ic p" data-ferdel="${i}" title="Tirar feriado">${svg("lixo")}</button></div>`).join("") || `<p class="dica">Nenhum feriado cadastrado.</p>`;
+    m.querySelectorAll("[data-fer]").forEach((x) => (x.oninput = x.onchange = () => { const [i, k2] = x.dataset.fer.split("|"); fer[+i][k2] = x.value; }));
+    m.querySelectorAll("[data-ferdel]").forEach((b) => (b.onclick = () => { fer.splice(+b.dataset.ferdel, 1); desenhaFer(); })); };
+  desenhaFer();
+  $("#ferAdd").onclick = () => { fer.push({ data: "", nome: "" }); desenhaFer(); };
+  $("#salvarHr").onclick = async () => { const horario = {};
+    for (let i = 0; i < 7; i++) horario[i] = { aberto: m.querySelector(`[data-hrab="${i}"]`).checked, ini: m.querySelector(`[data-hrini="${i}"]`).value, fim: m.querySelector(`[data-hrfim="${i}"]`).value };
+    try { await chamar("/config", { method: "PUT", body: { wwhat: { horario_ativo: $("#hrAtivo").checked, horario, feriados: fer.filter((f) => f.data), msg_fechado: $("#hrMsg").value } } }); ok("Horário e feriados salvos."); await carregar(); } catch (er) { falha(er); } };
   m.querySelectorAll("[data-aj]").forEach((c) => c.classList.toggle("oculto", c.dataset.aj !== abaAj));
   m.querySelectorAll("[data-ajaba]").forEach((b) => (b.onclick = () => { S.ajAba = b.dataset.ajaba;
     m.querySelectorAll("[data-ajaba]").forEach((x) => x.classList.toggle("on", x === b)); m.querySelectorAll("[data-aj]").forEach((c) => c.classList.toggle("oculto", c.dataset.aj !== S.ajAba)); }));

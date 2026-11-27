@@ -613,12 +613,14 @@ function rolar() { requestAnimationFrame(() => scrollTo({ top: document.body.scr
 /* ═══════════ ATENDIMENTO = UM CHAT ═══════════ */
 function telaAtendimento(m) {
   const eu = S.eu, chat = eu.chat;
+  const fora = eu.funcionamento && eu.funcionamento.aberto === false   // horário de funcionamento / feriado (Ajustes › Wwhat)
+    ? `<div class="aviso" style="margin-bottom:12px">🕘 ${esc(eu.funcionamento.msg || "Estamos fora do horário de atendimento.")}</div>` : "";
   const pendChat = fila.itens().filter((it) => it.url === "/api/cliente/chat" || (chat && it.url === `/api/cliente/chamado/${chat.id}/mensagem`));
   m.classList.add("chat-modo");
   if (chat) {   // já há conversa → é só ela, sem menu
     marcarVisto(chat);
     const msgs = chat.mensagens || [];
-    m.innerHTML = `<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap"><span class="etq ${TK_COR[chat.status] || ""}">${esc(chat.rotulo)}</span><span class="dica">Só a central encerra este atendimento.</span></div>
+    m.innerHTML = fora + `<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap"><span class="etq ${TK_COR[chat.status] || ""}">${esc(chat.rotulo)}</span><span class="dica">Só a central encerra este atendimento.</span></div>
       <div class="fio">${bolhas(msgs, pendChat)}
       ${chat.status === "aberto" && msgs.every((x) => x.de === "cliente") ? `<div class="bolha bot"><span class="quem">Atendimento automático</span>Recebemos sua mensagem. Um atendente vai responder aqui em breve — você não precisa ficar com o app aberto.</div>` : ""}</div>
       ${chat.status === "aguardando" ? `<div class="aviso" style="margin-top:12px">A central está aguardando sua resposta.</div>` : ""}
@@ -636,7 +638,7 @@ function telaAtendimento(m) {
   const op = S.assunto ? eu.ura.find((u) => u.id === S.assunto) : null;
   const pendNovo = fila.itens().filter((it) => it.url === "/api/cliente/chat");
   const opAssunto = op || (pendNovo.length ? eu.ura.find((u) => u.id === pendNovo[0].body.opcao) : null);
-  m.innerHTML = `<div class="fio">
+  m.innerHTML = fora + `<div class="fio">
       ${fechado && fechado.atualizado_em && Date.now() - new Date(fechado.atualizado_em.replace(" ", "T")).getTime() < 864e5 ? `<div class="dia">Seu último atendimento foi encerrado pela central</div>` : ""}
       <div class="bolha bot"><span class="quem">Atendimento automático</span>${esc(saud)}</div>
       ${opAssunto ? `<div class="bolha cli">${esc(opAssunto.rotulo)}</div>
