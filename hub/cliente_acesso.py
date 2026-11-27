@@ -167,6 +167,12 @@ def conectar(request: Request, cid: str, cli: dict, A: dict) -> JSONResponse:
         for k in sorted(A["aparelhos"], key=lambda k: (not A["aparelhos"][k].get("revogado"), A["aparelhos"][k].get("ultimo") or ""))[:len(A["aparelhos"]) - 10]:
             A["aparelhos"].pop(k, None)
     gravar(cid, A)
+    if cli.get("codigo"):   # avisos que este cliente ativou pelo link passam a abrir o app
+        try:
+            import promocoes
+            promocoes.apontar_para_app(str(cli["codigo"]).upper())
+        except Exception as ex:  # noqa: BLE001
+            print(f"[acesso] avisos não apontados para o app: {ex}")
     resp = JSONResponse({"ok": True, "nome": C._primeiro_nome(cli.get("nome")), "aparelho": aid, "url": banco.prefixo_publico() + "/cliente/"})
     resp.set_cookie(C._ck(), token_aparelho(cid, aid, A["imp"]), httponly=True, samesite="lax", secure=C._https(request),
                     max_age=DIAS_APARELHO * 86400 + 30 * 86400, path="/")   # o cookie dura mais que o token: depois dos 30 dias pede a senha
@@ -252,6 +258,27 @@ async def instalar(request: Request):
             raise HTTPException(409, "Seus dados de entrega mudaram. Valide de novo pelo atendimento.")
         sal = secrets.token_hex(16)
         A.update(senha={"hash": _hash(senha, sal), "sal": sal, "em": agora_txt()}, erros=0, bloqueada=False)
+        return conectar(request, cid, cli, A)
+
+
+@router.post("/api/cliente/atendimento/conectar")
+async def conectar_com_senha(request: Request):
+    """Validou pelo link e JÁ TEM senha: digita a senha que já tem para conectar este celular (não cria outra)."""
+    cid, cli = C._cliente_do_link(request)
+    if cli.get("tipo") == "visitante" or not cid:
+        raise HTTPException(403, "Para usar o app, valide com o seu CPF.")
+    if not tem_senha(cid):
+        raise HTTPException(404, "Você ainda não tem senha. Crie a sua.")
+    d = await request.json()
+    with _trava:
+        A = ler(cid)
+        if A.get("bloqueada"):
+            raise HTTPException(423, "Seu acesso está bloqueado por segurança. Toque em \"Esqueci a senha\" e crie outra.")
+        if A.get("imp") != impressao(cid, cli):
+            raise HTTPException(409, "Seus dados de entrega mudaram. Valide de novo pelo atendimento.")
+        if not confere(A, d.get("senha")):
+            raise _erro_senha(cid, A)
+        A["erros"] = 0
         return conectar(request, cid, cli, A)
 
 

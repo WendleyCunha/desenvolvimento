@@ -1060,3 +1060,30 @@ def test_app_usa_motivos_do_setor_cx_e_limite_configuravel(t):
     t.put("/api/tickets/config", json={"app_cliente": {"max_chamados_dia": 1}})
     T.BASE.t_cfg = time.time() + 3600
     assert C.cfg_app()["max_chamados_dia"] == 1
+
+
+def test_ja_tem_app_link_abre_o_app_e_conecta_com_a_senha_existente(t, monkeypatch):
+    import promocoes
+    guardadas, enviados = {}, []
+    monkeypatch.setattr(promocoes, "inscricoes", lambda: guardadas)
+    monkeypatch.setattr(promocoes, "_gravar_insc", lambda cod, d: guardadas.__setitem__(cod, d) if d else guardadas.pop(cod, None))
+    monkeypatch.setattr(promocoes, "enviar_push", lambda sub, dados, *a: enviados.append((sub, dados)) or "ok")
+    monkeypatch.setattr(banco, "thread", lambda fn, *a, **k: None)
+    _preparar_link()
+    r = _validar_link(t)
+    assert r["validado"] and r["tem_senha"] is False
+    sub = {"endpoint": "https://push.exemplo/l1", "keys": {"p256dh": "k", "auth": "a"}}
+    t.post("/api/cliente/atendimento/push", json={"inscricao": sub})
+    cod = E.ST.dados["parceiros"]["c_ana"]["codigo"]
+    assert guardadas[cod]["subs"][0]["url"] == "/atendimento/"
+    assert t.post("/api/cliente/atendimento/instalar", json={"senha": "482916"}).status_code == 200
+    assert guardadas[cod]["subs"][0]["url"] == "/cliente/"                      # o aviso (Chamar) agora abre o APP
+    assert t.get("/api/cliente/atendimento/info").json()["app"] == "ok"        # o link abre o app, sem pedir CPF
+    # outro navegador: valida pelo link e conecta com a senha que JÁ TEM (não cria outra)
+    t.cookies.clear()
+    r = _validar_link(t)
+    assert r["tem_senha"] is True and t.get("/api/cliente/atendimento/info").json()["app"] == ""
+    assert t.post("/api/cliente/atendimento/conectar", json={"senha": "000000"}).status_code == 401
+    r = t.post("/api/cliente/atendimento/conectar", json={"senha": "482916"})
+    assert r.status_code == 200 and r.json()["url"] == "/cliente/"
+    assert t.get("/api/cliente/sessao").json()["estado"] == "ok"

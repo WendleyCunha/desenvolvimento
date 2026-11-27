@@ -361,6 +361,19 @@ def guardar_inscricao(cod: str, nome: str, sub: dict, url: str = "", promocoes: 
     _gravar_insc(cod, atual)
 
 
+def apontar_para_app(cod: str):
+    """O cliente criou/entrou com a senha do app: os celulares inscritos pelo link de atendimento passam a abrir o APP
+    (/cliente/) ao tocar no aviso — sem pedir CPF de novo. Continuam fora das promoções."""
+    atual = inscricoes().get(cod)
+    if not atual or not any("/atendimento" in str(s.get("url") or "") for s in atual.get("subs", [])):
+        return
+    atual = copy.deepcopy(atual)
+    for s in atual["subs"]:
+        if "/atendimento" in str(s.get("url") or ""):
+            s["url"] = f"{banco.prefixo_publico()}/cliente/"
+    _gravar_insc(cod, atual)
+
+
 @router.post("/api/cliente/push")
 async def inscrever(request: Request):
     """O celular aceitou: guarda a inscrição e as duas chaves (avisos / promoções)."""

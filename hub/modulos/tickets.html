@@ -2107,10 +2107,11 @@ function telaAjustes(m) {
     const body = { perfis, limites }; if (e.banco === "hub") body.setor_usuarios = mapa;
     try { await chamar("/config", { method: "PUT", body }); ok("Setores e perfis salvos."); await carregar(); } catch (er) { falha(er); } };
   const desenhaUra = () => { $("#uraLista").innerHTML = ura.map((o, i) => `<div class="ura-it"><input class="entrada" data-ura="${i}|rotulo" value="${esc(o.rotulo || "")}" placeholder="Opção (ex.: Troca)"><input class="entrada" data-ura="${i}|descricao" value="${esc(o.descricao || "")}" placeholder="Descrição curta">
-      <select class="entrada" data-ura="${i}|motivo_pai"><option value="">motivo —</option>${Object.keys(arv).map((p2) => `<option${p2 === o.motivo_pai ? " selected" : ""}>${esc(p2)}</option>`).join("")}</select>
+      <select class="entrada" data-ura="${i}|motivo_pai"><option value="">motivo —</option>${(() => { const ps2 = Object.keys(arvDe(o.departamento || "CX"));   // motivos do setor da opção
+        return ps2.map((p2) => `<option${p2 === o.motivo_pai ? " selected" : ""}>${esc(p2)}</option>`).join("") + (o.motivo_pai && !ps2.includes(o.motivo_pai) ? `<option value="${esc(o.motivo_pai)}" selected>⚠ ${esc(o.motivo_pai)} (não existe neste setor)</option>` : ""); })()}</select>
       <select class="entrada" data-ura="${i}|departamento"><option value="">setor —</option>${deps.map((d) => `<option${d === o.departamento ? " selected" : ""}>${esc(d)}</option>`).join("")}</select>
       <button type="button" class="btn-ic p" data-uradel="${i}" title="Tirar opção">${svg("lixo")}</button></div>`).join("");
-    m.querySelectorAll("[data-ura]").forEach((x) => (x.oninput = x.onchange = () => { const [i, k2] = x.dataset.ura.split("|"); ura[+i][k2] = x.value; }));
+    m.querySelectorAll("[data-ura]").forEach((x) => (x.oninput = x.onchange = () => { const [i, k2] = x.dataset.ura.split("|"); ura[+i][k2] = x.value; if (k2 === "departamento" && x.tagName === "SELECT") desenhaUra(); }));
     m.querySelectorAll("[data-uradel]").forEach((b) => (b.onclick = () => { ura.splice(+b.dataset.uradel, 1); desenhaUra(); })); };
   desenhaUra();
   $("#uraAdd").onclick = () => { ura.push({ id: "", rotulo: "", descricao: "", motivo_pai: "", departamento: "" }); desenhaUra(); };

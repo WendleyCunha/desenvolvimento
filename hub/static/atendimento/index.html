@@ -173,7 +173,7 @@ async function responder(v, rotulo) {
   eu(rotulo || v); S.ocupado = true;
   try {
     const r = await api(API + "/resposta", { method: "POST", body: { conversa: S.conversa, resposta: v } });
-    if (r.validado) { tkSet(r.tk); await digitando();
+    if (r.validado) { tkSet(r.tk); S.temSenha = !!r.tem_senha; await digitando();
       if (r.continua) bot(`Pronto, ${r.nome}! ✅ Você já está em atendimento${r.continua.atendente ? " com " + r.continua.atendente : ""} — vou continuar a mesma conversa. 👇`);
       else bot(r.direcionando);
       entrarNoChat(r.nome, !r.continua); return; }
@@ -228,11 +228,39 @@ async function enviarMsg(v) {
    (entra direto por 30 dias; depois pede a senha). Em outro aparelho: CPF + senha. ── */
 function oferecerApp() {
   if (S.ofereceuApp) return; S.ofereceuApp = true;
+  if (S.temSenha) {   // já tem senha do app: só conecta este celular com a senha que já existe (não cria outra)
+    const b = document.createElement("button"); b.type = "button"; b.className = "app-conv"; b.style.cssText = "cursor:pointer;font:inherit;text-align:left;width:100%";
+    b.innerHTML = `<span style="font-size:1.3rem">📲</span><span>Você já tem o app. <b>Abrir o app neste celular</b> — é só digitar a sua senha.</span>`;
+    b.onclick = async () => { b.remove(); S.faseAntes = S.fase; S.fase = "senhaEntrar"; await digitando(400);
+      bot("Digite a senha do app que você já criou:"); modo("Sua senha", true); txt.classList.add("senha"); txt.focus(); esqueci(); };
+    fio.appendChild(b); fim(); return;
+  }
+
   const b = document.createElement("button"); b.type = "button"; b.className = "app-conv"; b.style.cssText = "cursor:pointer;font:inherit;text-align:left;width:100%";
   b.innerHTML = `<span style="font-size:1.3rem">📲</span><span>Quer acompanhar seus pedidos, a entrega e os cupons pelo app? <b>Instalar o app</b> — você cria uma senha e este celular fica conectado.</span>`;
   b.onclick = async () => { b.remove(); S.faseAntes = S.fase; S.fase = "senha1"; await digitando(400);
     bot("Ótimo! 🔐 Crie uma senha para o app — pode ser 6 números. Não use datas nem sequências (123456)."); modo("Sua nova senha", true); txt.classList.add("senha"); txt.focus(); };
   fio.appendChild(b); fim();
+}
+function esqueci() {
+  const a = document.createElement("button"); a.type = "button"; a.className = "btn v recomecar"; a.textContent = "Esqueci a senha — criar outra";
+  a.onclick = async () => { a.remove(); S.fase = "senha1"; await digitando(300);
+    bot("Sem problema. 🔐 Crie uma nova senha — pode ser 6 números. Não use datas nem sequências (123456)."); modo("Sua nova senha", true); txt.classList.add("senha"); txt.focus(); };
+  fio.appendChild(a); fim();
+}
+async function senhaEntrar(v) {
+  eu("••••••"); S.ocupado = true;
+  try {
+    const r = await api(API + "/conectar", { method: "POST", body: { senha: v } });
+    txt.classList.remove("senha"); await digitando();
+    bot("Pronto! ✅ Este celular está conectado ao app. Abrindo…");
+    S.fase = S.faseAntes || "chat"; modo("Escreva sua mensagem…", false);
+    setTimeout(() => { location.href = r.url; }, 1200);
+  } catch (e) {
+    await digitando(300); bot(e.message || "Não consegui conferir a senha agora.", "erro");
+    if (e.status === 423 || e.status === 409) { txt.classList.remove("senha"); S.fase = S.faseAntes || "chat"; modo("Escreva sua mensagem…", false); if (e.status === 423) { S.temSenha = false; S.ofereceuApp = false; oferecerApp(); } }
+    else modo("Sua senha", true);
+  } finally { S.ocupado = false; }
 }
 async function senhaApp(v) {
   eu("••••••");
@@ -288,6 +316,7 @@ function enviar() {
   if (S.fase === "cpf") enviarCpf(v);
   else if (S.fase === "nome") enviarNome(v);
   else if (S.fase === "senha1" || S.fase === "senha2") senhaApp(v);
+  else if (S.fase === "senhaEntrar") senhaEntrar(v);
   else if (S.fase === "pergunta") { const op = S.pergunta && S.pergunta.opcoes; const n = parseInt(v, 10); if (op && op[n - 1]) { fio.querySelectorAll(".opcoes button").forEach((x) => (x.disabled = true)); responder(String(n), op[n - 1]); } else responder(v); }
   else enviarMsg(v);
 }
@@ -306,6 +335,11 @@ new MutationObserver(fim).observe(fio, { childList: true, subtree: true });   //
     const i = S.info = await api(API + "/info");
     $("#emp").textContent = i.empresa || "Atendimento"; document.title = (i.empresa || "Atendimento") + " · Atendimento";
     if (!i.ativo) { $("#compor").classList.add("oculto"); $("#sub").textContent = "Pausado"; bot("O atendimento por aqui está pausado no momento. Tente mais tarde. 🙏"); return; }
+    if (i.app) {   // este celular já tem o app conectado → abre o app (sem pedir CPF)
+      bot(`Olá! 👋 Você já tem o app neste celular — abrindo…`);
+      const a = document.createElement("a"); a.className = "app-conv"; a.href = (window.HUB_BASE || "") + "/cliente/"; a.innerHTML = `<span style="font-size:1.3rem">📲</span><span><b>Abrir o app</b></span>`;
+      fio.appendChild(a); setTimeout(() => { location.href = a.href; }, 900); return; }
+    S.temSenha = !!i.tem_senha;
     if (i.validado) { S.visitante = !!i.visitante; bot(i.continua ? `Oi de novo, ${i.nome}! 👋 Seu atendimento${i.continua.atendente ? " com " + i.continua.atendente : ""} continua aqui — é só escrever.`
       : `Oi de novo, ${i.nome}! 👋 Pode escrever — um atendente já te responde.`); entrarNoChat(i.nome, false); return; }
     await digitando(500); bot(i.saudacao);
