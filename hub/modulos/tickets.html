@@ -202,7 +202,7 @@ html[data-claro] .setor,html[data-claro] .aj-ic{background:linear-gradient(160de
 .sol-card .t1{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.sol-card .fim{margin-left:auto;font-size:.68rem;font-weight:600;color:var(--txt3);white-space:nowrap;font-variant-numeric:tabular-nums}.sol-card .t1 b{font-size:.84rem}
 .sol-card small{color:var(--txt3);font-size:.7rem}
 .barra-sol{position:sticky;top:-2px;z-index:3;display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:6px 0 8px;margin-bottom:4px;border-bottom:1px solid var(--vidro-borda);background:color-mix(in srgb,var(--noite2) 88%,transparent);backdrop-filter:blur(8px)}
-.barra-sol .qual{font-size:.72rem;color:var(--txt3);max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.barra-sol .esp{flex:1}
+.barra-sol .qual{max-width:40%;overflow:hidden;text-overflow:ellipsis}.barra-sol .esp{flex:1}
 .ic-sol{position:relative;display:inline-flex;align-items:center;gap:5px;height:30px;padding:0 10px;border-radius:10px;border:1px solid var(--vidro-borda);background:rgba(255,255,255,.04);color:var(--txt);font:600 .74rem var(--sans,Inter),sans-serif;cursor:pointer;transition:.15s}
 .ic-sol:hover{border-color:var(--violeta);background:rgba(139,92,246,.1)}
 .ic-sol.tem{border-color:rgba(139,92,246,.6);box-shadow:0 0 12px -4px rgba(139,92,246,.8)}
@@ -353,7 +353,7 @@ html[data-claro] .setor,html[data-claro] .aj-ic{background:linear-gradient(160de
 .aba-tk.app .nm small{color:rgba(34,211,238,.7)}
 .aba-tk.app.ativo{background:linear-gradient(180deg,rgba(34,211,238,.22),rgba(34,211,238,.08));color:var(--txt);border-color:rgba(34,211,238,.6);box-shadow:0 -3px 0 var(--ciano) inset}
 .aba-tk.pend{border-color:var(--rosa);color:var(--txt)}
-.aba-tk.curta{width:auto;min-width:84px;max-width:none;justify-content:center;gap:10px;padding:8px 6px 8px 12px;font-weight:700}
+.aba-tk.curta{width:auto;min-width:0;max-width:none;justify-content:center;gap:8px;padding:7px 7px 7px 13px;font-weight:700}
 .aba-tk.curta .nm{overflow:visible;text-overflow:clip}
 .aba-tk.pend::after{content:attr(data-sinal);position:absolute;top:-8px;right:6px;padding:0 6px;border-radius:8px;font:700 .56rem/15px var(--sans);letter-spacing:.4px;text-transform:uppercase;background:var(--rosa);color:#fff;box-shadow:0 0 12px var(--rosa)}
 .bt-rastreio{--c:#22c55e;display:inline-flex;align-items:center;gap:5px;margin:6px 0 2px;padding:4px 11px;border-radius:999px;cursor:pointer;font:700 .68rem/1.4 var(--sans);letter-spacing:.08em;
@@ -363,16 +363,19 @@ html[data-claro] .setor,html[data-claro] .aj-ic{background:linear-gradient(160de
 .bt-rastreio::before{content:"";position:absolute;inset:-1px;border-radius:inherit;padding:1px;z-index:-1;
   background:conic-gradient(from var(--ang,0deg),transparent 0 60%,var(--c) 78%,#fff 84%,transparent 92%);
   -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;animation:aurGiraAng 3.6s linear infinite}
-.bt-encerrar{--c:var(--verde);position:relative;isolation:isolate;display:inline-flex;align-items:center;gap:5px;height:30px;padding:0 12px;border-radius:999px;cursor:pointer;
+.bt-encerrar,.bt-luz{--c:var(--verde);position:relative;isolation:isolate;display:inline-flex;align-items:center;gap:5px;height:30px;padding:0 12px;border-radius:999px;cursor:pointer;
   font:700 .74rem var(--sans);color:var(--c);border:1px solid color-mix(in srgb,var(--c) 45%,transparent);transition:transform .2s;
   background:radial-gradient(circle at 30% 20%,color-mix(in srgb,var(--c) 24%,transparent),color-mix(in srgb,var(--c) 7%,rgba(10,12,18,.55)) 75%);
   box-shadow:inset 0 1px 0 rgba(255,255,255,.14),0 6px 18px -8px var(--c)}
-.bt-encerrar svg{width:14px;height:14px}
-.bt-encerrar::before{content:"";position:absolute;inset:-1px;border-radius:inherit;padding:1px;z-index:-1;
+.bt-encerrar svg,.bt-luz svg{width:14px;height:14px}
+.bt-encerrar::before,.bt-luz::before{content:"";position:absolute;inset:-1px;border-radius:inherit;padding:1px;z-index:-1;
   background:conic-gradient(from var(--ang,0deg),transparent 0 60%,var(--c) 78%,#fff 84%,transparent 92%);
   -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;animation:aurGiraAng 3.6s linear infinite}
-.bt-encerrar:hover{transform:translateY(-1px) scale(1.04)}
-html[data-claro] .bt-encerrar{background:radial-gradient(circle at 30% 20%,color-mix(in srgb,var(--c) 22%,#fff),color-mix(in srgb,var(--c) 8%,#fff) 75%)}
+.bt-encerrar:hover,.bt-luz:hover{transform:translateY(-1px) scale(1.04)}
+.bt-luz{height:32px;padding:0 13px;font-size:.76rem}
+.bt-luz b{min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:var(--c);color:#0b0f17;font-size:.66rem;display:inline-flex;align-items:center;justify-content:center}
+.bt-luz.tem{box-shadow:inset 0 1px 0 rgba(255,255,255,.14),0 0 0 2px color-mix(in srgb,var(--c) 40%,transparent),0 0 16px -2px var(--c)}
+html[data-claro] .bt-encerrar,html[data-claro] .bt-luz{background:radial-gradient(circle at 30% 20%,color-mix(in srgb,var(--c) 22%,#fff),color-mix(in srgb,var(--c) 8%,#fff) 75%)}
 .bt-rastreio:hover{transform:translateY(-1px) scale(1.04)}
 .bt-rastreio .pt{width:7px;height:7px;border-radius:50%;background:var(--c);box-shadow:0 0 8px var(--c)}
 html[data-claro] .bt-rastreio{--c:#15803d;background:radial-gradient(circle at 30% 20%,color-mix(in srgb,var(--c) 22%,#fff),color-mix(in srgb,var(--c) 8%,#fff) 75%)!important}
@@ -382,7 +385,7 @@ html[data-claro] .bt-rastreio{--c:#15803d;background:radial-gradient(circle at 3
   background:linear-gradient(160deg,rgba(255,255,255,var(--vidro-a,.06)),rgba(255,255,255,var(--vidro-b,.02)));backdrop-filter:var(--blur,blur(14px));-webkit-backdrop-filter:var(--blur,blur(14px));
   border:1px solid var(--vidro-borda);box-shadow:inset 0 1px 0 rgba(255,255,255,.07),var(--sombra,0 10px 30px -12px rgba(0,0,0,.5))}
 #bolhas:empty{display:none}
-body.com-bolhas .app{padding-left:52px}
+body.com-bolhas > .app{padding-left:52px}
 .bolinha{--c:var(--ciano);position:relative;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;flex:none;cursor:pointer;padding:0;overflow:visible;
   color:var(--c);font:800 .7rem/1 var(--sans);letter-spacing:.03em;border:0;transition:.2s;
   background:radial-gradient(circle at 30% 22%,color-mix(in srgb,var(--c) 34%,transparent),color-mix(in srgb,var(--c) 8%,rgba(10,12,18,.8)) 72%);
@@ -1159,13 +1162,13 @@ async function telaCliente(m, cid) {
       <div class="conversa" id="conversa">${tl.map(balao).join("")}</div>
       ${chat && pode("atender") ? `<div class="resp">
         <textarea class="entrada" id="txtChat" placeholder="Responder ao cliente no chat… (Ctrl+Enter = Responder no app)" style="min-height:64px"></textarea>
-        <div style="display:flex;gap:6px;margin-top:6px;align-items:center;flex-wrap:wrap"><button type="button" class="btn p" id="respApp" title="O cliente vê na aba Atendimento do app">📱 Responder no app</button><button type="button" class="btn v p" id="notaChat" title="Só a equipe vê — o cliente nunca vê">🔒 Nota interna</button></div>
+        <div style="display:flex;gap:6px;margin-top:6px;align-items:center;flex-wrap:wrap"><button type="button" class="bt-luz" id="respApp" style="--c:var(--ciano)" title="O cliente vê na aba Atendimento do app">📱 Responder no app</button><button type="button" class="bt-luz" id="notaChat" style="--c:var(--violeta)" title="Só a equipe vê — o cliente nunca vê">🔒 Nota interna</button>${pode("encerrar") ? `<button type="button" class="bt-encerrar" id="encerrarAt" style="margin-left:auto" title="Finalizar o atendimento com o cliente — o chamado e as solicitações continuam abertos">${svg("check")} Encerrar</button>` : ""}</div>
       </div>` : `<p class="dica">${chat ? "" : "Sem chat ativo. Aqui fica o histórico da conversa com o cliente — o atendimento do ticket é feito em Solicitações."}</p>`}`,
     sols: `${ehSol && atende ? `<div class="barra-sol">
-        <span class="qual" title="Os ícones agem na solicitação selecionada">${esc(rot(ativa))}</span><span class="esp"></span>
-        <button type="button" class="ic-sol" id="icAjuda" title="Pedir ajuda a outro setor">🤝 Ajuda</button>
-        <button type="button" class="ic-sol${nPend ? " tem" : ""}" id="icPend" title="Pendências com outros setores — ver, conversar e cobrar">📌 Pendências${nPend ? `<b>${nPend}</b>` : pedidosAb.length ? ` <small class="dica">${pedidosAb.length}</small>` : ""}</button>
-        <button type="button" class="ic-sol${ativa.motivo_filho ? "" : " tem"}" id="icTab" title="Motivo, submotivo, SLA e etapa${sel.etapa_atual ? " · atual: " + esc(caminho.slice(1).join(" › ")) : ""}">🏷 Tabulação</button>
+        <span class="chip-sol qual" style="--c:${corSol(ativa.cor)}" title="Os botões agem na solicitação selecionada">${esc(rot(ativa))}</span><span class="esp"></span>
+        <button type="button" class="bt-luz" id="icAjuda" style="--c:var(--ouro)" title="Pedir ajuda a outro setor">🤝 Ajuda</button>
+        <button type="button" class="bt-luz${nPend ? " tem" : ""}" id="icPend" style="--c:var(--rosa)" title="Pendências com outros setores — ver, conversar e cobrar">📌 Pendências${nPend ? `<b>${nPend}</b>` : pedidosAb.length ? ` <small class="dica">${pedidosAb.length}</small>` : ""}</button>
+        <button type="button" class="bt-luz${ativa.motivo_filho ? "" : " tem"}" id="icTab" style="--c:var(--laranja)" title="Motivo, submotivo, SLA e etapa${sel.etapa_atual ? " · atual: " + esc(caminho.slice(1).join(" › ")) : ""}">🏷 Tabulação</button>
       </div>` : ""}
       ${chat ? cartao(chat) : ""}
       ${abertas.map(cartao).join("") || (!chat ? `<p class="dica">Nenhuma solicitação aberta.</p>` : "")}
@@ -1178,9 +1181,9 @@ async function telaCliente(m, cid) {
         ${atende ? `<div class="resp">
           <textarea class="entrada" id="txt" placeholder="Escreva o andamento… (Ctrl+Enter = Registrar)" style="min-height:70px"></textarea>
           <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center">
-            <button type="button" class="btn p" id="regCli" title="O cliente vê no app e a situação passa a Em andamento">👁 Registrar</button>
-            <button type="button" class="btn v p" id="regNota" title="Só a equipe vê — o cliente nunca vê">🔒 Nota interna</button>
-            ${podeConcluir(sel) ? `<button type="button" class="btn v p" id="concluirSol" style="margin-left:auto">${svg("check")} Concluir</button>` : ""}</div>
+            <button type="button" class="bt-luz" id="regCli" style="--c:var(--azul)" title="O cliente vê no app e a situação passa a Em andamento">👁 Registrar</button>
+            <button type="button" class="bt-luz" id="regNota" style="--c:var(--violeta)" title="Só a equipe vê — o cliente nunca vê">🔒 Nota interna</button>
+            ${podeConcluir(sel) ? `<button type="button" class="bt-luz" id="concluirSol" style="--c:var(--verde);margin-left:auto">${svg("check")} Concluir</button>` : ""}</div>
           <p class="dica" style="margin-top:4px">Registrar: o cliente vê no app · Nota interna: o cliente nunca vê · Concluir: finaliza a solicitação.</p>
         </div>` : ""}`}
       </div>` : ""}
@@ -1234,7 +1237,7 @@ async function telaCliente(m, cid) {
       const min = l.id === "conversa" && !S.convAberta;
       el.className = "wg vidro painel-cli" + (min ? " min" : ""); el.dataset.wg = l.id; el.style.setProperty("--c", d.cor);
       el.innerHTML = `<header class="wg-cab" title="Arraste para mover">${A.orbe(d.icone, d.cor, "p")}<h3>${titulo(l.id)}</h3>
-        <span class="acs">${l.id === "conversa" && chat && pode("encerrar") ? `<button type="button" class="bt-encerrar" id="encerrarAt" title="Finalizar o atendimento com o cliente — o chamado e as solicitações continuam abertos">${svg("check")} Encerrar</button>` : ""}${l.id === "cli" && !D.interno ? `<button type="button" class="btn-ic p" id="acessoApp" title="Acesso do cliente ao app — senha, aparelhos conectados e bloqueios">${svg("escudo")}</button>` : ""}${l.id === "conversa" && !D.interno ? `<button type="button" class="btn-ic p" id="chamarCli" title="Chamar o cliente — mensagem no chat e aviso no celular (app ou link)">${svg("sino")}</button>` : ""}${l.id === "conversa" ? `<button type="button" class="btn-ic p" id="minConv" title="${min ? "Mostrar a conversa" : "Minimizar"}">${svg(min ? "maximizar" : "minimizar")}</button>` : ""}<button type="button" class="btn-ic p" data-wmax="${l.id}" title="Expandir">${svg("maximizar")}</button></span></header>
+        <span class="acs">${l.id === "cli" && !D.interno ? `<button type="button" class="btn-ic p" id="acessoApp" title="Acesso do cliente ao app — senha, aparelhos conectados e bloqueios">${svg("escudo")}</button>` : ""}${l.id === "conversa" && !D.interno ? `<button type="button" class="btn-ic p" id="chamarCli" title="Chamar o cliente — mensagem no chat e aviso no celular (app ou link)">${svg("sino")}</button>` : ""}${l.id === "conversa" ? `<button type="button" class="btn-ic p" id="minConv" title="${min ? "Mostrar a conversa" : "Minimizar"}">${svg(min ? "maximizar" : "minimizar")}</button>` : ""}<button type="button" class="btn-ic p" data-wmax="${l.id}" title="Expandir">${svg("maximizar")}</button></span></header>
         <div class="wg-corpo">${corpo[l.id]}</div><span class="wg-redim" title="Arraste para redimensionar"></span>`;
       if (l.id === "conversa" && !min && l.h > 2) S.convH = l.h;
       grade.adicionar({ id: l.id, x: l.x, y: l.y, w: l.w, h: min ? 1 : (l.id === "conversa" ? Math.max(l.h, 4) : l.h), minW: d.minW, minH: min ? 1 : (d.minH === 1 ? 3 : d.minH), el });
