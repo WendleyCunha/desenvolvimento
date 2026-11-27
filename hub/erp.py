@@ -830,6 +830,21 @@ async def alterar_pedido(pid: str, request: Request):
         return {"ok": True, **_parcial(p, tx)}
 
 
+@router.post("/pedidos/{pid}/chamar-cliente")
+async def chamar_cliente_do_pedido(pid: str, request: Request):
+    """Botão "Chamar cliente" no pedido (Pedidos e Agenda): mensagem no chat do cliente + aviso no celular
+    (app e/ou link de atendimento). Nasce/volta na Caixa do Atendimento, na fila "Chamei"."""
+    u, p = _ctx(request)
+    if not (p["acoes"].get("pedidos") or p["acoes"].get("agendar")):
+        raise HTTPException(403, "Sem permissão para chamar o cliente.")
+    ped = ST.dados["pedidos"].get(pid)
+    if not ped or not ped.get("cliente_id"):
+        raise HTTPException(404, "Pedido não encontrado.")
+    c = await request.json()
+    import cliente_app
+    return cliente_app.central_chama(ped["cliente_id"], c.get("texto"), u, dict(ped, id=pid))
+
+
 @router.post("/pedidos/{pid}/acao")
 async def acao_pedido(pid: str, request: Request):
     u, p = _ctx(request)

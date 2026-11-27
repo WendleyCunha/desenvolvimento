@@ -639,6 +639,19 @@ function editarPedido(id, pre = {}) {
     },
   });
 }
+/* 📣 Chamar o cliente do pedido (Pedidos e Agenda): mensagem no chat + aviso no celular. Nasce na Caixa do
+   Atendimento (CX), na fila "Chamei", e volta para Atendimentos quando o cliente responder. */
+function chamarClienteDoPedido(p) {
+  const primeiro = String(p.cliente_nome || "").trim().split(" ")[0].replace(/^./, (x) => x.toUpperCase());
+  A.modal({ titulo: `Chamar ${p.cliente_nome || "o cliente"}`, icone: "sino", cor: "#f59e0b", largura: 520,
+    html: `<p class="sub" style="margin:0 0 8px">Vai para o chat do cliente no Atendimento (CX) e avisa o celular dele — no app ou no link de atendimento, onde ele ativou os avisos.</p>
+      <textarea id="txtChamar" rows="4" style="width:100%">${esc(`Olá${primeiro ? ", " + primeiro : ""}! Aqui é da central, sobre o seu pedido #${p.numero}. Pode falar agora?`)}</textarea>`,
+    botoes: [{ rotulo: "Cancelar" }, { rotulo: "Chamar", classe: "btn", icone: "sino", principal: true, acao: async (cx) => {
+      const texto = $("#txtChamar", cx).value.trim(); if (!texto) { A.toast("Escreva a mensagem."); return false; }
+      try { const r = await api(`/pedidos/${encodeURIComponent(p.id)}/chamar-cliente`, { method: "POST", body: { texto } });
+        A.toast(r.aparelhos ? `Cliente chamado — aviso enviado para ${r.aparelhos} celular(es). A conversa está na Caixa do Atendimento.` : "Mensagem no chat do cliente (Caixa do Atendimento). Ele não ativou avisos no celular — vai ver quando abrir o app ou o link.", [], { cor: "var(--verde)", duracao: 6000 });
+      } catch (e) { A.toast("⚠ " + esc(e.message), [], { cor: "var(--rosa)", duracao: 8000 }); return false; } } }] });
+}
 function abrirPedido(id) {
   const p = S.pedidos[id]; if (!p) return;
   const car = p.carga_id ? S.cargas[p.carga_id] : null;
@@ -653,7 +666,7 @@ function abrirPedido(id) {
     titulo: `${p.tipo === "troca" ? "Troca" : "Pedido"} #${p.numero}`, icone: p.tipo === "troca" ? "repetir" : "pedido", cor: (STATUS[p.status] || [])[1], largura: 760,
     html: `<div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-bottom:12px">${etqSt(p.status)}${p.pendencia === "ausente" ? `<span class="mini c" style="--c:#fb923c">ausente — reagendar</span>` : ""}${p.pendencia === "reposicao" ? `<span class="mini c" style="--c:#fb7185">reposição de avaria</span>` : ""}${p.sem_estoque ? `<span class="mini c" style="--c:#fb7185">sem estoque para a reposição</span>` : ""}
         ${p.agendamento ? `<span class="mini">${svg("calendario")} ${dBR(p.agendamento.data)} ${esc(p.agendamento.janela || "")}</span>` : ""}${car ? `<span class="mini c" style="--c:#22d3ee">carga ${car.numero}</span>` : ""}<span class="mini">${p.reservado ? "estoque reservado" : "sem reserva"}</span></div>
-      <div class="g2"><div><small class="sub">Cliente</small><b>${esc(p.cliente_nome)}</b><span class="sub">${esc(endTxt(p.endereco))}</span>${vis("contato") && p.telefone ? `<span class="sub">${esc(p.telefone)}</span>` : ""}</div>
+      <div class="g2"><div><small class="sub">Cliente</small><b>${esc(p.cliente_nome)}</b>${p.cliente_id && (pode("pedidos") || pode("agendar")) ? ` <button type="button" class="btn-ic" id="pChamar" title="Chamar o cliente — mensagem no chat e aviso no celular (app ou link de atendimento)" style="vertical-align:middle;margin-left:4px">${svg("sino")}</button>` : ""}<span class="sub">${esc(endTxt(p.endereco))}</span>${vis("contato") && p.telefone ? `<span class="sub">${esc(p.telefone)}</span>` : ""}</div>
         <div><small class="sub">Criado</small>${dhBR(p.criado_em)} por @${esc(p.criado_por || "")}${p.motivo_troca ? `<span class="sub">Motivo da troca: ${esc(p.motivo_troca)}</span>` : ""}${p.origem_id && S.pedidos[p.origem_id] ? `<span class="sub">Troca do pedido #${S.pedidos[p.origem_id].numero}</span>` : ""}${p.obs ? `<span class="sub">Obs.: ${esc(p.obs)}</span>` : ""}${p.agendamento?.obs ? `<span class="sub">Entrega: ${esc(p.agendamento.obs)}</span>` : ""}</div></div>
       <div class="sep"><h4>Itens</h4><div class="tab-w"><table class="t"><tr><th>Produto</th><th class="num">Qtd</th>${vis("preco") ? `<th class="num">Preço</th><th class="num">Total</th>` : ""}<th class="num">Pendente</th></tr>
         ${(p.itens || []).map((i) => { const pen = (p.pendentes || []).find((x) => x.produto_id === i.produto_id)?.qtd || 0; return `<tr><td>${esc(prod(i.produto_id).nome)}<span class="sub">${esc(prod(i.produto_id).sku)}</span></td><td class="num">${i.qtd}</td>${vis("preco") ? `<td class="num">${brl(i.preco)}</td><td class="num">${brl(i.preco * i.qtd)}</td>` : ""}<td class="num ${pen ? "baixo" : "zero"}">${pen}</td></tr>`; }).join("")}
@@ -664,7 +677,7 @@ function abrirPedido(id) {
       ${p.entrega ? blocoEntrega(p) : ""}
       <div class="sep" id="tkPed"><h4>Chamados no CX</h4><div class="sub">carregando…</div></div>
       <div class="sep"><h4>Histórico</h4><ul class="linha-tempo">${(p.historico || []).slice().reverse().map((h) => `<li>${esc(h.evento)}<small>${dhBR(h.em)} · @${esc(h.por || "")}</small></li>`).join("")}</ul></div>`,
-    aoAbrir: (cx) => ticketsDoPedido(p, cx),
+    aoAbrir: (cx) => { ticketsDoPedido(p, cx); const bc = $("#pChamar", cx); if (bc) bc.onclick = () => chamarClienteDoPedido(p); },
     esquerda: [
       { rotulo: "PDF do pedido", classe: "btn v", icone: "baixar", acao: () => { window.open(`/api/erp/pedidos/${encodeURIComponent(p.id)}/pdf`, "_blank", "noopener"); return false; } },
       ...(p.nf?.chave ? [{ rotulo: "NF simplificada", classe: "btn v", icone: "documento", acao: () => { window.open(`/api/erp/pedidos/${encodeURIComponent(p.id)}/etiqueta`, "_blank", "noopener"); return false; } }] : []),

@@ -627,3 +627,42 @@ def test_erp_guarda_data_de_nascimento(t):
         except Exception as ex:  # noqa: BLE001
             assert getattr(ex, "status_code", 0) == 400
     assert "nascimento" not in E._filtrar({"acoes": {}, "campos": {"contato": "oculto"}}, "parceiros", dict(d))
+
+
+def test_chamar_cliente_pela_caixa_fica_em_chamei_ate_responder(t, monkeypatch):
+    import promocoes
+    avisos = []
+    monkeypatch.setattr(promocoes, "avisar_cliente", lambda *a, **k: avisos.append(a))
+    monkeypatch.setattr(banco, "thread", lambda fn, *a, **k: fn(*a, **k))
+    entrar(t)   # gera o código da Ana
+    sid = t.post("/api/cliente/chamados", json={"motivo_pai": "Pedido", "motivo_filho": "Cancelamento", "texto": "Quero cancelar"}).json()["id"]
+    cid = central(t, sid)["cid"]
+    r = t.post(f"/api/tickets/cliente/{quote(cid, safe='')}/chamar", json={"texto": "Olá, Ana! Pode falar agora?"}).json()
+    assert r["ok"] and avisos and avisos[-1][1] == "💬 A central está te chamando"
+    chat = next(x for x in t.get("/api/tickets/estado").json()["tickets"] if x["app_tipo"] == "chat")
+    assert chat["chamei_em"] and chat["status"] == "em_andamento"                                   # fila "Chamei"
+    assert t.get("/api/cliente/eu").json()["chat"]["mensagens"][-1]["texto"] == "Olá, Ana! Pode falar agora?"
+    t.post("/api/cliente/chat", json={"texto": "Oi, pode sim"})                                     # respondeu → sai de Chamei
+    chat = next(x for x in t.get("/api/tickets/estado").json()["tickets"] if x["app_tipo"] == "chat")
+    assert not chat["chamei_em"] and chat["app_pendente"]
+    r = t.post(f"/api/tickets/cliente/{quote(cid, safe='')}/chamar", json={"texto": "Ana, ainda está aí?"}).json()   # chamar de novo
+    assert r["existente"] and next(x for x in t.get("/api/tickets/estado").json()["tickets"] if x["app_tipo"] == "chat")["chamei_em"]
+
+
+def test_chamar_visitante_do_link_e_avisar_no_link(t, monkeypatch):
+    import promocoes
+    guardadas, enviados = {}, []
+    monkeypatch.setattr(promocoes, "inscricoes", lambda: guardadas)
+    monkeypatch.setattr(promocoes, "_gravar_insc", lambda cod, d: guardadas.__setitem__(cod, d) if d else guardadas.pop(cod, None))
+    monkeypatch.setattr(promocoes, "enviar_push", lambda sub, dados: enviados.append((sub, dados)) or "ok")
+    monkeypatch.setattr(banco, "thread", lambda fn, *a, **k: fn(*a, **k))
+    t.post("/api/cliente/atendimento/visitante", json={"nome": "Maria"})
+    sid = t.post("/api/cliente/atendimento/mensagem", json={"texto": "Oi", "req": "x1"}).json()["id"]
+    cod = central(t, sid)["cliente_codigo"]
+    sub = {"endpoint": "https://push.exemplo/abc", "keys": {"p256dh": "k", "auth": "a"}}
+    assert t.post("/api/cliente/atendimento/push", json={"inscricao": sub}).status_code == 200
+    assert guardadas[cod]["subs"][0]["url"] == "/atendimento/"
+    r = C.chamar_por_codigo(cod, "Maria, pode falar?", {"login": "atendente", "nome": "Carla"})
+    assert r["aparelhos"] == 1 and enviados[-1][1]["url"] == "/atendimento/" and "url" not in enviados[-1][0]   # toque abre o link
+    assert t.get("/api/cliente/atendimento/chat").json()["mensagens"][-1]["texto"] == "Maria, pode falar?"
+    assert all(x.get("url") for x in guardadas[cod]["subs"])                                       # celular só do link (fora dos disparos)

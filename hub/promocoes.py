@@ -166,8 +166,8 @@ def avisar_cliente(cod: str, titulo: str, texto: str, url: str = "", tag: str = 
             return False
         dados = {"titulo": titulo, "texto": texto, "tag": tag or titulo, "url": url or f"{banco.prefixo_publico()}/cliente/"}
         ok, vivas = False, []
-        for sub in subs:
-            r = enviar_push(sub, dados)
+        for sub in subs:   # celular inscrito pelo link de atendimento abre o link; pelo app, o app
+            r = enviar_push({k: v for k, v in sub.items() if k != "url"}, {**dados, "url": sub["url"]} if sub.get("url") else dados)
             ok = ok or r == "ok"
             if r != "expirou":
                 vivas.append(sub)
@@ -238,7 +238,7 @@ def _publico(publico: dict, categoria: str) -> tuple[list[str], dict]:
     else:
         alvo = list(ins)
     alvo = list(dict.fromkeys(alvo))
-    com_app = [c for c in alvo if c in ins and ins[c].get("subs")]
+    com_app = [c for c in alvo if c in ins and any(not x.get("url") for x in ins[c].get("subs") or [])]   # só o app (o link de atendimento não recebe disparos)
     aceitam = [c for c in com_app if ins[c].get(categoria, True)]
     return aceitam, {"escolhidos": len(alvo), "com_app": len(com_app), "aceitam": len(aceitam), "desligaram": len(com_app) - len(aceitam),
                      "sem_app": len(alvo) - len(com_app)}
@@ -269,6 +269,9 @@ def _executar(d: dict):
                  "url": f"{banco.prefixo_publico()}/cliente/?aba=vantagens&d={d['id']}" + (f"&v={vale['codigo']}" if vale else "")}
         ok, vivas = False, []
         for sub in ins.get(cod, {}).get("subs", []):
+            if sub.get("url"):   # celular do link de atendimento: só recebe chamadas da central, não disparos
+                vivas.append(sub)
+                continue
             r = enviar_push(sub, dados)
             ok = ok or r == "ok"
             if r != "expirou":
@@ -332,7 +335,19 @@ def vantagens(request: Request):
     base = str(request.base_url).rstrip("/")
     for v in vales:
         v["qr"] = f"{base}/v/{v['codigo']}"
-    return {"inscrito": bool(i.get("subs")), "avisos": i.get("avisos", True), "promocoes": i.get("promocoes", True), "vales": vales}
+    return {"inscrito": any(not x.get("url") for x in i.get("subs") or []), "avisos": i.get("avisos", True), "promocoes": i.get("promocoes", True), "vales": vales}
+
+
+def guardar_inscricao(cod: str, nome: str, sub: dict, url: str = "", promocoes: bool | None = None):
+    """Guarda o celular que aceitou notificações (até 5 por cliente). `url`: o que abre ao tocar (ex.: link de atendimento)."""
+    if not str(sub.get("endpoint") or "").startswith("https://") or not (sub.get("keys") or {}).get("p256dh"):
+        raise HTTPException(400, "Inscrição inválida.")
+    atual = copy.deepcopy(inscricoes().get(cod) or {"subs": []})
+    nova = {"endpoint": sub["endpoint"], "keys": sub["keys"], **({"url": url} if url else {})}
+    subs = [s for s in atual.get("subs", []) if s.get("endpoint") != sub["endpoint"]] + [nova]
+    atual.update(subs=subs[-5:], nome=nome or atual.get("nome", ""), avisos=True, em=agora(),
+                 promocoes=bool(atual.get("promocoes", True) if promocoes is None else promocoes))
+    _gravar_insc(cod, atual)
 
 
 @router.post("/api/cliente/push")

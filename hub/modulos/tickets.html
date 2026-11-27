@@ -466,7 +466,7 @@ function clientes() {
       status: estado === "concluido" ? recente.status : chat ? chat.status : st.includes("em_andamento") ? "em_andamento" : st.includes("aberto") ? "aberto" : "aguardando",
       sla: (comSla[0] || base).sla, cliente_nome: base.cliente_nome, cliente_codigo: base.cliente_codigo, cliente_telefone: base.cliente_telefone,
       atribuido_para: dono?.atribuido_para || "", atendentes: dono?.atendentes || [],
-      frota: !!(chat && chat.frota),   // chat do app de cliente com pedido em rastreio → fila Frota (não entra em Atendimentos agora)
+      frota: !!(chat && chat.frota), chamei: !!(chat && chat.chamei_em),   // chamei = a central chamou e o cliente ainda não respondeu   // chat do app de cliente com pedido em rastreio → fila Frota (não entra em Atendimentos agora)
       meu: vivos.some((t) => t.meu), sem_dono: vivos.length > 0 && vivos.every((t) => t.sem_dono), nao_visto: vivos.some((t) => t.nao_visto), app_pendente: vivos.some((t) => t.app_pendente),
       pendencias: [...new Set(vivos.flatMap((t) => t.pendencias || []))],
       departamentos: [...new Set(vivos.map((t) => t.departamento || "—"))], motivos: [...new Set(vivos.map((t) => t.motivo_pai || "— sem motivo —"))],
@@ -562,7 +562,8 @@ function contagens() {
     espera: ab.filter((c) => c.status === "aguardando").length, concl: cs.filter((c) => !vivo(c)).length, todos: cs.length,
     alerta: ab.filter((c) => c.nao_visto || c.app_pendente).length, app: ab.filter((c) => c.app_pendente).length,
     internos: S.aj ? S.aj.abertos_recebidos + filaSetor(S.aj.setor).filter((t) => t.sem_dono).length : 0,
-    atend: ab.filter((c) => c.estado === "atendimento" && !c.frota).length, frota: ab.filter((c) => c.estado === "atendimento" && c.frota).length, tks: ab.filter((c) => c.estado === "ticket").length,
+    atend: ab.filter((c) => c.estado === "atendimento" && !c.frota && !c.chamei).length, frota: ab.filter((c) => c.estado === "atendimento" && c.frota && !c.chamei).length,
+    chamei: ab.filter((c) => c.estado === "atendimento" && c.chamei).length, tks: ab.filter((c) => c.estado === "ticket").length,
     sols: S.e.tickets.filter((t) => !t.chat && ABERTOS.includes(t.status)).length,
   };
 }
@@ -663,7 +664,7 @@ function filtrar() {
   if (S.fila) {
     const [tipo, val] = S.fila.split(":");
     l = l.filter((c) => tipo === "dep" ? c.departamentos.includes(val) : tipo === "mot" ? c.motivos.includes(val) : tipo === "pend" ? c.pendencias.includes(val)
-      : tipo === "erp" ? c.erp : tipo === "app" ? (val === "pend" ? c.app_pendente : val === "frota" ? c.estado === "atendimento" && c.frota : c.estado === "atendimento" && !c.frota)
+      : tipo === "erp" ? c.erp : tipo === "app" ? (val === "pend" ? c.app_pendente : val === "chamei" ? c.estado === "atendimento" && c.chamei : val === "frota" ? c.estado === "atendimento" && c.frota && !c.chamei : c.estado === "atendimento" && !c.frota && !c.chamei)
       : tipo === "com" ? (val === "_ninguem" ? c.sem_dono : c.atendentes.includes(val) || c.atribuido_para === val) : true);
   }
   if (S.q) { const q = norm(S.q); l = l.filter((c) => c.busca.includes(q)); }
@@ -963,12 +964,12 @@ function popupTransferir(cids, depois) {
   if (!S.eq) carregarEquipe().then(() => { (S.eq?.pessoas || []).filter((x) => x.online).forEach((x) => on.add(x.usuario)); if (md.el.isConnected) desenhar(); });
 }
 function chipsSol(c) {
-  return (c.chat ? `<span class="chip-sol" style="--c:var(--ciano)">📱 ${esc(c.chat.assunto || "Chat")}${c.chat.app_pendente ? " · aguardando" : ""}</span>` : "")
+  return (c.chat ? `<span class="chip-sol" style="--c:${c.chamei ? "#f59e0b" : "var(--ciano)"}">${c.chamei ? "📣 Chamei" : "📱 " + esc(c.chat.assunto || "Chat")}${c.chat.app_pendente ? " · aguardando" : ""}</span>` : "")
     + (vivo(c) ? c.solsAb : c.sols.slice(-2)).map((t) => `<span class="chip-sol" style="--c:${corSol(t.cor)}">${esc(t.motivo_filho || t.assunto || "Solicitação")}${t.erp_pedido_numero ? " #" + esc(t.erp_pedido_numero) : ""}${t.app_pendente ? " · 📱" : ""}</span>`).join("");
 }
 function telaCaixa(m) {
   const c = contagens(), cs = clientes(), ab = cs.filter(vivo);
-  const grupo = (titulo, chave, valores) => valores.length ? `<h4>${titulo}</h4>` + valores.map(([v, n, cor]) => `<button type="button" data-fila="${chave}:${esc(v)}" class="${S.fila === chave + ":" + v ? "ativo" : ""}" style="--c:${cor || "var(--txt3)"}"><i></i>${esc(v === "_ninguem" ? "— sem dono —" : chave === "com" ? nomeU(v) : chave === "app" ? (v === "pend" ? "Cliente aguardando" : v === "frota" ? "🚚 Frota (em rastreio)" : "Atendimentos agora") : v)}<em>${n}</em></button>`).join("") : "";
+  const grupo = (titulo, chave, valores) => valores.length ? `<h4>${titulo}</h4>` + valores.map(([v, n, cor]) => `<button type="button" data-fila="${chave}:${esc(v)}" class="${S.fila === chave + ":" + v ? "ativo" : ""}" style="--c:${cor || "var(--txt3)"}"><i></i>${esc(v === "_ninguem" ? "— sem dono —" : chave === "com" ? nomeU(v) : chave === "app" ? (v === "pend" ? "Cliente aguardando" : v === "frota" ? "🚚 Frota (em rastreio)" : v === "chamei" ? "📣 Chamei (aguardando o cliente)" : "Atendimentos agora") : v)}<em>${n}</em></button>`).join("") : "";
   const conta = (f) => { const o = {}; ab.forEach((x) => f(x).forEach((k) => (o[k] = (o[k] || 0) + 1))); return Object.entries(o).sort((a, b) => b[1] - a[1]); };
   const cor = (s) => { let h = 0; for (const ch of String(s)) h = (h * 31 + ch.charCodeAt(0)) % 360; return `hsl(${h} 70% 62%)`; };
   const lista = filtrar(), porPag = 25, pags = Math.max(1, Math.ceil(lista.length / porPag));
@@ -985,7 +986,7 @@ function telaCaixa(m) {
   m.innerHTML = `<div class="caixa">
     <aside class="filas vidro">
       <button type="button" data-fila="" class="${!S.fila ? "ativo" : ""}"><i></i>Todas as filas<em>${ab.length}</em></button>
-      ${grupo("App do cliente", "app", [c.atend ? ["atend", c.atend, "var(--ciano)"] : null, c.frota ? ["frota", c.frota, "#22c55e"] : null, c.app ? ["pend", c.app, "var(--ciano)"] : null].filter(Boolean))}
+      ${grupo("App do cliente", "app", [c.atend ? ["atend", c.atend, "var(--ciano)"] : null, c.chamei ? ["chamei", c.chamei, "#f59e0b"] : null, c.frota ? ["frota", c.frota, "#22c55e"] : null, c.app ? ["pend", c.app, "var(--ciano)"] : null].filter(Boolean))}
       ${filtros ? `<details class="filtros"${filtroAtivo || S.filtrosAbertos ? " open" : ""}><summary>Filtrar por${filtroAtivo ? " <em>1 ativo</em>" : ""}</summary>${filtros.replace(/<h4>/g, '<h4 style="margin-top:8px">')}</details>` : ""}
       <p class="dica" style="padding:10px 6px 2px"><b>${ab.length}</b> cliente(s) em aberto${soMeu ? " com você" : ""}. Os filtros mostram esses mesmos clientes por ângulos diferentes — não somam.</p>
     </aside>
@@ -1169,7 +1170,7 @@ async function telaCliente(m, cid) {
       const min = l.id === "conversa" && !S.convAberta;
       el.className = "wg vidro painel-cli" + (min ? " min" : ""); el.dataset.wg = l.id; el.style.setProperty("--c", d.cor);
       el.innerHTML = `<header class="wg-cab" title="Arraste para mover">${A.orbe(d.icone, d.cor, "p")}<h3>${titulo(l.id)}</h3>
-        <span class="acs">${l.id === "conversa" ? `<button type="button" class="btn-ic p" id="minConv" title="${min ? "Mostrar a conversa" : "Minimizar"}">${svg(min ? "maximizar" : "minimizar")}</button>` : ""}<button type="button" class="btn-ic p" data-wmax="${l.id}" title="Expandir">${svg("maximizar")}</button></span></header>
+        <span class="acs">${l.id === "conversa" && !D.interno ? `<button type="button" class="btn-ic p" id="chamarCli" title="Chamar o cliente — mensagem no chat e aviso no celular (app ou link)">${svg("sino")}</button>` : ""}${l.id === "conversa" ? `<button type="button" class="btn-ic p" id="minConv" title="${min ? "Mostrar a conversa" : "Minimizar"}">${svg(min ? "maximizar" : "minimizar")}</button>` : ""}<button type="button" class="btn-ic p" data-wmax="${l.id}" title="Expandir">${svg("maximizar")}</button></span></header>
         <div class="wg-corpo">${corpo[l.id]}</div><span class="wg-redim" title="Arraste para redimensionar"></span>`;
       if (l.id === "conversa" && !min && l.h > 2) S.convH = l.h;
       grade.adicionar({ id: l.id, x: l.x, y: l.y, w: l.w, h: min ? 1 : (l.id === "conversa" ? Math.max(l.h, 4) : l.h), minW: d.minW, minH: min ? 1 : (d.minH === 1 ? 3 : d.minH), el });
@@ -1180,6 +1181,7 @@ async function telaCliente(m, cid) {
     requestAnimationFrame(() => requestAnimationFrame(() => area.classList.remove("montando")));
     m.querySelectorAll("[data-wmax]").forEach((b) => (b.onclick = () => grade.max(b.dataset.wmax)));
     $("#minConv").onclick = () => alternarConversa();
+    const bc = $("#chamarCli"); if (bc) bc.onclick = () => chamarCliente(D);
     const conv = $("#conversa"); if (conv) conv.scrollTop = conv.scrollHeight;
     const reg = m.querySelector(".registro"); if (reg) reg.scrollTop = reg.scrollHeight;
   }
@@ -1193,6 +1195,19 @@ async function telaCliente(m, cid) {
     fim(); requestAnimationFrame(fim);
     cvB.querySelectorAll("img").forEach((i) => { if (!i.complete) i.addEventListener("load", fim, { once: true }); });
   }
+}
+/* 📣 CHAMAR O CLIENTE: mensagem no chat dele (ou abre um) + aviso no celular (app e/ou link de atendimento).
+   O chat vai para a fila "Chamei" e volta para Atendimentos quando o cliente responder. */
+function chamarCliente(D) {
+  const primeiro = String(D.cliente.nome || "").trim().split(" ")[0].replace(/^./, (x) => x.toUpperCase()), eu = String(S.e.eu.nome || "").split(" ")[0];
+  A.modal({ titulo: "Chamar o cliente", icone: "sino", cor: "#f59e0b", largura: 520,
+    html: `<p class="dica" style="margin:0 0 8px">Vai para o chat de <b>${esc(D.cliente.nome || "")}</b> e avisa o celular dele (no app ou no link de atendimento, onde ele ativou os avisos). Fica em <b>📣 Chamei</b> até ele responder.</p>
+      <textarea class="entrada" id="txtChamar" rows="4" style="width:100%">${esc(`Olá${primeiro ? ", " + primeiro : ""}! Aqui é ${eu || "a central"}. Pode falar agora?`)}</textarea>`,
+    botoes: [{ rotulo: "Cancelar" }, { rotulo: "Chamar", classe: "btn", icone: "sino", principal: true, acao: async (cx) => {
+      const texto = cx.querySelector("#txtChamar").value.trim(); if (!texto) { A.toast("Escreva a mensagem."); return false; }
+      try { const r = await chamar(`/cliente/${encodeURIComponent(D.cid)}/chamar`, { method: "POST", body: { texto } }, "chamando…");
+        ok(r.aparelhos ? `Cliente chamado — aviso enviado para ${r.aparelhos} celular(es).` : "Mensagem no chat do cliente. Ele não ativou avisos no celular — vai ver quando abrir o app ou o link.");
+        await recarregarCliente(); } catch (er) { falha(er); return false; } } }] });
 }
 /* minimizar/mostrar a conversa SEM remontar a tela */
 function alternarConversa() {

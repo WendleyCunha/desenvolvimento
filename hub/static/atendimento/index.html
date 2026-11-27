@@ -9,7 +9,12 @@
 <meta name="robots" content="noindex">
 <script>/* EMPRESAS: aberto como /<empresa>/atendimento/ → as chamadas /api/… vão para /<empresa>/api/… */
 (function () { var m = location.pathname.match(/^\/([a-z0-9][a-z0-9-]{1,30})\/atendimento(\/|$)/); if (m && m[1] === "atendimento") m = null; window.HUB_BASE = m ? "/" + m[1] : "";
-  if (!m) return; var f = window.fetch; window.fetch = function (u, o) { return f.call(this, typeof u === "string" && u.indexOf("/api/") === 0 ? window.HUB_BASE + u : u, o); }; })();</script>
+  if (!m) return; var f = window.fetch; window.fetch = function (u, o) { return f.call(this, typeof u === "string" && u.indexOf("/api/") === 0 ? window.HUB_BASE + u : u, o); };
+  document.addEventListener("DOMContentLoaded", function () { document.querySelectorAll('link[rel="manifest"]').forEach(function (l) { l.setAttribute("href", window.HUB_BASE + l.getAttribute("href")); }); }); })();</script>
+<link rel="manifest" href="/atendimento/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/static/app/icone-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <link rel="icon" href="data:,">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -191,6 +196,7 @@ function entrarNoChat(nome, agoraMesmo) {
   const a = document.createElement("a"); a.className = "app-conv"; a.href = (window.HUB_BASE || "") + "/cliente/"; a.target = "_blank"; a.rel = "noopener";
   a.innerHTML = `<span style="font-size:1.3rem">📲</span><span>Quer acompanhar seus pedidos, entregas e cupons? <b>Abra o nosso app</b> — é só entrar com CPF e e-mail.</span>`;
   if (agoraMesmo) fio.appendChild(a);
+  oferecerAvisos();
   S.areaChat = document.createElement("div"); S.areaChat.style.cssText = "display:flex;flex-direction:column;gap:10px";
   fio.appendChild(S.areaChat);
   modo("Escreva sua mensagem…", false);
@@ -215,6 +221,31 @@ async function enviarMsg(v) {
   try { await api(API + "/mensagem", { method: "POST", body: p }); }
   catch (e) { S.pend = S.pend.filter((x) => x !== p); bot(e.message || "Não consegui enviar. Tente de novo.", "erro"); if (e.status === 401) return; txt.value = v; env.disabled = false; }
   S.ultimas = ""; atualizar();
+}
+
+/* ── avisos no celular: a central pode CHAMAR o cliente (botão Chamar do CX/ERP) ── */
+const ehIOS = /iPad|iPhone|iPod/.test(navigator.userAgent), instalado = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+const pushOk = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+const b64u = (s) => { const p = "=".repeat((4 - (s.length % 4)) % 4), b = atob((s + p).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from([...b].map((c) => c.charCodeAt(0))); };
+async function inscrever(silencioso) {
+  try {
+    const base = window.HUB_BASE || "", reg = await navigator.serviceWorker.register(base + "/atendimento/sw.js", { scope: base + "/atendimento/" });
+    await navigator.serviceWorker.ready;
+    const { publica } = await api("/api/cliente/push/chave");
+    const sub = (await reg.pushManager.getSubscription()) || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64u(publica) }));
+    await api(API + "/push", { method: "POST", body: { inscricao: sub.toJSON() } });
+    if (!silencioso) bot("Pronto! 🔔 Se a central te chamar, você recebe um aviso neste celular — mesmo com esta página fechada.");
+  } catch (e) { if (!silencioso) bot("Não consegui ativar os avisos neste navegador. Sem problema: a conversa continua aqui.", "erro"); }
+}
+function oferecerAvisos() {
+  if (S.ofereceu) return; S.ofereceu = true;
+  if (!pushOk()) { if (ehIOS && !instalado) bot("Dica: no iPhone, para receber avisos quando a central te chamar, toque em Compartilhar › Adicionar à Tela de Início e abra por lá."); return; }
+  if (Notification.permission === "granted") { inscrever(true); return; }
+  if (Notification.permission === "denied") return;
+  const b = document.createElement("button"); b.type = "button"; b.className = "app-conv"; b.style.cssText = "cursor:pointer;font:inherit;text-align:left;width:100%";
+  b.innerHTML = `<span style="font-size:1.3rem">🔔</span><span>Quer ser avisado quando a central te chamar? <b>Ativar avisos</b></span>`;
+  b.onclick = async () => { b.remove(); const perm = await Notification.requestPermission(); if (perm === "granted") inscrever(false); else bot("Tudo bem! Sem avisos — é só voltar neste link quando quiser."); };
+  fio.appendChild(b); fim();
 }
 
 /* ── caixa de digitar ── */

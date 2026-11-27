@@ -582,6 +582,8 @@ def _msg_cliente(s: dict, me: dict, texto: str, req: str = "", offline_em: str =
     if offline_em:
         c["escrito_em"] = offline_em
     s.setdefault("comentarios", []).append(c)
+    s.pop("chamei_em", None)   # a central tinha chamado: o cliente respondeu → sai de "Chamei" e volta para Atendimentos
+    s.pop("chamei_por", None)
     s["app_pendente"] = True
     s["app_pendente_desde"] = s.get("app_pendente_desde") or T.agora()
     if s.get("status") in ("aguardando", "resolvido"):   # cliente respondeu → volta para a fila
@@ -688,11 +690,12 @@ def _chat_do_cliente(cid: str, cli: dict, d: dict, via: str = "") -> dict:
     return {"ok": True, "id": sid, "existente": False}
 
 
-def central_chama(cid: str, texto: str, me: dict, pedido: dict | None = None, anexos: list | None = None) -> dict:
-    """A CENTRAL chama o cliente pelo app: a mensagem entra no chat ativo dele (ou abre um chat novo já com o
-    atendente) e o cliente recebe notificação no celular. O cliente responde na aba Atendimento do app."""
+def central_chama(cid: str, texto: str, me: dict, pedido: dict | None = None, anexos: list | None = None, cli: dict | None = None) -> dict:
+    """A CENTRAL chama o cliente: a mensagem entra no chat ativo dele (ou abre um chat novo já com o atendente)
+    e o celular dele recebe notificação — no app (/cliente/) e/ou no link de atendimento (/atendimento/), onde
+    ele tiver ativado os avisos. `cli` permite chamar o visitante do link (sem cadastro no ERP)."""
     e = _erp()
-    cli = e.ST.dados["parceiros"].get(cid) or {}
+    cli = cli if cli is not None else (e.ST.dados["parceiros"].get(cid) or {})
     if not cli.get("codigo"):
         raise HTTPException(409, "Este cliente ainda não tem código do app (é gerado no primeiro pedido/cadastro). Use o WhatsApp.")
     texto = re.sub(r"[ \t]+", " ", str(texto or "")).strip()[:2000]
@@ -709,6 +712,7 @@ def central_chama(cid: str, texto: str, me: dict, pedido: dict | None = None, an
         s["app_pendente"] = False
         s.pop("app_pendente_desde", None)
         s["app_respondido_em"] = T.agora()
+        s["chamei_em"], s["chamei_por"] = T.agora(), eu["usuario"]   # fila "Chamei" na Caixa até o cliente responder
         if s.get("status") in ("aberto", "aguardando"):
             s["status"] = "em_andamento"
         if eu["usuario"] and eu["usuario"] not in (s.get("atendentes") or []):
@@ -728,13 +732,29 @@ def central_chama(cid: str, texto: str, me: dict, pedido: dict | None = None, an
         dados["categoria"] = dados["departamento"]
         tid = _criar(cid, cli, eu, dados)
         T._mutar_sol(T.compor(T._id_doc(cli["codigo"]), tid), msg, eu)
+    aparelhos = 0
     try:
         import promocoes
-        banco.thread(promocoes.avisar_cliente, cli["codigo"], "💬 A central quer falar com você", texto[:140] or "📎 Anexo",
+        aparelhos = len((promocoes.inscricoes().get(cli["codigo"]) or {}).get("subs") or [])
+        banco.thread(promocoes.avisar_cliente, cli["codigo"], "💬 A central está te chamando", texto[:140] or "📎 Anexo",
                      f"{banco.prefixo_publico()}/cliente/", f"central-{cli['codigo']}")
     except Exception as ex:  # noqa: BLE001
         print(f"[cliente] sem notificação: {ex}")
-    return {"ok": True, "id": tid, "existente": bool(ativo), "chamado": cli["codigo"]}
+    return {"ok": True, "id": tid, "existente": bool(ativo), "chamado": cli["codigo"], "aparelhos": aparelhos}
+
+
+def chamar_por_codigo(codigo: str, texto: str, me: dict) -> dict:
+    """Botão "Chamar cliente" do CX: pelo código do chamado — cliente do ERP ou visitante do link (V…)."""
+    cod = str(codigo or "").strip().upper()
+    e = _erp()
+    e.ST.carregar()
+    achado = next(((k, c) for k, c in e.ST.dados["parceiros"].items() if c.get("tipo") == "cliente" and str(c.get("codigo") or "").upper() == cod), None)
+    if achado:
+        return central_chama(achado[0], texto, me)
+    cont = T.BASE.cont.get(T._id_doc(cod)) if cod else None
+    if not cont:
+        raise HTTPException(404, "Cliente não encontrado.")
+    return central_chama("", texto, me, cli={"codigo": cod, "nome": cont.get("cliente_nome") or "Cliente", "tipo": "visitante"})
 
 
 def chat_com_cliente(cid: str, tid: str = "") -> dict:
@@ -1145,6 +1165,29 @@ def _at_sem_barra():
 @router.get("/atendimento/", include_in_schema=False)
 def pagina_atendimento():
     return FileResponse(Path(__file__).parent / "static" / "atendimento" / "index.html", media_type="text/html; charset=utf-8", headers=SEM_CACHE)
+
+
+@router.get("/atendimento/manifest.webmanifest", include_in_schema=False)
+def manifesto_atendimento():
+    return acesso.manifesto_publico(Path(__file__).parent / "static" / "atendimento" / "manifest.webmanifest", "/atendimento/")
+
+
+@router.get("/atendimento/sw.js", include_in_schema=False)
+def sw_atendimento():
+    """Só para as notificações do link (a central chamando). Escopo: /atendimento/."""
+    return FileResponse(Path(__file__).parent / "static" / "atendimento" / "sw.js", media_type="application/javascript",
+                        headers={**SEM_CACHE, "Service-Worker-Allowed": banco.prefixo_publico() + "/atendimento/"})
+
+
+@router.post("/api/cliente/atendimento/push")
+async def at_push(request: Request):
+    """O celular aceitou ser avisado: a central chamando (botão Chamar do CX/ERP) abre o link de atendimento."""
+    _cid, cli = _cliente_do_link(request)
+    d = await request.json()
+    import promocoes
+    promocoes.guardar_inscricao(str(cli.get("codigo") or "").upper(), cli.get("_primeiro") or cli.get("nome") or "", d.get("inscricao") or {},
+                                url=banco.prefixo_publico() + "/atendimento/")
+    return {"ok": True}
 
 
 @router.get("/api/cliente/atendimento/info")

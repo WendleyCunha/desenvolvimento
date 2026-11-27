@@ -1,0 +1,15 @@
+{
+  "name": "Atendimento",
+  "short_name": "Atendimento",
+  "description": "Converse com a nossa central.",
+  "start_url": "/atendimento/",
+  "scope": "/atendimento/",
+  "display": "standalone",
+  "background_color": "#05060a",
+  "theme_color": "#05060a",
+  "lang": "pt-BR",
+  "icons": [
+    {"src": "/static/app/icone-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
+    {"src": "/static/app/icone-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}
+  ]
+}
