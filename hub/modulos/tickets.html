@@ -160,11 +160,21 @@ button.kpi:hover{border-color:color-mix(in srgb,var(--c) 50%,transparent)}
 
 /* abrir chamado */
 .setores{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
-.setor{display:flex;gap:12px;align-items:flex-start;text-align:left;padding:14px;border-radius:16px;background:rgba(255,255,255,.035);border:1px solid var(--vidro-borda);transition:.2s;--c:var(--ouro)}
-.setor:hover{border-color:color-mix(in srgb,var(--c) 50%,transparent);transform:translateY(-2px)}
-.setor .sig{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;font:700 .9rem var(--titulo);color:var(--c);background:color-mix(in srgb,var(--c) 14%,transparent);border:1px solid color-mix(in srgb,var(--c) 35%,transparent);flex:none}
-.setor b{display:block;font:700 .95rem var(--titulo)}
-.setor small{color:var(--txt3);font-size:.74rem}
+/* cartão de setor: vidro + borda na cor do setor + brilho (mesmo padrão dos orbes / bolinhas) */
+.setor,.aj-ic{--c:var(--ouro);position:relative;isolation:isolate;cursor:pointer;font:inherit;color:var(--txt);transition:.2s;
+  background:linear-gradient(160deg,color-mix(in srgb,var(--c) 9%,transparent),rgba(255,255,255,.02) 60%);
+  border:1px solid color-mix(in srgb,var(--c) 30%,var(--vidro-borda));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 10px 26px -18px var(--c)}
+.setor::before,.aj-ic::before{content:"";position:absolute;inset:-1px;border-radius:inherit;padding:1px;z-index:-1;opacity:0;transition:opacity .25s;
+  background:conic-gradient(from var(--ang,0deg),transparent 0 60%,var(--c) 78%,#fff 84%,transparent 92%);
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;animation:aurGiraAng 3.6s linear infinite}
+.setor:hover,.aj-ic:hover,.aj-ic.on{border-color:color-mix(in srgb,var(--c) 60%,transparent);box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 0 0 1px color-mix(in srgb,var(--c) 25%,transparent),0 12px 30px -12px var(--c);transform:translateY(-2px)}
+.setor:hover::before,.aj-ic.on::before{opacity:1}
+.setor{display:flex;gap:14px;align-items:center;text-align:left;padding:14px 16px;border-radius:18px;min-height:76px}
+.setor b{display:block;font:700 .98rem var(--titulo);color:var(--txt)}
+.setor small{display:block;margin-top:2px;color:var(--txt3);font-size:.74rem;line-height:1.35}
+.orbe.redondo{border-radius:50%}
+html[data-claro] .setor,html[data-claro] .aj-ic{background:linear-gradient(160deg,color-mix(in srgb,var(--c) 10%,#fff),#fff 65%)}
 
 /* ajustes */
 .cartoes{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px}
@@ -197,9 +207,9 @@ button.kpi:hover{border-color:color-mix(in srgb,var(--c) 50%,transparent)}
 .ic-sol:hover{border-color:var(--violeta);background:rgba(139,92,246,.1)}
 .ic-sol.tem{border-color:rgba(139,92,246,.6);box-shadow:0 0 12px -4px rgba(139,92,246,.8)}
 .ic-sol b{min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:var(--violeta);color:#fff;font-size:.66rem;display:inline-flex;align-items:center;justify-content:center}
-.setores{display:flex;flex-wrap:wrap;gap:6px}.setores label{cursor:pointer}.setores input{display:none}
-.setores span{display:inline-block;padding:6px 11px;border-radius:20px;border:1px solid var(--vidro-borda);font-size:.78rem;transition:.15s}
-.setores input:checked+span{background:var(--violeta);border-color:var(--violeta);color:#fff}
+.setores-r{display:flex;flex-wrap:wrap;gap:6px}.setores-r label{cursor:pointer}.setores-r input{display:none}
+.setores-r span{display:inline-block;padding:6px 11px;border-radius:20px;border:1px solid var(--vidro-borda);font-size:.78rem;transition:.15s}
+.setores-r input:checked+span{background:var(--violeta);border-color:var(--violeta);color:#fff}
 .painel-sol{display:flex;flex-direction:column;gap:9px;margin-top:6px;padding:12px;border-radius:14px;border:1px solid color-mix(in srgb,var(--c) 40%,transparent);background:color-mix(in srgb,var(--c) 5%,transparent)}
 .at-cab{border-left:4px solid var(--c,transparent)}
 .tab tr.linha.app td:first-child{box-shadow:inset 3px 0 0 var(--ciano)}
@@ -286,11 +296,11 @@ button.kpi:hover{border-color:color-mix(in srgb,var(--c) 50%,transparent)}
 .eq tr.g-sel td{background:rgba(var(--ouro-rgb),.05)}
 /* Pedidos de ajuda › Que eu abri: ícones de setor + ordenação */
 .aj-ics{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 10px}
-.aj-ic{position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;min-width:62px;padding:6px 6px 5px;border-radius:14px;border:1px solid var(--vidro-borda);background:transparent;color:var(--txt2);cursor:pointer;font:inherit}
-.aj-ic span{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font:800 .8rem var(--titulo);color:#fff;background:var(--c);box-shadow:0 0 10px -3px var(--c)}
-.aj-ic em{position:absolute;top:1px;right:6px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--rosa);color:#fff;font:700 .66rem/18px var(--titulo);font-style:normal}
-.aj-ic small{font-size:.66rem;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.aj-ic.on{border-color:var(--c);background:rgba(var(--ouro-rgb),.06);color:var(--txt)}
+.aj-ic{display:flex;flex-direction:column;align-items:center;gap:5px;min-width:74px;padding:9px 8px 7px;border-radius:16px}
+.aj-ic .orbe{--t:36px;font-weight:800;font-size:.78rem}
+.aj-ic em{position:absolute;top:3px;right:8px;z-index:2;min-width:19px;height:19px;padding:0 5px;border-radius:10px;background:var(--rosa);color:#fff;font:700 .66rem/19px var(--titulo);font-style:normal;box-shadow:0 0 10px -1px var(--rosa)}
+.aj-ic small{font-size:.68rem;font-weight:600;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--txt2)}
+.aj-ic.on small{color:var(--txt)}
 .aj-ord{background:none;border:0;padding:0;font:inherit;color:inherit;cursor:pointer;white-space:nowrap}.aj-ord.on{color:var(--ouro2)}
 .aj-tag{display:inline-block;padding:2px 8px;border-radius:9px;border:1px solid var(--c);color:var(--c);font-size:.74rem;font-weight:700;white-space:nowrap}
 /* régua do cliente: linha do pedido com uma etapa embaixo da outra */
@@ -349,9 +359,13 @@ button.kpi:hover{border-color:color-mix(in srgb,var(--c) 50%,transparent)}
 .bt-rastreio{--c:#22c55e;display:inline-flex;align-items:center;gap:5px;margin:6px 0 2px;padding:4px 11px;border-radius:999px;cursor:pointer;font:700 .68rem/1.4 var(--sans);letter-spacing:.08em;
   color:var(--c)!important;border:1px solid color-mix(in srgb,var(--c) 45%,transparent)!important;
   background:radial-gradient(circle at 30% 20%,color-mix(in srgb,var(--c) 26%,transparent),color-mix(in srgb,var(--c) 7%,rgba(10,12,18,.55)) 75%)!important;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.14);animation:rastPisca 1.4s ease-in-out infinite}
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.14),0 0 0 1px color-mix(in srgb,var(--c) 18%,transparent),0 6px 18px -8px var(--c);animation:rastPisca 1.4s ease-in-out infinite;position:relative;isolation:isolate;transition:transform .2s}
+.bt-rastreio::before{content:"";position:absolute;inset:-1px;border-radius:inherit;padding:1px;z-index:-1;
+  background:conic-gradient(from var(--ang,0deg),transparent 0 60%,var(--c) 78%,#fff 84%,transparent 92%);
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;animation:aurGiraAng 3.6s linear infinite}
+.bt-rastreio:hover{transform:translateY(-1px) scale(1.04)}
 .bt-rastreio .pt{width:7px;height:7px;border-radius:50%;background:var(--c);box-shadow:0 0 8px var(--c)}
-html[data-claro] .bt-rastreio{--c:#15803d}
+html[data-claro] .bt-rastreio{--c:#15803d;background:radial-gradient(circle at 30% 20%,color-mix(in srgb,var(--c) 22%,#fff),color-mix(in srgb,var(--c) 8%,#fff) 75%)!important}
 @keyframes rastPisca{0%,100%{box-shadow:inset 0 1px 0 rgba(255,255,255,.14),0 0 0 0 color-mix(in srgb,var(--c) 55%,transparent)}50%{box-shadow:inset 0 1px 0 rgba(255,255,255,.14),0 0 12px 2px color-mix(in srgb,var(--c) 45%,transparent)}}
 /* BOLINHAS (estilo Instagram): os chats do app abertos com este atendente, na vertical à esquerda — clicar = mesma coisa que clicar na aba */
 #bolhas{position:fixed;left:10px;top:50%;transform:translateY(-50%);z-index:40;display:flex;flex-direction:column;gap:8px;padding:8px 6px;border-radius:18px;max-height:80vh;overflow:auto;scrollbar-width:none;
@@ -1496,7 +1510,7 @@ function popupPedirAjuda(sel) {
   const meu = S.e.eu.depto || "", deps = S.e.departamentos.filter((d) => d !== meu);
   A.modal({ titulo: "Pedir ajuda", icone: "mensagem", cor: "var(--violeta)", largura: 480,
     html: `<p class="dica" style="margin-bottom:8px">${esc(sel.motivo_filho || sel.assunto || "Solicitação")} · o setor recebe na hora, num balão de chat.</p>
-      <div class="setores">${deps.map((d, i) => `<label><input type="radio" name="ajSetor" value="${esc(d)}"${i === 0 && deps.length === 1 ? " checked" : ""}><span>${esc(d)}</span></label>`).join("")}</div>
+      <div class="setores-r">${deps.map((d, i) => `<label><input type="radio" name="ajSetor" value="${esc(d)}"${i === 0 && deps.length === 1 ? " checked" : ""}><span>${esc(d)}</span></label>`).join("")}</div>
       <textarea class="entrada" id="ajPed" placeholder="O que você precisa do setor?" style="margin-top:10px;min-height:80px"></textarea>`,
     botoes: [{ rotulo: "Cancelar" }, { rotulo: "🤝 Ajuda", classe: "btn", principal: true, acao: async () => {
       const setor = document.querySelector('input[name="ajSetor"]:checked')?.value, msg = $("#ajPed").value.trim();
@@ -1586,13 +1600,20 @@ function vincularCliente(t) {
 }
 
 /* ══════ ABRIR CHAMADO ══════ */
+const IC_SETOR = [["^cx$|atendimento|^sac$", "mensagem"], ["^ti$|tecnolog|sistemas", "codigo"], ["^rh$|pessoas|recursos humanos", "usuarios"], ["jurid|legal", "escudo"], ["compliance|qualidade", "check"],
+  ["financ|cobran", "dinheiro"], ["fiscal|contab", "documento"], ["logist|frota|transp", "mapa"], ["compra|estoque|suprim", "caixa"], ["manuten|predial|obra", "ajustes"],
+  ["marketing|mkt", "estrela"], ["comercial|vendas", "grafico"], ["^pqi$|melhoria|processo", "alvo"], ["diretor|gest", "camadas"]];
+function icSetorDe(d) { const n = norm(d); const k = IC_SETOR.find(([r]) => new RegExp(r).test(n)); return k ? k[1] : String(d || "?").split(/\s+/).map((w) => w[0] || "").join("").slice(0, 2).toUpperCase(); }
+const COR_SETOR = ["#60a5fa", "#e8b33d", "#34d399", "#8b5cf6", "#fb923c", "#22d3ee", "#fb7185", "#a3e635", "#f472b6", "#2dd4bf"];
+function corSetor(d) { const deps = (S.e && S.e.departamentos) || []; const i = deps.findIndex((x) => norm(x) === norm(d));
+  if (i >= 0) return COR_SETOR[i % COR_SETOR.length]; let h = 0; for (const ch of norm(d)) h = (h * 31 + ch.charCodeAt(0)) % COR_SETOR.length; return COR_SETOR[h]; }
 const DESC_SETOR = { TI: "Sistema, rede, acesso, equipamento.", CX: "Cliente, pedido, troca, assistência técnica.", "Logística": "Entrega, carga, agendamento, endereço.",
   "Jurídico": "Contrato, notificação, processo.", "Manutenção": "Prédio, mobiliário, instalação, reparo.", Financeiro: "Pagamento, nota, reembolso, cobrança.", Compras: "Estoque, fornecedor, peças." };
 function telaAbrir(m) {
   const cores = ["#60a5fa", "#e8b33d", "#34d399", "#8b5cf6", "#fb923c", "#22d3ee", "#fb7185"];
   if (!S.setorAbrir) {
     m.innerHTML = `<section class="painel vidro"><h2 style="margin:0 0 4px;font:700 1.3rem var(--titulo)">Abrir chamado</h2><p class="dica" style="margin-bottom:14px">Para qual setor? Escolheu errado? Sem problema — quem recebe encaminha para o setor certo.</p>
-      <div class="setores">${S.e.departamentos.map((d, i) => `<button type="button" class="setor" data-setor="${esc(d)}" style="--c:${cores[i % cores.length]}"><span class="sig">${esc(d.slice(0, 2).toUpperCase())}</span><span><b>${esc(d)}</b><small>${esc(DESC_SETOR[d] || "")}</small></span></button>`).join("")}</div></section>`;
+      <div class="setores">${S.e.departamentos.map((d, i) => `<button type="button" class="setor" data-setor="${esc(d)}" style="--c:${corSetor(d)}">${A.orbe(icSetorDe(d), corSetor(d))}<span><b>${esc(d)}</b>${DESC_SETOR[d] ? `<small>${esc(DESC_SETOR[d])}</small>` : ""}</span></button>`).join("")}</div></section>`;
     m.querySelectorAll("[data-setor]").forEach((b) => (b.onclick = () => { S.setorAbrir = b.dataset.setor; render(); }));
     return;
   }
@@ -1717,16 +1738,17 @@ function telaAjuda(m) {
       <td>${t.sem_dono ? `<span class="dica">— sem dono —</span>` : esc(nomeU(t.atribuido_para).split(" ")[0])}</td>
       <td>${slaTxt(t.sla)}<br>${etqSt(t.status)}</td></tr>`;
   /* "Que eu abri": setor pendente, filtro por setor (ícones) e ordem A-Z / Z-A em cada coluna */
-  const porSetorM = {}; minhas.forEach((t) => { const d = t.departamento || "—"; porSetorM[d] = (porSetorM[d] || 0) + 1; });
+  const nomeSetM = {}, setDe = (t) => { const d = t.departamento || "—"; return nomeSetM[norm(d)] || (nomeSetM[norm(d)] = d); };
+  const porSetorM = {}; minhas.forEach((t) => { const d = setDe(t); porSetorM[d] = (porSetorM[d] || 0) + 1; });
   const setorM = S.ajSetorM && porSetorM[S.ajSetorM] ? S.ajSetorM : "";
   const ordM = S.ajOrdM || { c: "desde", d: -1 };
   const chaveM = { chamado: (t) => String(t.cliente_codigo || t.id || ""), quem: (t) => norm(t.interno ? (nomeU(t.aberto_por) || t.assunto || "") : t.cliente_nome || ""),
     setor: (t) => norm(t.departamento || ""), desde: (t) => String(t.criado_em || ""), dono: (t) => norm(t.sem_dono ? "" : nomeU(t.atribuido_para)), sla: (t) => t.sla?.min ?? 1e12 };
-  const listaM = minhas.filter((t) => !setorM || (t.departamento || "—") === setorM).sort((a, b) => { const x = chaveM[ordM.c](a), y = chaveM[ordM.c](b); return (x < y ? -1 : x > y ? 1 : 0) * ordM.d; });
+  const listaM = minhas.filter((t) => !setorM || setDe(t) === setorM).sort((a, b) => { const x = chaveM[ordM.c](a), y = chaveM[ordM.c](b); return (x < y ? -1 : x > y ? 1 : 0) * ordM.d; });
   const iniciais = (d) => String(d).split(/\s+/).map((w) => w[0] || "").join("").slice(0, 2).toUpperCase() || "?";
-  const icSetor = (d, n, rot) => `<button type="button" class="aj-ic${setorM === d ? " on" : ""}" data-ajsm="${esc(d)}" title="${esc(rot || d)} · ${n} aberta(s)" style="--c:${d ? cor(d) : "var(--ouro)"}"><span>${d ? esc(iniciais(d)) : "★"}</span><em>${n}</em><small>${esc(rot || d)}</small></button>`;
+  const icSetor = (d, n, rot) => `<button type="button" class="aj-ic${setorM === d ? " on" : ""}" data-ajsm="${esc(d)}" title="${esc(rot || d)} · ${n} aberta(s)" style="--c:${d ? corSetor(d) : "var(--ouro)"}">${A.orbe(d ? icSetorDe(d) : "★", d ? corSetor(d) : "var(--ouro)", "redondo")}<em>${n}</em><small>${esc(rot || d)}</small></button>`;
   const thM = (c, r, cls) => `<th${cls ? ` class="${cls}"` : ""}><button type="button" class="aj-ord${ordM.c === c ? " on" : ""}" data-ajord="${c}" title="Ordenar A-Z / Z-A">${r} ${ordM.c === c ? (ordM.d > 0 ? "▲" : "▼") : "↕"}</button></th>`;
-  const linhaM = (t) => linha(t).replace(/(<td class="so-largo">)/, `<td><span class="aj-tag" style="--c:${cor(t.departamento || "—")}">${esc(t.departamento || "—")}</span></td>$1`);
+  const linhaM = (t) => linha(t).replace(/(<td class="so-largo">)/, `<td><span class="aj-tag" style="--c:${corSetor(t.departamento || "—")}">${esc(t.departamento || "—")}</span></td>$1`);
   const blocos = (ass ? [[ass, porAss[ass]]] : assuntos).map(([a, ts]) => `<tr><td colspan="5" style="padding:12px 8px 6px;border-bottom:1px solid var(--vidro-borda)"><b style="color:${cor(a)}">${esc(a)}</b> <span class="dica">${ts.length}</span></td></tr>${ts.slice().sort(ordSla).map(linha).join("")}`).join("");
   const card = (v) => { const ult = v.conversa[v.conversa.length - 1];
     return `<button type="button" class="sol-card" data-aj="${esc(v.id)}" style="--c:${v.status === "aberto" ? (v.papel === "recebido" ? "var(--violeta)" : "var(--azul)") : "var(--verde)"};width:100%;text-align:left">
@@ -1752,12 +1774,12 @@ function telaAjuda(m) {
       : f === "setor" ? `<div class="resumo-real"><span><b style="color:var(--violeta)">${fila.length}</b> solicitação(ões) interna(s)</span><span><b style="color:var(--ouro)">${fila.filter((t) => t.sem_dono).length}</b> sem dono</span>${ass ? `<span>assunto: <b>${esc(ass)}</b></span>` : ""}</div>
         ${fila.length ? `<table class="tab" style="margin-top:8px"><thead><tr><th>Chamado</th><th>Cliente</th><th class="so-largo">Desde</th><th>Dono</th><th>SLA / situação</th></tr></thead><tbody>${blocos}</tbody></table>` : `<div class="vazio">${A.orbe("check", "var(--verde)")}<b>Nada aberto no setor</b></div>`}`
       : `<h3 style="margin:0 0 10px">${nomes[f]}</h3>${(() => {   // ícones do outro setor: quem pediu (recebidos) / para quem pedi (enviados)
-          const lado = (v) => (f === "recebidos" || (f === "resolvidos" && v.papel === "recebido") ? v.setor_origem : v.setor_destino) || "—";
+          const nomeSet = {}, lado = (v) => { const d = (f === "recebidos" || (f === "resolvidos" && v.papel === "recebido") ? v.setor_origem : v.setor_destino) || "—"; return nomeSet[norm(d)] || (nomeSet[norm(d)] = d); };
           const cont = {}; grupos[f].forEach((v) => (cont[lado(v)] = (cont[lado(v)] || 0) + 1));
           const sel = S.ajSetorP && cont[S.ajSetorP] ? S.ajSetorP : "";
           S._ajLista = grupos[f].filter((v) => !sel || lado(v) === sel);
           return grupos[f].length ? `<div class="aj-ics">${[["", grupos[f].length, "Todos"], ...Object.entries(cont).sort((a, b) => a[0].localeCompare(b[0]))].map(([d, n, r]) =>
-            `<button type="button" class="aj-ic${sel === d ? " on" : ""}" data-ajsp="${esc(d)}" title="${esc(r || d)} · ${n}" style="--c:${d ? cor(d) : "var(--ouro)"}"><span>${d ? esc(iniciais(d)) : "★"}</span><em>${n}</em><small>${esc(r || d)}</small></button>`).join("")}</div>` : ""; })()}
+            `<button type="button" class="aj-ic${sel === d ? " on" : ""}" data-ajsp="${esc(d)}" title="${esc(r || d)} · ${n}" style="--c:${d ? corSetor(d) : "var(--ouro)"}">${A.orbe(d ? icSetorDe(d) : "★", d ? corSetor(d) : "var(--ouro)", "redondo")}<em>${n}</em><small>${esc(r || d)}</small></button>`).join("")}</div>` : ""; })()}
         <div style="display:flex;flex-direction:column;gap:8px">${(S._ajLista || grupos[f]).map(card).join("") || `<div class="vazio">${A.orbe("check", "var(--verde)")}<b>Nada aqui</b></div>`}</div>`}
     </section></div>`;
   m.querySelectorAll("[data-ajf]").forEach((b) => (b.onclick = () => { S.ajFiltro = b.dataset.ajf; S.ajAss = b.dataset.ajass || ""; render(); }));
