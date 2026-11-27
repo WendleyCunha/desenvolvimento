@@ -1800,6 +1800,37 @@ def chamado_do_cliente(cid: str, request: Request):
             "erp": erp_do_ticket(junto, u) if _erp_ligado() and not all(t.get("interno") for t in sols) else None}
 
 
+def _erp_do_container(cid: str) -> str:
+    c = BASE.cont.get(cid)
+    cod = str((c or {}).get("cliente_codigo") or "").upper()
+    e = _erp()
+    if not cod or not e:
+        raise HTTPException(404, "Cliente não encontrado.")
+    e.ST.carregar()
+    pid = next((k for k, v in e.ST.dados["parceiros"].items() if v.get("tipo") == "cliente" and str(v.get("codigo") or "").upper() == cod), None)
+    if not pid:
+        raise HTTPException(404, "Este cliente não está no ERP (visitante sem cadastro).")
+    return pid
+
+
+@router.get("/cliente/{cid}/app-acesso")
+def app_acesso(cid: str, request: Request):
+    """Acesso do cliente ao app: senha criada, bloqueios e aparelhos conectados."""
+    u, p, me = _contexto(request)
+    import cliente_acesso
+    return cliente_acesso.resumo_central(_erp_do_container(cid))
+
+
+@router.post("/cliente/{cid}/app-acesso")
+async def app_acesso_acao(cid: str, request: Request):
+    """Central: desconectar um aparelho (ou todos) e destravar a validação/senha do cliente."""
+    u, p, me = _contexto(request)
+    _exigir(p, "atender", "mexer no acesso do cliente")
+    d = await request.json()
+    import cliente_acesso
+    return cliente_acesso.acao_central(_erp_do_container(cid), str(d.get("acao") or ""), str(d.get("aparelho") or ""))
+
+
 @router.post("/cliente/{cid}/chamar")
 async def chamar_cliente(cid: str, request: Request):
     """Botão "Chamar cliente" (Conversa do cliente): manda a mensagem no chat dele (ou abre um) e avisa o celular

@@ -75,6 +75,7 @@ html[data-claro] .compor .caixa{background:rgba(255,255,255,.92)}
 .compor.oculto{display:none}
 .recomecar{align-self:center}
 .oculto{display:none!important}
+.compor textarea.senha{-webkit-text-security:disc;letter-spacing:4px}
 </style>
 </head>
 <body>
@@ -193,9 +194,7 @@ async function recomecar() { S.fase = "cpf"; S.conversa = ""; S.errosCpf = 0; aw
 function entrarNoChat(nome, agoraMesmo) {
   S.fase = "chat"; $("#sub").textContent = nome ? `Olá, ${nome}` : "Online";
   $("#sair").classList.remove("oculto");
-  const a = document.createElement("a"); a.className = "app-conv"; a.href = (window.HUB_BASE || "") + "/cliente/"; a.target = "_blank"; a.rel = "noopener";
-  a.innerHTML = `<span style="font-size:1.3rem">📲</span><span>Quer acompanhar seus pedidos, entregas e cupons? <b>Abra o nosso app</b> — é só entrar com CPF e e-mail.</span>`;
-  if (agoraMesmo) fio.appendChild(a);
+  if (!S.visitante) oferecerApp();
   oferecerAvisos();
   S.areaChat = document.createElement("div"); S.areaChat.style.cssText = "display:flex;flex-direction:column;gap:10px";
   fio.appendChild(S.areaChat);
@@ -221,6 +220,35 @@ async function enviarMsg(v) {
   try { await api(API + "/mensagem", { method: "POST", body: p }); }
   catch (e) { S.pend = S.pend.filter((x) => x !== p); bot(e.message || "Não consegui enviar. Tente de novo.", "erro"); if (e.status === 401) return; txt.value = v; env.disabled = false; }
   S.ultimas = ""; atualizar();
+}
+
+/* ── instalar o app: com a validação feita aqui, o cliente cria uma SENHA e este aparelho fica conectado ao app
+   (entra direto por 30 dias; depois pede a senha). Em outro aparelho: CPF + senha. ── */
+function oferecerApp() {
+  if (S.ofereceuApp) return; S.ofereceuApp = true;
+  const b = document.createElement("button"); b.type = "button"; b.className = "app-conv"; b.style.cssText = "cursor:pointer;font:inherit;text-align:left;width:100%";
+  b.innerHTML = `<span style="font-size:1.3rem">📲</span><span>Quer acompanhar seus pedidos, a entrega e os cupons pelo app? <b>Instalar o app</b> — você cria uma senha e este celular fica conectado.</span>`;
+  b.onclick = async () => { b.remove(); S.faseAntes = S.fase; S.fase = "senha1"; await digitando(400);
+    bot("Ótimo! 🔐 Crie uma senha para o app — pode ser 6 números. Não use datas nem sequências (123456)."); modo("Sua nova senha", true); txt.classList.add("senha"); txt.focus(); };
+  fio.appendChild(b); fim();
+}
+async function senhaApp(v) {
+  eu("••••••");
+  if (S.fase === "senha1") {
+    if (v.length < 6) { await digitando(300); bot("A senha precisa ter pelo menos 6 caracteres. Tente de novo:", "erro"); modo("Sua nova senha", true); return; }
+    S.senhaNova = v; S.fase = "senha2"; await digitando(300); bot("Digite a mesma senha de novo, para confirmar:"); modo("Repita a senha", true); return;
+  }
+  if (v !== S.senhaNova) { S.fase = "senha1"; await digitando(300); bot("As senhas não bateram. Vamos de novo — crie a senha:", "erro"); modo("Sua nova senha", true); return; }
+  S.ocupado = true;
+  try {
+    const r = await api(API + "/instalar", { method: "POST", body: { senha: v } });
+    txt.classList.remove("senha"); S.senhaNova = ""; await digitando();
+    bot("Pronto! ✅ Senha criada e este celular está conectado ao app. Vou abrir o app — lá, toque em 📲 para colocar na tela inicial.");
+    const a = document.createElement("a"); a.className = "app-conv"; a.href = r.url; a.innerHTML = `<span style="font-size:1.3rem">📲</span><span><b>Abrir o app</b> — pedidos, entrega, chamados e cupons.</span>`;
+    fio.appendChild(a); fim(); S.fase = S.faseAntes || "chat"; modo("Escreva sua mensagem…", false);
+    setTimeout(() => { location.href = r.url; }, 1800);
+  } catch (e) { await digitando(300); bot(e.message || "Não consegui criar a senha agora.", "erro"); S.fase = "senha1"; modo("Sua nova senha", true); }
+  finally { S.ocupado = false; }
 }
 
 /* ── avisos no celular: a central pode CHAMAR o cliente (botão Chamar do CX/ERP) ── */
@@ -257,6 +285,7 @@ function enviar() {
   txt.value = ""; txt.style.height = "auto"; env.disabled = true;
   if (S.fase === "cpf") enviarCpf(v);
   else if (S.fase === "nome") enviarNome(v);
+  else if (S.fase === "senha1" || S.fase === "senha2") senhaApp(v);
   else if (S.fase === "pergunta") { const op = S.pergunta && S.pergunta.opcoes; const n = parseInt(v, 10); if (op && op[n - 1]) { fio.querySelectorAll(".opcoes button").forEach((x) => (x.disabled = true)); responder(String(n), op[n - 1]); } else responder(v); }
   else enviarMsg(v);
 }
@@ -275,7 +304,7 @@ new MutationObserver(fim).observe(fio, { childList: true, subtree: true });   //
     const i = S.info = await api(API + "/info");
     $("#emp").textContent = i.empresa || "Atendimento"; document.title = (i.empresa || "Atendimento") + " · Atendimento";
     if (!i.ativo) { $("#compor").classList.add("oculto"); $("#sub").textContent = "Pausado"; bot("O atendimento por aqui está pausado no momento. Tente mais tarde. 🙏"); return; }
-    if (i.validado) { bot(i.continua ? `Oi de novo, ${i.nome}! 👋 Seu atendimento${i.continua.atendente ? " com " + i.continua.atendente : ""} continua aqui — é só escrever.`
+    if (i.validado) { S.visitante = !!i.visitante; bot(i.continua ? `Oi de novo, ${i.nome}! 👋 Seu atendimento${i.continua.atendente ? " com " + i.continua.atendente : ""} continua aqui — é só escrever.`
       : `Oi de novo, ${i.nome}! 👋 Pode escrever — um atendente já te responde.`); entrarNoChat(i.nome, false); return; }
     await digitando(500); bot(i.saudacao);
     await digitando(700); bot(i.pedir_cpf); modo("CPF (só números)", true); txt.focus();

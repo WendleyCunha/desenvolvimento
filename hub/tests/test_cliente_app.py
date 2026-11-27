@@ -120,6 +120,8 @@ def t(monkeypatch):
     C._envios.clear()
     T.PRESENCA.clear()
     T._ULT_RECEBEU.clear()
+    import cliente_acesso
+    cliente_acesso._cache.clear()
     # login do hub (atendente) para o lado da central
     monkeypatch.setattr(acesso, "exigir_usuario", lambda request: {"login": "atendente", "nome": "Carla Atendente"})
     monkeypatch.setattr(acesso, "obter_esquema", lambda slug: {"acoes": {}, "campos": {}})
@@ -768,3 +770,117 @@ def test_gestao_tempo_logado_e_curva(t, monkeypatch):
     c7 = t.get(f"/api/tickets/equipe/curva?de={ontem}&ate={hoje}").json()
     assert c7["por"] == "dia" and len(c7["rotulos"]) == 7 and c7["series"]["online"][-1] == 150
     assert t.get("/api/tickets/equipe/curva?de=2026-01-01&ate=2026-12-31").status_code == 400
+
+
+# ── ACESSO SEGURO: link valida → senha → aparelho conectado ──────────────────
+def _validar_link(t):
+    conv = t.post("/api/cliente/atendimento/cpf", json={"cpf": CPF_ANA}).json()["conversa"]
+    t.post("/api/cliente/atendimento/resposta", json={"conversa": conv, "resposta": _certa(conv)})
+    return t.post("/api/cliente/atendimento/resposta", json={"conversa": conv, "resposta": _certa(conv)}).json()
+
+
+def test_app_com_senha_aparelho_e_palavra_protegida(t, monkeypatch):
+    import promocoes
+    avisos = []
+    monkeypatch.setattr(promocoes, "avisar_cliente", lambda *a, **k: avisos.append(a))
+    monkeypatch.setattr(banco, "thread", lambda fn, *a, **k: fn(*a, **k))
+    _preparar_link()
+    assert _validar_link(t)["validado"]
+    assert t.post("/api/cliente/atendimento/instalar", json={"senha": "111111"}).status_code == 422      # fácil demais
+    r = t.post("/api/cliente/atendimento/instalar", json={"senha": "482916"})
+    assert r.status_code == 200 and r.json()["url"] == "/cliente/" and not avisos                       # primeiro aparelho: ninguém para avisar
+    eu = t.get("/api/cliente/eu").json()
+    p = next(x for x in eu["pedidos"] if x["numero"] == 101)
+    assert eu["palavra_protegida"] and p["palavra_chave"] == "" and p["palavra_protegida"]
+    assert t.get("/api/cliente/pedido/ped1/pdf").status_code == 403
+    r = t.post("/api/cliente/desbloquear", json={"senha": "000000"})
+    assert r.status_code == 401 and "mais 2" in r.json()["detail"]
+    assert t.post("/api/cliente/desbloquear", json={"senha": "482916"}).status_code == 200
+    assert next(x for x in t.get("/api/cliente/eu").json()["pedidos"] if x["numero"] == 101)["palavra_chave"] == "SOL42"
+    ap = t.get("/api/cliente/aparelhos").json()["aparelhos"]
+    assert len(ap) == 1 and ap[0]["este"]
+    # outro aparelho: CPF + senha (sem bot) → o primeiro recebe o aviso
+    t.cookies.clear()
+    assert t.post("/api/cliente/entrar-senha", json={"cpf": CPF_ANA, "senha": "482916"}).status_code == 200
+    assert avisos and avisos[-1][1] == "📱 Novo aparelho conectado"
+    assert len(t.get("/api/cliente/aparelhos").json()["aparelhos"]) == 2
+    # central vê e desconecta todos
+    cod = E.ST.dados["parceiros"]["c_ana"]["codigo"]
+    cid_tk = T._id_doc(cod)
+    T.BASE.cont.setdefault(cid_tk, {"cliente_codigo": cod, "solicitacoes": []})
+    assert len(t.get(f"/api/tickets/cliente/{quote(cid_tk, safe='')}/app-acesso").json()["aparelhos"]) == 2
+    t.post(f"/api/tickets/cliente/{quote(cid_tk, safe='')}/app-acesso", json={"acao": "desconectar", "aparelho": "todos"})
+    r = t.get("/api/cliente/eu")
+    assert r.status_code == 401 and "desconectado" in r.json()["detail"]
+    assert t.get("/api/cliente/sessao").json()["estado"] == "revalidar"
+
+
+def test_senha_errada_3_vezes_comeca_do_zero(t, monkeypatch):
+    monkeypatch.setattr(banco, "thread", lambda fn, *a, **k: fn(*a, **k))
+    _preparar_link()
+    _validar_link(t)
+    t.post("/api/cliente/atendimento/instalar", json={"senha": "482916"})
+    t.cookies.clear()
+    for _ in range(2):
+        assert t.post("/api/cliente/entrar-senha", json={"cpf": CPF_ANA, "senha": "999999"}).status_code == 401
+    assert t.post("/api/cliente/entrar-senha", json={"cpf": CPF_ANA, "senha": "999999"}).status_code == 423
+    assert t.post("/api/cliente/entrar-senha", json={"cpf": CPF_ANA, "senha": "482916"}).status_code == 423   # bloqueada
+    _validar_link(t)                                                                                          # valida de novo e cria outra
+    assert t.post("/api/cliente/atendimento/instalar", json={"senha": "735190"}).status_code == 200
+    assert t.get("/api/cliente/eu").status_code == 200
+
+
+def test_depois_de_30_dias_pede_a_senha(t, monkeypatch):
+    import cliente_acesso as CA
+    monkeypatch.setattr(banco, "thread", lambda fn, *a, **k: fn(*a, **k))
+    _preparar_link()
+    _validar_link(t)
+    aid = t.post("/api/cliente/atendimento/instalar", json={"senha": "482916"}).json()["aparelho"]
+    A = CA.ler("c_ana")
+    corpo = C._b64(__import__("json").dumps({"c": "c_ana", "d": aid, "k": A["imp"], "e": int(time.time() - 10)}).encode())
+    t.cookies.clear()
+    t.cookies.set(C._ck(), corpo + "." + C._assinar(corpo))
+    assert t.get("/api/cliente/eu").status_code == 401
+    assert t.get("/api/cliente/sessao").json() == {"estado": "senha", "nome": "Ana"}
+    r = t.post("/api/cliente/reentrar", json={"senha": "482916"})
+    assert r.status_code == 200
+    t.cookies.clear()
+    t.cookies.set(C._ck(), r.cookies[C._ck()])
+    assert t.get("/api/cliente/eu").status_code == 200
+    t.cookies.clear()
+    t.cookies.set(C._ck(), corpo + "." + C._assinar(corpo))
+    for _ in range(2):
+        assert t.post("/api/cliente/reentrar", json={"senha": "1"}).status_code == 401
+    assert t.post("/api/cliente/reentrar", json={"senha": "1"}).status_code == 423                         # 3 erros: do zero
+    assert t.get("/api/cliente/sessao").json()["estado"] == "revalidar"
+
+
+def test_mudou_endereco_valida_de_novo(t, monkeypatch):
+    monkeypatch.setattr(banco, "thread", lambda fn, *a, **k: fn(*a, **k))
+    _preparar_link()
+    _validar_link(t)
+    t.post("/api/cliente/atendimento/instalar", json={"senha": "482916"})
+    assert t.get("/api/cliente/eu").status_code == 200
+    E.ST.dados["pedidos"]["ped1"]["endereco"] = {"logradouro": "Rua Outra", "numero": "10", "cep": "04000-000"}   # entregar em outro lugar
+    r = t.get("/api/cliente/eu")
+    assert r.status_code == 401 and "dados de entrega mudaram" in r.json()["detail"]
+    t.cookies.clear()
+    assert t.post("/api/cliente/entrar-senha", json={"cpf": CPF_ANA, "senha": "482916"}).status_code == 409   # a senha não basta
+    _validar_link(t)
+    assert t.post("/api/cliente/atendimento/instalar", json={"senha": "482916"}).status_code == 200
+
+
+def test_tres_validacoes_erradas_travam_24h(t, monkeypatch):
+    monkeypatch.setattr(banco, "thread", lambda fn, *a, **k: fn(*a, **k))
+    _preparar_link()
+    import cliente_acesso as CA
+    for _ in range(3):
+        C._falhas.clear()   # (o freio por IP/CPF de 15 min é outro; aqui testa a trava de 24 h)
+        conv = t.post("/api/cliente/atendimento/cpf", json={"cpf": CPF_ANA}).json()["conversa"]
+        t.post("/api/cliente/atendimento/resposta", json={"conversa": conv, "resposta": _errada(conv)})
+        t.post("/api/cliente/atendimento/resposta", json={"conversa": conv, "resposta": _errada(conv)})
+    C._falhas.clear()
+    r = t.post("/api/cliente/atendimento/cpf", json={"cpf": CPF_ANA})
+    assert r.status_code == 429 and "24 horas" in r.json()["detail"]
+    CA.acao_central("c_ana", "destravar")
+    assert t.post("/api/cliente/atendimento/cpf", json={"cpf": CPF_ANA}).status_code == 200
