@@ -495,10 +495,18 @@ def _ticket_do_cliente(cid: str, cli: dict, sid: str) -> dict:
     return t
 
 
+def setor_do_app() -> str:
+    """Setor que atende o cliente (Ajustes › Wwhat, padrão CX). Se ele tem árvore própria de motivos, o app usa ela."""
+    try:
+        return cfg_wwhat().get("departamento") or "CX"
+    except Exception:  # noqa: BLE001
+        return "CX"
+
+
 def motivos_para_cliente() -> dict:
-    """Motivo › Submotivos ativos (a mesma árvore de Ajustes do Atendimento)."""
+    """Motivo › Submotivos ativos que o cliente pode escolher: a árvore do setor do app (ex.: CX) ou, sem ela, a geral."""
     saida = {}
-    for pai, filhos in T.motivos().items():
+    for pai, filhos in T.motivos(setor_do_app()).items():
         ativos = [f for f, i in (filhos or {}).items() if (i or {}).get("ativo", True) and (i or {}).get("exige_codigo", True)]   # interno não aparece pro cliente
         if ativos:
             saida[pai] = ativos
@@ -639,7 +647,7 @@ def _freio_msg(chave: str, maximo=12, janela=300):
 def _limite_dia(cid: str, cli: dict, c: dict):
     hoje = T.agora()[:10]
     n = sum(1 for t in tickets_do_cliente(cid, cli) if t.get("origem") == "app" and str(t.get("criado_em") or "")[:10] == hoje)
-    if n >= int(c.get("max_chamados_dia") or 5):
+    if n >= max(1, int(c.get("max_chamados_dia") or 5)):
         raise HTTPException(429, "Você já abriu vários atendimentos hoje. Continue a conversa em um deles.")
 
 
@@ -848,12 +856,13 @@ async def abrir_chamado(request: Request):
     c = cfg_app()
     _limite_dia(cid, cli, c)
     _freio_msg("cli:" + cid)
-    depto = _depto_do_motivo(pai)
+    setor = setor_do_app()
+    depto = setor if pai in (T.motivos_por_setor().get(setor) or {}) and setor in T.departamentos() else _depto_do_motivo(pai)
     me = _me(cli)
     dados = {"assunto": f"{filho}" + (f" · pedido #{ped.get('numero')}" if ped else ""),
              "descricao": texto + (f"\n\n(escrito sem internet em {off[8:10]}/{off[5:7]} {off[11:16]})" if off else ""),
              "departamento": depto, "categoria": depto, "motivo_pai": pai, "motivo_pai_id": pai, "motivo_filho": filho,
-             "sla1_prazo_dias": T._sla_motivo(pai, filho), "app_tipo": "chamado", "app_req": req}
+             "sla1_prazo_dias": T._sla_motivo(pai, filho, depto), "app_tipo": "chamado", "app_req": req}
     if ped:
         dados.update(erp_pedido_id=ped_id, erp_pedido_numero=ped.get("numero"))
     sid = _criar(cid, cli, me, dados)

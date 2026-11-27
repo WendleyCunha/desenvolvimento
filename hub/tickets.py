@@ -1309,6 +1309,11 @@ async def salvar_config(request: Request):
         for k, lim in (("empresa", 60), ("saudacao", 300)):
             if k in a:
                 atual[k] = str(a[k] or "").strip()[:lim]
+        if "max_chamados_dia" in a:   # freio: atendimentos/chamados que o mesmo cliente abre por dia
+            try:
+                atual["max_chamados_dia"] = max(1, min(int(a["max_chamados_dia"]), 100))
+            except (TypeError, ValueError):
+                pass
         if "ura" in a:
             ura = []
             for i, op in enumerate((a["ura"] or [])[:12]):
